@@ -4216,6 +4216,55 @@ class TradingEngine:
     STAMP_BACKFILL_NEVER = frozenset({'entry_atr_pct', 'entry_btc_rsi_closed', 'entry_btc_regime', 'entry_br_door', 'entry_btc_eff72',
                                       'entry_btc_r72_pct', 'entry_price', 'entry_fee', 'entry_strategy', 'entry_order_type'})
 
+    # 🧾🔒 (DECISION_LOG 391) the STAMP CONTRACT — operator 10-27: "make sure all sleeves have complete data … can't have strategies running
+    # without data again". Every entry_* column of Order is classified here; tests/test_entry_stamp_backfill.py fails on an unclassified one
+    # (a new column or sleeve cannot ship without deciding), the backfill logs any UNIVERSAL column still NULL after its pass
+    # ([STAMP_COVERAGE]) and scripts/scout_stamp_coverage.py alerts per sleeve at every batch.
+    STAMP_UNIVERSAL = (   # every bot fill, every sleeve (when the source is readable)
+        # pair (pair_entry_stamps)
+        'entry_rsi', 'entry_rsi_prev', 'entry_adx', 'entry_adx_prev', 'entry_adx_delta', 'entry_atr_pct', 'entry_gap', 'entry_ema_gap_5_8',
+        'entry_ema_gap_8_13', 'entry_ema5_stretch', 'entry_price_vs_ema5_pct', 'entry_ema20_slope', 'entry_ema50_slope', 'entry_range_position',
+        'entry_pos_di', 'entry_neg_di', 'entry_pair_ema20_ema50_gap_pct', 'entry_dist_from_ema13_pct', 'entry_pair_volume_ratio',
+        'entry_gap_expand_marginal', 'entry_gap_5_20_signed_pct', 'entry_gap_5_20_prev_signed_pct', 'entry_gap_5_8_signed_pct',
+        'entry_quality_score', 'entry_funding_rate', 'entry_pair_1d_ndi', 'entry_pair_age_days', 'entry_pair_volume_24h_usd',
+        'entry_pair_1h_ema20_200_gap_pct', 'entry_mcap_usd', 'entry_cmc_rank', 'entry_vol_mcap_ratio', 'entry_alt_corr24', 'entry_alt_beta24',
+        # market (market_entry_stamps / monitor_entry_stamps / zone)
+        'entry_btc_adx', 'entry_btc_adx_prev', 'entry_btc_rsi', 'entry_btc_rsi_prev', 'entry_btc_rsi_prev6', 'entry_btc_atr_pct',
+        'entry_btc_rsi_1h', 'entry_btc_rsi_1h_prev', 'entry_btc_ema20_slope', 'entry_btc_1h_slope', 'entry_btc_trend_gap_pct',
+        'entry_btc_dist_from_ema13_pct', 'entry_btc_regime', 'entry_btc_rsi_closed', 'entry_bull_pct', 'entry_bear_pct',
+        'entry_global_volume_ratio', 'entry_btc_off24h_pct', 'entry_btc_off24lo_pct', 'entry_btc_r72_pct', 'entry_btc_eff72',
+        'entry_btc_above72_pct', 'entry_btc_ema50_100_gap_pct', 'entry_eth_5m_ret1_pct', 'entry_btc_1d_ret_pct', 'entry_btc_price',
+        'entry_btc_4h_ema50_200_gap_pct', 'entry_btc_off30d_high_pct',
+        # the momentum pattern signatures + execution
+        'entry_pattern_c1_match', 'entry_pattern_c2_match', 'entry_pattern_c3_match', 'entry_pattern_c4_match', 'entry_pattern_c5_match',
+        'entry_pattern_c6_match', 'entry_pattern_c7_match', 'entry_pattern_c8_match', 'entry_pattern_c9_match', 'entry_pattern_c_any_match',
+        'entry_pattern_w1_match', 'entry_pattern_w2_match', 'entry_pattern_w3_match', 'entry_pattern_w4_match', 'entry_pattern_w5_match',
+        'entry_pattern_w6_match', 'entry_pattern_w_any_match', 'entry_slippage_pct', 'entry_desired_notional', 'entry_liquidity_cap_notional',
+        'entry_bracket_max_leverage', 'entry_bracket_cap_notional')
+    STAMP_SLEEVE_PREFIXES = ('entry_frenzy_', 'entry_flatbase_', 'entry_surge_', 'entry_br_', 'entry_bear_', 'entry_willy_', 'entry_book_')
+    STAMP_SLEEVE_ONLY = ('entry_order_lag_s', 'entry_fill_vs_book_pct', 'entry_chop_burst_prior_fill_s', 'entry_long_heat_flags',
+                         'entry_pair_rank', 'entry_macro_trend')   # sleeve / path specific — NULL elsewhere is by design
+    STAMP_BOOKING = ('entry_price', 'entry_fee', 'entry_strategy', 'entry_order_type')
+    STAMP_LEGACY = ('entry_btc_regime_started_at',)   # no code path writes it (0 % on every sleeve) — kept for old CSVs, never required
+    STAMP_BEST_EFFORT = ('entry_mcap_usd', 'entry_cmc_rank', 'entry_vol_mcap_ratio', 'entry_pair_1d_ndi', 'entry_funding_rate',
+                         'entry_pair_1h_ema20_200_gap_pct',   # external source can be missing for a small / new coin: alert bar 60 %, not 90 %
+                         'entry_btc_4h_ema50_200_gap_pct')    # its global refreshes only while the fade laggard gate is on (spike_fade_lag_ndi_min > 0)
+    # (column, entry_strategy prefixes where NULL is BY DESIGN) — the coverage alert skips these pairs
+    STAMP_NULL_BY_DESIGN = {}
+
+    @classmethod
+    def stamp_class(cls, col) -> str:
+        """universal / sleeve / booking / legacy / unclassified for one entry_* column. Pure."""
+        if col in cls.STAMP_UNIVERSAL:
+            return "universal"
+        if col in cls.STAMP_BOOKING:
+            return "booking"
+        if col in cls.STAMP_LEGACY:
+            return "legacy"
+        if col in cls.STAMP_SLEEVE_ONLY or col.startswith(cls.STAMP_SLEEVE_PREFIXES):
+            return "sleeve"
+        return "unclassified"
+
     def _stamp_backfill_schedule(self, order) -> bool:
         """OBSERVE-ONLY post-fill backfill of the shared entry stamps. The MARKET half is snapshotted NOW (the fill's moment, module globals —
         the readings the sleeve saw); the PAIR half (5m indicators at the fill price, funding, daily −DI, scan rank / age) is read in the
@@ -4333,6 +4382,13 @@ class TradingEngine:
                                 st[col] = v
                     except Exception as _e:
                         logger.debug(f"[STAMP_BACKFILL] {pair} #{order_id}: FRENZY stamps failed ({_e})")
+            if st.get('entry_pair_age_days') is None:   # (391) listing age for pairs outside the scan list: Binance onboardDate, in memory
+                try:
+                    _ob = (((binance_service.public_exchange.markets or {}).get(symbol) or {}).get('info') or {}).get('onboardDate')
+                    if _ob is not None:
+                        st['entry_pair_age_days'] = round((_leash_time.time() * 1000 - int(_ob)) / 86400000.0, 1)
+                except Exception:
+                    pass
             cols = Order.__table__.columns
             vals = {k: func.coalesce(getattr(Order, k), v) for k, v in st.items()
                     if k in cols and k.startswith('entry_') and k not in self.STAMP_BACKFILL_NEVER}
@@ -4346,11 +4402,47 @@ class TradingEngine:
             if not bool(getattr(res, 'rowcount', 0)):
                 logger.info(f"[STAMP_BACKFILL] {pair} {es} #{order_id}: row moved — no write")
                 return 0
-            logger.info(f"[STAMP_BACKFILL] {pair} {es} #{order_id}: {len(vals)} entry stamps offered (NULL columns filled, sleeve values kept)")
+            logger.info(f"[STAMP_BACKFILL] {pair} {es} #{order_id}: {len(vals)} entry stamps offered (NULL columns filled, sleeve values kept)"
+                        + (" · pair reads skipped (rate-limited)" if _limited else ""))
+            if not _limited:   # a rate-limited pass skipped the pair half on purpose — no false [STAMP_COVERAGE] warning
+                await self._stamp_coverage_check(order_id, pair, es)
             return len(vals)
         except Exception as e:
             logger.warning(f"[STAMP_BACKFILL] {pair} #{order_id}: post-fill stamp pass failed (observe-only, trade unaffected): {str(e)[:120]}")
             return 0
+
+    def stamp_missing(self, es, row_values) -> list:
+        """(391) the UNIVERSAL columns still NULL on one fill, minus the (column, sleeve) pairs NULL by design. Pure."""
+        out = []
+        for c in self.STAMP_UNIVERSAL:
+            if row_values.get(c) is not None:
+                continue
+            _des = tuple(self.STAMP_NULL_BY_DESIGN.get(c) or ())
+            if _des and str(es or "").startswith(_des):
+                continue
+            out.append(c)
+        return out
+
+    async def _stamp_coverage_check(self, order_id, pair, es) -> list:
+        """(391) after the backfill: one read of the row's UNIVERSAL columns → a [STAMP_COVERAGE] warning naming every one still NULL (the
+        source was unreadable, or a sleeve path / column the contract does not cover yet). Log only. Never raises."""
+        try:
+            async with AsyncSessionLocal() as _cs:
+                r = (await _cs.execute(select(*[getattr(Order, c) for c in self.STAMP_UNIVERSAL]).where(Order.id == order_id))).first()
+            if r is None:
+                return []
+            miss = self.stamp_missing(es, dict(zip(self.STAMP_UNIVERSAL, r)))
+            hard = [c for c in miss if c not in self.STAMP_BEST_EFFORT]
+            soft = [c for c in miss if c in self.STAMP_BEST_EFFORT]
+            if hard:
+                logger.warning(f"[STAMP_COVERAGE] {pair} {es or 'MOMENTUM'} #{order_id}: {len(hard)} universal entry stamps still NULL after the "
+                               f"backfill: {', '.join(c[6:] for c in hard[:40])}")
+            if soft:   # an external source (market cap, funding, daily / 1h klines) can be missing for a small / new coin
+                logger.info(f"[STAMP_COVERAGE] {pair} {es or 'MOMENTUM'} #{order_id}: best-effort stamps NULL: {', '.join(c[6:] for c in soft)}")
+            return miss
+        except Exception as e:
+            logger.debug(f"[STAMP_COVERAGE] {pair} #{order_id}: check failed ({e})")
+            return []
 
     async def _rtp_arm(self, db, order):
         """OPEN path (bot fills, after the commit): the resting TP for an enabled sleeve. Under _close_lock with the row re-read (a close

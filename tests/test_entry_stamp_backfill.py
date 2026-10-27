@@ -5,6 +5,7 @@ no network (klines / funding / daily −DI patched). Also pins the FLATBASE scou
 import asyncio
 import datetime as dt
 import os
+import re
 import sys
 
 import pytest
@@ -121,8 +122,9 @@ def test_backfill_block_is_observe_only():
     for ln in src[k:k2].splitlines():
         if ln.strip().startswith("#"):
             continue
-        assert not any(x in ln for x in ("_record_filter_block", "investment", "leverage", "quantity")), ln
-        if "entry_price" in ln:
+        code = re.sub(r"'entry_[a-z0-9_]+'", "''", ln)              # the STAMP_* column-name lists are data, not trading code
+        assert not any(x in code for x in ("_record_filter_block", "investment", "leverage", "quantity")), ln
+        if re.search(r"\bentry_price\b(?!_)", ln):
             assert any(a in ln for a in allowed), ln
     assert "await self._stamp_backfill_schedule" not in src and "await self._stamp_backfill(" not in src   # never awaited on the open path
 
@@ -134,3 +136,92 @@ def test_obs_fb1_zone_frozen():
     assert S.obs_pk_zone(70.44, -27.21) == "out"           # BMT
     assert S.obs_pk_zone(195.79, -34.77) == "out"          # ORDER
     assert S.obs_pk_zone(None, -5) == "unscored" and S.obs_pk_zone(float("nan"), -5) == "unscored"
+
+
+# ── 🧾🔒 DECISION_LOG 391: the stamp contract ──────────────────────────────────────────────────────────────────────────────────────
+
+def test_every_entry_column_is_classified():
+    """a new entry_* column (or a new sleeve's stamp) cannot ship without deciding: universal / sleeve / booking / legacy."""
+    import models
+    import services.trading_engine as TE
+    E = TE.TradingEngine
+    cols = [c.name for c in models.Order.__table__.columns if c.name.startswith("entry_")]
+    unc = [c for c in cols if E.stamp_class(c) == "unclassified"]
+    assert not unc, f"classify these in TradingEngine.STAMP_* (DECISION_LOG 391): {unc}"
+    assert set(E.STAMP_UNIVERSAL) <= set(cols) and set(E.STAMP_BEST_EFFORT) <= set(E.STAMP_UNIVERSAL)
+    assert not set(E.STAMP_UNIVERSAL) & (set(E.STAMP_SLEEVE_ONLY) | set(E.STAMP_BOOKING) | set(E.STAMP_LEGACY))
+
+
+# universal columns the open path's Order(...) constructor stamps for EVERY fill (verified 100 % per sleeve on 10-12 → 10-27 exports);
+# a new universal column must be added here or produced by the backfill — the test forces that decision
+CTOR_ALWAYS = {
+    'entry_pattern_c1_match', 'entry_pattern_c2_match', 'entry_pattern_c3_match', 'entry_pattern_c4_match', 'entry_pattern_c5_match',
+    'entry_pattern_c6_match', 'entry_pattern_c7_match', 'entry_pattern_c8_match', 'entry_pattern_c9_match', 'entry_pattern_c_any_match',
+    'entry_pattern_w1_match', 'entry_pattern_w2_match', 'entry_pattern_w3_match', 'entry_pattern_w4_match', 'entry_pattern_w5_match',
+    'entry_pattern_w6_match', 'entry_pattern_w_any_match', 'entry_slippage_pct', 'entry_desired_notional', 'entry_liquidity_cap_notional',
+    'entry_bracket_max_leverage', 'entry_bracket_cap_notional', 'entry_mcap_usd', 'entry_cmc_rank', 'entry_vol_mcap_ratio',
+    'entry_alt_corr24', 'entry_alt_beta24', 'entry_btc_off30d_high_pct', 'entry_pair_1h_ema20_200_gap_pct', 'entry_pair_volume_24h_usd',
+    'entry_atr_pct', 'entry_btc_regime', 'entry_btc_rsi_closed', 'entry_btc_r72_pct', 'entry_btc_eff72',   # the never-backfilled five
+}
+BACKFILL_EXPLICIT = {'entry_funding_rate', 'entry_pair_1d_ndi', 'entry_quality_score', 'entry_pair_age_days', 'entry_btc_price',
+                     'entry_btc_4h_ema50_200_gap_pct', 'entry_btc_ema50_100_gap_pct', 'entry_eth_5m_ret1_pct', 'entry_btc_1d_ret_pct'}
+
+
+def test_universal_columns_have_a_source_on_every_path():
+    """each universal column has an explicit source: the post-fill backfill (any sleeve; minus the never-written columns) or the open
+    path's constructor for every fill (CTOR_ALWAYS, checked as a whole-word kwarg). The runtime truth is scripts/scout_stamp_coverage.py
+    + the [STAMP_COVERAGE] log — this pins that no universal column is left without a decided source."""
+    import services.trading_engine as TE
+    E = TE.TradingEngine
+
+    class T:
+        pass
+    bf = (set(TE.pair_entry_stamps({}, "LONG")) | set(TE.market_entry_stamps({}, "LONG", None, False, T()))
+          | set(TE.monitor_entry_stamps({}, {}, 0)) | BACKFILL_EXPLICIT) - set(E.STAMP_BACKFILL_NEVER) - {'entry_macro_trend'}
+    src = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
+    k = src.index("    def _stamp_backfill_schedule("); k2 = src.index("    async def _rtp_arm(", k)
+    for c in BACKFILL_EXPLICIT:   # the explicit backfill keys are really assigned in the backfill block
+        assert re.search(rf"['\"]{c}['\"]\]\s*=|{c}=", src[k:k2]) or c in ("entry_btc_ema50_100_gap_pct", "entry_eth_5m_ret1_pct",
+                                                                             "entry_btc_1d_ret_pct"), c
+    i = src.index("        order = Order(\n            binance_order_id=binance_order_id,"); j = src.index("        db.add(order)", i)
+    mon = set(TE.monitor_entry_stamps({}, {}, 0)) if "**monitor_entry_stamps(" in src[i:j] else set()   # splatted into the constructor
+    for c in CTOR_ALWAYS:
+        assert c in mon or re.search(rf"\b{c}=(?!=)", src[i:j]), f"{c} is not a kwarg of open_position's Order(...)"
+    missing = [c for c in E.STAMP_UNIVERSAL if c not in bf and c not in CTOR_ALWAYS]
+    assert not missing, f"universal columns with no decided source: {missing}"
+
+
+def test_stamp_missing_and_by_design(monkeypatch):
+    import services.trading_engine as TE
+    e = _engine()
+    full = {c: 1 for c in TE.TradingEngine.STAMP_UNIVERSAL}
+    assert e.stamp_missing("FRENZY_LITE", full) == []
+    assert e.stamp_missing("FRENZY_LITE", dict(full, entry_rsi=None)) == ["entry_rsi"]
+    monkeypatch.setattr(TE.TradingEngine, "STAMP_NULL_BY_DESIGN", {"entry_rsi": ("FRENZY_",)})
+    assert e.stamp_missing("FRENZY_LITE", dict(full, entry_rsi=None)) == []
+    assert e.stamp_missing("SPIKE_FADE", dict(full, entry_rsi=None)) == ["entry_rsi"]
+
+
+def test_coverage_scout_flags_gaps_and_unclassified(tmp_path):
+    import pandas as pd
+    import services.trading_engine as TE
+    import scout_stamp_coverage as S
+    U = TE.TradingEngine.STAMP_UNIVERSAL
+    rows = []
+    for i in range(4):
+        r = {c: 1.0 for c in U}
+        r.update(opened_at=f"2026-10-27T0{i}:00:00", pair=f"P{i}USDT", direction="SHORT", entry_strategy="FLATBASE_SHORT", status="CLOSED")
+        if i:
+            r["entry_rsi"] = None                                              # 25 % coverage → alert
+        rows.append(r)
+    rows.append(dict({c: 1.0 for c in U}, opened_at="2026-10-27T05:00:00", pair="MUSDT", direction="LONG", entry_strategy="MANUAL", entry_rsi=None))
+    for i, (st, cf) in enumerate((("SIGNAL_EXPIRED", "STRONG_BUY"), ("SIGNAL_EXPIRED", "STRONG_BUY"), ("OPEN", "RECOVERED"))):
+        rows.append(dict(opened_at=f"2026-10-27T06:0{i}:00", pair=f"X{i}USDT", direction="LONG", status=st, confidence=cf))   # no strategy, no stamps
+    p = tmp_path / "scalpars_orders_paper_x.csv"
+    pd.DataFrame(rows).assign(entry_new_thing=1).to_csv(p, index=False)
+    out = "\n".join(S.run(paths=[str(p)], since_ms=int(pd.Timestamp("2026-10-26").value // 1_000_000)))
+    assert "🚨 FLATBASE_SHORT: N 4 · 1 column(s) below the bar: rsi 25%" in out
+    assert "UNCLASSIFIED entry_* column(s) in the export — the contract does not know them: entry_new_thing" in out
+    assert "- MANUAL" not in out and "- 🚨 MANUAL" not in out and "Verdict: 🚨 ALERT" in out   # MANUAL fills never counted
+    assert "MOMENTUM" not in out                                                              # expired / adopted rows are not fills
+    assert "① Current batch BEFORE the fix" in out and "② Since the fix" in out                # the pre-fix fills are shown, never hidden

@@ -1288,6 +1288,14 @@ def run():
     except Exception as _fdw_e:
         log(f"SPIKE_FADE watch lines failed: {_fdw_e}")
         _rg_sec += ["## 🩸 SPIKE_FADE watch lines", "", f"Unavailable this run ({str(_fdw_e)[:120]}).", ""]
+    try:                                               # 🧾🔒 Oct-27 STAMP COVERAGE per sleeve (DECISION_LOG 391; orders exports only, no network; alert-only; never breaks the run)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_stamp_coverage as _stc
+        _rg_sec += _stc.run(now_ms)
+    except Exception as _stc_e:
+        log(f"stamp coverage lines failed: {_stc_e}")
+        _rg_sec += ["## 🧾🔒 STAMP COVERAGE per sleeve", "", f"Unavailable this run ({str(_stc_e)[:120]}).", ""]
     try:                                               # 🩸🌙 Oct-26 OBS-F1 LATE-TAPE WEAK SPIKE (DECISION_LOG 384; orders exports + cached BTC 1d klines, one budgeted public GET; frozen read → OPERATOR CALL; never breaks the run)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

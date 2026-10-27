@@ -9702,3 +9702,24 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   Backtest prior: TP2_SL5 from the DL 370 run; stops 2 / 3 / 4 never in any grid → "no prior".
 - **Deep review grid (NEXT_BATCH_REVIEW_PLAN ②f ⭐):** stops now 2–20 / none, explicitly 2 / 3 / 4 under TP 1–3, rebuilt on the 21-month
   set at the batch review (the study grid stopped at 5).
+
+## (391) 2026-10-27 — 🧾🔒 STAMP CONTRACT: every sleeve must record every shared entry stamp — classified columns, a per-fill check and a per-sleeve scout alert (operator: "make sure all sleeves have complete data! We can't have strategies running without data again"; observe-only, no trading / config change)
+- **Contract (TradingEngine.STAMP_*):** every entry_* column of Order is classified — UNIVERSAL (84: pair indicators, BTC / market /
+  monitor / zone stamps, funding, 1d −DI, age, 24 h volume, mcap, alt-corr, pattern signatures, execution stamps), SLEEVE (frenzy_ /
+  flatbase_ / surge_ / br_ / bear_ / willy_ / book_ prefixes + order_lag, fill_vs_book, chop_burst, long_heat_flags, pair_rank,
+  macro_trend), BOOKING (price / fee / strategy / order_type), LEGACY (entry_btc_regime_started_at — no code writes it). BEST_EFFORT
+  (external source can be missing for a small / new coin: mcap, cmc rank, vol/mcap, 1d −DI, funding, 1h gap, BTC 4h gap — the last only
+  refreshes while the fade laggard gate is on) alert at 60 % instead of 90 %. STAMP_NULL_BY_DESIGN (column, sleeve) pairs skipped (empty).
+- **Guards:** ① tests/test_entry_stamp_backfill.py fails on any unclassified entry_* column (a new column / sleeve cannot ship without
+  deciding) and on a universal column with no decided source (backfill set minus the never-written columns, or a whole-word kwarg of
+  open_position's Order(...) — CTOR_ALWAYS, verified 100 % per sleeve on 10-12 → 10-27). ② the DL 389 backfill now also fills listing
+  age from Binance onboardDate (in memory — FRENZY / FLATBASE pairs outside the scan list) and, after its UPDATE, reads the row once:
+  [STAMP_COVERAGE] WARNING naming every universal column still NULL (best-effort ones at INFO; skipped when the pass was rate-limited).
+  ③ scripts/scout_stamp_coverage.py (in opportunity_scout): ① the current batch BEFORE the fix, every bot fill per sleeve with the
+  columns short (informational — never hidden; those need the klines rebuild at the batch review); ② fills since the DL 391 deploy +
+  10 min = the verdict (N ≥ 3 per sleeve, 90 % / best-effort 60 %, unclassified columns in the newest export) → 🚨 ALERT / ✅ / ⏳.
+  Real fills only (OPEN / CLOSED; SIGNAL_EXPIRED and RECOVERED rows out), MANUAL out; the export's filename UTC stamp is the 2-min settle
+  reference. BATCH_START moves at each batch boundary.
+- **B25 before the fix (77 bot fills, 10-23 18:30 → 10-27):** FLATBASE 41 columns at 0 %; FRENZY family 10 (signed gaps, funding,
+  1d −DI, age, BTC 4h gap, alt-corr pre-383); SPIKE_FADE 11 (BTC slopes, global volume, signed gaps, funding, BTC price); FAN 11;
+  MOMENTUM 5 (1d −DI, BTC price, BTC 4h gap, alt-corr pre-383) — every one is produced by the 389 backfill from 10-27 17:12 UTC.

@@ -9628,3 +9628,9 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   clears a flat line; the line under the chart is labelled "return −30.5 % · P&L −$522" (unlabelled numbers read strange; −30 % with
   only −$522 is right — the losses hit the ≈ $3k account before the top-up); "incl. open" stays on the hollow dot + tooltip. Phone
   368 px: one row, 24 px, not clipped.
+- **(386c) 2026-10-27 (operator: "the Max and the Min do not match the chart" · "also fix the mobile issue"):** ① desktop high / low
+  labels were ≈ 3 px off their points (the 7 px edge clamp + the ±25 % nudge) → placed EXACTLY on the point's level (translateY −50 %,
+  no clamp, no nudge; the extreme has nothing beyond it on its own row; measured: leader end within 1 px of the point, 7D and 30D)
+  · ② phone (< 768 px, 40 px chart — the numbers looked cramped): no numbers, a small dot (fg ring + core coloured by the value's sign) at the
+  high and the low (ties → latest point; skipped when it is the end point or sits on the 0 % baseline, already marked); values on the tap tooltip; the 768 px crossover re-renders via the viewBox sync. The dotted accent tick = the 10-26 paper
+  top-up (explained to the operator; tooltip "top-up +$7,100").

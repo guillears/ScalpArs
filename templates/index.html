@@ -217,8 +217,6 @@
         #portfolio-spark-hi::before, #portfolio-spark-lo::before, #portfolio-spark-hi::after, #portfolio-spark-lo::after { content: ""; width: 9px; border-top: 1px solid currentColor; }
         #portfolio-spark-hi[data-side="r"]::after, #portfolio-spark-lo[data-side="r"]::after,
         #portfolio-spark-hi[data-side="l"]::before, #portfolio-spark-lo[data-side="l"]::before { display: none; }   /* the leader points at the point, Binance style */
-        #portfolio-spark-hi::before, #portfolio-spark-hi::after { transform: translateY(2.5px); }   /* the label is nudged up ¼ of its height: the leader stays on the point */
-        #portfolio-spark-lo::before, #portfolio-spark-lo::after { transform: translateY(-2.5px); }
         #portfolio-spark-tip { position: absolute; bottom: 100%; margin-bottom: 4px; z-index: 30; max-width: 100%; padding: 4px 7px; border-radius: 6px; font-size: 11px; line-height: 1.3; color: var(--fg); background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); pointer-events: none; font-variant-numeric: tabular-nums; }
         #portfolio-spark-periods { display: inline-flex; gap: 2px; padding: 2px; border-radius: 6px; background: var(--surface-2); margin-top: 3px; }
         #portfolio-spark-periods button { font: 600 11px/1 var(--font-ui); color: var(--muted); padding: 3px 7px; border-radius: 4px; border: 0; background: transparent; cursor: pointer; }
@@ -24815,6 +24813,21 @@
                             + '<path d="M' + nx + ' ' + ny + ' L' + nx + ' ' + ny + '" style="fill:none;stroke:' + nc + ';stroke-width:7;stroke-linecap:round" vector-effect="non-scaling-stroke"/>'
                             + '<path d="M' + nx + ' ' + ny + ' L' + nx + ' ' + ny + '" style="fill:none;stroke:var(--surface);stroke-width:3.5;stroke-linecap:round" vector-effect="non-scaling-stroke"/>';
                     }
+                    // high / low: numbers pinned beside the point on wider screens; on a phone (40 px tall, no room for text) a small dot
+                    // marks each one instead and the tap tooltip gives the value (operator 10-27: phone labels looked cramped)
+                    let iMax = 0, iMin = 0;
+                    vals.forEach((v, i) => { if (v >= vals[iMax]) iMax = i; if (v <= vals[iMin]) iMin = i; });   // ties → the LATEST point (a low tied with the end is the end)
+                    const phone = !(window.matchMedia && window.matchMedia('(min-width: 768px)').matches);
+                    const hasExt = vals[iMax] > vals[iMin];
+                    if (phone && hasExt) {
+                        [iMax, iMin].forEach(i => {
+                            if (i === vals.length - 1 || Math.abs(vals[i]) < 0.005) return;   // the end dot / the 0 % baseline already mark it
+                            const c = vals[i] >= 0 ? 'var(--pos)' : 'var(--neg)';
+                            const px = x(i).toFixed(1), py = y(vals[i]).toFixed(1);
+                            s += '<path d="M' + px + ' ' + py + ' L' + px + ' ' + py + '" style="fill:none;stroke:var(--fg);stroke-width:5;stroke-linecap:round;opacity:.9" vector-effect="non-scaling-stroke"/>'
+                                + '<path d="M' + px + ' ' + py + ' L' + px + ' ' + py + '" style="fill:none;stroke:' + c + ';stroke-width:3;stroke-linecap:round" vector-effect="non-scaling-stroke"/>';
+                        });
+                    }
                     s += '<path id="portfolio-spark-guide" d="" style="fill:none;stroke:var(--muted);stroke-width:1;display:none" vector-effect="non-scaling-stroke"/>';
                     svg.innerHTML = s;
                     const last = vals[vals.length - 1];
@@ -24824,19 +24837,16 @@
                     // high / low pinned beside their own point ("+9.69 % —" / "— −35.89 %"), label on the side with room
                     const pin = (el, i, v) => {
                         if (!el) return;
-                        const H = svg.clientHeight || h, xp = x(i) / w, yp = Math.max(7, Math.min(H - 7, y(v) / h * H));
+                        const H = svg.clientHeight || h, xp = x(i) / w, yp = y(v) / h * H;   // exactly on the point's level (Binance); the text halo keeps it readable where the line runs flat beside it
                         const right = xp < 0.5;
                         el.textContent = pct(v);
                         el.dataset.side = right ? 'r' : 'l';
                         el.style.left = (xp * 100).toFixed(2) + '%';
                         el.style.top = yp.toFixed(1) + 'px';
-                        const dy = el === lo ? '-25%' : '-75%';   // nudged outward (high up, low down) so the number clears a flat line
-                        el.style.transform = right ? 'translate(1px, ' + dy + ')' : 'translate(calc(-100% - 1px), ' + dy + ')';
+                        el.style.transform = right ? 'translate(1px, -50%)' : 'translate(calc(-100% - 1px), -50%)';
                         el.style.display = 'flex';
                     };
-                    let iMax = 0, iMin = 0;
-                    vals.forEach((v, i) => { if (v > vals[iMax]) iMax = i; if (v < vals[iMin]) iMin = i; });
-                    if (vals[iMax] > vals[iMin]) { pin(hi, iMax, vals[iMax]); pin(lo, iMin, vals[iMin]); }
+                    if (hasExt && !phone) { pin(hi, iMax, vals[iMax]); pin(lo, iMin, vals[iMin]); }
                     else { if (hi) hi.style.display = 'none'; if (lo) lo.style.display = 'none'; }
                     if (meta) {
                         // ONE short line beside the buttons (operator: the card must still fit the first phone screen) — the period is the

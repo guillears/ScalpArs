@@ -141,6 +141,9 @@ def _investor_serialized(fn):
 
 
 
+STAMP_GAP_SWEEP_TICKS = 300   # 🚨 (DECISION_LOG 405) monitor ticks (≈1 s) between stamp-gap sweeps
+
+
 async def monitor_loop():
     """Fast loop (1s) for SL/TP checks and cache updates.
     
@@ -152,6 +155,7 @@ async def monitor_loop():
     logger.info("[MONITOR] Monitor loop started (1s cycle)")
     _RECONCILE_INTERVAL = RECONCILE_INTERVAL_TICKS   # 🔎 (DECISION_LOG 321) ≈15 s: a position closed in the Binance app leaves the dashboard fast (was 60)
     _reconcile_counter = _RECONCILE_INTERVAL - 10   # 🛡 (DECISION_LOG 292 ②) the first live reconcile (orphans + untracked positions) ~10 s after startup, not 60
+    _stamp_gap_counter = STAMP_GAP_SWEEP_TICKS - 60   # 🚨 (405) first sweep ~60 s after startup, then every 5 min
     while not should_stop:
         try:
             # Aug-25 (35): yield to any in-flight close commit — this loop's 1Hz write stream
@@ -165,6 +169,11 @@ async def monitor_loop():
                 await trading_engine.update_open_positions(db)
                 await trading_engine.update_orders_cache(db)
                 await trading_engine.update_post_exit_tracking(db)
+
+                _stamp_gap_counter += 1   # 🚨 (DECISION_LOG 405) the stamp-gap banner sweep, both modes, own task (never blocks this loop)
+                if _stamp_gap_counter >= STAMP_GAP_SWEEP_TICKS:
+                    _stamp_gap_counter = 0
+                    trading_engine.schedule_stamp_gap_refresh()
 
                 _reconcile_counter += 1
                 if _reconcile_counter >= _RECONCILE_INTERVAL and not trading_engine.is_paper_mode:
@@ -455,6 +464,9 @@ async def stop_background_tasks():
                 await task
             except asyncio.CancelledError:
                 pass
+    _sg_task = trading_engine.__dict__.get('_stamp_gap_task')   # 🚨 (DECISION_LOG 405) a read-only sweep in flight at shutdown
+    if _sg_task is not None and not _sg_task.done():
+        _sg_task.cancel()
     if _alt_corr_task:   # 📈 (DECISION_LOG 383) the alt-correlation stamp refresher (observe-only)
         _alt_corr_task.cancel()
         try:

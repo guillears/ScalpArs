@@ -5283,6 +5283,7 @@ class TradingEngine:
         if enabled:
             self.paper_balance = config.trading_config.paper_balance
         self.__dict__.pop('_untracked_positions', None)   # 🛡 (292 ②) the other mode's untracked marks never carry over
+        self.__dict__.pop('_stamp_gaps', None)   # 🚨 (405) the banner lists the new mode's fills — refilled by the next sweep
         self.__dict__.pop('_untracked_seen', None)
         await self.save_state(db)
         logger.critical(f"[MODE_SWITCH] {'LIVE → PAPER' if enabled else 'PAPER → LIVE (pre-flight passed)'}")
@@ -5295,6 +5296,94 @@ class TradingEngine:
             return self.total_runtime_seconds + int(elapsed)
         return self.total_runtime_seconds
     
+    # 🚨 (DECISION_LOG 405, operator 10-28: "this error never again can happen") the LIVE alarm of the stamp contract — the [STAMP_COVERAGE]
+    # log line is read by nobody and the scout only sees exports, so a sleeve could again run days with NULL columns. A periodic DB sweep
+    # (not the per-fill check: a path that never schedules the backfill is caught too) lists every bot fill of the current mode, opened in
+    # the last STAMP_GAP_WINDOW_H hours and ≥ STAMP_GAP_GRACE_MIN ago (the backfill has finished), with a REQUIRED universal column still
+    # NULL → status payload → red dashboard banner. Alert only: never touches a trade. Fills before the contract deploy are known gaps.
+    STAMP_GAP_SINCE = datetime(2026, 10, 27, 17, 37)   # the DL 391 deploy + 10 min (scout_stamp_coverage.py's ② cutoff)
+    STAMP_GAP_WINDOW_H = 48
+    STAMP_GAP_GRACE_MIN = 15
+    STAMP_GAP_MAX_ROWS = 500
+
+    @staticmethod
+    def stamp_gap_exempt(inv_cfg) -> frozenset:
+        """(405 review) the execution columns NULL BY DESIGN under the current config (open_position leaves them None when their cap is
+        off) — never a banner. Pure."""
+        out = set()
+        _pct = float(getattr(inv_cfg, 'max_notional_pct_of_pair_volume', 0.0) or 0.0)
+        _ceil = float(getattr(inv_cfg, 'max_notional_hard_ceiling', 0.0) or 0.0)
+        _gross = float(getattr(inv_cfg, 'max_gross_leverage', 0.0) or 0.0)
+        if _pct <= 0 and _ceil <= 0:
+            out.add('entry_liquidity_cap_notional')
+            if _gross <= 0:
+                out.add('entry_desired_notional')
+        if not bool(getattr(inv_cfg, 'leverage_bracket_cap_enabled', True)):
+            out.update(('entry_bracket_max_leverage', 'entry_bracket_cap_notional'))
+        return frozenset(out)
+
+    @classmethod
+    def stamp_gaps_from_rows(cls, rows, exempt=()) -> list:
+        """(405) rows = dicts with id / pair / entry_strategy / opened_at + the UNIVERSAL columns → one entry per fill with a REQUIRED
+        (not best-effort, not `exempt`) universal column NULL, newest first. The operator's own rows are skipped by the dashboard's origin
+        rule (MANUAL / imported = own stamp pass; RECOVERED = a Binance position the bot adopted, never opened by a sleeve). Pure."""
+        from services.origin_view import order_origin
+        out = []
+        for r in rows or ():
+            es = str(r.get('entry_strategy') or "")
+            if order_origin(es, r.get('confidence')) != "BOT":
+                continue
+            hard = [c for c in cls.stamp_missing(cls, es, r) if c not in cls.STAMP_BEST_EFFORT and c not in exempt]
+            if hard:
+                oa = r.get('opened_at')
+                out.append({"id": r.get('id'), "pair": r.get('pair'), "sleeve": es or "MOMENTUM",
+                             "opened_at": oa.isoformat() if hasattr(oa, 'isoformat') else (str(oa) if oa is not None else None),
+                             "n_missing": len(hard), "missing": [c[6:] for c in hard]})
+        out.sort(key=lambda g: g["opened_at"] or "", reverse=True)
+        return out
+
+    async def refresh_stamp_gaps(self) -> list:
+        """(405) the periodic sweep behind the banner (monitor loop, own session). Alert only. Never raises; a failed read keeps the last list."""
+        try:
+            mode = bool(self.is_paper_mode)
+            now = datetime.utcnow()
+            lo = max(self.STAMP_GAP_SINCE, now - timedelta(hours=self.STAMP_GAP_WINDOW_H))
+            hi = now - timedelta(minutes=self.STAMP_GAP_GRACE_MIN)
+            if hi <= lo:
+                gaps = []
+            else:
+                cols = ('id', 'pair', 'entry_strategy', 'confidence', 'opened_at') + tuple(self.STAMP_UNIVERSAL)
+                async with AsyncSessionLocal() as _gs:
+                    res = await _gs.execute(select(*[getattr(Order, c) for c in cols]).where(and_(
+                        Order.is_paper == mode, Order.status.in_(("OPEN", "CLOSED")),
+                        Order.opened_at >= lo, Order.opened_at <= hi)).order_by(desc(Order.opened_at)).limit(self.STAMP_GAP_MAX_ROWS))
+                    gaps = self.stamp_gaps_from_rows([dict(zip(cols, r)) for r in res.all()],
+                                                     self.stamp_gap_exempt(config.trading_config.investment))
+            if bool(self.is_paper_mode) != mode:   # (405 review) paper ⇄ live switched mid-sweep: never paint the old mode's fills
+                return list(self.__dict__.get('_stamp_gaps') or [])
+            _prev = {g["id"] for g in (self.__dict__.get('_stamp_gaps') or [])}
+            for g in gaps:
+                if g["id"] not in _prev:
+                    logger.warning(f"[STAMP_GAP] {g['pair']} {g['sleeve']} #{g['id']}: {g['n_missing']} required entry columns NULL — "
+                                   f"dashboard alert raised: {', '.join(g['missing'][:40])}")
+            self.__dict__['_stamp_gaps'] = gaps
+            self.__dict__['_stamp_gaps_at'] = now
+            return gaps
+        except Exception as e:
+            logger.warning(f"[STAMP_GAP] sweep failed (alert only, trading unaffected): {str(e)[:160]}")
+            return list(self.__dict__.get('_stamp_gaps') or [])
+
+    def schedule_stamp_gap_refresh(self) -> bool:
+        """(405) fire-and-forget the sweep from the 1 s monitor loop — never blocks the stop checks; one sweep in flight at a time."""
+        try:
+            t = self.__dict__.get('_stamp_gap_task')
+            if t is not None and not t.done():
+                return False
+            self.__dict__['_stamp_gap_task'] = asyncio.get_running_loop().create_task(self.refresh_stamp_gaps())
+            return True
+        except Exception:
+            return False
+
     def get_status(self) -> Dict:
         """Get current bot status"""
         runtime = self.get_runtime_seconds()
@@ -5339,6 +5428,9 @@ class TradingEngine:
             "untracked_position_count": len(self.__dict__.get('_untracked_positions') or {}),
             "untracked_detect_count": int(self.__dict__.get('_untracked_detect_count', 0) or 0),
             "untracked_position_action": untracked_action(config.trading_config.thresholds),
+            # 🚨 (DECISION_LOG 405) bot fills with a required entry column still NULL — dashboard banner (alert only)
+            "stamp_gaps": list(self.__dict__.get('_stamp_gaps') or [])[:20],
+            "stamp_gap_count": len(self.__dict__.get('_stamp_gaps') or []),
         }
 
     def _record_filter_block(self, filter_name: str, direction: str, had_room: bool = True) -> None:

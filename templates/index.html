@@ -633,6 +633,7 @@
                 <button id="balance-eye-btn" onclick="toggleBalancesHidden()" title="Hide/show balances" class="text-gray-400 hover:text-white transition text-lg leading-none">🐵</button>
             </div>
             <div id="untracked-alert" class="hidden mb-4 rounded-lg border border-red-500/60 bg-red-500/15 px-4 py-3 text-sm text-red-200 font-semibold"></div>   <!-- 🛡 (DECISION_LOG 292 ②) -->
+            <div id="stamp-gap-alert" class="hidden mb-4 rounded-lg border border-red-500/60 bg-red-500/15 px-4 py-3 text-sm text-red-200 font-semibold break-words"></div>   <!-- 🚨 (DECISION_LOG 405) bot fills with required entry data missing -->
             <div id="balance-cards" class="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div class="glass rounded-xl p-5">
                     <p class="text-sm text-gray-400 mb-1">USDT Balance</p>
@@ -9306,6 +9307,21 @@
                         }
                     }
                 }
+                {   // 🚨 (DECISION_LOG 405) bot fills whose required entry columns are still empty (stamp contract) — alert only, trading unaffected
+                    const _sa = document.getElementById('stamp-gap-alert');
+                    const _sg = Array.isArray(data.stamp_gaps) ? data.stamp_gaps : [];
+                    if (_sa) {
+                        if (_sg.length) {
+                            const _n = (typeof data.stamp_gap_count === 'number') ? data.stamp_gap_count : _sg.length;
+                            _sa.textContent = `🚨 MISSING ENTRY DATA on ${_n} bot trade${_n > 1 ? 's' : ''} (last 48 h): `
+                                + _sg.slice(0, 5).map(g => `${g.pair} ${g.sleeve} #${g.id} (${String(g.opened_at || '').slice(5, 16).replace('T', ' ')} UTC) — ${g.n_missing} empty: ${(g.missing || []).slice(0, 8).join(', ')}${(g.missing || []).length > 8 ? ', …' : ''}`).join(' · ')
+                                + `${_n > 5 ? ` · +${_n - 5} more` : ''} — win/loss reads are blind on these columns. Tell Claude (DECISION_LOG 405).`;
+                            _sa.classList.remove('hidden');
+                        } else {
+                            _sa.classList.add('hidden');
+                        }
+                    }
+                }
 
                 updateStatusUI();
                 updateTimer(runtimeSeconds);
@@ -11518,6 +11534,7 @@
             lines.push(`  🧊 C1 Momentum-Short Regime Block (Sep 25): ${(th.momentum_short_c1_block_regimes || '').trim() ? `ON — C1 momentum SHORTs refused in ${th.momentum_short_c1_block_regimes}` : 'OFF'}  (counter MOM_SHORT_C1_REGIME)`);
             lines.push(`  🛡 Broker Backstop (live safety net): ${th.broker_backstop_enabled === true ? `ON — per order, just beyond each sleeve's own stop (≥ base, ≤ 92 % of liquidation) · resting STOP_MARKET ${th.broker_backstop_pct ?? 2.5}% via algoOrder, close-all, MARK_PRICE+priceProtect (fires => close_reason BACKSTOP_STOP = investigate the outage)` : 'OFF (paper / pre-live)'}`);
             lines.push(`  🛡 Untracked Binance position (DECISION_LOG 292): ${th.untracked_position_action === 'flatten' ? 'ALERT + BLOCK + FLATTEN at market' : 'ALERT + BLOCK the symbol (never touched)'} · detected by the 60 s live reconcile (seen twice) · currently ${(status && typeof status.untracked_position_count === 'number') ? status.untracked_position_count : '—'} untracked${(status && Array.isArray(status.untracked_positions) && status.untracked_positions.length) ? ' (' + status.untracked_positions.map(u => u.pair + ' ' + u.side + ' ' + u.qty).join(', ') + ')' : ''} · per-order backstop record + re-place on config change · bot opens flatten an unbookable fill · stops ≤ 0 refused`);
+            lines.push(`  🚨 Missing entry data alarm (DECISION_LOG 405): every 5 min, bot fills of the last 48 h with a required entry column still empty → red dashboard banner (alert only) · currently ${(status && typeof status.stamp_gap_count === 'number') ? status.stamp_gap_count : '—'} fill(s)${(status && Array.isArray(status.stamp_gaps) && status.stamp_gaps.length) ? ' (' + status.stamp_gaps.slice(0, 10).map(g => g.pair + ' ' + g.sleeve + ' #' + g.id + ' ' + g.n_missing + ' empty').join(', ') + ')' : ''}`);
             lines.push(`  🏀 SPIKE_BOUNCE (Jul 31, freeze carve-out): ${th.spike_bounce_enabled === true ? 'ON' : (th.spike_tripwire_autodisable === true ? 'OFF (check tripwire!)' : 'OFF (manual)')}  |  Trigger: RSI crash >= ${th.spike_bounce_rsi_crash ?? 25} pts in one 5m candle with prev RSI in [${th.spike_bounce_rsi_prev_min ?? 45}, ${th.spike_bounce_rsi_prev_max ?? 65}], candle <= -${th.spike_bounce_min_candle_pct ?? 0.5}% and vol >= ${th.spike_bounce_min_vol_ratio ?? 5}x avg20 (both surfaces: top-50 hook + scanner)  |  GUARDS: dump cap ${th.spike_bounce_max_dump_pct ?? 3}% (deeper = news class) · bRSI floor >= ${th.spike_bounce_min_btc_rsi ?? 50} (0=off; mirror of the fade ceiling) · pair EMA13-50 gap in (${th.spike_bounce_min_pair_gap ?? -1}%, ${th.spike_bounce_max_pair_gap ?? -0.125}%] (DEEPGAP crashed-pair floor + Aug-5 PGAP healthy-pair ceiling — mildly-weak window, read N>=8 WR>=55 ∧ Σ>0 else OFF for good) · blocked regimes [${th.spike_bounce_blocked_regimes ?? 'STRONG_BEAR,HEALTHY_BEAR'}]  |  LONG full size Inv ${th.spike_bounce_invest_mult ?? 1}x/Lev ${th.spike_bounce_lev_mult ?? 1}x, fixed SL ${th.spike_bounce_sl_pct ?? -0.7}% NO widen, trail ${th.spike_bounce_trail_atr_mult ?? 0.5}xATR (strategy-scoped, LONG global stays 1.0), tripwire ${th.spike_bounce_tripwire_pct ?? -1.5}% ${th.spike_tripwire_autodisable === true ? 'auto-disables' : 'ALERT-ONLY (Aug-5)'}  |  NO max-open, NO auto kill gate (operator: manual review; locked read N>=10 · >=4 dates -> WR>=55% ∧ Σ>0, thresholds frozen)`);
             lines.push(`  DBDOWN Probe (Jul 20): ${th.dbdown_probe_enabled === true ? 'ON' : 'OFF'}  |  Max Open: ${th.dbdown_probe_max_open !== undefined ? th.dbdown_probe_max_open : 3}  (1h flat-DOWN half-band [-0.05,0) opens as 1x DBDOWN_PROBE — graduated execution of the FIRED deadband phantom revert gate)`);
             lines.push(`  DEEPGAP Probe (Jul 30): ${th.deepgap_probe_enabled === true ? 'ON' : 'OFF'}  |  Max Open: ${th.deepgap_probe_max_open !== undefined ? th.deepgap_probe_max_open : 3}  (SHORT-only: momentum-shorts killed ONLY by the deep-gap floor (pair gap <= ${th.momentum_short_pair_gap_min ?? -1.0}%) open as 1x DEEPGAP_PROBE, ALL regimes; graduated from the retired PASS phantom N=17 · 71% · Σ+1.85%; verdict N>=30 with pre-registered bull-family read)`);

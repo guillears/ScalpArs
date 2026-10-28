@@ -334,3 +334,156 @@ def test_exact_rebuild_leaves_ambiguous_reads_null(monkeypatch):
     assert n == 0 and row.entry_pair_1d_ndi is None and row.entry_btc_4h_ema50_200_gap_pct is None
     assert TE.TradingEngine.stamp_rebuild_age(10 * 86_400_000 + 3_600_000, 0) == 10.0          # 10.04 d now and 10.02 d 30 min earlier → 10.0
     assert TE.TradingEngine.stamp_rebuild_age(int(10.25 * 86_400_000) + 60_000, 0) is None      # crosses the 10.2 / 10.3 rounding edge
+
+
+# ── 🚨 DECISION_LOG 405: the live missing-data banner (operator 10-28: "this error never again can happen") ───────────────────────────
+
+def _full(**kw):
+    import services.trading_engine as TE
+    r = {c: 1 for c in TE.TradingEngine.STAMP_UNIVERSAL}
+    r.update(kw)
+    return r
+
+
+def test_stamp_gaps_from_rows_required_only_manual_skipped_newest_first():
+    import services.trading_engine as TE
+    T = TE.TradingEngine
+    rows = [_full(id=1, pair="AUSDT", entry_strategy="FLATBASE_SHORT", opened_at=dt.datetime(2026, 10, 28, 10), entry_rsi=None, entry_adx=None),
+            _full(id=2, pair="BUSDT", entry_strategy="SPIKE_FADE", opened_at=dt.datetime(2026, 10, 28, 11)),                  # complete
+            _full(id=3, pair="CUSDT", entry_strategy="FRENZY_LITE", opened_at=dt.datetime(2026, 10, 28, 12),
+                  entry_mcap_usd=None, entry_funding_rate=None),                                                                 # best-effort only
+            _full(id=4, pair="DUSDT", entry_strategy="MANUAL", opened_at=dt.datetime(2026, 10, 28, 13), entry_rsi=None),          # own pass
+            _full(id=5, pair="EUSDT", entry_strategy=None, opened_at=dt.datetime(2026, 10, 28, 14), entry_btc_price=None),
+            _full(id=6, pair="FUSDT", entry_strategy=None, confidence="RECOVERED", opened_at=dt.datetime(2026, 10, 28, 15),
+                  entry_rsi=None, entry_adx=None)]                                                                               # adopted
+    g = T.stamp_gaps_from_rows(rows)
+    assert [x["id"] for x in g] == [5, 1]
+    assert g[0]["sleeve"] == "MOMENTUM" and g[0]["missing"] == ["btc_price"] and g[0]["n_missing"] == 1
+    assert g[1]["missing"] == ["rsi", "adx"] and g[1]["opened_at"] == "2026-10-28T10:00:00"
+    assert T.stamp_gaps_from_rows([]) == [] and T.stamp_gaps_from_rows(None) == []
+
+
+def test_refresh_stamp_gaps_window_grace_mode_and_status(monkeypatch):
+    import models
+    import services.trading_engine as TE
+    monkeypatch.setattr(TE.TradingEngine, "STAMP_GAP_SINCE", dt.datetime(2020, 1, 1))
+    now = dt.datetime.utcnow()
+    full = {c: 1.0 for c in TE.TradingEngine.STAMP_UNIVERSAL if c not in ("entry_btc_regime", "entry_pattern_c1_match")}
+    full.update(entry_btc_regime="NEUTRAL")
+    pats = {c: True for c in TE.TradingEngine.STAMP_UNIVERSAL if c.startswith("entry_pattern_")}
+
+    def row(pair, mins_ago, paper=True, gap=True, status="CLOSED"):
+        kw = dict(full, **pats)
+        if gap:
+            kw.update(entry_rsi=None, entry_adx=None)
+        return _fb_row(pair=pair, opened_at=now - dt.timedelta(minutes=mins_ago), is_paper=paper, status=status, **kw)
+    rows = [row("GAPUSDT", 60), row("OKUSDT", 60, gap=False), row("FRESHUSDT", 5),                   # inside the grace → not yet
+            row("OLDUSDT", 60 * 49), row("LIVEUSDT", 60, paper=False), row("OPENUSDT", 120, status="OPEN"),
+            row("EXPUSDT", 60, status="SIGNAL_EXPIRED")]
+    e = _engine()
+    e.is_paper_mode = True
+
+    async def fn(ids):
+        return await e.refresh_stamp_gaps()
+    gaps, _ = asyncio.run(_with_db(monkeypatch, rows)(fn))
+    assert [g["pair"] for g in gaps] == ["GAPUSDT", "OPENUSDT"]
+    assert gaps[0]["missing"] == ["rsi", "adx"] and gaps[0]["sleeve"] == "FLATBASE_SHORT"
+    assert e._stamp_gaps == gaps
+
+
+def test_refresh_stamp_gaps_never_raises_and_keeps_last_list(monkeypatch):
+    import services.trading_engine as TE
+    e = _engine()
+    e.is_paper_mode = True
+    e._stamp_gaps = [{"id": 9, "pair": "XUSDT"}]
+
+    class Boom:
+        def __call__(self):
+            raise RuntimeError("db down")
+    monkeypatch.setattr(TE, "AsyncSessionLocal", Boom())
+    monkeypatch.setattr(TE.TradingEngine, "STAMP_GAP_SINCE", dt.datetime(2020, 1, 1))
+    assert asyncio.run(e.refresh_stamp_gaps()) == [{"id": 9, "pair": "XUSDT"}]
+    assert e.schedule_stamp_gap_refresh() is False          # no running loop → refused quietly, never raises
+
+
+def test_stamp_gap_banner_wired_end_to_end():
+    src = open(os.path.join(ROOT, "services", "trading_engine.py")).read()
+    assert '"stamp_gaps": list(' in src and '"stamp_gap_count":' in src
+    assert "self.__dict__.pop('_stamp_gaps', None)" in src                       # cleared on a paper ⇄ live switch
+    m = open(os.path.join(ROOT, "main.py")).read()
+    assert "trading_engine.schedule_stamp_gap_refresh()" in m and "STAMP_GAP_SWEEP_TICKS = 300" in m
+    h = open(os.path.join(ROOT, "templates", "index.html")).read()
+    assert h.count('id="stamp-gap-alert"') == 1 and "getElementById('stamp-gap-alert')" in h
+    assert "data.stamp_gaps" in h and "Missing entry data alarm (DECISION_LOG 405)" in h
+    assert h.count("lines.push(..._buildConfigLines(") == 2                      # the report line rides BOTH text exports
+
+
+def test_stamp_gap_exempt_follows_the_cap_config():
+    import types
+    import services.trading_engine as TE
+    T = TE.TradingEngine
+    on = types.SimpleNamespace(max_notional_pct_of_pair_volume=0.1, max_notional_hard_ceiling=500000, max_gross_leverage=25.0,
+                               leverage_bracket_cap_enabled=True)
+    assert T.stamp_gap_exempt(on) == frozenset()
+    off = types.SimpleNamespace(max_notional_pct_of_pair_volume=0, max_notional_hard_ceiling=0, max_gross_leverage=0,
+                                leverage_bracket_cap_enabled=False)
+    assert T.stamp_gap_exempt(off) == {'entry_liquidity_cap_notional', 'entry_desired_notional', 'entry_bracket_max_leverage',
+                                       'entry_bracket_cap_notional'}
+    gross_only = types.SimpleNamespace(max_notional_pct_of_pair_volume=0, max_notional_hard_ceiling=0, max_gross_leverage=25.0)
+    assert T.stamp_gap_exempt(gross_only) == {'entry_liquidity_cap_notional'}
+    r = _full(id=1, pair="AUSDT", entry_strategy="SPIKE_FADE", opened_at=dt.datetime(2026, 10, 28), entry_bracket_cap_notional=None)
+    assert T.stamp_gaps_from_rows([r], T.stamp_gap_exempt(off)) == []
+    assert T.stamp_gaps_from_rows([r], T.stamp_gap_exempt(on))[0]["missing"] == ["bracket_cap_notional"]
+
+
+def test_refresh_stamp_gaps_since_floor_and_mode_switch_mid_sweep(monkeypatch):
+    import services.trading_engine as TE
+    now = dt.datetime.utcnow()
+    full = {c: 1.0 for c in TE.TradingEngine.STAMP_UNIVERSAL if c not in ("entry_btc_regime",)}
+    full.update(entry_btc_regime="NEUTRAL", **{c: True for c in TE.TradingEngine.STAMP_UNIVERSAL if c.startswith("entry_pattern_")})
+    full.update(entry_rsi=None)
+    rows = [_fb_row(pair="PREUSDT", opened_at=now - dt.timedelta(hours=10), status="CLOSED", **full),     # before the contract floor
+            _fb_row(pair="POSTUSDT", opened_at=now - dt.timedelta(hours=2), status="CLOSED", **full)]
+    monkeypatch.setattr(TE.TradingEngine, "STAMP_GAP_SINCE", now - dt.timedelta(hours=5))
+    e = _engine()
+    e.is_paper_mode = True
+
+    async def fn(ids):
+        return await e.refresh_stamp_gaps()
+    gaps, _ = asyncio.run(_with_db(monkeypatch, rows)(fn))
+    assert [g["pair"] for g in gaps] == ["POSTUSDT"]
+
+    e2 = _engine()
+    e2.is_paper_mode = True
+    real = TE.TradingEngine.stamp_gaps_from_rows.__func__
+
+    def flip(cls, rows, exempt=()):
+        e2.is_paper_mode = False            # the operator switched to LIVE while the sweep was reading
+        return real(cls, rows, exempt)
+    monkeypatch.setattr(TE.TradingEngine, "stamp_gaps_from_rows", classmethod(flip))
+
+    async def fn2(ids):
+        return await e2.refresh_stamp_gaps()
+    out, _ = asyncio.run(_with_db(monkeypatch, rows)(fn2))
+    assert out == [] and '_stamp_gaps' not in e2.__dict__      # the paper list was never written under LIVE
+
+
+def test_schedule_stamp_gap_refresh_one_in_flight():
+    import services.trading_engine as TE
+    e = _engine()
+    gate = {}
+
+    async def slow(self=None):
+        await gate['ev'].wait()
+        return []
+
+    async def go():
+        gate['ev'] = asyncio.Event()
+        e.refresh_stamp_gaps = slow
+        assert e.schedule_stamp_gap_refresh() is True
+        assert e.schedule_stamp_gap_refresh() is False        # one sweep in flight
+        gate['ev'].set()
+        await e._stamp_gap_task
+        assert e.schedule_stamp_gap_refresh() is True         # done → the next one runs
+        await e._stamp_gap_task
+    asyncio.run(go())

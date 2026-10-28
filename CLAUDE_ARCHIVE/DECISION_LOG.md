@@ -10063,3 +10063,23 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   positions — a different concurrency risk from the 4-slot book the drawdown evidence assumed. Handled by the capacity study (owed
   before $50k), which decides these caps together with the top tiers. The UI editor has exactly 8 rows (all used; a test fails on
   a 9th tier). Tests: the DL 404 table as a constant + structural checks on the live json (no pin on the live string).
+
+## (405) 2026-10-28 — 🚨 Live "missing entry data" alarm (alert only, no trading change)
+- **Operator 10-28:** "i dont plan adding new sleeves, but this error never again can happen! the missing columns issue" (FLATBASE ran
+  days with ~40–60 NULL entry columns before DL 389 / 391; the B25 export still shows them on its 12 pre-fix FLATBASE fills).
+- **Gap closed:** the DL 391 guards were a test (classification + a source per path), the post-fill backfill, a [STAMP_COVERAGE] log
+  line (read by nobody) and the export-only scout — a gap could still sit unseen between exports. Now a DB sweep every ~5 min
+  (monitor loop, own task, one in flight, read-only) lists every BOT fill of the current mode opened in the last 48 h (≥ 15 min old so
+  the backfill has finished; floor STAMP_GAP_SINCE = 2026-10-27 17:37 UTC, the 391 deploy + 10 min) with a REQUIRED universal
+  column NULL → status payload `stamp_gaps` / `stamp_gap_count` → red dashboard banner (pair · sleeve · # · columns) + a
+  [STAMP_GAP] warning once per fill + a line in both text exports (`_buildConfigLines`). DB-based, so a path that never schedules the
+  backfill is caught too.
+- **Not alarmed:** best-effort columns (60 % bar), the operator's own rows (origin rule: MANUAL / imported / RECOVERED), SIGNAL_EXPIRED,
+  and the execution columns NULL by design under the current config (`stamp_gap_exempt`: liquidity cap / desired notional when those
+  caps are off, bracket columns when the bracket cap is off — judged on today's config, not fill-time).
+- **Accepted (real NULLs, may show after a deploy):** breadth popped in the first ≤ 30 min after a restart, alt-corr before its first
+  refresh, a rate-limited backfill's pair half, a failed bracket lookup. They are genuine missing data — the banner is truthful.
+- **Check on real data:** the 12 B25 fills since the floor → 0 alarms; from 10-25 the same rule flags 61 / 73 (the failure class).
+- **Reviews:** caveman (mode-switch race → mode captured and re-checked; config-driven false positives → `stamp_gap_exempt`) + deep
+  (Recover-positions rows → origin rule; shutdown cancel). Tests: tests/test_entry_stamp_backfill.py (pure rows, window / grace /
+  mode / status / floor, exemptions, mid-sweep switch, never raises, one in flight, wiring + both exports).

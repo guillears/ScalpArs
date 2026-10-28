@@ -10035,3 +10035,31 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   Fixed: stable tie-break on the 2D order (the shown top 2D = the cells 3D extends); a "|" in a failed row's error no longer breaks
   the table; a one-era sleeve says why. Not fixed: aliased columns (identical splits, e.g. volume_24h vs liquidity_cap) can take two
   of the 10 cell slots — the null has the same property, p-values stay valid.
+
+## (404) 2026-10-28 — 💰 Reserve schedule re-sized for scaling (config only)
+- **Operator:** "Not a good recommendation, think big, and lets design this for scaling!" → then "yes apply the reserve change, only
+  change, in 10k only leave 500 in reserve, in 25k leave 2000, the rest as you suggested".
+- **`reserve_schedule` (trading_config.json):** "10000:8000, 25000:17500, 50000:27500, 100000:40000, 150000:50000, 250000:70000,
+  500000:100000" → "10000:9500, 25000:23000, 50000:40000, 100000:75000, 150000:105000, 250000:162500, 500000:300000, 1000000:500000".
+  Tradeable share before → after: $10k 80 → 95 % · $25k 70 → 92 % · $50k 55 → 80 % · $100k 40 → 75 % · $150k 33 → 70 % · $250k
+  28 → 65 % · $500k 20 → 60 % · $1M 10 → 50 %. The fee reserve (2.5 % of the active tier's tradeable) still sits on top.
+- **Why:** the old table cut the traded share to 40 % at $100k and 20 % at $500k — the growth brake exactly where the $1M goal needs
+  compounding. Illustrative (same % per day on traded capital at every size — unproven at scale): $10k → $1M at 2 %/day 849 → ~440
+  days. Risk side: B25's worst stretch (−45 % of traded capital over ~3 days, 10-24 → 10-26 13:50) on the account = −43 % at $10k
+  (was −36 %), −34 % at $100k (was −18 %), −27 % at $500k (was −9 %).
+- **Correction during the discussion:** the leverage schedule is "0:20, 25000:15" only (Aug-20 drawdown-derived; the greyed 10× / 5×
+  rows in the UI are placeholders) → NO double brake; it stays unchanged.
+- **Caveat on record (memory project_scaling_roadmap, 2026-07-01):** measured capacity ≈ $10–30k per position before slippage eats
+  the edge; full rate thought to hold to ≈ $100–125k balance. Above that, a larger tradeable $ may not earn the same %, so the
+  market-capacity ceiling (exit/entry slippage + liquidity-cap stamps) must be measured before $50k and becomes min(share, capacity).
+- **Follow-ups (not built):** step back one tier after a −30 % drop from the equity peak above $25k; the capacity study.
+- **Revert gate:** any UTC day on which the account loses ≥ 25 % while the new tiers are active (≥ $10k) → review the share at that tier.
+- **Reviews (DL 404):** engine sizing = the balance-card display on 40 equity × margin combos; UI load/save round-trips the 8 tiers
+  byte-identical. Paper now ($10,188): per-slot base margin $1,950 → $2,315.62 (+18.75 %). The $10k cliff shrinks (old: slot
+  $2,437 at $9,999 vs $1,950 at $10,000; new ≈ 5 %); the $25k step grows (per-slot notional $46k → $84k, was +64 % now +82 %) —
+  the step-back follow-up is the place to smooth it. **Binding ceiling above ≈ $150k (config behaviour, not a bug):** per-slot margin
+  is clamped by `max_investment_size` $50k and `max_notional_hard_ceiling` $500k (≈ $33k margin at 15×) and the 0.1 % pair-volume
+  cap; redeploy then opens more positions (≤ 10), so at $1M ≈ 10 × $33k ≈ $333k deploys (≈ 33 %, not 50 %) over up to 10 concurrent
+  positions — a different concurrency risk from the 4-slot book the drawdown evidence assumed. Handled by the capacity study (owed
+  before $50k), which decides these caps together with the top tiers. The UI editor has exactly 8 rows (all used; a test fails on
+  a 9th tier). Tests: the DL 404 table as a constant + structural checks on the live json (no pin on the live string).

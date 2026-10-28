@@ -2922,7 +2922,16 @@ class InvestmentConfig(BaseModel):
     # leverage_balance_schedule: "balance:tradeable_target, ..." ascending; active target = highest
     # tier ≤ TOTAL EQUITY (free+margin — Jul-2 engine change; NOT free balance); below the first tier → no reserve. The v3
     # operating table (CURRENT_STATE capital-scaling) expressed as tiers. Empty = off.
-    reserve_schedule: str = ""  # e.g. "10000:8000, 25000:17500, ..., 500000:100000"
+    reserve_schedule: str = ""  # e.g. "10000:9500, 25000:23000, ..., 1000000:500000" (the live table, DECISION_LOG 404)
+    # 2026-10-28 (operator, DECISION_LOG 404 — "think big, design this for scaling"): trading_config.json moves to
+    # "10000:9500, 25000:23000, 50000:40000, 100000:75000, 150000:105000, 250000:162500, 500000:300000, 1000000:500000"
+    # (tradeable share AT EACH TIER THRESHOLD 95 / 92 / 80 / 75 / 70 / 65 / 60 / 50 % — between tiers the reserve absorbs the
+    # growth, e.g. 38 % at $24,999; was 80 → 20 %, which throttled growth exactly where the $1M
+    # goal needs it). Evidence: B25's worst stretch −45 % of traded capital in ~3 days → at the new shares ≤ −43 % of the
+    # account at $10k, ≤ −34 % at $100k+ (at the thresholds); illustrative: $10k → $1M at 2 %/day on traded capital took
+    # 849 days on the old table and ~440 on the new one.
+    # Leverage schedule unchanged ("0:20, 25000:15", Aug-20 drawdown-derived). Follow-up (not built): step back one tier
+    # after a 30 % drop from the peak above $25k; a market-capacity ceiling on tradeable $ before $50k.
     # Aug 21, 2026 (operator) — FEE RESERVE FLOOR: USDT that sizing never deploys, on top of whatever
     # the reserve mode/schedule says. Root cause on record: the reserve_schedule has no tier below
     # $10k, so a sub-$10k book goes 100% into margin and the runway-triggered BNB auto-swap starves

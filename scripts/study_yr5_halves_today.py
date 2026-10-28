@@ -24,7 +24,8 @@ SCR = "/private/tmp/claude-501/-Users-guillearslanian-Downloads-NOFA-AI/c066304e
 REP = os.path.join(ROOT, "reports")
 BOOK, SLOT = 3000.0, 0.975 / 4
 T0, TS, T1 = pd.Timestamp("2026-01-04"), pd.Timestamp("2026-05-20"), pd.Timestamp("2026-10-04")
-RES_SCHED = [(10000, 8000), (25000, 17500), (50000, 27500), (100000, 40000), (150000, 50000), (250000, 70000), (500000, 100000)]
+RES_SCHED = [(float(b), float(t)) for b, t in (x.split(":") for x in json.load(open(os.path.join(ROOT, "trading_config.json")))
+                                                 ["investment"]["reserve_schedule"].split(","))]   # the LIVE table (DL 404), never a copy
 LEV = lambda m: max(1, int(round(20 * m)))                       # engine: round(20 × lev mult)
 FADE_CAP_PCT, FADE_CEIL = 0.005, 500_000.0
 ATR_NEW, ATR_OLD, HG_STREAK, TP = 3.0, 2.5, 12, 3.0

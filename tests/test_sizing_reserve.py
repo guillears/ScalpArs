@@ -174,3 +174,25 @@ def test_burn_leg_reads_the_bot_rate_not_the_account_rate(monkeypatch):
     monkeypatch.setattr(te.trading_engine, "_bnb_burn_rate_bot", 10.0, raising=False)     # the bot's own fees DO switch the leg on
     investment, reserve, tradeable = both()
     assert abs(reserve - 120.0) < 0.01 and abs(investment - tradeable) < 0.51             # 12 h × $10 governs, engine == mirror
+
+
+
+DL404 = "10000:9500, 25000:23000, 50000:40000, 100000:75000, 150000:105000, 250000:162500, 500000:300000, 1000000:500000"
+
+
+def test_dl404_schedule_lookup():
+    """DECISION_LOG 404 table (constant — the live json may be re-tuned from the UI without breaking the gate)."""
+    assert _lookup_leverage_schedule(DL404, 9999) is None and _lookup_leverage_schedule(DL404, 10000) == 9500
+    assert _lookup_leverage_schedule(DL404, 24999) == 9500 and _lookup_leverage_schedule(DL404, 25000) == 23000
+    assert _lookup_leverage_schedule(DL404, 999999) == 300000 and _lookup_leverage_schedule(DL404, 1e6) == 500000
+    assert _lookup_leverage_schedule(DL404, 5e6) == 500000
+
+
+def test_live_reserve_schedule_is_sane():
+    """whatever the live json holds: parses, ascending balances, ascending targets, a target never above its balance."""
+    import json, os
+    live = json.load(open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "trading_config.json")))["investment"]["reserve_schedule"]
+    tiers = [(float(x.split(":")[0]), float(x.split(":")[1])) for x in live.split(",") if x.strip()]
+    assert tiers and [b for b, _ in tiers] == sorted(b for b, _ in tiers) and [t for _, t in tiers] == sorted(t for _, t in tiers)
+    assert all(0 < t < b for b, t in tiers)
+    assert len(tiers) <= 8                                              # the UI editor has 8 rows: a 9th tier would be dropped on Save

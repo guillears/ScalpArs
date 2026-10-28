@@ -204,7 +204,7 @@ def s4_scan(bars, spike_ts, th, first_seen_open_ms=None) -> Dict:
       MISSED    the first qualifying bar is an EARLIER row (an outage / restart skipped it) → the episode is done, never a later entry
       EXPIRED   no qualifying bar and the last row is already past the 96 h window → the episode is done
       WAIT      no qualifying bar yet, still inside the window
-    plus idx (the S4 row, or None), vwap / close / peak / off_peak_pct / vs_vwap_pct / vol24 / hours / base / run_pct at idx (ENTER /
+    plus idx (the S4 row, or None), vwap / close / peak / off_peak_pct / peak_age_h (hours since the peak bar, DECISION_LOG 401) / vs_vwap_pct / vol24 / hours / base / run_pct at idx (ENTER /
     MISSED); vol_low_last = the 24 h volume when the bar that just closed met every condition but the volume (WAIT, counter only).
     Qualifying (the sim's cond4, bar index w ≥ the spike bar on): (t[w] + 5 min) % 4 h == 0 ∧ w ≥ on + 48 (min_h × 12) ∧ c[w] < VWAP_w ∧
     w ≥ first seen ∧ 24 h volume at w ≥ min_vol ∧ w ≤ on + 1152 (max_h × 12). VWAP_w = Σ tp·q / Σ q from the spike bar, q = v × tp,
@@ -227,11 +227,13 @@ def s4_scan(bars, spike_ts, th, first_seen_open_ms=None) -> Dict:
         pv = qq = 0.0
         hi = min(n - 1, on + max_b)
         peak = None
+        pk = None   # 🩳⏱ (DECISION_LOG 401) the row that first printed the episode peak
         for w in range(on, hi + 1):
             tp_ = (h[w] + lo[w] + c[w]) / 3.0
             pv += tp_ * q[w]; qq += q[w]
             vw = pv / qq if qq > 0 else c[w]
-            peak = h[w] if peak is None else max(peak, h[w])
+            if peak is None or h[w] > peak:
+                peak, pk = h[w], w
             if w == n - 1:   # the bar that just closed: its readings for the per-boundary audit log (MISSED auditability)
                 out.update(last_close=c[w], last_vwap=vw, last_vol24=(sum(q[w - VOL24_BARS + 1: w + 1]) if w >= VOL24_BARS - 1 else None))
             if (t[w] + BAR_MS) % BOUNDARY_MS != 0 or w < on + min_b or not c[w] < vw:
@@ -250,7 +252,8 @@ def s4_scan(bars, spike_ts, th, first_seen_open_ms=None) -> Dict:
                        run_pct=((peak / base - 1) * 100 if base and base > 0 else None),
                        vs_vwap_pct=(c[w] / vw - 1) * 100 if vw > 0 else None,
                        off_peak_pct=(c[w] / peak - 1) * 100 if peak and peak > 0 else None,
-                       hours=(t[w] - anchor_open) / HOUR_MS, bar_open=t[w])
+                       hours=(t[w] - anchor_open) / HOUR_MS, bar_open=t[w],
+                       peak_age_h=(t[w] - t[pk]) / HOUR_MS)   # 🩳⏱ (401) hours from the peak bar's close to the S4 bar's close
             return out
         out['status'] = ACT_EXPIRED if (n - 1) >= on + max_b else ACT_WAIT
         return out

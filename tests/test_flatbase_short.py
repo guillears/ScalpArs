@@ -130,6 +130,8 @@ def test_s4_boundary_four_hours_vwap_and_first_bar_only():
     assert s['close'] < s['vwap'] and s['vs_vwap_pct'] < 0 and s['off_peak_pct'] < 0 and s['hours'] == pytest.approx(72 / 12)
     pk = max(r[2] for r in rows[on: ref + 1])
     assert s['base'] == pytest.approx(rows[on - 6][4]) and s['peak'] == pk and s['run_pct'] == pytest.approx((pk / rows[on - 6][4] - 1) * 100)
+    k_pk = next(k for k in range(on, ref + 1) if rows[k][2] == pk)          # ⏱ (401) the FIRST row printing the peak
+    assert s['peak_age_h'] == pytest.approx((rows[ref][0] - rows[k_pk][0]) / HOUR) and s['peak_age_h'] >= 0
     # the first qualifying boundary passed unjudged (outage / restart) → MISSED at the next one, never a later entry
     s2 = FB.s4_scan(_window(rows, ref + 48), sp, _th())
     assert s2['status'] == FB.ACT_MISSED and s2['idx'] is not None and s2['bar_open'] == rows[ref][0]
@@ -352,6 +354,10 @@ def test_engine_enters_on_the_s4_bar_turnover_above_one():
     assert o['flatbase_bar_close_ms'] == rows[on + 72][0] + BAR and o['current_price'] == rows[on + 72][4]
     assert o['entry_frenzy_spike_at'] == dt.datetime.utcfromtimestamp(_spike_ms(rows, on) / 1000) and o['entry_funding_rate'] == -0.0003
     assert o['entry_flatbase_flat14_pct'] == pytest.approx(4.0) and o['entry_flatbase_off_peak_pct'] < 0 and o['entry_frenzy_vs_vwap_pct'] < 0
+    pk = max(r[2] for r in rows[on: on + 73])
+    k_pk = next(k for k in range(on, on + 73) if rows[k][2] == pk)
+    assert o['entry_flatbase_peak_age_h'] == pytest.approx((rows[on + 72][0] - rows[k_pk][0]) / HOUR, abs=1e-3)   # ⏱ (401)
+    assert led[0].peak_age_h == o['entry_flatbase_peak_age_h']
     assert o['entry_pair_volume_24h_usd'] > 20e6 and led[0].turnover > 1 and led[0].funding_rate == -0.0003 and blocks == []
 
 
@@ -521,7 +527,9 @@ def test_open_no_slot_momentum_size_stop_and_backstop(monkeypatch):
     now_ms = int(__import__("time").time() * 1000)
     r, blocks, n_slot, n_bot, ref, ref_m = _e2e_open(monkeypatch, flatbase_short=True, flatbase_bar_close_ms=now_ms,
                                                     entry_frenzy_spike_at=dt.datetime(2026, 10, 22, 8, 0), entry_flatbase_flat14_pct=31.5,
-                                                    entry_flatbase_flat_cov_pct=100.0, entry_flatbase_off_peak_pct=-22.0)
+                                                    entry_flatbase_flat_cov_pct=100.0, entry_flatbase_off_peak_pct=-22.0,
+                                                    entry_flatbase_peak_age_h=7.5)
+    assert r.entry_flatbase_peak_age_h == 7.5                                              # ⏱ (401) the real Order carries the stamp
     assert r is not None and r.entry_strategy == "FLATBASE_SHORT" and r.direction == "SHORT"   # the book was FULL (4/4): no slot needed
     assert n_slot == 4 and n_bot == 5                                                       # never counted in the bot's slots (fee burn keeps it)
     assert r.leverage == ref[1] == 5 and r.investment == pytest.approx(ref_m[0], rel=1e-6)     # = the momentum-long size (0.2 margin at 5×)
@@ -880,3 +888,35 @@ def test_frenzy_candidate_set_unchanged_by_flatbase_tracking(monkeypatch):
     assert on['willy'] == off['willy'] == ["AAAUSDT"] and on['lite'] == off['lite'] == ["AAAUSDT"]
     assert on['unread'] == off['unread'] == [["AAAUSDT"]]
     assert sorted(on['fbs']) == ["AAAUSDT", "TRKUSDT"] and off['fbs'] == []
+
+
+def test_scout_peak_age_rebuild_matches_the_engine_rule():
+    """⏱ (DECISION_LOG 401) the scout's kline rebuild = s4_scan's peak_age_h / off_peak_pct on the same rows; a stamped value wins."""
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
+    import scout_flatbase_short as SF
+    rows, on = _series()
+    ref = _ref_s4(rows, on)
+    sp = _spike_ms(rows, on)
+    s = FB.s4_scan(_window(rows, ref), sp, _th())
+    h, op = SF.peak_age_from_rows(rows, sp, rows[ref][0])
+    assert h == pytest.approx(s['peak_age_h']) and op == pytest.approx(s['off_peak_pct'])
+    assert SF.peak_age_from_rows(rows[on + 1:], sp, rows[ref][0]) is None        # spike bar missing → unscored, never a guess
+    o = pd.Timestamp(rows[ref][0] + BAR + 7_000, unit="ms")                          # the fill lands 7 s after the S4 close
+    r = NS(pair="XUSDT", o=o, entry_flatbase_peak_age_h=float("nan"), entry_frenzy_spike_at=pd.Timestamp(sp, unit="ms").isoformat(),
+           entry_flatbase_off_peak_pct=s['off_peak_pct'])
+    kl = lambda pair, start, n: [x for x in rows if start <= x[0] < start + n * BAR]
+    got = SF.peak_age_of(r, None, 0, klines=kl)
+    assert got[0] == pytest.approx(s['peak_age_h']) and got[1] == "rebuilt"
+    assert SF.peak_age_of(NS(**{**vars(r), "entry_flatbase_peak_age_h": 3.5}), None, 0, klines=kl)[:2] == (3.5, "stamped")
+    bad = SF.peak_age_of(NS(**{**vars(r), "entry_flatbase_off_peak_pct": s['off_peak_pct'] + 5}), None, 0, klines=kl)
+    assert bad[1] == "rebuilt ⚠ off-peak Δ"
+    late = SF.peak_age_of(NS(**{**vars(r), "o": pd.Timestamp(rows[ref][0] + BAR + 7 * 60_000, unit="ms")}), None, 0, klines=kl)
+    assert late[0] == pytest.approx(s['peak_age_h'])                                 # 7 min late (past the next 5m close) → still the S4 bar
+    assert SF.peak_age_of(NS(**{**vars(r), "o": pd.Timestamp(rows[ref][0] + BAR + 20 * 60_000, unit="ms")}), None, 0, klines=kl)[2]
+    assert SF.peak_age_of(r, None, 0, klines=lambda *a: None)[2] == "fetch stopped / --no-fetch"
+    tie = [list(x) for x in rows]
+    k_pk = next(k for k in range(on, ref + 1) if rows[k][2] == s['peak'])
+    tie[ref - 1][2] = s['peak']                                                      # a later row equals the peak → the FIRST row still wins
+    if ref - 1 != k_pk:
+        assert FB.s4_scan(_window(tie, ref), sp, _th())['peak_age_h'] == pytest.approx(s['peak_age_h'])
+        assert SF.peak_age_from_rows(tie, sp, rows[ref][0])[0] == pytest.approx(s['peak_age_h'])

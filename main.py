@@ -2762,7 +2762,7 @@ async def export_decisions_csv(days: Optional[int] = None, db: AsyncSession = De
     # 🩳 (DECISION_LOG 348) the FLATBASE_SHORT episode ledger rides this file as FLATBASE rows (one per episode followed in the window, any
     # status — SHADOW rows are the observe-only cohort scripts/scout_flatbase_short.py prices from klines).
     _fb_cols = ["fb_spike_at", "fb_status", "fb_reason", "fb_first_seen_at", "fb_flat14_pct", "fb_flat_cov_pct", "fb_entry_bar_at", "fb_vwap",
-                "fb_vs_vwap_pct", "fb_peak", "fb_off_peak_pct", "fb_hours", "fb_vol24_usd", "fb_mcap_usd", "fb_turnover", "fb_funding_rate", "fb_order_id"]
+                "fb_vs_vwap_pct", "fb_peak", "fb_off_peak_pct", "fb_peak_age_h", "fb_hours", "fb_vol24_usd", "fb_mcap_usd", "fb_turnover", "fb_funding_rate", "fb_order_id"]
     try:
         _since_fb = _day0
         _fmt = lambda d: d.strftime('%Y-%m-%dT%H:%M:%S') if d else None
@@ -2773,7 +2773,7 @@ async def export_decisions_csv(days: Optional[int] = None, db: AsyncSession = De
                              price=b.entry_price, gate=b.status, fb_spike_at=_fmt(b.spike_at), fb_status=b.status, fb_reason=b.reason,
                              fb_first_seen_at=_fmt(b.first_seen_at), fb_flat14_pct=b.flat14_pct, fb_flat_cov_pct=b.flat_cov_pct,
                              fb_entry_bar_at=_fmt(b.entry_bar_at), fb_vwap=b.vwap, fb_vs_vwap_pct=b.vs_vwap_pct, fb_peak=b.peak,
-                             fb_off_peak_pct=b.off_peak_pct, fb_hours=b.hours, fb_vol24_usd=b.vol24_usd, fb_mcap_usd=b.mcap_usd,
+                             fb_off_peak_pct=b.off_peak_pct, fb_peak_age_h=b.peak_age_h, fb_hours=b.hours, fb_vol24_usd=b.vol24_usd, fb_mcap_usd=b.mcap_usd,
                              fb_turnover=b.turnover, fb_funding_rate=b.funding_rate, fb_order_id=b.order_id))
     except Exception as _e:
         logger.warning(f"[DECISIONS_EXPORT] FLATBASE rows skipped: {_e}")

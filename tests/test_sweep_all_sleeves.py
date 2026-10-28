@@ -148,3 +148,106 @@ def test_level_columns_are_tested_and_empty_ones_listed(tmp_path):
     assert {"entry_flag", "entry_regime"} <= set(R["levels"]) and "entry_never" in R["empty"]
     assert {"entry_flag", "entry_regime"} <= set(R["cons"].col)
     assert "entry_flag" not in R["res2"].pair.str.cat()                      # 2D stays numeric
+
+
+def test_flatbase_peak_age_rebuilt_into_the_screen(tmp_path, monkeypatch):
+    """⏱ (DECISION_LOG 401) unstamped FLATBASE fills get the scout's rebuilt hours-since-peak (cache only, fetch=False); a stamp wins."""
+    import scout_flatbase_short as FBS
+    calls = []
+    def fake(ns, bud, now_ms, fetch=True, klines=None):
+        calls.append(fetch)
+        return (4.0, "rebuilt", None) if ns.pair != "P1USDT" else (None, None, "no klines")
+    monkeypatch.setattr(FBS, "peak_age_of", fake)
+    d = _rows(5, strat="FLATBASE_SHORT", start="2026-10-24")
+    d["entry_flatbase_peak_age_h"] = [9.0, None, None, None, None]
+    d.loc[3, "opened_at"] = "2026-10-26Tgarbage"                                       # an unparseable row stays NULL, the rest still fill
+    ep = os.path.join(str(tmp_path), "e.csv"); d.to_csv(ep, index=False)
+    got = SW.load_real("FLATBASE_SHORT", master=None, exports=[ep], batch_start="2026-01-01").set_index("pair").entry_flatbase_peak_age_h
+    assert got["P0USDT"] == 9.0 and got["P2USDT"] == 4.0 and got["P4USDT"] == 4.0 and np.isnan(got["P1USDT"])   # stamp wins · rebuilt · unrebuildable stays NULL
+    assert calls and not any(calls)                                                     # never a network call from the screen
+
+
+def _ref_2d(df, cols):
+    """the pre-402 pandas loop, on EVERY pair (an independent reference for the matrix version)."""
+    refA = {c: df[df.era == 'A'][c].dropna().median() for c in cols}
+    out = {}
+    for i in range(len(cols)):
+        for j in range(i + 1, len(cols)):
+            c1, c2 = cols[i], cols[j]
+            d = df.dropna(subset=[c1, c2])
+            for q1 in (True, False):
+                for q2 in (True, False):
+                    ok, deltas = True, []
+                    for era in ('A', 'B'):
+                        de = d[d.era == era]
+                        m = ((de[c1] > refA[c1]) == q1) & ((de[c2] > refA[c2]) == q2)
+                        if m.sum() < 5 or (~m).sum() < 5:
+                            ok = False
+                            break
+                        deltas.append(de[m].pnl_percentage.mean() - de[~m].pnl_percentage.mean())
+                    if ok and deltas[0] * deltas[1] > 0 and min(abs(deltas[0]), abs(deltas[1])) > 0.10:
+                        (a1, b1), (a2, b2) = sorted([(c1.replace('entry_', ''), q1), (c2.replace('entry_', ''), q2)])
+                        out[f"{a1}{'>' if b1 else '<='}med x {a2}{'>' if b2 else '<='}med"] = deltas
+    return out
+
+
+def test_2d_is_exhaustive_and_equals_the_reference_loop():
+    """DECISION_LOG 402: EVERY column pair (was the top 36), matrix maths = the old pandas loop cell for cell (NaNs, ties at the median)."""
+    rng = np.random.default_rng(7)
+    n, k = 160, 40                                                        # 40 columns → 780 pairs (> the old 36-column cap's 630)
+    X = rng.normal(size=(n, k)).round(1)                                  # rounding → ties at the median
+    X[rng.random((n, k)) < 0.1] = np.nan                                  # unscored cells
+    df = pd.DataFrame(X, columns=[f"entry_c{i}" for i in range(k)])
+    df["pnl_percentage"] = np.where(df.entry_c38.fillna(0) > 0, 0.6, -0.4) * np.where(df.entry_c39.fillna(0) > 0, 1, -1) + rng.normal(scale=0.3, size=n)
+    df["era"] = np.where(np.arange(n) < n // 2, "A", "B")
+    cols = list(df.columns[:k])
+    r, ntests = SW.sweep_2d(df, None, cols)
+    assert ntests == k * (k - 1) // 2 * 4
+    ref = _ref_2d(df, cols)
+    assert set(r.pair) == set(ref) and len(ref) > 0
+    for x in r.itertuples():
+        assert abs(x.dA - ref[x.pair][0]) < 1e-9 and abs(x.dB - ref[x.pair][1]) < 1e-9
+    assert any("c38" in p and "c39" in p for p in r.pair)                 # the planted interaction in the last two columns is found
+
+
+def test_2d_null_and_per_level_verdict(tmp_path):
+    sig = SA.sleeve_row("SURGE_LONG", master=_master(str(tmp_path), _rows(80)), exports=[], null_1d=20, null_2d=20)
+    assert sig["k2"] == 20 and "2D" in SA.verdict(sig)
+    no2 = SA.sleeve_row("SURGE_LONG", master=_master(str(tmp_path), _rows(80)), exports=[], null_1d=5, null_2d=0)
+    assert "2D: null not run" in SA.verdict(no2)
+    assert "p ≤ 0.025" in SA.verdict(sig)                                   # Bonferroni over the two levels
+
+
+def test_2d_stats_only_and_nan_pnl():
+    """review: the null's fast path = the full result; a NaN P&L fill drops out of the cells (never poisons the era's sums)."""
+    rng = np.random.default_rng(11)
+    n, k = 120, 8
+    df = pd.DataFrame(rng.normal(size=(n, k)), columns=[f"entry_c{i}" for i in range(k)])
+    df["pnl_percentage"] = np.sign(df.entry_c0 * df.entry_c1) + rng.normal(scale=0.3, size=n)
+    df["era"] = np.where(np.arange(n) < n // 2, "A", "B")
+    cols = list(df.columns[:k])
+    r, _ = SW.sweep_2d(df, None, cols)
+    cnt, best = SW.sweep_2d(df, None, cols, stats_only=True)
+    assert cnt == len(r) > 0 and abs(best - r.strength.max()) < 1e-12
+    bad = df.copy(); bad.loc[[3, 70], "pnl_percentage"] = np.nan
+    rb, _ = SW.sweep_2d(bad, None, cols)
+    ref = _ref_2d(bad.dropna(subset=["pnl_percentage"]), cols)
+    assert set(rb.pair) == set(ref) and len(rb) > 0
+
+
+def test_budget_sweeps_the_oldest_sleeve_first(tmp_path):
+    """review (DECISION_LOG 402): a sleeve late in the list is not starved — the budget goes to the oldest-swept (never-swept first)."""
+    mp = _master(str(tmp_path), pd.concat([_rows(40), _rows(40, strat="BEARRUN_SHORT", seed=3)]))
+    cp = os.path.join(str(tmp_path), "c.json")
+    SA.run(["SURGE_LONG"], master=mp, exports=[], cache_path=cp)                       # SURGE swept, BEARRUN never
+    calls = []
+    orig = SA.sleeve_row
+    import time as _time
+    SA.sleeve_row = lambda name, *a, **k: calls.append(name) or _time.sleep(3) or orig(name, *a, **k)   # each sweep outlasts the budget
+    try:
+        _master(str(tmp_path), pd.concat([_rows(41), _rows(41, strat="BEARRUN_SHORT", seed=3)]))   # both changed
+        L = "\n".join(SA.run(["SURGE_LONG", "BEARRUN_SHORT"], master=mp, exports=[], cache_path=cp, budget_s=2.0))
+        assert calls == ["BEARRUN_SHORT"]                                              # the never-swept one gets the budget
+        assert L.index("| SURGE_LONG") < L.index("| BEARRUN_SHORT")                    # the table keeps its order
+    finally:
+        SA.sleeve_row = orig

@@ -345,6 +345,7 @@ class Order(Base):
     entry_flatbase_flat14_pct = Column(Float, nullable=True)       # the 14-day close range at the base bar, % (max/min − 1; FLAT ≤ flatbase_flat_max)
     entry_flatbase_flat_cov_pct = Column(Float, nullable=True)     # share of the 14-day bars present when that range was read, %
     entry_flatbase_off_peak_pct = Column(Float, nullable=True)     # the entry bar's close vs the episode peak (highest high since the spike bar), %
+    entry_flatbase_peak_age_h = Column(Float, nullable=True)       # 🩳⏱ (DECISION_LOG 401) hours from the peak bar's close to the entry bar's close
     # 📖 Oct-3 (DECISION_LOG 192): the ORDER BOOK at a MANUAL click (services/orderbook_stats.orderbook_metrics) — OBSERVE-ONLY research stamps
     manual_ob_spread_pct = Column(Float, nullable=True)
     manual_ob_top_bid_usd = Column(Float, nullable=True)
@@ -1366,6 +1367,7 @@ class FlatbaseEpisode(Base):
     vs_vwap_pct = Column(Float, nullable=True)
     peak = Column(Float, nullable=True)
     off_peak_pct = Column(Float, nullable=True)
+    peak_age_h = Column(Float, nullable=True)                      # 🩳⏱ (DECISION_LOG 401) hours from the peak bar's close to the S4 bar's close
     hours = Column(Float, nullable=True)                           # hours from the spike bar's open to the S4 bar's open
     vol24_usd = Column(Float, nullable=True)                       # kline 24 h quote volume at the S4 bar
     mcap_usd = Column(Float, nullable=True)

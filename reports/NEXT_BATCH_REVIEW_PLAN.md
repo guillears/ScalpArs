@@ -7,10 +7,18 @@ Run all of this when the operator sends the next batch export (`scalpars_orders_
 **🔎 PER-SLEEVE STANDARD — EVERY sleeve, no exception (operator 2026-10-27, DECISION_LOG 398: "all SLEEVES should have it" · "Winners vs
 losers and before and after per batch"):** for EACH of SPIKE_FADE · FRENZY_WILLY · FRENZY_WILLY_HT · FLATBASE_SHORT · FRENZY_LITE ·
 FRENZY_LITE_RETRY · FRENZY_LONG · MOMENTUM LONG · MOMENTUM SHORT · FLIP:FAN_RATIO_GATE (+ FS / ML / MS screened pools) · BULLRUN_LONG ·
-BEARRUN_SHORT · SURGE_LONG · SPIKE_BOUNCE / SPIKE_CHASE — ① **WINNERS vs LOSERS on every variable**: `venv/bin/python
+BEARRUN_SHORT · SURGE_LONG · SPIKE_BOUNCE / SPIKE_CHASE — ⓪ **THEORY CARD FIRST (operator 2026-10-28, DECISION_LOG 402: "the theory of
+what the trade is about is important to understand where to look at in 2D or 3D, or even 1D" · "i wouldnt pre select 2D, i will test
+every but considering the theory")** — BEFORE any screen, one paragraph per sleeve: the bet (what the trade expects), why it should win,
+what makes it fail → the variables each failure mode names + the expected DIRECTION. Written and dated before the sleeve's sweep is
+read. Then: **1D and 2D = ALWAYS EXHAUSTIVE** (every variable, every pair — NEVER a pre-registered or pre-selected list, operator
+2026-10-28: "i dont want a pre registered test list, i want full test to be done"); the theory only decides how the full results are
+READ: theory-named variables / pairs are read first and marked, a theory-named split in the predicted direction is the strongest kind
+of candidate, a split the theory cannot explain needs a mechanism before it goes anywhere. Verdict = the full screen's family-wise
+luck test (Scout 🔎 row). NO 3D for now (operator 2026-10-28 — revisit when sleeves have more fills). Every survivor still faces the locked gates + haircut · ① **WINNERS vs LOSERS on every variable**: `venv/bin/python
 scripts/sweep_separators.py <SLEEVE>` on the sleeve's REAL fills (master on today's stack + the current batch; `ALL` runs every sleeve) +
-the Scout 🔎 SEPARATOR SWEEP row (1D / 2D survivors vs a shuffled null, blind spots < 80 % listed and read on their scored subset), then
-exhaustive 2D + OOS per the W/L rule · ② **BEFORE → AFTER per batch** for every candidate filter / exit / size (master per batch + the
+the Scout 🔎 SEPARATOR SWEEP row (1D / EVERY-PAIR 2D survivors vs a shuffled null, blind spots < 80 % listed and read on their scored subset), then
+OOS per the W/L rule · ② **BEFORE → AFTER per batch** for every candidate filter / exit / size (master per batch + the
 current batch, N · WR · avg % · $ · daily compound return) · ③ backtest = cross-check only. A sleeve below 6 fills (or too thin for two
 eras) is written down as "keep collecting — N" — never skipped silently. 10-27 baseline (scout run, family-wise vs a day-block
 shuffled null): no sleeve's best split beats luck's best (MOMENTUM LONG p 0.67, SPIKE_FADE 0.78, FRENZY_WILLY 1.00, FRENZY_LITE 0.20,
@@ -86,7 +94,7 @@ the review must beat the null, not just pass both eras.
    setups per reason (N · avg · Σ) · 🩳③ FRENZY longs blocked PAIR_HELD by an open FLATBASE short per sleeve vs the short's own pnl + funding
    (LITE unpriced while LITE C is on; generic PAIR_HELD = unattributed). Read each section's coverage line first (waiting / unpriced / unscored ≠ rest).
    🎯 + the EXIT SHADOW lines (DL 367 / 370 / 390): TP5 · TP3 · TP5_SL10 · TP5_SL5 · TP8_SL10 · TP1 · TP1_SL10 · TP1_SL5 (Bonferroni ×8, frozen) + TP1_SL4 · TP1_SL3 · TP1_SL2 · TP2_SL5 (DL 390, ×12, levels picked after the 10-27 read) vs the live TP −8 / stop 15 on the same path — priced / hold / UNPRICEABLE_FINAL, parity n/n (+ live-stopped 100 %), per-fill list, split lines (stopped saved / deeper · TP give-back / cut winners), FB_TP_* verdicts (bootstrap LB, top day, haircut, backtest Δ).
-   🩳📋 + OBS-FB1 (DL 389, frozen observe, no verdict): the scout's zone split (run ≤ 67.82 % ∧ off-peak > −27.21 %) under the live exit and TP1_SL5 — FRESH fills only as evidence (opened ≥ 2026-10-27 19:30 UTC), the 12 registration fills apart; judge with the expectancy bar at the deep review, never re-fit. W/L coverage: FLATBASE fills from the 10-27 deploy carry the shared pair + market stamps (DL 389 backfill; still NULL by design: the exit / hold rulers, macro_trend, rank) — earlier FLATBASE fills need the klines rebuild.
+   🩳📋 + OBS-FB1 (DL 389, frozen observe, no verdict): the scout's zone split (run ≤ 67.82 % ∧ off-peak > −27.21 %) under the live exit and TP1_SL5 — FRESH fills only as evidence (opened ≥ 2026-10-27 19:30 UTC), the 12 registration fills apart; judge with the expectancy bar at the deep review, never re-fit. W/L coverage: FLATBASE fills from the 10-27 deploy carry the shared pair + market stamps (DL 389 backfill; still NULL by design: the exit / hold rulers, macro_trend, rank) — earlier FLATBASE fills need the klines rebuild. ⏱ + HOURS SINCE THE PEAK (DL 401): the scout section "⏱ FLATBASE — hours since the episode peak" (stamp `entry_flatbase_peak_age_h` from 10-28, older fills rebuilt from klines) — read it in the W/L table with every other variable.
    📈 + the RE-SIZE LADDER line under the gate verdict (DL 363): stage (0.2 / 0.5 / 1.0), current run at this size · days · avg, the gate on that run → STEP-UP (also re-decide flatbase_max_open) / STEP-DOWN / next-step.
    ⭐ DEEP REVIEW (operator 2026-10-26 — little history, huge potential; run AT the batch review, not before): ① THEORY first — why a flat base
    then a short pays, who is on the other side, which states break it (BTC regime, squeezes, funding), predicted separators frozen BEFORE the
@@ -223,9 +231,8 @@ fix the line).
   two-sided, per era.
 - **One change at a time** per sleeve (clean attribution), each with a pre-committed revert gate.
 - **Winners vs losers = 100 % of the available variables** (operator 2026-10-11): every entry_* / stamped column on the fills (and the
-  decision journal where a fill lacks it), 1D at every granularity, exhaustive 2D, and 3D ONLY for triples pre-registered from the
-  0a+ theory or a 2D near-miss (list and count them BEFORE running; never an exhaustive 3D sweep — ~117 entry columns ≈ 6,800 pairs /
-  ≈ 260,000 triples per granularity). Every screen reports how many tests it ran and uses a max-statistic shuffled-label null over ALL
+  decision journal where a fill lacks it), 1D at every granularity, exhaustive 2D (EVERY pair, DECISION_LOG 402), and NO 3D for
+  now (operator 2026-10-28: no pre-registered lists, full tests only; 3D revisited when sleeves have more fills). Every screen reports how many tests it ran and uses a max-statistic shuffled-label null over ALL
   tests run (or BH-FDR), then out-of-sample confirmation on the half not used to find it; survivors are a SCREEN, not a ship list
   (locked gates + theory + haircut still apply) (memory feedback_exhaustive_2d_screen.md). The UI table
   "Entry Conditions by Strategy" shows only a subset — never treat it as the full screen. Every screen lists the columns it could NOT
@@ -239,7 +246,7 @@ analyses (§3b only after §3) → §7 sizing last → 0c bug gate on every find
 Two years on today's exact code = the first data large enough, across regimes (2025 bull · H1 2026 bear · H2 2026), to find real
 winner / loser patterns in FRENZY (LONG / WIDE / LITE / WILLY), MOMENTUM LONG / SHORT, fades, flips, surge, bull-run, bear-run. Method:
 - DISCOVER on one year, CONFIRM on the other (2025 → 2026 and 2026 → 2025) — the first true out-of-sample test we can run; a pattern
-  counts only if it holds in both years (and both halves of each), with the exhaustive 1D / 2D (3D pre-registered) screen + day-block null.
+  counts only if it holds in both years (and both halves of each), with the exhaustive 1D / 2D screen (no 3D for now, operator 10-28) + day-block null.
 - Regime first: read every sleeve by regime (bull / bear / chop) — a sleeve that only works in one regime is an on / off switch (window
   units), not a per-trade filter.
 - Then the usual bars (expectancy bar for filters, Pattern W for size), three blocks (① live batch · ② master per batch · ③ yr6), the
@@ -266,7 +273,7 @@ winner / loser patterns in FRENZY (LONG / WIDE / LITE / WILLY), MOMENTUM LONG / 
 - SAME DEPTH FOR EVERY SLEEVE (operator 2026-10-12 "for all sleeves") — each gets its own section, in this order, with the same template:
   FRENZY LITE · FRENZY WILLY · FRENZY LONG · FRENZY WIDE · MOMENTUM LONG · MOMENTUM SHORT · SPIKE_FADE · FLIP shorts (FAN / others) · SURGE
   LONG / SHORT · BULL-RUN (GREEN + REARM door / age cap) · BEAR-RUN. Template per sleeve: ① baseline per year AND per MONTH of each year (2025 Jan→Dec, 2026 Jan→Oct) and per regime (N · WR · avg · CI ·
-  halves · $ at today's size) → ② winners vs losers → FILTERS FOR THE LOSERS (every entry variable 1D / 2D / pre-registered 3D, discover-on-one-year → confirm-on-the-
+  halves · $ at today's size) → ② winners vs losers → FILTERS FOR THE LOSERS (every entry variable 1D / every-pair 2D, no 3D for now, discover-on-one-year → confirm-on-the-
   other, day-block null) → ③ exit grid (TP / stop / time cap / trail / split exit where it fits; live-stopped-cohort rule for stops) → ④
   regime switch (BTC trend / 1 h slope / 24 h / breadth / market volume, in day units) → ⑤ sizing (growth-optimal leverage, ruin with real
   maintenance margin) → ⑥ interactions (slots, one-position-per-coin, WILLY hold, LONG→LITE blocking) → recommendation + frozen revert gate,
@@ -454,7 +461,7 @@ new fills (opened after the 271 deploy, 2026-10-12) as their own line — they a
       winners LONG −0.77 · WIDE −0.80 · LITE −1.47.
 
 ## 3. FRENZY entry strategy (all FRENZY sleeves incl. WILLY)
-- [ ] Winners vs losers per sleeve — the §0c 100 %-of-variables screen (1D / 2D / pre-registered 3D, null + OOS).
+- [ ] Winners vs losers per sleeve — the §0c 100 %-of-variables screen (1D / every-pair 2D — no 3D for now, operator 10-28 — null + OOS).
 - [ ] Every FRENZY watchlist / Scout line: GVOL_SPLIT, HOLD_FRENZY_EXEMPT, FRENZY_REENTRY_AFTER_WIN, FRENZY_STRETCHED, LITE_OFF30H3,
       LITE_GVOL24_LOW, FRENZY_STRONG revert gate (197 — Scout-only, scripts/scout_revert_gates.py, not in CURRENT_STATE), ATR cap 3.0 (250), bearish block (250), GREEN_CLOCK, WILLY_TURNOVER_BLOCKED, WILLY_HOLD.
 - [ ] **LITE_BTC1H_FALLING (DECISION_LOG 288, Scout scripts/scout_frenzy_wl_lines.py):** FRENZY_LITE fills with `entry_btc_1h_slope` ≤ 0

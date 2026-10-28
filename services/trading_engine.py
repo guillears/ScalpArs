@@ -9897,6 +9897,7 @@ class TradingEngine:
         feats = dict(entry_bar_at=_ebar, entry_price=scan.get('close'), vwap=scan.get('vwap'),
                      vs_vwap_pct=(round(scan['vs_vwap_pct'], 4) if scan.get('vs_vwap_pct') is not None else None), peak=scan.get('peak'),
                      off_peak_pct=(round(scan['off_peak_pct'], 4) if scan.get('off_peak_pct') is not None else None),
+                     peak_age_h=(round(scan['peak_age_h'], 3) if scan.get('peak_age_h') is not None else None),   # 🩳⏱ (401)
                      hours=(round(scan['hours'], 3) if scan.get('hours') is not None else None), vol24_usd=scan.get('vol24'))
         try:
             _held = (await db.execute(select(Order.entry_strategy, Order.direction).where(and_(
@@ -9953,7 +9954,7 @@ class TradingEngine:
             entry_frenzy_run_pct=(round(scan['run_pct'], 2) if scan.get('run_pct') is not None else None),
             entry_flatbase_flat14_pct=round(rec['flat'] * 100, 4),
             entry_flatbase_flat_cov_pct=(round(rec['cov'] * 100, 2) if rec.get('cov') is not None else None),
-            entry_flatbase_off_peak_pct=feats['off_peak_pct'])
+            entry_flatbase_off_peak_pct=feats['off_peak_pct'], entry_flatbase_peak_age_h=feats['peak_age_h'])
         if order:
             await self._flatbase_finalize(pair, spike_ms, ST_OPENED, f"opened #{order.id}", order_id=order.id, **feats)
             return
@@ -12791,6 +12792,7 @@ class TradingEngine:
         entry_flatbase_flat14_pct: Optional[float] = None,
         entry_flatbase_flat_cov_pct: Optional[float] = None,
         entry_flatbase_off_peak_pct: Optional[float] = None,
+        entry_flatbase_peak_age_h: Optional[float] = None,   # 🩳⏱ (DECISION_LOG 401) hours since the episode peak at the S4 bar
         # Jul 13: GAPFLAT probe — this LONG failed ONLY the gap-expanding check (passed the whole
         # rest of the ladder). Opens as a REAL order at ~1x effective leverage (invest_mult x
         # lev_mult from gap_probe_* config), tagged cell_src=GAPFLAT_PROBE (own analytics row;
@@ -14731,6 +14733,7 @@ class TradingEngine:
             entry_frenzy_vol_mult=(entry_frenzy_vol_mult if _frenzy else None), entry_frenzy_run_pct=(entry_frenzy_run_pct if (_frenzy or _fbs) else None),
             entry_flatbase_flat14_pct=(entry_flatbase_flat14_pct if _fbs else None), entry_flatbase_flat_cov_pct=(entry_flatbase_flat_cov_pct if _fbs else None),
             entry_flatbase_off_peak_pct=(entry_flatbase_off_peak_pct if _fbs else None),
+            entry_flatbase_peak_age_h=(entry_flatbase_peak_age_h if _fbs else None),
             entry_frenzy_stop_atr=(entry_frenzy_stop_atr if _frenzy else None),
             entry_frenzy_bar_ret_pct=(entry_frenzy_bar_ret_pct if _frenzy else None),
             entry_frenzy_di_spread=(entry_frenzy_di_spread if _frenzy else None),

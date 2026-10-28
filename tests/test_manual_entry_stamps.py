@@ -22,7 +22,7 @@ NOT_A_MOMENTUM_STAMP = {
     "entry_slippage_pct",   # a manual paper fill IS the clicked price: left NULL so it never enters the slippage averages
     "entry_chop_burst_prior_fill_s",   # 🌀👥 Oct-4: the LONG_CHOP_BURST gate's own input — a bot decision stamp (DB lookup); MANUAL is never gated
     "entry_book_drift_pct", "entry_book_spread_pct", "entry_fill_vs_book_pct", "entry_order_lag_s",   # 📏 (295) FRENZY / SURGE book-path execution shadow (sleeve-only)
-    "entry_flatbase_flat14_pct", "entry_flatbase_flat_cov_pct", "entry_flatbase_off_peak_pct",   # 🩳 (348) FLATBASE_SHORT episode stamps (sleeve-only)
+    "entry_flatbase_flat14_pct", "entry_flatbase_flat_cov_pct", "entry_flatbase_off_peak_pct", "entry_flatbase_peak_age_h",   # 🩳 (348) FLATBASE_SHORT episode stamps (sleeve-only)
 }
 
 

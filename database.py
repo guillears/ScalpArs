@@ -265,7 +265,8 @@ async def init_db():
                 for _ac_col in ('entry_alt_corr24', 'entry_alt_beta24'):   # 📈 (DECISION_LOG 383) alt-correlation regime stamp (observe-only)
                     if _ac_col not in columns:
                         connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_ac_col} FLOAT"))
-                for _fb_col in ('entry_flatbase_flat14_pct', 'entry_flatbase_flat_cov_pct', 'entry_flatbase_off_peak_pct'):   # 🩳 (DECISION_LOG 348) FLATBASE_SHORT stamps
+                for _fb_col in ('entry_flatbase_flat14_pct', 'entry_flatbase_flat_cov_pct', 'entry_flatbase_off_peak_pct',
+                                'entry_flatbase_peak_age_h'):   # 🩳 (DECISION_LOG 348) FLATBASE_SHORT stamps · ⏱ (401) hours since the peak
                     if _fb_col not in columns:
                         connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_fb_col} FLOAT"))
                 for _lr_col in ('entry_frenzy_retry_wait_min', 'entry_frenzy_retry_green_ret', 'entry_frenzy_stop_pct'):   # 🔁 (DECISION_LOG 316) FRENZY_LITE_RETRY stamps · 🛑 (317) stop at entry
@@ -810,6 +811,10 @@ async def init_db():
                     connection.execute(text("ALTER TABLE monitor_periods ADD COLUMN blocked_breadth INTEGER DEFAULT 0"))
                 if 'blocked_age' not in _mp_cols:
                     connection.execute(text("ALTER TABLE monitor_periods ADD COLUMN blocked_age INTEGER DEFAULT 0"))
+            if 'flatbase_episodes' in inspector.get_table_names():   # 🩳⏱ (DECISION_LOG 401) the ledger's hours since the peak
+                _fbe_cols = [c['name'] for c in inspector.get_columns('flatbase_episodes')]
+                if 'peak_age_h' not in _fbe_cols:
+                    connection.execute(text("ALTER TABLE flatbase_episodes ADD COLUMN peak_age_h FLOAT"))
             # 🌊 Oct-4: surge_triggers.gvol (market volume on the trigger bar)
             if 'surge_triggers' in inspector.get_table_names():
                 _sgt_cols = [c['name'] for c in inspector.get_columns('surge_triggers')]

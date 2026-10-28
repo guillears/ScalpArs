@@ -6,7 +6,8 @@ Born from an operator reprimand: a sleeve verdict was once given after hand-test
 ~8 dimensions when the orders schema stores 60+. This script removes analyst selection
 from the loop: for a given sleeve it tests EVERY numeric entry_* column at THREE
 granularities (sign split / median split / outer-tercile split) in BOTH eras
-(baseline vs fresh), and ranks candidates by cross-period direction-consistency.
+(baseline vs fresh), and ranks candidates by cross-period direction-consistency. 2D: EVERY pair of
+numeric columns × 4 median quadrants (DECISION_LOG 402 — was the top 36 only).
 
 RULES OF USE (locked in CLAUDE.md):
 - Any sleeve-level verdict ("no separator", "disable", "demote") MUST cite this sweep.
@@ -100,7 +101,39 @@ def load_real(sleeve, master=MASTER, exports=None, batch_start=None):
     d = d[(d.status.astype(str) == "CLOSED") & d.pnl_percentage.notna()]
     if dr:
         d = d[d.direction.astype(str) == dr]
-    return d.reset_index(drop=True)
+    d = d.reset_index(drop=True)
+    if es == "FLATBASE_SHORT" and len(d):
+        d = _flatbase_peak_age(d)
+    return d
+
+
+def _flatbase_peak_age(d):
+    """⏱ (DECISION_LOG 401) FLATBASE fills opened before the entry_flatbase_peak_age_h stamp: the scout's rebuild from CACHED public 5m
+    klines (scripts/scout_flatbase_short.py fetches them; never a network call here) fills the column so the screen tests it on every fill.
+    A stamped value always wins; an unrebuildable fill stays NULL (→ the coverage / blind-spot lists say so). Never raises."""
+    try:
+        from types import SimpleNamespace
+        import scout_flatbase_short as _FB
+        from scout_long_stop4 import Budget
+        d = d.copy()                                               # a de-fragmented frame (the export carries ~400 columns)
+        if "entry_flatbase_peak_age_h" not in d:
+            d["entry_flatbase_peak_age_h"] = float("nan")
+        d["entry_flatbase_peak_age_h"] = pd.to_numeric(d.entry_flatbase_peak_age_h, errors="coerce")
+        import time as _time
+        bud, now_ms = Budget(), int(_time.time() * 1000)
+        for i in d.index[d.entry_flatbase_peak_age_h.isna()]:
+            try:                                                   # one bad row stays NULL, never the rest of the cohort
+                r = d.loc[i]
+                ns = SimpleNamespace(pair=r.get("pair"), o=pd.Timestamp(str(r.get("opened_at"))), entry_flatbase_peak_age_h=None,
+                                     entry_frenzy_spike_at=r.get("entry_frenzy_spike_at"), entry_flatbase_off_peak_pct=r.get("entry_flatbase_off_peak_pct"))
+                h, _src, _why = _FB.peak_age_of(ns, bud, now_ms, fetch=False)
+                if h is not None:
+                    d.at[i, "entry_flatbase_peak_age_h"] = h
+            except Exception:
+                continue
+    except Exception as e:
+        print(f"⚠ FLATBASE peak-age rebuild skipped ({str(e)[:80]}) — the column stays as stamped", file=sys.stderr)
+    return d
 
 
 def sleeves(master=MASTER, exports=None):
@@ -201,33 +234,71 @@ def sweep_1d(df, cands, levels=()):
     return r
 
 
-def sweep_2d(df, res, cands):
-    """every dimension PAIR (top 36), 4 quadrants (median × median, thresholds anchored on era A), quadrant-vs-rest Δ, cross-era
-    consistency, min 5 trades per quadrant per era. With thousands of tests expect false survivors — it RANKS, never ships."""
-    top = list(dict.fromkeys([c for c in res.loc[res.consistent.astype(bool)].col.tolist() if c in cands] + cands))[:36]   # numeric only
-    refA = {c: df[df.era == 'A'][c].dropna().median() for c in top}
-    out = []
-    for i in range(len(top)):
-        for j in range(i + 1, len(top)):
-            c1, c2 = top[i], top[j]
-            d = df.dropna(subset=[c1, c2])
-            for q1 in (True, False):
-                for q2 in (True, False):
-                    ok, deltas = True, []
-                    for era in ('A', 'B'):
-                        de = d[d.era == era]
-                        m = ((de[c1] > refA[c1]) == q1) & ((de[c2] > refA[c2]) == q2)
-                        if m.sum() < 5 or (~m).sum() < 5:
-                            ok = False
-                            break
-                        deltas.append(de[m].pnl_percentage.mean() - de[~m].pnl_percentage.mean())
-                    if not ok:
-                        continue
-                    a, b = deltas
-                    if a * b > 0 and min(abs(a), abs(b)) > 0.10:
-                        out.append(dict(pair=f"{c1.replace('entry_', '')}{'>' if q1 else '<='}med x {c2.replace('entry_', '')}{'>' if q2 else '<='}med",
-                                        dA=a, dB=b, strength=min(abs(a), abs(b))))
-    return pd.DataFrame(out, columns=["pair", "dA", "dB", "strength"]), len(top) * (len(top) - 1) // 2 * 4
+MIN_CELL_2D = 5          # fills per quadrant AND per rest, per era
+MIN_DELTA_2D = 0.10      # |Δ| in both eras (the 1D bar is 0.05: a 2D cell is a smaller, noisier group)
+
+
+def _quadrant_deltas(de, cols, ref):
+    """pure, ONE era: for every column pair (i < j) and quadrant (q1, q2 ∈ above / at-or-below the era-A median) → (Δ = mean P&L in
+    the quadrant − mean of the REST of the fills scored on BOTH columns, ok = quadrant and rest each ≥ MIN_CELL_2D). Four matrix
+    products per quadrant instead of a pandas loop — the exhaustive all-pairs screen (DECISION_LOG 402) runs in milliseconds."""
+    X = de[cols].apply(pd.to_numeric, errors="coerce").to_numpy(float)
+    p = pd.to_numeric(de.pnl_percentage, errors="coerce").to_numpy(float)
+    V = ~np.isnan(X) & np.isfinite(p)[:, None]          # a fill without a finite P&L is out of every cell (pandas .mean() skipped it)
+    p = np.where(np.isfinite(p), p, 0.0)
+    with np.errstate(invalid="ignore"):
+        H = V & (X > np.asarray(ref, float)[None, :])
+    Lo = V & ~H
+    Vf, pv = V.astype(float), V.astype(float) * p[:, None]
+    nb, sb = Vf.T @ Vf, pv.T @ Vf                        # fills scored on both columns · their P&L sum
+    out = {}
+    for q1, A in ((True, H), (False, Lo)):
+        Af, Ap = A.astype(float), A.astype(float) * p[:, None]
+        for q2, B in ((True, H), (False, Lo)):
+            Bf = B.astype(float)
+            ni, si = Af.T @ Bf, Ap.T @ Bf
+            nr, sr = nb - ni, sb - si
+            with np.errstate(invalid="ignore", divide="ignore"):
+                d = si / ni - sr / nr
+            out[(q1, q2)] = (d, (ni >= MIN_CELL_2D) & (nr >= MIN_CELL_2D))
+    return out
+
+
+def sweep_2d(df, res, cands, stats_only=False):
+    """EVERY numeric dimension PAIR (DECISION_LOG 402 — was the top 36; the exhaustive-2D rule), 4 quadrants (median × median,
+    thresholds anchored on era A), quadrant-vs-rest Δ, cross-era consistency (same sign, |Δ| > MIN_DELTA_2D in both), ≥ MIN_CELL_2D fills
+    in the quadrant and in the rest per era. With thousands of tests expect false survivors — it RANKS, never ships; the scout's 2D
+    null (best 2D split vs luck's best) is the read. `res` is unused (kept for the callers). stats_only → (survivor count, best strength)
+    straight from the arrays (the scout's null runs this hundreds of times)."""
+    cols = [c for c in cands if c in df]
+    k = len(cols)
+    df = df[np.isfinite(pd.to_numeric(df.pnl_percentage, errors="coerce").to_numpy(float))]   # a fill without a P&L is out (medians too)
+    empty = pd.DataFrame(columns=["pair", "dA", "dB", "strength"])
+    if k < 2:
+        return (0, 0.0) if stats_only else (empty, 0)
+    ref = [pd.to_numeric(df[df.era == 'A'][c], errors="coerce").dropna().median() for c in cols]
+    eA, eB = (_quadrant_deltas(df[df.era == e], cols, ref) for e in ('A', 'B'))
+    iu = np.triu_indices(k, 1)
+    out, cnt, best = [], 0, 0.0
+    for q in ((True, True), (True, False), (False, True), (False, False)):
+        a, okA = eA[q]; b, okB = eB[q]
+        a, b, ok = a[iu], b[iu], okA[iu] & okB[iu]
+        with np.errstate(invalid="ignore"):
+            keep = ok & (a * b > 0) & (np.minimum(np.abs(a), np.abs(b)) > MIN_DELTA_2D)
+        if stats_only:
+            cnt += int(keep.sum())
+            if keep.any():
+                best = max(best, float(np.minimum(np.abs(a), np.abs(b))[keep].max()))
+            continue
+        for t in np.nonzero(keep)[0]:
+            i, j = iu[0][t], iu[1][t]
+            (n1, s1), (n2, s2) = sorted([(cols[i].replace('entry_', ''), q[0]), (cols[j].replace('entry_', ''), q[1])])   # stable label: A–Z
+            out.append(dict(pair=f"{n1}{'>' if s1 else '<='}med x {n2}{'>' if s2 else '<='}med",
+                            dA=float(a[t]), dB=float(b[t]), strength=float(min(abs(a[t]), abs(b[t])))))
+    if stats_only:
+        return cnt, best
+    r = pd.DataFrame(out, columns=["pair", "dA", "dB", "strength"]) if out else empty
+    return (r.sort_values("strength", ascending=False).reset_index(drop=True) if len(r) else r), k * (k - 1) // 2 * 4
 
 
 def prepare(sleeve, split=None, master=MASTER, exports=None):

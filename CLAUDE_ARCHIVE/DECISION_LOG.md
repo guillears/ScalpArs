@@ -9943,3 +9943,68 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   Reading it: iw alone does not separate the causes (an overflowing element also raises iw) — a NAMED element in w = overflow; an empty
   w with iw > sw = most likely page zoom (blind spots: fixed elements, html / body, overflow inside hidden / clip ancestors). Tested in mobile emulation (names a planted 900 px
   element; skips table rows inside their scroll boxes). Remove once the cause is fixed.
+
+## (401) 2026-10-28 — ⏱ FLATBASE: hours since the episode peak, stamped + rebuilt (observe-only, no trading change)
+- **Operator:** "for flatbase analysis are we considering how long ago the peak was for each trade? in scout". It was not recorded: the
+  sleeve had the off-peak % (`entry_flatbase_off_peak_pct`), the run % and the hours since the SPIKE (`entry_frenzy_hours`). It did not
+  have the hours since the PEAK, which can sit anywhere inside that span.
+- **Engine (services/flatbase.py `s4_scan`):** keeps the row that FIRST printed the episode's highest high and returns `peak_age_h`
+  = (S4 bar open − peak bar open) / 1 h = hours from the peak bar's close to the S4 bar's close. Same walk as the off-peak %; nothing
+  decides on it.
+- **Recorded:**
+  - new Order column `entry_flatbase_peak_age_h` (FLATBASE only, sleeve stamp via the `entry_flatbase_` prefix);
+  - ledger `flatbase_episodes.peak_age_h` (SHADOW / REFUSED rows too) → decisions export `fb_peak_age_h`;
+  - migrations for both tables;
+  - shown in the trade's FLATBASE description in the UI ("peak X h before entry");
+  - rides the orders CSV as a model column.
+- **Scout (scripts/scout_flatbase_short.py, section "⏱ FLATBASE — hours since the episode peak"):**
+  - the stamp when present; else rebuilt from public 5m klines (spike bar → the S4 bar = the 5m bar closed just before the fill, the
+    engine's first-highest-high rule);
+  - every rebuild is checked against the stamped off-peak % (±0.5 pts, flagged ⚠ beyond);
+  - lines: coverage + unscored list (blind spot), winners vs losers median, fixed buckets < 6 / 6–24 / 24–48 / ≥ 48 h (N < 10 = noise),
+    per fill.
+- **First read (12 B25 fills, all rebuilt, 0 off-peak flags):** winners median 6.1 h vs losers 5.4 h · < 6 h N 7 WR 43 % avg −5.23 % ·
+  6–24 h N 5 WR 60 % avg −1.27 %. Nothing separates at N 12 — a watch column, no candidate.
+- **Separator sweep (operator: "yes add it"):** `scripts/sweep_separators.py load_real` fills a NULL `entry_flatbase_peak_age_h` on
+  FLATBASE fills with the scout's rebuild from CACHED klines (fetch=False, never a network call; a stamp wins; a bad row stays NULL;
+  failures print one stderr line). On the 12 fills: 12 / 12 scored → tested in 1D / 2D; no consistent split. A brand-new fill's
+  klines are fetched by the FLATBASE scout, which runs after the sweep in opportunity_scout → it joins on the next run.
+- **Reviews:** caveman + deep twice (engine/scout; sweep). Applied: S4 bar snapped to the 4-h grid (+ unscored beyond 15 min); per-row
+  isolation in both rebuild loops; real open_position Order test; tie / late-fill / fetch-stopped tests; no deprecated utcnow.
+- **Gap found while answering the operator ("1D 2D or even 3D"):** the sweep's 2D covers only the top 36 columns (630 pairs) and there
+  is no 3D. That breaks the exhaustive-2D rule. Exhaustive 2D + 3D with the null at each level is the next build (separate commit).
+- **Tests:** `s4_scan` peak_age_h = first peak row; engine open passes it to the order + ledger; the scout rebuild = `s4_scan` on the same
+  rows; a stamp wins; a missing spike bar → unscored; an off-peak mismatch → ⚠.
+
+## (402) 2026-10-28 — 🔎 Separator sweep: EXHAUSTIVE 2D (every column pair) + a 2D luck test (analysis tool only, no trading change)
+- **Operator:** "can you confirm that all winners vs losers … consider 1D 2D or even 3D?" → found: the sweep's 2D took only the top 36
+  columns (630 pairs) — against the locked exhaustive-2D rule (memory feedback_exhaustive_2d_screen) — and its 2D null was 3 shuffles
+  ("indicative"). Operator: "build the 2D, reviews then commit and push".
+- **scripts/sweep_separators.py `sweep_2d`:** EVERY numeric candidate pair × 4 median quadrants (thresholds from era A), Δ = quadrant mean
+  − mean of the rest of the fills scored on both columns, ≥ 5 fills in quadrant and rest per era, same sign and min |Δ| > 0.10 in both
+  eras — unchanged rule, now as matrix products per era (`_quadrant_deltas`), equal to the old pandas loop cell for cell (test on 40
+  columns with NaNs and median ties). FLATBASE 36 cols → 2,520 cells in 0.8 s; WILLY 64 cols → 8,064 cells in ~3 s.
+- **scripts/scout_sweep_all.py:** one set of day-block shuffles feeds both nulls (2D never re-runs 1D); NULL_1D 50 → 100, NULL_2D 3 → 200
+  (at p ≤ 0.025 a 50-shuffle null only passes a split that beats EVERY shuffle — 1 / 51; 100 / 200 give 2 / 101 · 4 / 201 room); a FAMILY-WISE 2D
+  p (best 2D split vs each shuffle's best 2D split); each level judged at 0.05 / 2 = 0.025 (Bonferroni over 1D + 2D — the extra
+  family must not raise the false-alarm rate); the Read column shows both levels; top 2D cells in the 2D column; cache VERSION 4.
+- **Review fixes:** a fill without a finite P&L leaves the 2D cells and medians (a NaN poisoned the matrix sums; latent — load_real
+  drops them); the null's 2D runs stats-only (count + best from the arrays, no DataFrame); "2D: null not run" when skipped.
+  Deliberate tightening: the 1D read moves from p ≤ 0.05 to ≤ 0.025 (Bonferroni over the two levels) — a sleeve at 1D p 0.03 now reads
+  "not above luck". 2D cell labels follow the candidate order (an old report's "A x B" can print as "B x A").
+  Cost (deep review, measured): 2D sweep 20–90 ms per sleeve (the old all-pairs loop 4–63 s); full row at 1D ×100 / 2D ×200 = 33–75 s
+  on the biggest sleeves (1D dominates) → the 240 s scout budget now goes to changed sleeves OLDEST-SWEPT FIRST (cache keeps the sweep
+  time; the table keeps its order) so a late sleeve is never starved. 2D labels name the two columns A–Z (stable across runs).
+  Deep review: the new 2D = the old loop over all pairs on every real sleeve (identical survivor sets, ≤ 1.3e-15); planted pure
+  interaction (120 fills) → ABOVE LUCK at 2D (p 0.005 / 0.015), 1D silent; 3 no-signal seeds → 2D p 0.24–0.58. Today: none above
+  luck (MOMENTUM:LONG 1D 0.70 / 2D 0.24 · FRENZY_LONG 0.26 / 0.14 · ML 0.43 / 0.64).
+- **3D (operator 2026-10-28, asked: full 3D on its own level / full 3D all sleeves / none → "No 3D for now"):** no 3D test of any
+  kind (the 10-11 "pre-registered triples" rule is withdrawn with the pre-registered lists); revisit when sleeves have more fills —
+  ≈ 260,000+ triples × 8 boxes on sleeves of 12–100 fills = boxes of 1–12 fills.
+- **Theory card (operator, same day: "the theory of what the trade is about is important to understand where to look" · "i wouldnt
+  pre select 2D, i will test every but considering the theory"):** NEXT_BATCH_REVIEW_PLAN PER-SLEEVE STANDARD gains step ⓪ — a dated
+  theory card per sleeve (bet · why it wins · failure modes → named variables + direction) BEFORE its sweep is read; 1D / 2D stay
+  exhaustive, the card decides how they are read (theory-named first, predicted direction = strongest candidate, unexplained split
+  needs a mechanism). **Operator correction (same day): "i dont want a pre registered test list, i want full test to be done"** →
+  NO pre-registered block; every test is exhaustive, the verdict is the full screen's family-wise luck test; the theory card only
+  guides the reading.

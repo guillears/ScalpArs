@@ -65,7 +65,7 @@ _R in sys.path or sys.path.insert(0, _R)
 import scout_gatekit as _GK                                  # noqa: E402
 import scout_willy_hold_off as _HO                           # noqa: E402  (the shared orders-export loader: dedup, CLOSED wins, paper + live)
 from services.flatbase import (FLATBASE_SHORT, flatbase_gate, flatbase_observe_gate, price_path_exit, flatbase_params,   # noqa: E402
-                               BAR_MS, net_of_funding_pct, s4_scan, ST_NOT_FLAT, ST_MISSED, ST_REFUSED, ST_UNREADABLE,
+                               BAR_MS, BOUNDARY_MS, net_of_funding_pct, s4_scan, ST_NOT_FLAT, ST_MISSED, ST_REFUSED, ST_UNREADABLE,
                                ACT_ENTER, ACT_MISSED, ACT_EXPIRED, ACT_WAIT, STOP_REASONS)
 
 DL = 348
@@ -74,7 +74,8 @@ CACHE = os.path.join(_R, "reports", "backtest_cache", "scout_flatbase_short")
 SLIP_DEF = 0.03                                              # % per taker side when the real fills carry too few slippage stamps
 ORDER_COLS = ("opened_at", "closed_at", "pair", "direction", "status", "entry_strategy", "pnl", "pnl_percentage", "close_reason", "is_paper",
               "funding_fee_usd", "entry_price", "quantity", "entry_slippage_pct", "entry_mcap_usd", "cell_multiplier",
-              "entry_frenzy_run_pct", "entry_flatbase_off_peak_pct")
+              "entry_frenzy_run_pct", "entry_flatbase_off_peak_pct",
+              "entry_frenzy_spike_at", "entry_frenzy_hours", "entry_flatbase_peak_age_h")   # ⏱ (DECISION_LOG 401) hours since the peak
 FUND_URL = "https://fapi.binance.com/fapi/v1/fundingRate?symbol={s}&startTime={a}&endTime={b}&limit=1000"
 FB_COLS = ("e", "pair", "price", "fb_spike_at", "fb_status", "fb_entry_bar_at", "fb_turnover", "fb_mcap_usd", "fb_vol24_usd", "fb_flat14_pct")
 LEDGER_COLS = FB_COLS + ("t", "fb_reason", "fb_first_seen_at")
@@ -1232,6 +1233,7 @@ def run(now_ms=None, paths=None, dec_paths=None, since_ms=None, fetch=True, klin
     L.append(f"Observe-cohort verdict: {ov} — {otxt}")
     L += tp_shadow_lines(real, bud, now_ms, fetch=fetch, klines=(tp_klines or klines), slip=slip, state_path=tp_state_path,
                          final_path=tp_final_path) + [""]
+    L += peak_age_lines(real, bud, now_ms, fetch=fetch, klines=(tp_klines or klines))
     # ── DL 348 addendum: the three observe lines (each its own section, crash-isolated; the same Budget) ──
     try:
         frame = read_decisions(dec_paths)
@@ -1247,6 +1249,102 @@ def run(now_ms=None, paths=None, dec_paths=None, since_ms=None, fetch=True, klin
         except Exception as e:
             L += [f"## {title}", "", f"Unavailable this run ({str(e)[:120]}).", ""]
     return L
+
+
+# ⏱ (DECISION_LOG 401, operator 2026-10-28: "are we considering how long ago the peak was for each trade?") — the hours from the episode
+# peak bar's close to the S4 bar's close. The engine stamps it from 401 on (entry_flatbase_peak_age_h, services.flatbase.s4_scan); older fills
+# are REBUILT here from public 5m klines (spike bar → the S4 bar, the first row printing the highest high — the engine's exact rule), checked
+# against the stamped off-peak %. Observe line, no verdict: the buckets are fixed in advance and N < 10 per bucket is noise.
+PK_AGE_BUCKETS = ((0, 6, "< 6 h"), (6, 24, "6–24 h"), (24, 48, "24–48 h"), (48, 1e9, "≥ 48 h"))
+PK_AGE_OFFPK_TOL = 0.5                                         # pts: rebuilt off-peak vs the stamped one — beyond this the rebuild is flagged
+PK_AGE_MAX_LAG_MS = 15 * 60_000                                # a fill > 15 min after its S4 close cannot be pinned to the bar → unscored
+
+
+def peak_age_from_rows(rows, spike_ms, s4_open_ms):
+    """pure: closed 5m rows [open, o, h, l, c, v] → (hours from the peak bar to the S4 bar, off-peak % at the S4 close) on the rows from the
+    spike bar (open = spike_ms − 5 min) to the S4 bar; the FIRST row printing the highest high = the engine's peak bar. None when the S4 row or
+    the spike bar is missing."""
+    try:
+        a0, s4 = int(spike_ms) - BAR_MS, int(s4_open_ms)
+        w = [r for r in rows if a0 <= int(r[0]) <= s4]
+        if not w or int(w[0][0]) != a0 or int(w[-1][0]) != s4:
+            return None
+        pk_t, pk = None, None
+        for r in w:
+            if pk is None or float(r[2]) > pk:
+                pk, pk_t = float(r[2]), int(r[0])
+        return (s4 - pk_t) / 3_600_000, ((float(w[-1][4]) / pk - 1) * 100 if pk > 0 else None)
+    except (TypeError, ValueError, IndexError):
+        return None
+
+
+def peak_age_of(r, bud, now_ms, fetch=True, klines=None):
+    """one fill → (hours, source 'stamped' / 'rebuilt' / 'rebuilt ⚠ off-peak Δ', why-unscored). The S4 bar = the 5m bar closing on the last
+    4-h boundary at or before the fill (S4 always closes on the 4-h grid; opened_at is the insert time, up to the 300 s leash + the fill
+    after the close — review: snapping to the 5m grid could pick the bar after S4)."""
+    v = _fnum(getattr(r, "entry_flatbase_peak_age_h", None))
+    if v is not None:
+        return v, "stamped", None
+    sp = _ms(getattr(r, "entry_frenzy_spike_at", None))
+    if sp is None:
+        return None, None, "no spike stamp"
+    o_ms = int(pd.Timestamp(r.o).value // 1_000_000)
+    s4 = (o_ms // BOUNDARY_MS) * BOUNDARY_MS - BAR_MS
+    if o_ms - (s4 + BAR_MS) > PK_AGE_MAX_LAG_MS:
+        return None, None, "fill > 15 min after its 4-h close"
+    n = (s4 - (int(sp) - BAR_MS)) // BAR_MS + 1
+    if n < 1 or n > 1500:
+        return None, None, f"window {n} bars"
+    if klines is not None:
+        rows = klines(str(r.pair), int(sp) - BAR_MS, int(n))
+    else:
+        import scout_long_stop4 as _LS
+        rows = _LS.fapi_klines(str(r.pair), "5m", int(sp) - BAR_MS, int(n), bud, CACHE, now=now_ms, fetch=fetch)
+    if rows is None:
+        return None, None, "fetch stopped / --no-fetch"
+    got = peak_age_from_rows(rows, sp, s4)
+    if got is None:
+        return None, None, "klines miss the spike / S4 bar"
+    st_op = _fnum(getattr(r, "entry_flatbase_off_peak_pct", None))
+    flag = (st_op is not None and got[1] is not None and abs(got[1] - st_op) > PK_AGE_OFFPK_TOL)
+    return got[0], ("rebuilt ⚠ off-peak Δ" if flag else "rebuilt"), None
+
+
+def peak_age_lines(real, bud, now_ms, fetch=True, klines=None):
+    """the ⏱ section on the real closed fills (net of funding) — never raises."""
+    L = ["## ⏱ FLATBASE — hours since the episode peak at entry (DECISION_LOG 401, observe — no verdict)", ""]
+    try:
+        rows = list(real.sort_values("o").itertuples()) if len(real) else []
+        def one(r):
+            try:
+                return peak_age_of(r, bud, now_ms, fetch=fetch, klines=klines)
+            except Exception as e:                                   # one bad row is unscored, never the whole section
+                return None, None, f"error {str(e)[:40]}"
+        ev = [(r,) + one(r) for r in rows]
+        sc = [(r, h, src) for r, h, src, _ in ev if h is not None]
+        un = [(r, why) for r, h, _, why in ev if h is None]
+        n_st = sum(1 for _, _, s in sc if s == "stamped")
+        n_flag = sum(1 for _, _, s in sc if "⚠" in s)
+        L.append(f"Coverage: {len(rows)} closed fills · scored {len(sc)} (stamped {n_st} · rebuilt from public 5m klines {len(sc) - n_st}"
+                 + (f", {n_flag} with the rebuilt off-peak > ±{PK_AGE_OFFPK_TOL:g} pts from the stamp" if n_flag else "") + ")"
+                 + (" · BLIND SPOT — unscored: " + ", ".join(f"{r.pair} {r.o:%m-%d %H:%M} ({w})" for r, w in un) if un else ""))
+        if not sc:
+            return L + [""]
+        W = [h for r, h, _ in sc if r.net > 0]; Lo = [h for r, h, _ in sc if not r.net > 0]
+        med = lambda x: f"{sorted(x)[len(x) // 2] if len(x) % 2 else (sorted(x)[len(x) // 2 - 1] + sorted(x)[len(x) // 2]) / 2:.1f} h" if x else "—"
+        L.append(f"- winners N {len(W)} median {med(W)} · losers N {len(Lo)} median {med(Lo)}")
+        parts = []
+        for lo, hi, lab in PK_AGE_BUCKETS:
+            g = [r.net for r, h, _ in sc if lo <= h < hi]
+            parts.append(f"{lab} N {len(g)}" + (f" WR {sum(x > 0 for x in g) / len(g):.0%} avg {sum(g) / len(g):+.2f} %" if g else ""))
+        L.append("- buckets (fixed in advance; N < 10 = noise): " + " · ".join(parts))
+        L.append("- per fill: " + " · ".join(
+            f"{r.pair} {r.o:%m-%d %H:%M} peak {h:.1f} h ago" + (" (rebuilt)" if src != "stamped" else "") + ("⚠" if "⚠" in src else "")
+            + (f" / spike {float(r.entry_frenzy_hours):.0f} h" if _fnum(getattr(r, 'entry_frenzy_hours', None)) is not None else "")
+            + f" → {r.net:+.2f} %" for r, h, src in sc))
+        return L + [""]
+    except Exception as e:
+        return L + [f"Unavailable this run ({str(e)[:120]}).", ""]
 
 
 def main():

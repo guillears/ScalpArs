@@ -75,8 +75,8 @@ def test_scout_row_beats_null_only_for_a_real_signal(tmp_path):
     sig = SA.sleeve_row("SURGE_LONG", master=_master(str(tmp_path), _rows(80)), exports=[], null_1d=5, null_2d=0)
     assert sig["s1"] >= 1 and sig["top"][0][0] == "x" and sig["best"] > sig["null_best"]
     assert sig["pmax"] == 1 / 6 and "ABOVE LUCK" not in SA.verdict(sig)               # 5 shuffles → p ≥ 1/6: never "above" on 5
-    sig50 = SA.sleeve_row("SURGE_LONG", master=_master(str(tmp_path), _rows(80)), exports=[], null_1d=50, null_2d=0)
-    assert sig50["pmax"] <= 0.05 and "ABOVE LUCK" in SA.verdict(sig50)                # a real separator beats luck's best split
+    sig50 = SA.sleeve_row("SURGE_LONG", master=_master(str(tmp_path), _rows(80)), exports=[], null_1d=100, null_2d=0)
+    assert sig50["pmax"] <= 0.05 / 3 and "ABOVE LUCK" in SA.verdict(sig50)                # a real separator beats luck's best split
     noise = SA.sleeve_row("SURGE_LONG", master=_master(str(tmp_path), _rows(80, sep=False, seed=9)), exports=[], null_1d=50, null_2d=0)
     assert "not above luck" in SA.verdict(noise)
     assert "too few" in SA.verdict(dict(n=0))
@@ -215,7 +215,7 @@ def test_2d_null_and_per_level_verdict(tmp_path):
     assert sig["k2"] == 20 and "2D" in SA.verdict(sig)
     no2 = SA.sleeve_row("SURGE_LONG", master=_master(str(tmp_path), _rows(80)), exports=[], null_1d=5, null_2d=0)
     assert "2D: null not run" in SA.verdict(no2)
-    assert "p ≤ 0.025" in SA.verdict(sig)                                   # Bonferroni over the two levels
+    assert "p ≤ 0.017" in SA.verdict(sig)                                   # Bonferroni over the three levels (403)
 
 
 def test_2d_stats_only_and_nan_pnl():
@@ -251,3 +251,76 @@ def test_budget_sweeps_the_oldest_sleeve_first(tmp_path):
         assert L.index("| SURGE_LONG") < L.index("| BEARRUN_SHORT")                    # the table keeps its order
     finally:
         SA.sleeve_row = orig
+
+
+
+def _ref_3d(df, cols, top=10):
+    """an independent pandas reference for 3D FROM 2D: the reference 2D cells, top by strength, split inside by every other column."""
+    refA = {c: df[df.era == 'A'][c].dropna().median() for c in cols}
+    cells = []
+    for i in range(len(cols)):
+        for j in range(i + 1, len(cols)):
+            for q1 in (True, False):
+                for q2 in (True, False):
+                    d, ok = [], True
+                    for era in ('A', 'B'):
+                        de = df[df.era == era].dropna(subset=[cols[i], cols[j]])
+                        m = ((de[cols[i]] > refA[cols[i]]) == q1) & ((de[cols[j]] > refA[cols[j]]) == q2)
+                        if m.sum() < 5 or (~m).sum() < 5:
+                            ok = False
+                            break
+                        d.append(de[m].pnl_percentage.mean() - de[~m].pnl_percentage.mean())
+                    if ok and d[0] * d[1] > 0 and min(abs(d[0]), abs(d[1])) > 0.10:
+                        cells.append((min(abs(d[0]), abs(d[1])), i, j, (q1, q2)))
+    out = {}
+    for _s, i, j, (q1, q2) in sorted(cells, key=lambda z: (-z[0], z[1], z[2], z[3]))[:top]:
+        for c in range(len(cols)):
+            if c in (i, j):
+                continue
+            d, ok = [], True
+            for era in ('A', 'B'):
+                de = df[df.era == era]
+                cell = de[((de[cols[i]] > refA[cols[i]]) == q1) & de[cols[i]].notna() & ((de[cols[j]] > refA[cols[j]]) == q2) & de[cols[j]].notna()]
+                cell = cell[cell[cols[c]].notna()]
+                hi, lo = cell[cell[cols[c]] > refA[cols[c]]], cell[~(cell[cols[c]] > refA[cols[c]])]
+                if len(hi) < 5 or len(lo) < 5:
+                    ok = False
+                    break
+                d.append(hi.pnl_percentage.mean() - lo.pnl_percentage.mean())
+            if ok and d[0] * d[1] > 0 and min(abs(d[0]), abs(d[1])) > 0.10:
+                out[(i, j, q1, q2, c)] = d
+    return out
+
+
+def test_3d_from_2d_equals_the_reference_and_finds_a_planted_triple():
+    """DECISION_LOG 403: the top 2D cells × every other variable, inside the cell = a slow pandas reference (NaNs, ties); a planted
+    3-way effect (x0 > 0 AND x1 > 0: the winners are the x2 > 0 half) is found as the top triple (any of the three may be the "third")."""
+    rng = np.random.default_rng(5)
+    n, k = 400, 10
+    X = rng.normal(size=(n, k)).round(1)
+    X[rng.random((n, k)) < 0.05] = np.nan
+    df = pd.DataFrame(X, columns=[f"entry_c{i}" for i in range(k)])
+    x0, x1, x2 = (df[f"entry_c{i}"].fillna(0) for i in range(3))
+    df["pnl_percentage"] = np.where((x0 > 0) & (x1 > 0), np.where(x2 > 0, 1.5, -1.0), 0.0) + rng.normal(scale=0.3, size=n)
+    df["era"] = np.where(np.arange(n) < n // 2, "A", "B")
+    cols = list(df.columns[:k])
+    r, tests = SW.sweep_3d(df, None, cols)
+    ref = _ref_3d(df, cols)
+    assert len(r) == len(ref) > 0 and tests > 0
+    vals = sorted(ref.values())
+    got = sorted([[x.dA, x.dB] for x in r.itertuples()])
+    assert all(abs(a[0] - b[0]) < 1e-9 and abs(a[1] - b[1]) < 1e-9 for a, b in zip(got, vals))
+    top = r.iloc[0].cell + " | " + r.iloc[0].third                                  # the triple is symmetric: any of the three can be "third"
+    assert all(f"c{i}" in top for i in range(3)) and not any(f"c{i}" in top for i in range(3, k))
+    cnt, best = SW.sweep_3d(df, None, cols, stats_only=True)
+    assert cnt == len(r) and abs(best - r.strength.max()) < 1e-12
+    assert SW.sweep_3d(df.iloc[:40], None, cols, stats_only=True) == (0, 0.0)          # cells too small → nothing, never a guess
+
+
+def test_3d_level_in_the_scout_row(tmp_path):
+    sig = SA.sleeve_row("SURGE_LONG", master=_master(str(tmp_path), _rows(80)), exports=[], null_1d=5, null_2d=5)
+    assert sig["k3"] == 5 and "3D" in SA.verdict(sig)
+    L = "\n".join(SA.run(["SURGE_LONG"], master=_master(str(tmp_path), _rows(80)), exports=[], cache_path=os.path.join(str(tmp_path), "c3.json")))
+    sep = [x for x in L.split("\n") if x.startswith("|---")]
+    assert "3D-from-2D" in L and len(sep) == 1 and sep[0].count("|---") == 10       # 10 columns, the header and every row agree
+    assert all(x.count(" | ") == 9 for x in L.split("\n") if x.startswith("| SURGE_LONG"))

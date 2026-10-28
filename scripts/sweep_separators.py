@@ -7,7 +7,8 @@ Born from an operator reprimand: a sleeve verdict was once given after hand-test
 from the loop: for a given sleeve it tests EVERY numeric entry_* column at THREE
 granularities (sign split / median split / outer-tercile split) in BOTH eras
 (baseline vs fresh), and ranks candidates by cross-period direction-consistency. 2D: EVERY pair of
-numeric columns × 4 median quadrants (DECISION_LOG 402 — was the top 36 only).
+numeric columns × 4 median quadrants (DECISION_LOG 402 — was the top 36 only). 3D FROM 2D: the 10 strongest
+2D cells, each split inside by every other variable (DECISION_LOG 403).
 
 RULES OF USE (locked in CLAUDE.md):
 - Any sleeve-level verdict ("no separator", "disable", "demote") MUST cite this sweep.
@@ -298,7 +299,91 @@ def sweep_2d(df, res, cands, stats_only=False):
     if stats_only:
         return cnt, best
     r = pd.DataFrame(out, columns=["pair", "dA", "dB", "strength"]) if out else empty
-    return (r.sort_values("strength", ascending=False).reset_index(drop=True) if len(r) else r), k * (k - 1) // 2 * 4
+    return ((r.sort_values(["strength", "pair"], ascending=[False, True], kind="stable").reset_index(drop=True) if len(r) else r),
+            k * (k - 1) // 2 * 4)   # stable tie-break: the shown top 2D = the cells 3D extends
+
+
+TOP_CELLS_3D = 10        # the strongest consistent 2D cells extended by a third variable (DECISION_LOG 403)
+
+
+def _era_mats(df, cols, ref):
+    """pure, per era: (p, H, Lo) as float matrices — above / at-or-below the era-A median, unscored cells and fills without a finite
+    P&L in neither (same split as 2D)."""
+    out = {}
+    for e in ('A', 'B'):
+        de = df[df.era == e]
+        X = de[cols].apply(pd.to_numeric, errors="coerce").to_numpy(float)
+        p = pd.to_numeric(de.pnl_percentage, errors="coerce").to_numpy(float)
+        V = ~np.isnan(X) & np.isfinite(p)[:, None]
+        with np.errstate(invalid="ignore"):
+            H = V & (X > np.asarray(ref, float)[None, :])
+        out[e] = (np.where(np.isfinite(p), p, 0.0), H.astype(float), (V & ~H).astype(float))
+    return out
+
+
+def sweep_3d(df, res, cands, top=TOP_CELLS_3D, stats_only=False):
+    """3D FROM 2D (operator 2026-10-28, DECISION_LOG 403: "only in the 2D that make sense, to test a 3D"): the `top` strongest
+    cross-era-consistent 2D cells (from the EVERY-pair 2D), each split INSIDE the cell by EVERY other numeric variable above /
+    at-or-below its era-A median: Δ = mean P&L of the cell's high half − its low half (does a third variable separate the cell's winners
+    from its losers?), ≥ MIN_CELL_2D fills in each half per era, same sign and min |Δ| > MIN_DELTA_2D in both eras. The cells are picked
+    by the data, never by hand; the scout's null replays the WHOLE path (each shuffle re-picks its own top 2D cells), because picking the
+    best cell first is itself a selection the luck bar must include. → (DataFrame cell · third · dA · dB · strength, tests) or
+    (count, best) when stats_only. `res` is unused (kept for the callers). The halves are cut at the GLOBAL era-A median (same thresholds
+    as 1D / 2D), so a cell can split unevenly and drop under the 5-fill floor — "no 3D survivor" ≠ "no 3D effect"; tests = selected
+    cells × (k − 2), so it shrinks when fewer 2D cells survive."""
+    cols = [c for c in cands if c in df]
+    df = df[np.isfinite(pd.to_numeric(df.pnl_percentage, errors="coerce").to_numpy(float))]
+    k = len(cols)
+    empty = pd.DataFrame(columns=["cell", "third", "dA", "dB", "strength"])
+    if k < 3:
+        return (0, 0.0) if stats_only else (empty, 0)
+    ref = [pd.to_numeric(df[df.era == 'A'][c], errors="coerce").dropna().median() for c in cols]
+    qA, qB = (_quadrant_deltas(df[df.era == e], cols, ref) for e in ('A', 'B'))
+    iu = np.triu_indices(k, 1)
+    cells = []
+    for q in ((True, True), (True, False), (False, True), (False, False)):
+        a, okA = qA[q]; b, okB = qB[q]
+        a, b, ok = a[iu], b[iu], okA[iu] & okB[iu]
+        with np.errstate(invalid="ignore"):
+            st = np.minimum(np.abs(a), np.abs(b))
+            keep = ok & (a * b > 0) & (st > MIN_DELTA_2D)
+        cells += [(float(st[t]), int(iu[0][t]), int(iu[1][t]), q) for t in np.nonzero(keep)[0]]
+    cells = sorted(cells, key=lambda z: (-z[0], z[1], z[2], z[3]))[:top]
+    if not cells:
+        return (0, 0.0) if stats_only else (empty, 0)
+    M = _era_mats(df, cols, ref)
+    out, cnt, best, tests = [], 0, 0.0, 0
+    for _st, i, j, (q1, q2) in cells:
+        d, okc = {}, None
+        for e in ('A', 'B'):
+            p, H, Lo = M[e]
+            m = (H[:, i] if q1 else Lo[:, i]) * (H[:, j] if q2 else Lo[:, j])        # the 2D cell's fills in this era
+            nh, nl = m @ H, m @ Lo
+            sh, sl = (m * p) @ H, (m * p) @ Lo
+            with np.errstate(invalid="ignore", divide="ignore"):
+                d[e] = sh / nh - sl / nl
+            ok_e = (nh >= MIN_CELL_2D) & (nl >= MIN_CELL_2D)
+            okc = ok_e if okc is None else (okc & ok_e)
+        okc[[i, j]] = False                                                           # the third variable is a NEW one
+        tests += k - 2
+        a, b = d['A'], d['B']
+        with np.errstate(invalid="ignore"):
+            st3 = np.minimum(np.abs(a), np.abs(b))
+            keep = okc & (a * b > 0) & (st3 > MIN_DELTA_2D)
+        if stats_only:
+            cnt += int(keep.sum())
+            if keep.any():
+                best = max(best, float(st3[keep].max()))
+            continue
+        (n1, s1), (n2, s2) = sorted([(cols[i].replace('entry_', ''), q1), (cols[j].replace('entry_', ''), q2)])
+        lab = f"{n1}{'>' if s1 else '<='}med x {n2}{'>' if s2 else '<='}med"
+        for c in np.nonzero(keep)[0]:
+            out.append(dict(cell=lab, third=f"{cols[c].replace('entry_', '')} >med vs <=med", dA=float(a[c]), dB=float(b[c]),
+                            strength=float(st3[c])))
+    if stats_only:
+        return cnt, best
+    r = pd.DataFrame(out, columns=["cell", "third", "dA", "dB", "strength"]) if out else empty
+    return (r.sort_values("strength", ascending=False).reset_index(drop=True) if len(r) else r), tests
 
 
 def prepare(sleeve, split=None, master=MASTER, exports=None):
@@ -321,8 +406,8 @@ def prepare(sleeve, split=None, master=MASTER, exports=None):
     return df, split, note
 
 
-def run(sleeve, split=None, two_d=True, master=MASTER, exports=None):
-    """→ dict(note, n, split, cands, blind, res, cons, res2, n2) or dict(note) when not sweepable. Pure on its inputs."""
+def run(sleeve, split=None, two_d=True, master=MASTER, exports=None, three_d=True):
+    """→ dict(note, n, split, cands, blind, res, cons, res2, n2, res3, n3) or dict(note) when not sweepable. Pure on its inputs."""
     df, split, note = prepare(sleeve, split, master, exports)
     if df is None:
         return dict(note=note, n=0)
@@ -331,8 +416,9 @@ def run(sleeve, split=None, two_d=True, master=MASTER, exports=None):
     res["consistent"] = res.consistent.astype(bool)
     cons = res.loc[res.consistent.astype(bool)].sort_values('strength', ascending=False)
     r2, n2 = sweep_2d(df, res, cands) if two_d else (pd.DataFrame(), 0)
+    r3, n3 = sweep_3d(df, res, cands) if (two_d and three_d) else (pd.DataFrame(), 0)
     return dict(note=note, n=len(df), split=split, df=df, cands=cands, levels=levels, blind=blind, empty=empty, other=other,
-                res=res, cons=cons, res2=r2, n2=n2)
+                res=res, cons=cons, res2=r2, n2=n2, res3=r3, n3=n3)
 
 
 def main(argv):
@@ -367,6 +453,12 @@ def main(argv):
     if len(r2):
         for _, r in r2.sort_values('strength', ascending=False).head(12).iterrows():
             print(f"  {r['pair']:<70}{r.dA:>+7.2f}{r.dB:>+7.2f}  str {r.strength:.2f}")
+    print(f"\n── 3D FROM 2D (DECISION_LOG 403): the top {TOP_CELLS_3D} 2D cells × every other variable, inside the cell ──")
+    r3 = R.get("res3", pd.DataFrame())
+    print(f"tests: {R.get('n3', 0)} | consistent (high vs low half of the cell, |Δ|>0.10 both eras, minN 5/half/era): {len(r3)}")
+    if len(r3):
+        for _, r in r3.head(12).iterrows():
+            print(f"  {r['cell']:<52} | {r['third']:<40}{r.dA:>+7.2f}{r.dB:>+7.2f}  str {r.strength:.2f}")
 
 
 if __name__ == "__main__":

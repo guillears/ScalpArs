@@ -15,7 +15,7 @@ read. Then: **1D and 2D = ALWAYS EXHAUSTIVE** (every variable, every pair — NE
 2026-10-28: "i dont want a pre registered test list, i want full test to be done"); the theory only decides how the full results are
 READ: theory-named variables / pairs are read first and marked, a theory-named split in the predicted direction is the strongest kind
 of candidate, a split the theory cannot explain needs a mechanism before it goes anywhere. Verdict = the full screen's family-wise
-luck test (Scout 🔎 row). NO 3D for now (operator 2026-10-28 — revisit when sleeves have more fills). Every survivor still faces the locked gates + haircut · ① **WINNERS vs LOSERS on every variable**: `venv/bin/python
+luck test (Scout 🔎 row). 3D = FROM 2D (operator 2026-10-28, DECISION_LOG 403): the 10 strongest 2D cells, each split inside by every other variable, with its own whole-path luck test; each level at p ≤ 0.017. Every survivor still faces the locked gates + haircut · ① **WINNERS vs LOSERS on every variable**: `venv/bin/python
 scripts/sweep_separators.py <SLEEVE>` on the sleeve's REAL fills (master on today's stack + the current batch; `ALL` runs every sleeve) +
 the Scout 🔎 SEPARATOR SWEEP row (1D / EVERY-PAIR 2D survivors vs a shuffled null, blind spots < 80 % listed and read on their scored subset), then
 OOS per the W/L rule · ② **BEFORE → AFTER per batch** for every candidate filter / exit / size (master per batch + the
@@ -231,8 +231,8 @@ fix the line).
   two-sided, per era.
 - **One change at a time** per sleeve (clean attribution), each with a pre-committed revert gate.
 - **Winners vs losers = 100 % of the available variables** (operator 2026-10-11): every entry_* / stamped column on the fills (and the
-  decision journal where a fill lacks it), 1D at every granularity, exhaustive 2D (EVERY pair, DECISION_LOG 402), and NO 3D for
-  now (operator 2026-10-28: no pre-registered lists, full tests only; 3D revisited when sleeves have more fills). Every screen reports how many tests it ran and uses a max-statistic shuffled-label null over ALL
+  decision journal where a fill lacks it), 1D at every granularity, exhaustive 2D (EVERY pair, DECISION_LOG 402), and 3D FROM 2D
+  (DECISION_LOG 403: the top 2D cells × every other variable; no pre-registered lists, full tests only). Every screen reports how many tests it ran and uses a max-statistic shuffled-label null over ALL
   tests run (or BH-FDR), then out-of-sample confirmation on the half not used to find it; survivors are a SCREEN, not a ship list
   (locked gates + theory + haircut still apply) (memory feedback_exhaustive_2d_screen.md). The UI table
   "Entry Conditions by Strategy" shows only a subset — never treat it as the full screen. Every screen lists the columns it could NOT
@@ -246,7 +246,7 @@ analyses (§3b only after §3) → §7 sizing last → 0c bug gate on every find
 Two years on today's exact code = the first data large enough, across regimes (2025 bull · H1 2026 bear · H2 2026), to find real
 winner / loser patterns in FRENZY (LONG / WIDE / LITE / WILLY), MOMENTUM LONG / SHORT, fades, flips, surge, bull-run, bear-run. Method:
 - DISCOVER on one year, CONFIRM on the other (2025 → 2026 and 2026 → 2025) — the first true out-of-sample test we can run; a pattern
-  counts only if it holds in both years (and both halves of each), with the exhaustive 1D / 2D screen (no 3D for now, operator 10-28) + day-block null.
+  counts only if it holds in both years (and both halves of each), with the exhaustive 1D / 2D screen (+ 3D from 2D, DECISION_LOG 403) + day-block null.
 - Regime first: read every sleeve by regime (bull / bear / chop) — a sleeve that only works in one regime is an on / off switch (window
   units), not a per-trade filter.
 - Then the usual bars (expectancy bar for filters, Pattern W for size), three blocks (① live batch · ② master per batch · ③ yr6), the
@@ -273,7 +273,7 @@ winner / loser patterns in FRENZY (LONG / WIDE / LITE / WILLY), MOMENTUM LONG / 
 - SAME DEPTH FOR EVERY SLEEVE (operator 2026-10-12 "for all sleeves") — each gets its own section, in this order, with the same template:
   FRENZY LITE · FRENZY WILLY · FRENZY LONG · FRENZY WIDE · MOMENTUM LONG · MOMENTUM SHORT · SPIKE_FADE · FLIP shorts (FAN / others) · SURGE
   LONG / SHORT · BULL-RUN (GREEN + REARM door / age cap) · BEAR-RUN. Template per sleeve: ① baseline per year AND per MONTH of each year (2025 Jan→Dec, 2026 Jan→Oct) and per regime (N · WR · avg · CI ·
-  halves · $ at today's size) → ② winners vs losers → FILTERS FOR THE LOSERS (every entry variable 1D / every-pair 2D, no 3D for now, discover-on-one-year → confirm-on-the-
+  halves · $ at today's size) → ② winners vs losers → FILTERS FOR THE LOSERS (every entry variable 1D / every-pair 2D / 3D from 2D, discover-on-one-year → confirm-on-the-
   other, day-block null) → ③ exit grid (TP / stop / time cap / trail / split exit where it fits; live-stopped-cohort rule for stops) → ④
   regime switch (BTC trend / 1 h slope / 24 h / breadth / market volume, in day units) → ⑤ sizing (growth-optimal leverage, ruin with real
   maintenance margin) → ⑥ interactions (slots, one-position-per-coin, WILLY hold, LONG→LITE blocking) → recommendation + frozen revert gate,
@@ -461,7 +461,7 @@ new fills (opened after the 271 deploy, 2026-10-12) as their own line — they a
       winners LONG −0.77 · WIDE −0.80 · LITE −1.47.
 
 ## 3. FRENZY entry strategy (all FRENZY sleeves incl. WILLY)
-- [ ] Winners vs losers per sleeve — the §0c 100 %-of-variables screen (1D / every-pair 2D — no 3D for now, operator 10-28 — null + OOS).
+- [ ] Winners vs losers per sleeve — the §0c 100 %-of-variables screen (1D / every-pair 2D / 3D from 2D — DECISION_LOG 403 — null + OOS).
 - [ ] Every FRENZY watchlist / Scout line: GVOL_SPLIT, HOLD_FRENZY_EXEMPT, FRENZY_REENTRY_AFTER_WIN, FRENZY_STRETCHED, LITE_OFF30H3,
       LITE_GVOL24_LOW, FRENZY_STRONG revert gate (197 — Scout-only, scripts/scout_revert_gates.py, not in CURRENT_STATE), ATR cap 3.0 (250), bearish block (250), GREEN_CLOCK, WILLY_TURNOVER_BLOCKED, WILLY_HOLD.
 - [ ] **LITE_BTC1H_FALLING (DECISION_LOG 288, Scout scripts/scout_frenzy_wl_lines.py):** FRENZY_LITE fills with `entry_btc_1h_slope` ≤ 0

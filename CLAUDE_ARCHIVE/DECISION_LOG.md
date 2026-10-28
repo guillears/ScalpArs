@@ -10008,3 +10008,30 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   needs a mechanism). **Operator correction (same day): "i dont want a pre registered test list, i want full test to be done"** →
   NO pre-registered block; every test is exhaustive, the verdict is the full screen's family-wise luck test; the theory card only
   guides the reading.
+
+## (403) 2026-10-28 — 🔎 Separator sweep: 3D FROM 2D (analysis tool only, no trading change)
+- **Operator:** "only in the 2D that make sense, to test a 3D, agree? how you can frame that?" → framed and approved ("yes build it,
+  reviews then commit and push"). Replaces DL 402's "no 3D for now".
+- **Rule (scripts/sweep_separators.py `sweep_3d`):** the 10 strongest cross-era-consistent cells of the EVERY-pair 2D (picked by the
+  data, never by hand), each split INSIDE the cell by EVERY other numeric variable above / at-or-below its era-A median; Δ = mean P&L of
+  the cell's high half − its low half (does a third variable separate the cell's winners from its losers?); ≥ 5 fills per half per
+  era; same sign and min |Δ| > 0.10 in both eras. ≈ 10 × (k − 2) tests (≈ 400–640 per sleeve) instead of ≈ 550,000 for a blind 3D.
+  Matrix maths, ~0.1 s per sleeve; equal to a slow pandas reference (test); a planted 3-way effect comes out as the top triple.
+- **Luck test (scripts/scout_sweep_all.py):** the 3D null REPLAYS THE WHOLE PATH — each of the 200 2D shuffles re-picks its own top 2D
+  cells and extends them (the exact path the real data took). Deep review: calibrated — 60 no-signal seeds → false-alarm rate 0.017 at
+  the 0.017 bar; a fixed-cell null came out slightly MORE conservative here (the cell pick barely inflates the within-cell split), so
+  the whole-path null is chosen for exactness, not because the alternative is lenient. Family-wise 3D p (best 3D split vs each
+  shuffle's best). Three levels → each judged at 0.05 / 3 ≈ 0.017 (Bonferroni over 1D + 2D + 3D) — a further deliberate tightening of
+  the 1D / 2D bars (0.025 → 0.017); NULL_1D 100 → 150 so 2 / 151 still passes. New table column "3D-from-2D tests · survivors · top";
+  cache VERSION 5.
+- **First read (no nulls yet, survivors only):** FLATBASE 0 tests (cells too small) · WILLY 620 tests, 0 survivors · LITE 640, 0 ·
+  MOMENTUM:LONG 400 tests, 40 survivors (top: BTC dist-from-EMA13 > med × RSI > med, split by BTC ATR −0.51 / −0.37) — the luck test
+  decides; read at the batch review.
+- **Review fixes / notes (DL 403):** 3D matches an independent pandas version on 6 real sleeves (identical survivors and Δ);
+  planted 3-way effect → ABOVE LUCK at 3D (p 0.0099), 6 no-signal seeds never. Power: 3D needs a top 2D cell with ≥ 10 fills per era —
+  below ≈ 80 fills it cannot fire (today only MOMENTUM:LONG 40 · SPIKE_FADE 14 · BULLRUN_LONG 3 · MOMENTUM:SHORT 2 survivors). Cost:
+  3D adds ≈ 10 s per sleeve; NULL_1D 150 adds ≈ 50 % to the 1D null; this commit changes the source hash → every cached row
+  re-sweeps → ≈ 4–5 hourly scout runs before the table is full ("not swept this run" meanwhile; oldest first, no starvation).
+  Fixed: stable tie-break on the 2D order (the shown top 2D = the cells 3D extends); a "|" in a failed row's error no longer breaks
+  the table; a one-era sleeve says why. Not fixed: aliased columns (identical splits, e.g. volume_24h vs liquidity_cap) can take two
+  of the 10 cell slots — the null has the same property, p-values stay valid.

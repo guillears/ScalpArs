@@ -210,10 +210,20 @@
         /* 🧹 (DL 346) Sleeve select: a sleeve switched OFF in the live config (browsers that style <option>) */
         :root #flip-source-filter option.sleeve-off { color: var(--faint); }
 
+        /* 10-27 (DL 400): below 1,300 px the header row wraps — between 768 and 1,299 px (tablets, a phone at a Safari page zoom below
+           100 %) the right-hand group (Paper / Live · timer · Pause · Reset · nav · theme · logout) ran up to 510 px past the screen
+           (measured on the live page: 780 px → document 1,290; 1,024 → 1,284; 1,280 → 1,284). ≥ 1,300 px untouched (one line, as before). space-x-*
+           margins become the same column gaps so a wrapped item starts flush. */
+        @media (max-width: 1299px) {
+            :root header .container > .flex, :root header .container > .flex > .flex { flex-wrap: wrap; row-gap: 8px; }
+            :root header .container > .flex > .flex.space-x-4 { column-gap: 1rem; }
+            :root header .container > .flex > .flex.space-x-6 { column-gap: 1.5rem; }
+            :root header .container > .flex > .flex.space-x-4 > *, :root header .container > .flex > .flex.space-x-6 > * { margin-left: 0 !important; }
+        }
+
         /* phone: no page-level sideways scroll from the header row */
         @media (max-width: 767px) {
-            :root header .container > .flex { flex-wrap: wrap; row-gap: 8px; }
-            :root header .container > .flex > .flex { flex-wrap: wrap; row-gap: 8px; }
+            /* the header row's wrap lives in the (max-width: 1299px) block above (DL 400) */
             :root div:has(> #tab-bnb-swaps) { overflow-x: auto; }
             :root div:has(> #tab-bnb-swaps) > button { flex: none; }
             :root div:has(> div > #nav-epoch-btn) { flex-wrap: wrap; gap: 8px; }
@@ -533,7 +543,7 @@
                     
                     <!-- Reset Dropdown -->
                     <div class="relative" id="reset-dropdown-container">
-                        <button onclick="document.getElementById('reset-menu').classList.toggle('hidden')" class="px-4 py-1.5 text-sm rounded-lg font-semibold transition-all duration-200 border border-red-500/60 text-red-300 bg-red-500/10 hover:bg-red-500/20 hover:text-red-200 flex items-center space-x-2" title="Destructive — resets the batch (refused while positions are open)">
+                        <button onclick="toggleResetMenu()" class="px-4 py-1.5 text-sm rounded-lg font-semibold transition-all duration-200 border border-red-500/60 text-red-300 bg-red-500/10 hover:bg-red-500/20 hover:text-red-200 flex items-center space-x-2" title="Destructive — resets the batch (refused while positions are open)">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
                             </svg>
@@ -9645,6 +9655,19 @@
             } finally {
                 _toggleInFlight = false;
             }
+        }
+
+        // 📱 (DL 400 review) the Reset menu is right-aligned to its button (192 px wide); when the header wraps (< 1,300 px) Reset can
+        // start a line near the left edge → the menu would hang off-screen on the left. Opened → measured → flipped to left-aligned if so.
+        function toggleResetMenu() {
+            const m = document.getElementById('reset-menu');
+            if (!m) return;
+            m.classList.toggle('hidden');
+            if (m.classList.contains('hidden')) return;
+            m.style.left = ''; m.style.right = '';
+            try {
+                if (m.getBoundingClientRect().left < 8) { m.style.left = '0'; m.style.right = 'auto'; }
+            } catch (e) {}
         }
 
         async function resetBot(direction = 'ALL') {
@@ -24638,5 +24661,44 @@
             paintThemeBtn();
         })();
         </script>
+    <script>
+    // 📱 (DECISION_LOG 400) one-shot PHONE LAYOUT DIAGNOSTIC — touch devices only, 6 s after load, only when the page is laid out
+    // wider than the device screen (the 10-27 "desktop layout on the iPhone" report that a desktop browser cannot reproduce). Sends
+    // the layout numbers + the widest elements to /__layout-diag as a beacon (no response used; read from the nginx access log).
+    // Never throws, never blocks, no personal data (element ids / widths only). Remove once the cause is fixed.
+    (function () {
+        try {
+            if (!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches)) return;
+            setTimeout(function () {
+                try {
+                    // iOS keeps screen.width at the PORTRAIT width when turned → compare against the screen side matching the orientation
+                    var land = window.matchMedia('(orientation: landscape)').matches;
+                    var de = document.documentElement, vv = window.visualViewport;
+                    var sw = land ? Math.max(screen.width, screen.height) : Math.min(screen.width, screen.height);
+                    var iw = window.innerWidth, cw = de.clientWidth, dw = de.scrollWidth;
+                    if (iw <= sw + 8 && dw <= cw + 8) return;   // normal phone layout — nothing to report
+                    var list = Array.prototype.slice.call(document.querySelectorAll('body *')).filter(function (e) {
+                        var r = e.getBoundingClientRect();
+                        if (!(r.width > sw + 8)) return false;
+                        for (var i = 0; i < e.children.length; i++) {   // the deepest wide element: no child is wider than the screen
+                            if (e.children[i].getBoundingClientRect().width > sw + 8) return false;
+                        }
+                        for (var p = e.parentElement; p && p !== document.body; p = p.parentElement) {   // inside its own scroll box = fine
+                            if (getComputedStyle(p).overflowX !== 'visible') return false;
+                        }
+                        return getComputedStyle(e).position !== 'fixed';
+                    }).sort(function (a, b) { return b.getBoundingClientRect().width - a.getBoundingClientRect().width; }).slice(0, 6).map(function (e) {
+                        return encodeURIComponent((e.id || e.tagName.toLowerCase() + '.' + String(e.getAttribute('class') || '').split(' ')[0]).slice(0, 60))
+                               + ':' + Math.round(e.getBoundingClientRect().width);
+                    }).join(',');
+                    var q = 'sw=' + sw + '&iw=' + iw + '&cw=' + cw + '&dw=' + dw + '&vs=' + (vv ? vv.scale.toFixed(3) : '') +
+                            '&dpr=' + window.devicePixelRatio + '&o=' + (land ? 'L' : 'P') + '&w=' + list;
+                    if (navigator.sendBeacon) navigator.sendBeacon('/__layout-diag?' + q);
+                    else fetch('/__layout-diag?' + q, { method: 'POST', keepalive: true }).catch(function () {});
+                } catch (e) {}
+            }, 6000);
+        } catch (e) {}
+    })();
+    </script>
 </body>
 </html>

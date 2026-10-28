@@ -9919,3 +9919,27 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   320 px 398 → 320, 768 / 1280 identical. Noted, not changed: tablets 768–1113 px already scroll sideways from the header's status group
   (pre-existing, separate fix). Re-measured at 375 px: document width 375 = viewport, 0 elements past the
   edge outside a scroll container (with live-length header text: IP + "4d 05:11:13" + Pause), balance cards one column.
+
+## (400) 2026-10-27 — 📱 Header bar wraps below 1,300 px — no sideways scroll on tablets / a zoomed-out phone (operator: "yes make the bar wrap"; UI only, no trading / config change)
+- **Finding:** the operator's iPhone still showed the desktop layout after DL 399. The real dashboard measured in a browser at 390 px with
+  live data is correct (one card column, no overflow), and nginx logs show the phone loading as a normal mobile Safari — so the
+  phone's Safari PAGE ZOOM for scalpars.com (per-site, survives reloads) makes it behave like a ~780 px screen → md: layout. At those
+  widths the header's right-hand group (Paper / Live · timer · Pause · Reset · Dashboard / Live Terminal · theme · logout) did not wrap:
+  measured on the live page, document width 780 → 1,290 · 1,024 → 1,284 · 1,280 → 1,284 = the sideways scroll.
+- **Fix (templates/index.html):** `@media (max-width: 1299px)` — the header row and its two groups wrap (8 px row gap); space-x-4 / space-x-6
+  margins replaced by the same column gaps so a wrapped item starts flush. ≥ 1,300 px untouched (one line, as before — a rule at every
+  width wrapped the 1,440 px desktop, rejected). Measured on the live page with the exact rule (after layout settles): 780 → 780 ·
+  1,024 → 1,024 · 1,280 → 1,280 · 1,300 one line, 1,300 · 1,440 unchanged · 390 unchanged. Operator told how to reset Safari's page zoom.
+- **Review fixes:** closes the DL 399 noted item (tablets 768–1,113 px scrolling from the header). The phone header (< 768) now also runs
+  through this block (column gaps = the old space-x margins; the two duplicate phone rules removed). The Reset menu (right-aligned,
+  192 px) flips to left-aligned when opening it would hang off the left edge (a wrapped Reset can lead a line). Known limit: 1,300 is
+  tied to today's header content (~1,232 px natural row inside the 1,280 container) — a wider header (new chip) needs the breakpoint
+  re-measured. The page-zoom diagnosis is the most likely cause (live page correct at 390 px, phone UA mobile), not proven on the device.
+- **Operator: "I didn't change anything, yesterday was fine — a commit of today might have changed it."** Not reproducible off the device
+  (live page correct at 390 px in Chromium with live data), so a one-shot PHONE LAYOUT DIAGNOSTIC ships with this commit: touch devices
+  only, 6 s after load, only when the page is laid out wider than the screen → POST /__layout-diag?sw · iw · cw · dw · visualViewport scale
+  · dpr · orientation · the 6 widest deepest elements wider than the screen outside any scroll box (id or tag.class + width only; no text
+  or values). The screen width is taken for the current orientation (iOS keeps screen.width at the portrait width when turned). Read from the nginx / uvicorn access log.
+  Reading it: iw alone does not separate the causes (an overflowing element also raises iw) — a NAMED element in w = overflow; an empty
+  w with iw > sw = most likely page zoom (blind spots: fixed elements, html / body, overflow inside hidden / clip ancestors). Tested in mobile emulation (names a planted 900 px
+  element; skips table rows inside their scroll boxes). Remove once the cause is fixed.

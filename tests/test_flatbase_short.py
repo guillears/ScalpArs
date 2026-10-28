@@ -193,7 +193,7 @@ def test_exit_levels_are_price_moves():
     assert FB.price_path_exit(100.0, [[0, 100, 101, 99, 100, 1]] * 864, th, slip_pct=0.1)['gross_pct'] == pytest.approx((1 - 100.1 / 99.9) * 100)
     assert FB.max_hold_minutes(th) == 4320
     # a bad hand-edited value never widens: the study's level is used
-    assert FB.flatbase_params(_th(flatbase_stop_pct=0, flatbase_tp_pct=-1, flatbase_max_hours_after_spike=500))['stop'] == 15.0
+    assert FB.flatbase_params(_th(flatbase_stop_pct=0, flatbase_tp_pct=-1, flatbase_max_hours_after_spike=500))['stop'] == 10.0   # 🔁 (408) fallback = the live exit
 
 
 def test_backstop_and_resting_tp_price():
@@ -202,13 +202,13 @@ def test_backstop_and_resting_tp_price():
     from services.exec_shadow import resting_tp_price
     import config
     th = config.trading_config.thresholds
-    assert TE.bot_own_stop_pct(th, "FLATBASE_SHORT") == 15.0
-    assert TE.order_backstop_pct(th, "FLATBASE_SHORT", leverage=5) == 15.5                   # stop + 0.5, inside 92 % of liquidation at 5×
-    assert TE.row_backstop_pct(th, {"entry_strategy": "FLATBASE_SHORT", "leverage": 5}) == 15.5   # the heal / re-price sweeps' per-row rule
+    assert TE.bot_own_stop_pct(th, "FLATBASE_SHORT") == 10.0   # 🔁 DL 408 (+5 / −10; DL 348 shipped −15)
+    assert TE.order_backstop_pct(th, "FLATBASE_SHORT", leverage=5) == 10.5                   # stop + 0.5, inside 92 % of liquidation at 5×
+    assert TE.row_backstop_pct(th, {"entry_strategy": "FLATBASE_SHORT", "leverage": 5}) == 10.5   # the heal / re-price sweeps' per-row rule
     assert RTP_SLEEVES["FLATBASE_SHORT"] == "resting_tp_flatbase_enabled" and "FLATBASE_SHORT" in RTP_ROW_STRATEGIES
     row = NS(entry_strategy="FLATBASE_SHORT", entry_price=2.0, quantity=50.0, entry_fee=0.045, exit_override_at=None, direction="SHORT")
     net, why = rtp_row_target(th, row)
-    assert why == "FRENZY_TP" and resting_tp_price("SHORT", 2.0, 0.045, net, config.trading_config.maker_fee, 0.0001) == pytest.approx(1.84)
+    assert why == "FRENZY_TP" and resting_tp_price("SHORT", 2.0, 0.045, net, config.trading_config.maker_fee, 0.0001) == pytest.approx(1.90)
     assert rtp_row_target(NS(**dict(th.model_dump(), resting_tp_flatbase_enabled=False)), row) is None   # own switch
 
 
@@ -616,7 +616,7 @@ def test_exit_and_protection_sites_wired():
 # ── ⑧ config / UI / exports parity (D11 / D12) ───────────────────────────────────────────────────────────────────────────────────────
 
 FIELDS = {"flatbase_max_open": 10, "flatbase_short_enabled": True, "flatbase_flat_max": 0.444, "flatbase_min_vol_usd": 20e6, "flatbase_turnover_min": 1.0,
-          "flatbase_tp_pct": 8.0, "flatbase_stop_pct": 15.0, "flatbase_max_hold_hours": 72.0, "flatbase_min_hours_after_spike": 4.0,
+          "flatbase_tp_pct": 5.0, "flatbase_stop_pct": 10.0, "flatbase_max_hold_hours": 72.0, "flatbase_min_hours_after_spike": 4.0,
           "flatbase_max_hours_after_spike": 96.0, "flatbase_invest_mult": 0.2, "flatbase_lev_mult": 0.25, "resting_tp_flatbase_enabled": True}
 
 
@@ -733,9 +733,10 @@ def test_scout_gates_and_shadow_pricing(tmp_path):
     fund = []
     L = SC.run(now_ms=since + 30 * 86_400_000, paths=[str(orders)], dec_paths=[str(dec)], since_ms=since, klines=kl,
                funding=lambda sym, a, b: fund.append((sym, a, b)) or -0.5,
-               tp_klines=lambda *a: [], tp_state_path=str(tmp_path / "tp.json"), tp_final_path=str(tmp_path / "fin.json"),
+               tp_klines=lambda *a: [], fbx_state_path=str(tmp_path / "fbx.json"), tp_state_path=str(tmp_path / "tp.json"), tp_final_path=str(tmp_path / "fin.json"),
                 obs_fb2_state_path=str(tmp_path / "fb2.json"))   # (367) own path
     txt = "\n".join(L)
+    assert "FBX — +5 / −10 SWITCH-BACK GATE" in txt                                                         # 🔁 (408) the section runs inside run()
     assert "real (net of funding)" in txt and "funding unknown on 12 fill(s)" in txt                       # paper rows: no funding column
     assert "slippage 0.030 %/taker side, funding incl." in txt and fund and fund[0][0] == "SHUSDT"
     # a live fill's funding is netted: −$2 paid on a $100 notional turns +1.0 % into −1.0 %
@@ -747,7 +748,7 @@ def test_scout_gates_and_shadow_pricing(tmp_path):
     assert "operator-closed: 1" in txt and "N 12" in txt and "3 stop-outs in a row" in txt and "Gate verdict: REVIEW" in txt
     assert set(got) == {("SHUSDT", int(pd.Timestamp("2026-10-23T08:00:00").value // 10**6), 864)}      # the bar after the S4 bar, 72 h (also OBS-FB2's two cells, DL 407)
     assert "1 setups · 1 priced" in txt and "⏳ 12/30 real fills" in txt
-    assert SC.run(paths=[str(orders)], dec_paths=[str(dec)], since_ms=None, klines=kl, tp_state_path=None, tp_final_path=None) is not None
+    assert SC.run(paths=[str(orders)], dec_paths=[str(dec)], since_ms=None, klines=kl, fbx_state_path=str(tmp_path / "fbx.json"), tp_state_path=None, tp_final_path=None) is not None
 
 
 def test_gate_rules():
@@ -963,3 +964,114 @@ def test_obs_fb2_prefix_grows_until_the_day_count():
     more = clustered + [(days[8] + pd.Timedelta(hours=1), "XUSDT", 4.0), (days[9] + pd.Timedelta(hours=1), "YUSDT", 4.0)]
     assert SF2.obs_fb2_verdict(more, [-2.7] * 13)[0] in ("CANDIDATE", "KEEP_OBSERVING")       # the grown prefix reaches 10 days
     assert SF2.obs_fb2_verdict(more[:28], [-2.7] * 13, unpriced=2, unpriced_days=[days[10], days[11]])[0] == "COLLECTING"
+
+
+# ── 🔁🔒 FBX — the +5 / −10 SWITCH-BACK GATE (DECISION_LOG 408) ───────────────────────────────────────────────────────────────────
+def test_fbx_verdict_early_and_final():
+    import scout_flatbase_short as SF2
+    days = pd.date_range("2026-11-01", periods=10, freq="D")
+    rows = lambda o, n, k=16: [(days[i % 10] + pd.Timedelta(hours=i), f"P{i}USDT", o, n, 500.0) for i in range(k)]
+    r = SF2.fbx_verdict(rows(2.0, 0.5))                                            # +8 / −15 ahead by 1.5 pt → early revert
+    assert r["early"][0] == "REVERT" and r["final"][0] == "REVERT"
+    r = SF2.fbx_verdict(rows(1.0, 0.5))                                            # 0.5 pt behind: early passes, final reverts
+    assert r["early"][0] == "EARLY_OK" and r["final"][0] == "REVERT"
+    assert SF2.fbx_verdict(rows(-1.0, 0.5))["final"][0] == "KEEP"
+    assert SF2.fbx_verdict(rows(0.5, 0.5))["final"][0] == "KEEP"                   # a tie keeps +5 / −10 (≥)
+    assert SF2.fbx_verdict(rows(1.0, 0.5, 9))["early"][0] == "COLLECTING"
+    one_day = [(days[0] + pd.Timedelta(minutes=i), f"P{i}USDT", 0.0, 1.0, 500.0) for i in range(20)]
+    assert SF2.fbx_verdict(one_day)["final"][0] == "COLLECTING"                    # 15 fills but 1 day < 8 days
+    held = rows(-1.0, 0.5)
+    held[3] = held[3][:2] + (None, None, 500.0)
+    r = SF2.fbx_verdict(held)
+    assert r["early"][0] == "HOLD" and r["final"][0] == "HOLD"                     # an unpriced fill holds the read, never skipped
+    # $ at the actual notional: avg % ties-or-better but the bigger fills lose → revert
+    mix = [(days[i % 10] + pd.Timedelta(hours=i), f"P{i}USDT", 0.0, (3.0 if i % 2 else -2.0), (100.0 if i % 2 else 1000.0)) for i in range(16)]
+    assert SF2.fbx_verdict(mix)["final"][0] == "REVERT"
+
+
+def test_real_by_exit_books_the_exit_a_fill_ran_else_rewalks():
+    import scout_flatbase_short as SF2
+    sw = pd.Timestamp("2026-10-29 12:00")
+    real = pd.DataFrame(dict(o=[pd.Timestamp("2026-10-28 00:00"), pd.Timestamp("2026-10-29 08:00"), pd.Timestamp("2026-10-30 00:00")],
+                             c=[pd.Timestamp("2026-10-28 06:00"), pd.Timestamp("2026-10-29 14:00"), pd.Timestamp("2026-10-30 03:00")],
+                             pair=["AUSDT", "BUSDT", "CUSDT"], net=[7.9, -9.0, 4.9]))
+    w = lambda a, b: {"LIVE": {"net_pct": a}, "TP5_SL10": {"net_pct": b}}
+    walks = {(real.o[0], "AUSDT"): w(7.95, 4.95), (real.o[1], "BUSDT"): w(-15.1, -10.1), (real.o[2], "CUSDT"): w(7.9, 4.92)}
+    f = SF2.real_by_exit_fn(real, walks, int(sw.value // 1_000_000))
+    assert [x for _, x in f((8.0, 15.0))[0]] == [7.9, -15.1, 7.9]   # A booked (ran +8 / −15) · B straddled → re-walk · C re-walk
+    assert [x for _, x in f((5.0, 10.0))[0]] == [4.95, -10.1, 4.9]  # A re-walk · B re-walk · C booked (ran +5 / −10)
+    g = SF2.real_by_exit_fn(real, {}, None)                          # DL 408 not in git → everything ran +8 / −15
+    assert [x for _, x in g((8.0, 15.0))[0]] == [7.9, -9.0, 4.9] and g((5.0, 10.0)) == ([], 3)   # no walk → counted missing
+    h = SF2.real_by_exit_fn(real.assign(net=[None, -9.0, 4.9]), walks, int(sw.value // 1_000_000))
+    assert h((8.0, 15.0)) == ([(real.o[1], -15.1), (real.o[2], 7.9)], 1)   # an unreadable booked net is counted, never raises
+
+
+def test_fbx_lines_counts_fresh_and_shows_straddlers(tmp_path):
+    import scout_flatbase_short as SF2
+    sw = pd.Timestamp("2026-10-29 12:00")
+    real = pd.DataFrame(dict(o=[pd.Timestamp("2026-10-29 08:00"), pd.Timestamp("2026-10-30 00:00")],
+                             c=[pd.Timestamp("2026-10-29 14:00"), pd.Timestamp("2026-10-30 03:00")], pair=["XANUSDT", "CUSDT"],
+                             pct=[-9.0, 4.9], net=[-9.0, 4.9], entry_price=[1.0, 2.0], quantity=[500.0, 250.0]))
+    walks = {(real.o[1], "CUSDT"): {"LIVE": {"net_pct": 7.9, "bars": 30}, "TP5_SL10": {"net_pct": 4.92, "bars": 10}}}
+    out = " ".join(SF2.fbx_lines(real, walks, int(sw.value // 1_000_000), state_path=str(tmp_path / "fbx.json")))
+    assert "fresh fills" in out and "priced 1" in out and "XANUSDT 10-29 08:00 booked -9.00" in out and "EARLY: COLLECTING" in out
+    assert "not in git" in " ".join(SF2.fbx_lines(real, walks, None))
+
+
+def test_registry_flatbase_line_matches_the_live_exit():
+    import observe_registry as OR
+    d = OR.diffs(OR.EXIT["scout_flatbase_short.py"]["walks"], OR.thresholds())
+    assert not [k for k, _, _ in d if k.startswith("flatbase_")]     # re-based on DL 408 (the WILLY leg's own era is separate)
+
+
+def test_fbx_lines_freeze_supersede_finals_and_open(tmp_path):
+    import scout_flatbase_short as SF2
+    sw = pd.Timestamp("2026-10-29 12:00")
+    sw_ms = int(sw.value // 1_000_000)
+    o = [sw + pd.Timedelta(hours=1 + 13 * i) for i in range(12)]
+    real = pd.DataFrame(dict(o=o, c=[x + pd.Timedelta(hours=2) for x in o], pair=[f"P{i}USDT" for i in range(12)], pct=[4.9] * 12,
+                             net=[4.9] * 12, entry_price=[1.0] * 12, quantity=[500.0] * 12))
+    wk = lambda a, b: {"LIVE": {"net_pct": a, "bars": 20}, "TP5_SL10": {"net_pct": b, "bars": 8}}
+    walks = {(x, f"P{i}USDT"): wk(7.9, 4.9) for i, x in enumerate(o)}
+    st = str(tmp_path / "fbx.json")
+    t1 = " ".join(SF2.fbx_lines(real, walks, sw_ms, state_path=st))
+    assert "EARLY: REVERT" in t1 and "FINAL: SUPERSEDED" in t1                     # +8 / −15 ahead by 3 pt → revert, final superseded
+    walks2 = {k: wk(0.0, 4.9) for k in walks}                                      # the data changes — the frozen reads do not
+    t2 = " ".join(SF2.fbx_lines(real, walks2, sw_ms, state_path=st))
+    assert "EARLY: REVERT" in t2 and "frozen" in t2 and "FINAL: SUPERSEDED" in t2
+    # an UNPRICEABLE_FINAL fill is out (counted); an earlier still-open fill holds the read
+    fin = {(o[0], "P0USDT")}
+    t3 = " ".join(SF2.fbx_lines(real, walks2, sw_ms, state_path=None, finals=fin))
+    assert "UNPRICEABLE_FINAL 1" in t3 and "EARLY: EARLY_OK" in t3
+    opn = pd.DataFrame(dict(o=[o[0] + pd.Timedelta(minutes=5)], pair=["OPENUSDT"]))
+    t4 = " ".join(SF2.fbx_lines(real, walks2, sw_ms, state_path=None, open_rows=opn))
+    assert "still open 1" in t4 and "EARLY: HOLD" in t4
+
+
+def test_fbx_ran_eras():
+    import scout_flatbase_short as SF2
+    sw = pd.Timestamp("2026-10-29 12:00")
+    ms = int(sw.value // 1_000_000)
+    R = lambda o, c: NS(o=pd.Timestamp(o), c=(pd.NaT if c is None else pd.Timestamp(c)))
+    assert SF2.fbx_ran(R("2026-10-29 08:00", "2026-10-29 11:00"), ms) == "OLD"
+    assert SF2.fbx_ran(R("2026-10-29 13:00", "2026-10-29 15:00"), ms) == "NEW"
+    assert SF2.fbx_ran(R("2026-10-29 08:00", "2026-10-29 15:00"), ms) == "MIX"
+    assert SF2.fbx_ran(R("2026-10-29 08:00", "2026-10-29 15:00"), None) == "OLD"
+    end = int(pd.Timestamp("2026-11-05").value // 1_000_000)                      # a revert closes the +5 / −10 era
+    assert SF2.fbx_ran(R("2026-11-04 20:00", "2026-11-05 03:00"), ms, end) == "MIX"
+    assert SF2.fbx_ran(R("2026-11-04 20:00", "2026-11-04 23:00"), ms, end) == "NEW"
+
+
+def test_tp_shadow_parity_reads_the_exit_each_fill_ran():
+    import scout_flatbase_short as SF2
+    sw = pd.Timestamp("2026-10-29 12:00")
+    ms = int(sw.value // 1_000_000)
+    rows = [NS(o=pd.Timestamp("2026-10-29 13:00"), c=pd.Timestamp("2026-10-29 15:00"), pct=4.94, close_reason="FRENZY_TP"),
+            NS(o=pd.Timestamp("2026-10-28 13:00"), c=pd.Timestamp("2026-10-28 15:00"), pct=7.94, close_reason="FRENZY_TP")]
+    w = {"LIVE": {"net_pct": 7.94, "reason": "FRENZY_TP"}, "TP5_SL10": {"net_pct": 4.94, "reason": "FRENZY_TP"}}
+    for r in rows:   # the booked number matches the walk of the exit the fill ran (a post-switch +5 TP vs +8 walk would fail by 3 pts)
+        ref = w["LIVE"]["net_pct"] if SF2.fbx_ran(r, ms) == "OLD" else w[SF2.FBX_KEY]["net_pct"]
+        assert abs(ref - r.pct) <= SF2.TP_SH_PARITY_TOL
+    k = {"TP5_SL10": {"net_pct": -10.06, "reason": "STOP_LOSS"}, "LIVE": {"net_pct": 7.94, "reason": "FRENZY_TP"}}
+    line = SF2.tp_split_line("TP5_SL10", [(NS(close_reason="STOP_LOSS"), k)], kind=lambda r, w_: SF2._live_kind(w_["LIVE"]["reason"]))
+    assert "TP→cut winner 1" in line                                               # a post-switch stop is classed by the +8 rule's outcome

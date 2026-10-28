@@ -13,13 +13,13 @@ def test_open_row_badge_is_in_pnl_terms():
 
 
 def test_export_config_line_and_hover_name_both_terms():
-    assert "· exit TP +${_bt.flatbase_tp_pct ?? 8}% (price −${_bt.flatbase_tp_pct ?? 8}%)" in HTML
-    assert "SL −${_bt.flatbase_stop_pct ?? 15}% (price +${_bt.flatbase_stop_pct ?? 15}%)" in HTML
-    assert "· exit: TP +${_n(_fb.flatbase_tp_pct, 8)} % (price −${_n(_fb.flatbase_tp_pct, 8)} %)" in HTML
+    assert "· exit TP +${_bt.flatbase_tp_pct ?? 5}% (price −${_bt.flatbase_tp_pct ?? 5}%)" in HTML
+    assert "SL −${_bt.flatbase_stop_pct ?? 10}% (price +${_bt.flatbase_stop_pct ?? 10}%)" in HTML
+    assert "· exit: TP +${_n(_fb.flatbase_tp_pct, 5)} % (price −${_n(_fb.flatbase_tp_pct, 5)} %)" in HTML
 
 
 def test_monitor_line_and_hover_sl_half():
-    assert "· −${p.tp ?? 8}% / +${p.stop ?? 15}%" not in HTML
-    assert "· TP +${p.tp ?? 8}% (price −${p.tp ?? 8}%) / SL −${p.stop ?? 15}% (price +${p.stop ?? 15}%) / " in HTML
-    assert "SL −${_n(_fb.flatbase_stop_pct, 15)} % (price +${_n(_fb.flatbase_stop_pct, 15)} %)" in HTML
+    assert "· −${p.tp ?? 5}% / +${p.stop ?? 10}%" not in HTML
+    assert "· TP +${p.tp ?? 5}% (price −${p.tp ?? 5}%) / SL −${p.stop ?? 10}% (price +${p.stop ?? 10}%) / " in HTML
+    assert "SL −${_n(_fb.flatbase_stop_pct, 10)} % (price +${_n(_fb.flatbase_stop_pct, 10)} %)" in HTML
 

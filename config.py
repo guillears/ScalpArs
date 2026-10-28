@@ -1594,8 +1594,12 @@ class SignalThresholds(BaseModel):
     flatbase_flat_max: float = 0.444              # 14-day close range at the base bar, a fraction (0.444 = 44.4 %; study tertile 44.39 %)
     flatbase_min_vol_usd: float = 20e6            # 24 h quote volume at the entry bar (kline volume × typical price)
     flatbase_turnover_min: float = 1.0            # trade when 24 h volume / mcap > this; ≤ → observe-only shadow; unknown mcap → trade
-    flatbase_tp_pct: float = 8.0                  # take profit: price −8 % from the fill (resting maker limit)
-    flatbase_stop_pct: float = 15.0               # stop: price +15 % from the fill (bot stop; exchange backstop +0.5 beyond)
+    # 🔁 (DECISION_LOG 408, operator 2026-10-28, paper, below the DL 390 gate — acknowledged override): +8 / −15 → +5 / −10. B25 re-walk (9 priced
+    # fills): avg −4.88 → −1.76 %/fill, hold 5:23 → 2:50, DCR −1.96 → −0.67 %/day (KAT 71 % of the Δ); backtest Δ −0.23 / −0.73 / −0.61 per half
+    # (the caveat). 🔒 Switch-back gate (scout_flatbase_short FBX): the first 10 fills after the switch, +8 / −15 re-walk ahead by ≥ 1 pt → revert;
+    # at 15 fills on ≥ 8 days keep only if +5 / −10 ≥ +8 / −15 on avg % AND $ (actual notional), else revert.
+    flatbase_tp_pct: float = 5.0                  # take profit: price −5 % from the fill (resting maker limit; DL 348 shipped −8)
+    flatbase_stop_pct: float = 10.0               # stop: price +10 % from the fill (bot stop; exchange backstop beyond; DL 348 shipped +15)
     flatbase_max_hold_hours: float = 72.0         # time exit
     flatbase_min_hours_after_spike: float = 4.0   # S4: the boundary bar opens ≥ this long after the spike bar's open (48 bars)
     flatbase_max_hours_after_spike: float = 96.0  # … and ≤ this long (1,152 bars; ≤ 100 — the 5m window must hold the spike bar)

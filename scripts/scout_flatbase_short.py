@@ -3,7 +3,8 @@
 
 RULE (engine)   services/flatbase.py: a FRENZY episode on a FLAT 14-day base (range ≤ 44.4 %) is shorted at the study's S4 bar (first 4-h
                 close below the spike VWAP ≥ 4 h after the spike, 24 h volume ≥ $20M, ≤ 96 h) when turnover (24 h volume / mcap) > 1 — else
-                recorded OBSERVE-ONLY (flatbase_episodes ledger, status SHADOW, no order); unknown mcap → traded. Exit −8 % / +15 % / 72 h.
+                recorded OBSERVE-ONLY (flatbase_episodes ledger, status SHADOW, no order); unknown mcap → traded. Exit −8 % / +15 % / 72 h
+                (DL 348) → −5 % / +10 % / 72 h since DL 408 (the shadows stay priced at the frozen DL 348 rule; FBX = the switch-back gate).
 COHORT (real)   CLOSED FLATBASE_SHORT fills from the orders exports (paper + live via export_glob; dedup (opened_at, pair, direction), CLOSED
                 wins), opened ≥ the DL 348 deploy (git commit + 10 min; not in git → NOT EVALUABLE, nothing counted); operator-closed
                 (MANUAL / MANUAL_* / EXTERNAL_CLOSE) excluded — scout_gatekit.
@@ -459,7 +460,7 @@ def nonflat_lines(ctx):
         lab = "whole period (no real fill yet)"
     s_hi = [i["net"] for i in items if win(i["t"]) and i["tv"] is not None and i["tv"] > 1.0]
     s_lo = [i["net"] for i in items if win(i["t"]) and i["tv"] is not None and i["tv"] <= 1.0]
-    r_net = list(real.net) if len(real) else []
+    r_net = [x for _, x in ctx["real_rule"]] if ctx.get("real_rule") is not None else (list(real.net) if len(real) else [])   # 🔁 (408) at +8 / −15
     s_sh = [p for t, p in sh if win(t)]
     L.append(f"- {lab}: turnover > 1 — FLAT real {_st(r_net)} vs non-flat {_st(s_hi)} · turnover ≤ 1 — FLAT shadows {_st(s_sh)} vs non-flat {_st(s_lo)}")
     if r_net and s_hi:
@@ -892,13 +893,13 @@ def _live_kind(cr):
     return "STOP" if s in STOP_REASONS else "TIME" if s.startswith("MAX_HOLD") else "TP" if "TP" in s else "OTHER"
 
 
-def tp_split_line(k, ok):
+def tp_split_line(k, ok, kind=None):
     """the two-sided read of one shadow on every priced fill: live-STOPPED → saved / unchanged / deeper · live-TP → give-back (the shadow's
     lower TP) / cut winners (the shadow STOPPED a live winner: Δ ≈ −(TP_live + stop)) · live-TIME / other. n · ΣΔ each."""
     b = {}
     for r, w in ok:
         d = w[k]["net_pct"] - w["LIVE"]["net_pct"]
-        lk, sr = _live_kind(r.close_reason), str(w[k]["reason"])
+        lk, sr = (kind(r, w) if kind else _live_kind(r.close_reason)), str(w[k]["reason"])
         if lk == "STOP":
             c = "stopped→saved" if d > TP_SH_EPS else "stopped→deeper" if d < -TP_SH_EPS else "stopped→unchanged"
         elif lk == "TP":
@@ -1028,7 +1029,7 @@ def obs_pk_zone(run_pct, off_peak_pct):
 def obs_pk_lines(ok):
     """OBS-FB1 lines from the priced exit-shadow fills [(row, walks)] — never raises."""
     L = [f"🩳📋 OBS-FB1 (DECISION_LOG 389, frozen observe line, no verdict): zone = run ≤ {OBS_PK_RUN_MAX:g} % ∧ off-peak > {OBS_PK_OFFPK_MIN:g} % · "
-         f"live exit vs {OBS_PK_SHADOW} shadow · fresh = opened ≥ {OBS_PK_PIN:%Y-%m-%d %H:%M} UTC"]
+         f"the DL 348 rule +8 / −15 (\"live\" until DL 408; frozen to that era) vs {OBS_PK_SHADOW} shadow · fresh = opened ≥ {OBS_PK_PIN:%Y-%m-%d %H:%M} UTC"]
     try:
         def blk(rows, label):
             parts = []
@@ -1083,17 +1084,23 @@ def tp_hold_lines(ok):
         return [f"  ⏱ avg hold unreadable ({str(e)[:60]})"]
 
 
-def tp_shadow_lines(real, bud, now_ms, fetch=True, klines=None, slip=SLIP_DEF, state_path=TP_SH_STATE, final_path=TP_SH_FINAL):
+def tp_shadow_lines(real, bud, now_ms, fetch=True, klines=None, slip=SLIP_DEF, state_path=TP_SH_STATE, final_path=TP_SH_FINAL, walks_out=None,
+                    switch_ms=None, finals_out=None):
     """🔒 (DECISION_LOG 367) the frozen exit-shadow reads → printed lines. Δ = shadow − the live re-walk (same path, same fees / slippage).
     Split lines on every priced fill. Frozen sample = the first 30 real fills on ≥ 10 UTC days of the FLATBASE cohort run() builds (DL 348
     deploy + 10 min, every paper + live export, operator-closed out) — operator override 2026-10-24 ("COUNT THEM!"): the 6 motivating 10-24
     fills are counted (in-sample), the verdict prints the 30–50 % haircut; UNPRICEABLE_FINAL fills are out (counted).
     CANDIDATE (operator decides) iff avg Δ ≥ +0.10 ∧ day-block bootstrap Bonferroni LB > 0 ∧ no UTC day / fill ≥ 50 % of the positive Δ —
-    read only when parity on the sample ≥ 90 % ∧ 100 % on its live-stopped fills; else KEEP. A sample fill still HOLD holds. Never raises."""
+    read only when parity on the sample ≥ 90 % ∧ 100 % on its live-stopped fills; else KEEP. A sample fill still HOLD holds. Never raises.
+    🔁 (DL 408) "live" here = the DL 348 RULE +8 / −15 (_tp_live, frozen) — live until DL 408 switched the engine to +5 / −10 (TP5_SL10);
+    walks_out (dict) receives {(opened_at, pair): walk} for every PRICED fill, so run() re-uses these walks (no second fetch); finals_out (set)
+    the (opened_at, pair) of every UNPRICEABLE_FINAL fill. switch_ms (the DL 408 switch): parity reads each fill against the exit it RAN
+    (booked vs the +8 / −15 walk before the switch, vs the +5 / −10 walk after it; a fill open across the switch is out of parity) and the
+    split classes a post-switch fill by what the +8 / −15 rule WOULD have done (its walk's reason), not by its +5 / −10 close."""
     import json as _j
     ltp, lsl = _tp_live()
     L = [f"🎯 Exit shadows (DECISION_LOG {TP_SH_DL} / 370 / 390 — {', '.join(TP_SH_LATE)} added by DL 390, frozen, observe-only): "
-         f"{' · '.join(f'{k} TP +{tp:g} % / SL −{sl:g} %' for k, (tp, sl) in TP_SHADOWS.items())} vs the live TP +{ltp:g} % / SL −{lsl:g} % on the "
+         f"{' · '.join(f'{k} TP +{tp:g} % / SL −{sl:g} %' for k, (tp, sl) in TP_SHADOWS.items())} vs the DL 348 rule TP +{ltp:g} % / SL −{lsl:g} % (called live below; the engine runs {FBX_KEY} since DL {FBX_DL}) on the "
          f"same path (72 h · fees · entry at the real fill, taker slip {slip:.3f} % on stop / time exits · funding left out)"]
     try:
         if final_path == TP_SH_FINAL:
@@ -1117,6 +1124,14 @@ def tp_shadow_lines(real, bud, now_ms, fetch=True, klines=None, slip=SLIP_DEF, s
             except Exception:
                 pass
         ok = [(r, w) for r, (s, w) in zip(rows_, ev) if s == "PRICED"]
+        if walks_out is not None:
+            walks_out.update({(r.o, str(r.pair)): w for r, w in ok})
+        if finals_out is not None:
+            finals_out.update((r.o, str(r.pair)) for r, (s, _) in zip(rows_, ev) if s == "UNPRICEABLE_FINAL")
+        _ran = lambda r: fbx_ran(r, switch_ms)                         # "OLD" (+8 / −15) · "NEW" (+5 / −10) · "MIX" (open across the switch)
+        _ref = lambda r, w: (w["LIVE"]["net_pct"] if _ran(r) == "OLD" else w[FBX_KEY]["net_pct"] if _ran(r) == "NEW" else None)
+        _par = lambda r, w, tol=TP_SH_PARITY_TOL: (_ref(r, w) is not None and abs(_ref(r, w) - float(r.pct)) <= tol)
+        _nmix = lambda xs: sum(1 for r, w in xs if _ref(r, w) is not None)
         n_fin = sum(1 for s, _ in ev if s == "UNPRICEABLE_FINAL")
         n_skip = sum(1 for r in rows_ if tp_path_start(int(pd.Timestamp(r.o).value // 1_000_000))[1])
         L.append(f"  priced {len(ok)} / {len(rows_)} real fills · hold {sum(1 for s, _ in ev if s == 'HOLD')} · UNPRICEABLE_FINAL {n_fin} (out, "
@@ -1124,15 +1139,16 @@ def tp_shadow_lines(real, bud, now_ms, fetch=True, klines=None, slip=SLIP_DEF, s
         if not ok:
             L.append(f"  0 / {len(rows_)} real fills priced yet")
         else:
-            par = sum(1 for r, w in ok if abs(w["LIVE"]["net_pct"] - float(r.pct)) <= TP_SH_PARITY_TOL) / len(ok)
-            L.append(f"  parity (live re-walk vs booked, ±{TP_SH_PARITY_TOL:g}) {par:.0%} on all priced · " + " · ".join(
+            par = sum(1 for r, w in ok if _par(r, w)) / max(_nmix(ok), 1)
+            L.append(f"  parity (booked vs the re-walk of the exit it ran, ±{TP_SH_PARITY_TOL:g}; {len(ok) - _nmix(ok)} open across the DL {FBX_DL} switch out) {par:.0%} on all priced · " + " · ".join(
                 [f"live re-walk avg {sum(w['LIVE']['net_pct'] for _, w in ok) / len(ok):+.3f}"]
                 + [f"{k} avg {sum(w[k]['net_pct'] for _, w in ok) / len(ok):+.3f} (Δ Σ {sum(w[k]['net_pct'] - w['LIVE']['net_pct'] for _, w in ok):+.2f})"
                    for k in TP_SHADOWS]))
             L += tp_hold_lines(ok)
             L.append("  per fill: " + " · ".join(f"{r.pair} {r.o:%m-%d %H:%M} booked {float(r.pct):+.2f} | live {w['LIVE']['net_pct']:+.2f} "
                                                  + " ".join(f"{k} {w[k]['net_pct']:+.2f}" for k in TP_SHADOWS) for r, w in ok[-20:]))
-            L += [tp_split_line(k, ok) for k in TP_SHADOWS]
+            L += [tp_split_line(k, ok, kind=lambda r, w: _live_kind(r.close_reason) if _ran(r) == "OLD" else _live_kind(w["LIVE"]["reason"]))
+                  for k in TP_SHADOWS]
             L += obs_pk_lines(ok)
         st = {}
         try:
@@ -1151,11 +1167,12 @@ def tp_shadow_lines(real, bud, now_ms, fetch=True, klines=None, slip=SLIP_DEF, s
                 break
         par_txt, par_ok = "", False
         if smp is not None and not any(s != "PRICED" for _, s, _ in smp):
-            par_s = sum(1 for r, _, w in smp if abs(w["LIVE"]["net_pct"] - float(r.pct)) <= TP_SH_PARITY_TOL) / len(smp)
-            stp = [(r, w) for r, _, w in smp if _live_kind(r.close_reason) == "STOP"]
+            _sm = [(r, w) for r, _, w in smp if _ref(r, w) is not None]          # (408) a fill open across the switch is out of parity
+            par_s = sum(1 for r, w in _sm if _par(r, w)) / max(len(_sm), 1)
+            stp = [(r, w) for r, w in _sm if _live_kind(r.close_reason) == "STOP"]
             # an exchange-BACKSTOP fill books at the backstop (≈ stop + 0.5) — the re-walk prices the bot stop: within 1.0 for those
             _tol = lambda r: TP_SH_PARITY_TOL + (0.5 if "BACKSTOP" in str(r.close_reason).upper() else 0.0)
-            stp_ok = sum(1 for r, w in stp if abs(w["LIVE"]["net_pct"] - float(r.pct)) <= _tol(r))
+            stp_ok = sum(1 for r, w in stp if _par(r, w, _tol(r)))
             par_ok = par_s >= TP_SH_PARITY_MIN and stp_ok == len(stp)
             par_txt = f"parity on the sample {par_s:.0%} (≥ {TP_SH_PARITY_MIN:.0%}) · live-stopped {stp_ok}/{len(stp)} (100 % required)"
             L.append(f"  frozen sample: {par_txt}" + ("" if par_ok else " → no verdict (parity)"))
@@ -1175,6 +1192,9 @@ def tp_shadow_lines(real, bud, now_ms, fetch=True, klines=None, slip=SLIP_DEF, s
                 continue
             v, txt = tp_gate_read(k, [(r, w) for r, _, w in smp])
             txt += f" · {par_txt}"
+            if switch_ms is not None:
+                txt += (f" · ⚠ since DL {FBX_DL} the engine runs +5 / −10: this read is shadow vs the +8 / −15 RULE (the live exit is {FBX_KEY}; "
+                        f"its own switch-back gate is FBX)")
             L.append(f"  {name}: {v} — {txt}")
             if state_path:
                 try:
@@ -1266,10 +1286,11 @@ def obs_fb2_verdict(cell_rows, real_same, unpriced=0, unpriced_days=()):
     return "KEEP_OBSERVING", txt + " → bar not met (frozen; never re-fit)"
 
 
-def obs_fb2_lines(real, bud, now_ms, fetch=True, klines=None, slip=SLIP_DEF, funding=None, state_path=OBS_FB2_STATE, shadows=None):
+def obs_fb2_lines(real, bud, now_ms, fetch=True, klines=None, slip=SLIP_DEF, funding=None, state_path=OBS_FB2_STATE, shadows=None,
+                  real_by_exit=None):
     import json as _j
     L = [f"🩳🔒 OBS-FB2 LOW-TURNOVER SWITCH (DECISION_LOG {OBS_FB2_DL}, frozen, observe-only): the REFUSED turnover ≤ 1 setups under "
-         "LOW×TODAY (+8 / −15) and LOW×TP5_SL10 (+5 / −10), funding incl., vs the traded (turnover > 1) fills at today's exit. Bar per cell "
+         "LOW×TODAY (+8 / −15, the DL 348 rule — the key keeps its name) and LOW×TP5_SL10 (+5 / −10, live since DL 408), funding incl., vs the traded (turnover > 1) fills under the same exit. Bar per cell "
          f"(fresh setups only, decided once at ≥ {OBS_FB2_N} on ≥ {OBS_FB2_DAYS} UTC days): CANDIDATE iff avg > 0 ∧ day-block P(mean > 0) ≥ "
          f"{OBS_FB2_P} ∧ avg − traded same-period avg ≥ +{OBS_FB2_MARGIN:g} pt ∧ no day / pair ≥ 50 % of the gain · RETIRE iff avg ≤ traded · "
          "else KEEP OBSERVING. Hold time + return per hour held shown (a shorter hold frees the slot and the coin)."]
@@ -1287,6 +1308,7 @@ def obs_fb2_lines(real, bud, now_ms, fetch=True, klines=None, slip=SLIP_DEF, fun
                     state = _j.load(fh) or {}
         except Exception:
             state = {}
+        cmp_txt = {}
         for cell in OBS_FB2_CELLS:
             rows, f_unk, fresh_all = [], 0, []
             for r in sh.sort_values("t").itertuples() if len(sh) else []:
@@ -1316,7 +1338,12 @@ def obs_fb2_lines(real, bud, now_ms, fetch=True, klines=None, slip=SLIP_DEF, fun
                         f"(median {hhmm(h[len(h) // 2])}) · {sum(v) / len(v) / max(avg_h / 60.0, 1e-9):+.3f} %/hour held")
             if fresh:
                 t0, t1 = min(x[0] for x in fresh), max(x[0] for x in fresh)
-                real_same = [float(x) for o, x in zip(real.o, real.net) if t0 <= o <= t1] if len(real) else []
+                if real_by_exit is not None:   # 🔁 (408) the traded fills under the cell's OWN exit (booked when they ran it, else re-walked)
+                    _rb, _rm = real_by_exit(OBS_FB2_CELLS[cell] or _tp_live())
+                    real_same = [float(x) for o, x in _rb if t0 <= o <= t1]
+                    cmp_txt[cell] = f"comparator N {len(real_same)}" + (f" ({_rm} closed fill(s) without a re-walk yet, left out)" if _rm else "")
+                else:
+                    real_same = [float(x) for o, x in zip(real.o, real.net) if t0 <= o <= t1] if len(real) else []
             else:
                 real_same = []
             if cell in state:
@@ -1332,20 +1359,206 @@ def obs_fb2_lines(real, bud, now_ms, fetch=True, klines=None, slip=SLIP_DEF, fun
                     except Exception:
                         pass
             L.append(f"  {cell}: FRESH {_st(fresh)} · registration (in-sample, never counted) {_st(reg)} → {v}: {txt}"
+                     + (f" · {cmp_txt[cell]}" if cell in cmp_txt else "")
                      + (f" · funding unknown on {f_unk} (counted 0)" if f_unk else ""))
         if reg_ms is None:
             L.append("  ⚠ the DECISION_LOG 407 commit is not in git yet — every setup is registration, nothing counted")
+        if real_by_exit is not None:
+            for cell, ex in OBS_FB2_CELLS.items():
+                _rb, _rm = real_by_exit(ex or _tp_live())
+                L.append(f"  traded under {cell}'s exit: N {len(_rb)} · avg {(sum(x for _, x in _rb) / len(_rb)) if _rb else float('nan'):+.3f} %"
+                         + (f" · {_rm} without a re-walk yet" if _rm else ""))
         if len(real):
             rh = [(pd.Timestamp(c) - pd.Timestamp(o)).total_seconds() / 60.0 for o, c in zip(real.o, real.c) if c is not None and not pd.isna(c)]
-            L.append(f"  traded comparator (turnover > 1, today's exit; funding where known — paper fills carry none, the shadows are charged it, a slight tilt against the shadows): N {len(real)} · avg {real.net.mean():+.3f} % · hold "
+            L.append(f"  traded comparator (turnover > 1; each cell is read against the traded fills under ITS exit — booked when the fill ran it, else re-walked with NO funding (DL 408); BOOKED as traded below; funding where known — paper fills carry none, the shadows are charged it, a slight tilt against the shadows): N {len(real)} · avg {real.net.mean():+.3f} % · hold "
                      f"{hhmm(sum(rh) / len(rh)) if rh else '–'}")
     except Exception as e:
         L.append(f"  OBS-FB2 unreadable ({type(e).__name__}: {str(e)[:80]})")
     return L
 
 
+# ═══════════════════════════ 🔁🔒 FBX — the +5 / −10 SWITCH-BACK GATE (DECISION_LOG 408, operator 2026-10-28, frozen) ═══════════════════════════
+# The engine runs FLATBASE at +5 / −10 since DL 408 (paper, an acknowledged override below the DL 390 bar). Every fill OPENED after the switch
+# (commit + 10 min) is re-walked on its own path under the old rule (+8 / −15 = tp_shadow_eval's "LIVE") and the new exit (TP5_SL10) — the same
+# walker, fees, slip, no funding (the shorter hold pays less funding: a tilt against +5 / −10). Fills open across the switch ran a hybrid →
+# shown apart, never counted. 🔒 decided once each, frozen to FBX_STATE:
+#   EARLY  the first FBX_EARLY_N fresh fills: (+8 / −15 avg − +5 / −10 avg) ≥ FBX_EARLY_MARGIN pt → REVERT to +8 / −15 · else EARLY_OK.
+#   FINAL  the shortest prefix with ≥ FBX_N fills on ≥ FBX_DAYS UTC days: KEEP iff +5 / −10 avg % ≥ +8 / −15 avg % AND Σ $ (each fill's actual
+#          notional) ≥ — else REVERT. An unpriced fill in a sample holds the read (never skipped). DCR before → after is the review's table
+#          (study_flatbase_exit_b25.py); at FLATBASE size the DCR order follows Σ $.
+FBX_DL = 408
+FBX_KEY = "TP5_SL10"                                          # the walk key of the live exit since DL 408
+FBX_EXIT = (5.0, 10.0)
+FBX_EARLY_N, FBX_EARLY_MARGIN, FBX_N, FBX_DAYS = 10, 1.0, 15, 8
+FBX_STATE = os.path.join(_R, "reports", ".flatbase_exit_switch_gate.json")
+FBX_END_MS = None                                             # 🔒 set to the revert commit (ms) if +5 / −10 is ever reverted — closes the era
+
+
+def fbx_ran(r, switch_ms, end_ms=None):
+    """which exit a closed fill RAN: "OLD" (+8 / −15: closed before the switch, or no switch in git) · "NEW" (+5 / −10: opened at / after the
+    switch and closed before end_ms) · "MIX" (open across the switch — or across the end). r needs .o / .c (naive UTC). PURE."""
+    end_ms = FBX_END_MS if end_ms is None else end_ms
+    if switch_ms is None:
+        return "OLD"
+    sw = pd.Timestamp(int(switch_ms), unit="ms")
+    c = getattr(r, "c", None)
+    c = None if c is None or pd.isna(c) else pd.Timestamp(c)
+    if c is not None and c < sw:
+        return "OLD"
+    if pd.Timestamp(r.o) >= sw and (end_ms is None or (c is not None and c < pd.Timestamp(int(end_ms), unit="ms"))):
+        return "NEW"
+    return "MIX"
+
+
+def _walk_hold_min(r, w_k):
+    o_ms = int(pd.Timestamp(r.o).value // 1_000_000)
+    return (tp_path_start(o_ms)[0] - o_ms) / 60_000.0 + (float(w_k["bars"]) - 0.5) * 5.0
+
+
+def fbx_verdict(rows):
+    """rows = [(t, pair, old_pct, new_pct, notional)] of the fresh fills by entry time (old / new None = not priced yet, or still OPEN — an
+    open fill earlier than the sample's last entry holds the read). PURE.
+    → dict(early=(verdict, text), final=(verdict, text)). verdicts: COLLECTING · HOLD · REVERT · EARLY_OK · KEEP."""
+    def _avg(xs):
+        return sum(xs) / len(xs)
+    out = {}
+    if len(rows) < FBX_EARLY_N:
+        out["early"] = ("COLLECTING", f"{len(rows)}/{FBX_EARLY_N} fresh fills")
+    else:
+        e = rows[:FBX_EARLY_N]
+        if any(x[2] is None or x[3] is None for x in e):
+            out["early"] = ("HOLD", f"{sum(x[2] is None or x[3] is None for x in e)} of the first {FBX_EARLY_N} not priced / still open")
+        else:
+            o, n = _avg([x[2] for x in e]), _avg([x[3] for x in e])
+            txt = f"first {FBX_EARLY_N}: +8 / −15 {o:+.3f} % vs +5 / −10 {n:+.3f} % (gap {o - n:+.3f} pt, revert at ≥ +{FBX_EARLY_MARGIN:g})"
+            out["early"] = ("REVERT", txt + " → REVERT to +8 / −15") if o - n >= FBX_EARLY_MARGIN else ("EARLY_OK", txt + " → keep, final read next")
+    smp, ds = None, set()
+    for i, x in enumerate(rows):
+        ds.add(pd.Timestamp(x[0]).date())
+        if i + 1 >= FBX_N and len(ds) >= FBX_DAYS:
+            smp = rows[:i + 1]
+            break
+    if smp is None:
+        out["final"] = ("COLLECTING", f"{len(rows)}/{FBX_N} fresh fills on {len(ds)}/{FBX_DAYS} UTC days")
+    elif any(x[2] is None or x[3] is None for x in smp):
+        out["final"] = ("HOLD", f"{sum(x[2] is None or x[3] is None for x in smp)} of the {len(smp)} sample fills not priced / still open")
+    else:
+        o, n = _avg([x[2] for x in smp]), _avg([x[3] for x in smp])
+        ou, nu = sum(x[2] / 100 * x[4] for x in smp), sum(x[3] / 100 * x[4] for x in smp)
+        keep = n >= o and nu >= ou
+        txt = (f"{len(smp)} fills on {len(ds)} days: +5 / −10 {n:+.3f} % · ${nu:+,.2f} vs +8 / −15 {o:+.3f} % · ${ou:+,.2f}")
+        out["final"] = ("KEEP", txt + " → KEEP +5 / −10") if keep else ("REVERT", txt + " → REVERT to +8 / −15")
+    return out
+
+
+def fbx_lines(real, walks, switch_ms, state_path=FBX_STATE, finals=(), open_rows=None):
+    """🔁🔒 (DL 408) the switch-back gate → printed lines. walks = {(opened_at, pair): walk} (tp_shadow_lines' PRICED walks); finals = the
+    UNPRICEABLE_FINAL keys (out, counted — like DL 367); open_rows = the still-OPEN FLATBASE rows (an open fill opened before the sample's
+    last entry holds the read: the sample is the first N by ENTRY time). An EARLY REVERT freezes FINAL as SUPERSEDED. Never raises."""
+    import json as _j
+    L = [f"🔁🔒 FBX — +5 / −10 SWITCH-BACK GATE (DECISION_LOG {FBX_DL}, frozen): fills opened after the switch, each re-walked under +8 / −15 "
+         f"(the DL 348 rule) and +5 / −10 (live) · EARLY: first {FBX_EARLY_N}, +8 / −15 ahead by ≥ {FBX_EARLY_MARGIN:g} pt → revert · FINAL: "
+         f"{FBX_N} fills on ≥ {FBX_DAYS} days, keep iff +5 / −10 ≥ +8 / −15 on avg % AND $ (actual notional), else revert · no funding either "
+         "side (the shorter hold pays less: a tilt against +5 / −10)"]
+    try:
+        if switch_ms is None:
+            return L + [f"  ⚠ the DECISION_LOG {FBX_DL} commit is not in git yet — nothing counted"]
+        sw = pd.Timestamp(int(switch_ms), unit="ms")
+        rs = real.sort_values("o") if len(real) else real
+        fin = set(finals or ())
+        kind = [fbx_ran(r, switch_ms) for r in rs.itertuples()] if len(rs) else []
+        fresh = [r for r, k in zip(rs.itertuples(), kind) if k == "NEW" and (r.o, str(r.pair)) not in fin]
+        n_fin = sum(1 for r, k in zip(rs.itertuples(), kind) if k == "NEW" and (r.o, str(r.pair)) in fin)
+        cross = [r for r, k in zip(rs.itertuples(), kind) if k == "MIX"]
+        rows, ok = [], []
+        for r in fresh:
+            w = walks.get((r.o, str(r.pair)))
+            notional = (_fnum(r.entry_price) or 0.0) * (_fnum(r.quantity) or 0.0)   # the ACTUAL notional (an unreadable size counts $0)
+            if w is None:
+                rows.append((r.o, str(r.pair), None, None, notional))
+                continue
+            rows.append((r.o, str(r.pair), float(w["LIVE"]["net_pct"]), float(w[FBX_KEY]["net_pct"]), notional))
+            ok.append((r, w))
+        n_open = 0
+        if open_rows is not None and len(open_rows):
+            op = [(pd.Timestamp(o), str(pr)) for o, pr in zip(open_rows.o, open_rows.pair) if not pd.isna(o) and pd.Timestamp(o) >= sw]
+            n_open = len(op)
+            rows += [(o, pr, None, None, 0.0) for o, pr in op]
+            rows.sort(key=lambda x: pd.Timestamp(x[0]))
+        L.append(f"  fresh fills (opened ≥ {sw:%Y-%m-%d %H:%M} UTC): {len(fresh)} closed · priced {len(ok)} · still open {n_open} (hold the read "
+                 f"when earlier than the sample's last entry) · UNPRICEABLE_FINAL {n_fin} (out, counted) · straddled the switch (hybrid, not "
+                 "counted): " + (", ".join(f"{r.pair} {r.o:%m-%d %H:%M} booked {float(r.pct):+.2f}" for r in cross) or "none"))
+        if ok:
+            import review_math as _RM
+            par = sum(1 for r, w in ok if abs(float(w[FBX_KEY]["net_pct"]) - float(r.pct)) <= TP_SH_PARITY_TOL) / len(ok)
+            o = [float(w["LIVE"]["net_pct"]) for _, w in ok]
+            n = [float(w[FBX_KEY]["net_pct"]) for _, w in ok]
+            ho = [_walk_hold_min(r, w["LIVE"]) for r, w in ok]
+            hn = [_walk_hold_min(r, w[FBX_KEY]) for r, w in ok]
+            L.append(f"  booked vs +5 / −10 re-walk parity (±{TP_SH_PARITY_TOL:g}) {par:.0%} · +8 / −15: WR {sum(x > 0 for x in o) / len(o):.0%} · "
+                     f"avg {sum(o) / len(o):+.3f} % · hold {hhmm(sum(ho) / len(ho))} → +5 / −10: WR {sum(x > 0 for x in n) / len(n):.0%} · "
+                     f"avg {sum(n) / len(n):+.3f} % · hold {hhmm(sum(hn) / len(hn))}")
+            L.append("  🧮 " + _RM.loo_text([b - a for a, b in zip(o, n)], [f"{r.pair} {r.o:%m-%d}" for r, _ in ok]))
+        st = {}
+        try:
+            if state_path and os.path.exists(state_path):
+                with open(state_path, encoding="utf-8") as fh:
+                    st = _j.load(fh) or {}
+        except Exception:
+            st = {}
+        res = fbx_verdict(rows)
+        if st.get("early", {}).get("verdict") == "REVERT" or res["early"][0] == "REVERT":
+            res["final"] = ("SUPERSEDED", "the EARLY read reverted — no final read")
+        for k in ("early", "final"):
+            if k in st:
+                L.append(f"  {k.upper()}: {st[k]['verdict']} — {st[k]['text']} (frozen {st[k]['at']})")
+                continue
+            v, txt = res[k]
+            L.append(f"  {k.upper()}: {v} — {txt}")
+            if v in ("REVERT", "EARLY_OK", "KEEP", "SUPERSEDED") and state_path:
+                st[k] = dict(verdict=v, text=txt, at=pd.Timestamp.now("UTC").isoformat()[:16])
+                try:
+                    with open(state_path, "w", encoding="utf-8") as fh:
+                        _j.dump(st, fh, indent=1)
+                except Exception:
+                    pass
+    except Exception as e:
+        L.append(f"  FBX unreadable ({type(e).__name__}: {str(e)[:80]})")
+    return L
+
+
+def real_by_exit_fn(real, walks, switch_ms):
+    """🔁 (DL 408) → f(exit (tp, sl)) → ([(opened_at, net %)], n_missing): each traded fill under THAT exit — its booked net (funding incl.
+    when known) when the fill ran it whole (fbx_ran), else its re-walk (no funding); n_missing = fills that need a re-walk and have none
+    yet (HOLD / budget / UNPRICEABLE_FINAL) or an unreadable booked net — left out and COUNTED (the caller prints / holds on them).
+    switch_ms None (DL 408 not in git) → every fill ran +8 / −15."""
+    rule = _tp_live()
+
+    def f(exit_):
+        exit_ = (float(exit_[0]), float(exit_[1]))
+        key = "LIVE" if exit_ == rule else next((k for k, v in TP_SHADOWS.items() if (float(v[0]), float(v[1])) == exit_), None)
+        out, miss = [], 0
+        for r in (real.sort_values("o").itertuples() if len(real) else []):
+            k = fbx_ran(r, switch_ms)
+            ran = rule if k == "OLD" else FBX_EXIT if k == "NEW" else None
+            if ran == exit_:
+                x = _fnum(r.net)
+                if x is None:
+                    miss += 1
+                else:
+                    out.append((r.o, x))
+                continue
+            w = walks.get((r.o, str(r.pair)))
+            if key is not None and w is not None and key in w:
+                out.append((r.o, float(w[key]["net_pct"])))
+            else:
+                miss += 1
+        return out, miss
+    return f
+
+
 def run(now_ms=None, paths=None, dec_paths=None, since_ms=None, fetch=True, klines=None, funding=None, klines1m=None, th_long=None,
-        tp_state_path=TP_SH_STATE, tp_klines=None, tp_final_path=TP_SH_FINAL, obs_fb2_state_path=OBS_FB2_STATE):
+        tp_state_path=TP_SH_STATE, tp_klines=None, tp_final_path=TP_SH_FINAL, obs_fb2_state_path=OBS_FB2_STATE, fbx_state_path=FBX_STATE):
     L = [f"## 🩳 FLATBASE_SHORT — flat-base FRENZY short (DECISION_LOG {DL}, discipline override, ALERT-only gates)", ""]
     now_ms = int(time.time() * 1000) if now_ms is None else int(now_ms)
     if since_ms is None:
@@ -1363,7 +1576,7 @@ def run(now_ms=None, paths=None, dec_paths=None, since_ms=None, fetch=True, klin
                                             f"Σ {real.net.sum():+.2f} pts · ${real.usd.sum():+.2f}" if len(real) else "N 0")
              + (f" · funding unknown on {_unk} fill(s) (paper / unread — pnl % only)" if _unk else ""))
     v, txt = flatbase_gate([(r.o.to_pydatetime(), r.net, r.close_reason) for r in real.itertuples()])
-    L.append(f"Gate verdict: {v} — {txt}")
+    L.append(f"Gate verdict: {v} — {txt} (booked as traded: +8 / −15 until DL {FBX_DL}, +5 / −10 after)")
     L += resize_lines(real)
     sh = load_shadows(dec_paths)
     sh = sh[sh.t >= since] if len(sh) else sh
@@ -1372,10 +1585,21 @@ def run(now_ms=None, paths=None, dec_paths=None, since_ms=None, fetch=True, klin
     _sl = pd.to_numeric(real.entry_slippage_pct, errors="coerce").dropna() if len(real) else pd.Series(dtype=float)
     slip = float(_sl.median()) if len(_sl) >= 5 else SLIP_DEF
     priced, f_unk = [], 0
-    for r in sh.itertuples():
+    for r in sh.itertuples():                                          # the observe cohort first — its fetches keep their place in the Budget
         p_ = price_shadow(r, bud, now_ms, fetch=fetch, klines=klines, slip_pct=slip, funding=funding)
         if p_ is not None:
             priced.append((r.t, p_[0])); f_unk += 0 if p_[1] else 1
+    walks, finals = {}, set()
+    sw_ms = _GK.dl_deploy_ms(FBX_DL, lag_min=10, label="FLATBASE exit switch")
+    tp_L = tp_shadow_lines(real, bud, now_ms, fetch=fetch, klines=(tp_klines or klines), slip=slip, state_path=tp_state_path,
+                           final_path=tp_final_path, walks_out=walks, switch_ms=sw_ms, finals_out=finals)
+    try:                                                               # 🔁 (408) the traded fills at the DL 348 rule — the shadows' exit
+        rbe = real_by_exit_fn(real, walks, sw_ms)
+        real_rule, rule_miss = rbe(_tp_live())
+    except Exception as e:
+        rbe, rule_miss = None, 0
+        real_rule = [(o, float(x)) for o, x in zip(real.o, real.net) if _fnum(x) is not None] if len(real) else []
+        L.append(f"⚠ same-exit comparator unreadable ({type(e).__name__}: {str(e)[:60]}) — booked P&L used")
     if len(real) and priced:   # the same period as the real cohort: shadows from the first to the last real fill
         t0, t1 = real.o.min(), real.o.max()
         same = [p for t, p in priced if t0 <= t <= t1]
@@ -1385,19 +1609,23 @@ def run(now_ms=None, paths=None, dec_paths=None, since_ms=None, fetch=True, klin
              + (f"; unknown on {f_unk}" if f_unk else "") + ")"
              + (f" · avg {sum(p for _, p in priced) / len(priced):+.3f} %" if priced else "")
              + (f" · ⚠ fetch stopped: {bud.why}" if bud.stop else ""))
-    ov, otxt = flatbase_observe_gate(list(real.net), same)
-    L.append(f"Observe-cohort verdict: {ov} — {otxt}")
-    L += tp_shadow_lines(real, bud, now_ms, fetch=fetch, klines=(tp_klines or klines), slip=slip, state_path=tp_state_path,
-                         final_path=tp_final_path) + [""]
+    ov, otxt = flatbase_observe_gate([x for _, x in real_rule], same)   # 🔁 (408) real at +8 / −15 — the same exit the shadows are priced at
+    if rule_miss and ov != "COLLECTING":                               # a closed fill without its +8 / −15 number never silently drops out
+        ov, otxt = "HOLD", f"{rule_miss} closed fill(s) not re-walked at +8 / −15 yet — " + otxt
+    L.append(f"Observe-cohort verdict: {ov} — {otxt} (real fills at the DL 348 rule +8 / −15: booked when they ran it, re-walked after the "
+             f"DL {FBX_DL} switch · {len(real_rule)} of {len(real)} closed{f' · {rule_miss} without a re-walk yet' if rule_miss else ''})")
+    L += tp_L + [""]
+    _open = a[(a.status.astype(str) == "OPEN") & (a.es == FLATBASE_SHORT)] if len(a) else None   # still open in the newest export
+    L += fbx_lines(real, walks, sw_ms, state_path=fbx_state_path, finals=finals, open_rows=_open) + [""]   # 🔁🔒 DL 408
     L += obs_fb2_lines(real, bud, now_ms, fetch=fetch, klines=klines, slip=slip, funding=funding, shadows=sh,
-                       state_path=obs_fb2_state_path) + [""]   # 🩳🔒 DL 407 (run()'s own shadow cohort)
+                       state_path=obs_fb2_state_path, real_by_exit=rbe) + [""]   # 🩳🔒 DL 407 (run()'s own shadow cohort)
     L += peak_age_lines(real, bud, now_ms, fetch=fetch, klines=(tp_klines or klines))
     # ── DL 348 addendum: the three observe lines (each its own section, crash-isolated; the same Budget) ──
     try:
         frame = read_decisions(dec_paths)
         ledger = load_ledger(frame)
         ctx = dict(since_ms=int(since_ms), now_ms=now_ms, bud=bud, fetch=fetch, klines=klines, funding=funding, klines1m=klines1m, slip=slip,
-                   real=real, shadows=priced, frame=frame, ledger=ledger, orders=a, pts=supply_points(ledger, a), th_long=th_long)
+                   real=real, real_rule=real_rule, shadows=priced, frame=frame, ledger=ledger, orders=a, pts=supply_points(ledger, a), th_long=th_long)
     except Exception as e:                                         # the gate output above stays; one block says why the lines are missing
         return L + ["## 🩳①②③ FLATBASE observe lines", "", f"observe lines unavailable ({str(e)[:120]}).", ""]
     for fn, title in ((nonflat_lines, "🩳① FLATBASE observe — NON-FLAT pumps"), (missed_lines, "🩳② FLATBASE observe — MISSED setups"),

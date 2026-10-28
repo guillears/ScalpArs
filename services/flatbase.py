@@ -38,7 +38,8 @@ FLAT_PAGES = 3                          # 3 × 1,500 ≥ 4,032 → request weigh
 FLAT_MAX_ATTEMPTS = 3                   # an unreadable history is retried on ≤ 2 later bars, then the episode is closed (fail-closed)
 ENTRY_MAX_LATE_S = 300                  # the order must reach open_position inside the SAME 5m bar (a missed boundary is never caught up)
 
-DEFAULTS = dict(flat_max=0.444, min_vol=20e6, turnover_min=1.0, tp=8.0, stop=15.0, max_hold_h=72.0, min_h=4.0, max_h=96.0,
+# 🔁 (DECISION_LOG 408) tp / stop = the LIVE exit +5 / −10 (DL 348 shipped +8 / −15): a bad config value falls back to the exit that runs
+DEFAULTS = dict(flat_max=0.444, min_vol=20e6, turnover_min=1.0, tp=5.0, stop=10.0, max_hold_h=72.0, min_h=4.0, max_h=96.0,
                 invest=0.2, lev=0.25, max_open=0.0)
 FIELDS = dict(flat_max='flatbase_flat_max', min_vol='flatbase_min_vol_usd', turnover_min='flatbase_turnover_min', tp='flatbase_tp_pct',
               stop='flatbase_stop_pct', max_hold_h='flatbase_max_hold_hours', min_h='flatbase_min_hours_after_spike',

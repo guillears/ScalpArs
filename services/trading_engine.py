@@ -646,7 +646,7 @@ def bot_own_stop_pct(th, entry_strategy):
         if es in ("FRENZY_WILLY", "FRENZY_WILLY_HT"):   # 🎲¼ (341) HT = WILLY's stop → WILLY's backstop
             v = abs(float(getattr(th, 'frenzy_willy_stop_pct', 0.0) or 0.0))
             return v if v > 0 else None
-        if es == FLATBASE_SHORT:   # 🩳 (348) the +15 % PRICE stop → its backstop rests at stop + MANUAL_BACKSTOP_MARGIN_PCT (liquidation-capped)
+        if es == FLATBASE_SHORT:   # 🩳 (348) the PRICE stop (+10 % since DL 408) → its backstop rests at stop + MANUAL_BACKSTOP_MARGIN_PCT (liquidation-capped)
             return flatbase_params(th)['stop']
     except (TypeError, ValueError):
         pass
@@ -19617,7 +19617,7 @@ class TradingEngine:
                     _rtp_on_m = ((order.entry_strategy or "") in FRENZY_STRATEGIES + FLATBASE_CLASS) and self._rtp_state(order.id, row=order) is not None
                     if (order.entry_strategy or "") == "SURGE_SHORT":
                         _br_close, _br_reason, _br_stop = surge_short_exit_for(_br_pnl, _br_peak, getattr(order, 'entry_atr_pct', None))
-                    elif (order.entry_strategy or "") in FLATBASE_CLASS:   # 🩳 (348) its OWN exit on PRICE levels: −8 % TP (resting maker limit) · +15 % stop · 72 h
+                    elif (order.entry_strategy or "") in FLATBASE_CLASS:   # 🩳 (348) its OWN exit on PRICE levels: −5 % TP (resting maker limit) · +10 % stop · 72 h (DL 408; was −8 / +15)
                         _br_close, _br_reason, _br_stop = flatbase_exit_for(order.entry_price, current_price, _held_minutes(order.opened_at),
                                                                             config.trading_config.thresholds, resting_tp=_rtp_on_m)
                     elif (order.entry_strategy or "") in WILLY_EXIT_CLASS:   # 🎲¼ (341) + HT · 🎲 Oct-8 (251): its OWN exit — frenzy_willy_tp_pct / frenzy_willy_stop_pct / frenzy_willy_max_hold_minutes (+1.25 / −4 / 90 since DL 281; never FRENZY's TP3) · ⏰ late TP (297)

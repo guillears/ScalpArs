@@ -81,7 +81,7 @@ def test_nonflat_line_cohort_s4_pricing_turnover_and_cache(SC, tmp_path):
                   ]).to_csv(orders, index=False)
     since = sp - 3 * DAY
     L = SC.run(now_ms=now, paths=[str(orders)], dec_paths=[str(dec)], since_ms=since, klines=kl, funding=lambda s, a, b: -0.2,
-               tp_state_path=None, tp_final_path=None)
+               fbx_state_path=None, tp_state_path=None, tp_final_path=None)
     txt = "\n".join(L)
     sec = txt[txt.index("## 🩳①"):txt.index("## 🩳②")]
     assert "Cohort: 3 NOT_FLAT episodes" in sec and "priced 2 · waiting 1" in sec                     # TRACKING folded into its decision
@@ -93,7 +93,7 @@ def test_nonflat_line_cohort_s4_pricing_turnover_and_cache(SC, tmp_path):
     assert "unscored (no mcap source) N 1" in sec and "FLAT real N 1" in sec
     # cached per setup: a second run with no network gives the same numbers
     L2 = SC.run(now_ms=now, paths=[str(orders)], dec_paths=[str(dec)], since_ms=since, klines=lambda *a: pytest.fail("refetched"),
-                funding=lambda s, a, b: pytest.fail("refetched"), tp_klines=lambda *a: [], tp_state_path=None, tp_final_path=None)   # (367) own path
+                funding=lambda s, a, b: pytest.fail("refetched"), tp_klines=lambda *a: [], fbx_state_path=None, tp_state_path=None, tp_final_path=None)   # (367) own path
     t2 = "\n".join(L2)
     assert f"> 1 N 1 · WR {100 if want > 0 else 0}% · avg {want:+.3f} %" in t2
     assert os.path.exists(os.path.join(SC.CACHE, "setups", f"nonflat_NF1USDT_{sp}_s0.030.json"))
@@ -142,7 +142,7 @@ def test_missed_line_per_reason(SC, tmp_path):
              fb_reason="14-day history unreadable after 3 reads (fail-closed)"),
         dict(e="FLATBASE", pair="SHUSDT", price=1.0, fb_spike_at=_iso(sp), fb_status="SHADOW", fb_entry_bar_at=_iso(s4))]).to_csv(dec, index=False)
     L = SC.run(now_ms=now, paths=[], dec_paths=[str(dec)], since_ms=sp - DAY, klines=kl, funding=lambda s, a, b: 0.0,
-               tp_state_path=None, tp_final_path=None)
+               fbx_state_path=None, tp_state_path=None, tp_final_path=None)
     txt = "\n".join(L)
     sec = txt[txt.index("## 🩳②"):txt.index("## 🩳③")]
     assert "MISSED 1 · FLATBASE_MAX_OPEN 1 · FLAT_UNREADABLE 1" in sec
@@ -213,7 +213,7 @@ def test_blocked_line_sleeves_holder_fold_and_net(SC, tmp_path):
                   dict(t=_iso(t_w), e="BLOCK", pair="B1USDT", dir="SHORT", gate="PAIR_HELD", n=1)]).to_csv(dec, index=False)
     now = ta + 20 * DAY
     L = SC.run(now_ms=now, paths=[str(orders)], dec_paths=[str(dec)], since_ms=ta - DAY, klines=lambda *a: [], funding=lambda *a: 0.0,
-               klines1m=m1, th_long=_th_long(), tp_state_path=None, tp_final_path=None)
+               klines1m=m1, th_long=_th_long(), fbx_state_path=None, tp_state_path=None, tp_final_path=None)
     txt = "\n".join(L)
     sec = txt[txt.index("## 🩳③"):]
     assert ("Cohort: 9 PAIR_HELD LONG blocks ≥ deploy (any holder) · held by a FLATBASE_SHORT (inferred from the orders exports): 7 sleeve-named · "
@@ -235,7 +235,7 @@ def test_blocked_line_sleeves_holder_fold_and_net(SC, tmp_path):
 
 def test_sections_crash_isolated(SC, tmp_path, monkeypatch):
     monkeypatch.setattr(SC, "missed_lines", lambda ctx: 1 / 0)
-    L = SC.run(now_ms=T0 + 30 * DAY, paths=[], dec_paths=[], since_ms=T0, klines=lambda *a: [], funding=lambda *a: 0.0, tp_state_path=None,
+    L = SC.run(now_ms=T0 + 30 * DAY, paths=[], dec_paths=[], since_ms=T0, klines=lambda *a: [], funding=lambda *a: 0.0, fbx_state_path=None, tp_state_path=None,
                tp_final_path=None)
     txt = "\n".join(L)
     assert "## 🩳① FLATBASE observe" in txt and "## 🩳② FLATBASE observe — MISSED setups\n\nUnavailable this run" in txt
@@ -244,14 +244,14 @@ def test_sections_crash_isolated(SC, tmp_path, monkeypatch):
 
 def test_ctx_failure_keeps_the_gate_and_no_block_skips_config(SC, tmp_path, monkeypatch):
     monkeypatch.setattr(SC, "read_decisions", lambda *a, **k: 1 / 0)
-    L = SC.run(now_ms=T0 + 30 * DAY, paths=[], dec_paths=[], since_ms=T0, klines=lambda *a: [], funding=lambda *a: 0.0, tp_state_path=None,
+    L = SC.run(now_ms=T0 + 30 * DAY, paths=[], dec_paths=[], since_ms=T0, klines=lambda *a: [], funding=lambda *a: 0.0, fbx_state_path=None, tp_state_path=None,
                tp_final_path=None)
     txt = "\n".join(L)
     assert "Gate verdict:" in txt and "observe lines unavailable (division by zero)" in txt and "## 🩳① FLATBASE observe —" not in txt
     monkeypatch.undo()
     monkeypatch.setattr(SC, "CACHE", str(tmp_path / "cache"))
     monkeypatch.setattr(SC, "_live_th", lambda: pytest.fail("config read with no block"))
-    L = SC.run(now_ms=T0 + 30 * DAY, paths=[], dec_paths=[], since_ms=T0, klines=lambda *a: [], funding=lambda *a: 0.0, tp_state_path=None,
+    L = SC.run(now_ms=T0 + 30 * DAY, paths=[], dec_paths=[], since_ms=T0, klines=lambda *a: [], funding=lambda *a: 0.0, fbx_state_path=None, tp_state_path=None,
                tp_final_path=None)
     assert "no PAIR_HELD LONG block yet" in "\n".join(L)
 
@@ -399,7 +399,7 @@ def test_exit_shadows_candidate_freeze_split_and_verbatim(tmp_path):
     import scout_flatbase_short as S
     kinds = ["dip" if (i // 10) % 2 == 0 else "win" for i in range(30)]           # every day: 2 dips + 1 win
     out = _tp_lines(S, kinds, tmp_path, "tp.json")
-    assert "priced 30 / 30" in out and "parity (live re-walk vs booked, ±0.5) 100%" in out
+    assert "priced 30 / 30" in out and "parity (booked vs the re-walk of the exit it ran, ±0.5; 0 open across the DL 408 switch out) 100%" in out
     assert "frozen sample: parity on the sample 100% (≥ 90%) · live-stopped 20/20 (100 % required)" in out
     for k in S.TP_SHADOWS:
         assert f"FB_TP_{k}: CANDIDATE" in out
@@ -496,9 +496,9 @@ def test_runs_in_tests_never_write_the_real_tp_state(SC, tmp_path):
         tree = ast.parse(open(os.path.join(ROOT, "tests", fn), encoding="utf-8").read())
         calls = [c for c in ast.walk(tree) if isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute) and c.func.attr == "run"
                  and isinstance(c.func.value, ast.Name) and c.func.value.id == "SC"]
-        assert calls and all({"tp_state_path", "tp_final_path"} <= {k.arg for k in c.keywords} for c in calls), fn
+        assert calls and all({"tp_state_path", "tp_final_path", "fbx_state_path"} <= {k.arg for k in c.keywords} for c in calls), fn   # (408)
     mt = lambda p: os.path.getmtime(p) if os.path.exists(p) else None
-    reals = (SC.TP_SH_STATE, os.path.join(ROOT, "reports", "backtest_cache", "scout_flatbase_short", SC.TP_SH_FINAL_NAME))
+    reals = (SC.TP_SH_STATE, SC.FBX_STATE, os.path.join(ROOT, "reports", "backtest_cache", "scout_flatbase_short", SC.TP_SH_FINAL_NAME))
     before = [mt(p) for p in reals]
     kinds = ["dip" if (i // 10) % 2 == 0 else "win" for i in range(30)]
     f = _tp_fills(kinds)
@@ -508,7 +508,7 @@ def test_runs_in_tests_never_write_the_real_tp_state(SC, tmp_path):
              ).drop(columns=["o", "pct"]).to_csv(orders, index=False)
     st = tmp_path / "g.json"
     L = SC.run(now_ms=0, paths=[str(orders)], dec_paths=[], since_ms=int(pd.Timestamp("2026-10-30").value // 10**6), klines=lambda *a: [],
-               funding=lambda *a: 0.0, tp_klines=_tp_kl(f), tp_state_path=str(st), tp_final_path=str(tmp_path / "gf.json"))
+               funding=lambda *a: 0.0, tp_klines=_tp_kl(f), fbx_state_path=None, tp_state_path=str(st), tp_final_path=str(tmp_path / "gf.json"))
     assert "FB_TP_TP5: CANDIDATE" in "\n".join(L) and st.exists()
     assert [mt(p) for p in reals] == before
 

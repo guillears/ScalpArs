@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """FLATBASE_SHORT exit before → after, the full DECISION_LOG 406 table (operator 2026-10-28: "where is the avg duration before and after?").
 
-Every frozen exit shadow of the FLATBASE scout (TP_SHADOWS, DL 367 / 370 / 390) vs the live exit, re-walked on each real fill's own 5m path
+Every frozen exit shadow of the FLATBASE scout (TP_SHADOWS, DL 367 / 370 / 390) vs the DL 348 rule +8 / −15 (live until DL 408 → +5 / −10), re-walked on each real fill's own 5m path
 with the scout's own walker (scout_flatbase_short.tp_shadow_eval — fees, taker slip on stop / time, no funding; cache only), per block:
   ① current batch B25 (opened ≥ 2026-10-23 18:30) · ② master per batch (the archived FLATBASE fills — B24) · ③ backtest (the exit study's
   per-half Δ, the scout's tp_backtest_note).
@@ -82,7 +82,7 @@ def block(name, rows, W, account=None):
     live = np.array([w["LIVE"][0] for w in W])
     print(f"\n### {name} — {len(r)} fills on {days.nunique()} days · booked avg {r.pct.mean():+.2f} % (re-walk parity: "
           f"{np.mean(np.abs(live - r.pct.values) <= 0.5):.0%} within ±0.5)")
-    print("| Exit (TP / SL) | N | WR | avg % | Σ pts | $ (actual notional) | Δ$ vs today | avg hold | median hold | DCR %/day | "
+    print("| Exit (TP / SL) | N | WR | avg % | Σ pts | $ (actual notional) | Δ$ vs +8 / −15 | avg hold | median hold | DCR %/day | "
           "P(Δ>0) day-boot | split (live-stopped / live-TP) | top pair share of Δ | 🧮 leave-one-out | Δ avg after 30–50 % haircut |")
     print("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     base_usd = live / 100 * notional
@@ -106,7 +106,7 @@ def block(name, rows, W, account=None):
         share = f"{pos.max() / pos.sum():.0%} ({pos.idxmax()})" if pos.sum() > 0 else "–"
         p = boot_p(pd.Series(d), days) if k != "LIVE" else float("nan")
         hc = f"{d.mean() * 0.5:+.2f} … {d.mean() * 0.7:+.2f}" if k != "LIVE" else "–"
-        print(f"| {'**TODAY**' if k == 'LIVE' else k} +{tp:g} / −{sl:g} | {len(v)} | {(v > 0).mean():.0%} | {v.mean():+.2f} | {v.sum():+.2f} | "
+        print(f"| {'DL 348 rule (live until DL 408)' if k == 'LIVE' else ('**' + k + ' (live since DL 408)**' if k == FS.FBX_KEY else k)} +{tp:g} / −{sl:g} | {len(v)} | {(v > 0).mean():.0%} | {v.mean():+.2f} | {v.sum():+.2f} | "
               f"{usd.sum():+,.0f} | {(usd - base_usd).sum():+,.0f} | {FS.hhmm(h.mean())} | {FS.hhmm(float(np.median(h)))} | {dcr} | "
               f"{'–' if np.isnan(p) else f'{p:.2f}'} | {'–' if k == 'LIVE' else split(list(r.close_reason.astype(str)), live, v)} | {share if k != 'LIVE' else '–'} | "
               f"{'–' if k == 'LIVE' else RM.loo_text(d, lab)} | {hc} |")

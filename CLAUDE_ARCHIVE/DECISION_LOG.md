@@ -10178,3 +10178,62 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   decided) · unpriced setups block the read · comparator ≥ 5 · own state path in run() (tests never touch the real file).
 - **Tests:** tests/test_flatbase_short.py (both cells priced with funding + hold; the frozen bar: candidate / collecting / retire / thin
   comparator / unpriced / one-day / one-pair; the prefix grows to the day count).
+
+
+## (408) 2026-10-28 — 🔁🔒 FLATBASE EXIT +8 / −15 → +5 / −10 (paper; acknowledged override below the DL 390 bar) + FBX switch-back gate
+- **Operator 10-28:** "what if we change now the TP and SL of flatbase, and keep collecting trades with a new TP SL?" → (after "don't
+  change anything") "what would happen if we change now to +5 −10? you will start all counts in scout again?" → "ok change to +5 −10
+  then" · "reviews, add whats necessary in scout if needed, then commit and push".
+- **Evidence (before → after, re-walked on each fill's own 5m path, fees + taker slip, no funding):**
+  ① B25 (9 of 12 priced; DODOX / BANK / NIL not cached): +8 / −15 44 % · −4.88 %/fill · −$340 · hold 5:23 · DCR −1.96 %/day (real
+  account path, $2,900 + $7,100 10-26) → +5 / −10 56 % · −1.76 · −$122 · hold 2:50 · DCR −0.67 %/day · day-boot P(Δ > 0) 0.85 · split:
+  stopped→saved 5 (+40.1) · TP→give-back 4 (−12.0) · 🧮 Δ +28.08 pts, without KAT (+20.07, 71 %) +8.01 · haircut → +1.56…+2.18 /fill.
+  ② master per batch (B24, 1 fill, BTR): +7.94 → +4.94 (Δ −3.00 pts, −$15: a +8 winner capped at +5 → give-back). ③ backtest (S4 · 72 h, nofund) Δ vs +8 / −15:
+  2025 −0.23 / 26-H1 −0.73 / 26-H2 −0.61 — refutes (caveat; master over backtest, but the master here is 9 in-sample fills on 3 days).
+  Low-turnover setups (OBS-FB2 registration, 7): +4.83 → +4.02 %/trade, hold 50:48 → 19:32 (0.10 → 0.21 %/hour held).
+  ⚠ The sleeve stays NEGATIVE under every exit in B25 (re-walked WR 44 % at +8 / −15, 56 % at +5 / −10 vs ≈ 65 / 67 % breakeven) — the exit change is damage control + turnover; the
+  profitable lever is the entry (OBS-FB2). Below the DL 390 bar (N ≥ 30 on ≥ 10 days, Bonferroni LB > 0) → acknowledged override, a
+  tighter-than-standard revert gate (below), paper only.
+- **Ship:** `flatbase_tp_pct` 8 → 5 · `flatbase_stop_pct` 15 → 10 (config.py default + evidence comment, trading_config.json; UI inputs,
+  load / save, badges and report lines already read the config; the UI save defaults, help text, input defaults and `?? 8 / 15`
+  fallbacks → 5 / 10 — an emptied field no longer silently writes +8 / −15 back; services/flatbase.py DEFAULTS (the fallback for an
+  unusable config value) → 5 / 10). Open FLATBASE positions take the new exit on deploy: the stop is read every tick (a short already
+  10–15 % against closes on the first tick, worse than −10 — expected), the backstop sweep re-places at 10.5, the resting-TP sweep
+  re-prices the limit to −5 % — EXCEPT a short already 5–8 % in profit: `_rtp_reprice` skips a crossed non-late re-price, so its −8 %
+  limit stays (rides to +8 or the −10 stop; such a fill is a straddler, never counted). At the time XANUSDT open (peak +5.48, now −3.7):
+  not crossed → takes +5 / −10; its earlier +5 touch is not recovered.
+- **🔒 FBX switch-back gate (scripts/scout_flatbase_short.py `fbx_verdict` / `fbx_lines`, state reports/.flatbase_exit_switch_gate.json):**
+  fills OPENED ≥ the DL 408 commit + 10 min, each re-walked under +8 / −15 (the frozen DL 348 rule) and +5 / −10 (TP5_SL10) with the
+  same walker; fills open across the switch ran a hybrid → shown, never counted. EARLY (first 10): +8 / −15 avg − +5 / −10 avg ≥ +1.0 pt
+  → REVERT to +8 / −15, else EARLY_OK · FINAL (shortest prefix with ≥ 15 fills on ≥ 8 UTC days): KEEP iff +5 / −10 avg % ≥ +8 / −15 AND
+  Σ $ at each fill's actual notional ≥, else REVERT; an unpriced fill holds the read; each decided once. No funding on either side (the
+  shorter hold pays less: a tilt AGAINST +5 / −10). DCR before → after is shown at the review (study_flatbase_exit_b25.py); at FLATBASE size
+  its order follows Σ $.
+- **Pre-data correction, not a moved bar:** the DL 348 observe gate and both OBS-FB2 cells change their TRADED comparator from booked
+  P&L to same-exit numbers BEFORE any of them has data to decide on (observe gate 13/30 real fills; OBS-FB2 0 fresh setups; no frozen
+  state) — the bars themselves (thresholds, N, days) are untouched. The DL 367 / 370 / 390 exit-shadow reads keep their frozen sample and
+  bar; their parity now reads each fill against the exit it RAN (booked vs the +8 / −15 walk before the switch, vs the +5 / −10 walk
+  after it; straddlers out of parity) — without this every post-switch fill fails parity and all 12 reads would print "no verdict"
+  forever (deep review H1); a post-switch fill's split class comes from what the +8 / −15 rule would have done; a CANDIDATE there now
+  beats the +8 / −15 RULE (labelled), the live exit's own read is FBX. OBS-FB1 keeps comparing the DL 348 rule (labelled, frozen era).
+- **Scout re-base (DL 406 ④, same day):** the shadows (DL 348 observe cohort, non-flat line, OBS-FB2 cells, exit shadows) stay priced at
+  the frozen +8 / −15 rule — no count restarts; every comparison against the TRADED fills now reads them under the SAME exit
+  (`real_by_exit_fn`: booked when the fill ran that exit whole, else its re-walk): the DL 348 observe gate + the non-flat line at +8 / −15,
+  each OBS-FB2 cell at its own exit. The DL 348 sleeve gate (stops in a row, Σ, first 10, main read) stays on BOOKED P&L as traded (mixed
+  eras, labelled). Exit-shadow table: "live" relabelled the DL 348 rule. observe_registry: scout_flatbase_short walks +5 / −10 (no longer
+  STALE on the FLATBASE keys; its blocked-WILLY leg keeps its own era flag).
+- **FBX details (reviews):** UNPRICEABLE_FINAL fresh fills are out and counted (like DL 367 — one delisted coin never blocks the gate) ·
+  a still-OPEN FLATBASE fill opened before the sample's last entry holds the read (the sample is the first N by ENTRY time) · an EARLY
+  REVERT freezes FINAL as SUPERSEDED · `FBX_END_MS` (None) closes the +5 / −10 era if it is ever reverted (set it in that commit) ·
+  `real_by_exit_fn` counts every fill without a same-exit number (no walk yet / unreadable net) — printed, and the DL 348 observe gate
+  HOLDs on them instead of silently shrinking N · run() prices the observe cohort BEFORE the fill walks (Budget order unchanged for it) ·
+  the switch time = this commit (message names DECISION_LOG 408) + 10 min — commit and push together.
+- **Side effect (intended, today's stack):** scripts/path_labels.py reads the live `flatbase_stop_pct` → FLATBASE's ENTRY label is now
+  judged at a 10 % stop distance for every fill (WORKED = +1 % before −9.9).
+- **Reviews (DL 408):** caveman + deep — H1 exit-shadow parity era-aware · UNPRICEABLE_FINAL / open fills / supersede in FBX · same-exit
+  comparator counts its gaps and never raises · Budget order · UI defaults + help text · engine fallback DEFAULTS · doc numbers (master
+  −3.00, WR) · crossed-TP caveat · test state paths (every run() call passes fbx_state_path; the real file is checked untouched).
+- **Tests:** test_flatbase_short.py — FBX early / final / tie / one-day / unpriced hold / $-at-notional revert · freeze + supersede +
+  read-back · UNPRICEABLE_FINAL out · open fill holds · fbx_ran eras incl. the end bound · real_by_exit (booked vs re-walk vs straddler,
+  missing count, unreadable net) · parity / split per era · FBX inside run() · registry re-based · backstop 10.5 / TP price at 5 % ·
+  fallback 10 · badge fallbacks 5 / 10. Full suite 2478 passed.

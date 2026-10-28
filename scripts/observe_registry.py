@@ -38,8 +38,11 @@ EXIT = {
                                    "frenzy_willy_late_tp_minutes": 30.0, "frenzy_willy_late_tp_pct": 0.25}),
     "scout_willy_latejoin.py": dict(dl="366", sleeves="FRENZY_WILLY", walks={"frenzy_willy_high_target_enabled": True,
                                     "frenzy_willy_stop_pct": 4.0, "frenzy_willy_late_tp_minutes": 30.0, "frenzy_willy_late_tp_pct": 0.25}),
-    "scout_flatbase_short.py": dict(dl="348 · 367 · 370 · 390", sleeves="FLATBASE_SHORT (+ blocked WILLY leg)",
-                                    walks={"flatbase_tp_pct": 8.0, "flatbase_stop_pct": 15.0, "flatbase_max_hold_hours": 72.0, **_OLD_WILLY}),
+    # 🔁 (408) re-based the day the exit changed: the shadows stay priced at the frozen DL 348 rule (+8 / −15) and every comparison against
+    # traded fills reads them under the SAME exit (real_by_exit_fn); the FBX switch-back gate walks both. The exit-shadow reads (DL 367 / 370
+    # / 390) and OBS-FB1 stay FROZEN to the +8 / −15 rule by design (labelled in their lines; parity is era-aware) — not stale, not the live exit.
+    "scout_flatbase_short.py": dict(dl="348 · 367 · 370 · 390 · 407 · 408", sleeves="FLATBASE_SHORT (+ blocked WILLY leg)",
+                                    walks={"flatbase_tp_pct": 5.0, "flatbase_stop_pct": 10.0, "flatbase_max_hold_hours": 72.0, **_OLD_WILLY}),
     "scout_frenzy.py": dict(dl="195 · 196 · 205", sleeves="FRENZY_LONG / WIDE", walks=_FZ_STOP3),
     "scout_frenzy_exits.py": dict(dl="214 · 243 · 250 · 251 · 263 · 272 · 284 · 333 · 336", sleeves="FRENZY family + WILLY gate",
                                   walks={**_FZ_STOP3, **_NO_LITE_C, **_OLD_WILLY}),

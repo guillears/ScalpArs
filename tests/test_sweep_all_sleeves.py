@@ -322,5 +322,6 @@ def test_3d_level_in_the_scout_row(tmp_path):
     assert sig["k3"] == 5 and "3D" in SA.verdict(sig)
     L = "\n".join(SA.run(["SURGE_LONG"], master=_master(str(tmp_path), _rows(80)), exports=[], cache_path=os.path.join(str(tmp_path), "c3.json")))
     sep = [x for x in L.split("\n") if x.startswith("|---")]
-    assert "3D-from-2D" in L and len(sep) == 1 and sep[0].count("|---") == 10       # 10 columns, the header and every row agree
+    assert "3D-from-2D" in L and len(sep) == 2 and all(x.count("|---") == 10 for x in sep)   # 2 tables (DL 406: entry label + booked), 10 columns each
+    assert L.index("ENTRY LABEL from the price path") < L.index("booked P&L")             # the path-label table first (primary)
     assert all(x.count(" | ") == 9 for x in L.split("\n") if x.startswith("| SURGE_LONG"))

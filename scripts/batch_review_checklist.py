@@ -78,6 +78,20 @@ METHOD = [
     "Show BASE stats with and without the washed-out window (Jun-18 → Jul-2) where it applies",
     "'Why no X trades' → grep the server logs FIRST (absence is a logs question)",
     "Flag every read DECIDED or within ~20 % of its bar; list every read that could not run and why",
+    "🧭 ENTRY × EXIT (DECISION_LOG 406) — per sleeve, BEFORE any study: the LOSER / WINNER DECOMPOSITION (scripts/path_labels.py · Scout 🧭 "
+    "section, master + batch): NEVER_WORKED · STOPPED_RECOVERED · GAVE_BACK · DRIFT_LOSS · LEFT_ON_TABLE · CAPTURED with $ → the larger "
+    "realised loss side goes first (ENTRY or EXIT)",
+    "🧭 W/L on the ENTRY LABEL from the price path FIRST (sweep_separators.py <SLEEVE> --label path + the Scout ENTRY-LABEL sweep table), "
+    "the booked-P&L screen second — never a booked-only W/L",
+    "🧭 JOINT CHECK before any ship: an exit candidate re-read on the fills a pending entry candidate keeps (and on all); an entry "
+    "candidate judged under the exit that will run; a decision that flips between the reads does not ship; every entry × exit combo "
+    "tried counts in the luck test",
+    "🧭 STALE LINES: the Scout 🧭 OBSERVATION LINES vs the LIVE EXIT table (scripts/observe_registry.py) — never read a ⚠ STALE line's "
+    "verdict; each one → re-base (fresh count) or retire, operator decides",
+    "🧮 LEAVE-ONE-OUT under every before → after (review_math.loo_text): the Δ with and without its biggest fill; ≥ 50 % from one fill = "
+    "stated, never a ship on it alone",
+    "📈 DCR with REAL sizing: each fill's ACTUAL notional (the leverage the exchange bracket really gave), on the account path "
+    "(review_math.dcr_account: batch start + flows) — never the intended leverage",
 ]
 
 

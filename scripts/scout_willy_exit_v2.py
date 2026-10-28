@@ -60,6 +60,7 @@ if _HERE not in sys.path:
 import export_glob as _EG          # noqa: E402
 import scout_gatekit as _GK        # noqa: E402
 import willy_exit_era as WEra      # noqa: E402
+import review_math as RM           # noqa: E402  (DECISION_LOG 406 leave-one-out)
 
 DL, DL_V2 = 358, 356
 LAG_MIN = 10
@@ -519,7 +520,8 @@ def shadow_ledger(c):
              + ("" if ok == len(rc) else " ⚠ (e) targets differ from the stored ones (bad fee/H row, or frenzy_willy_high_k_pct changed from 1.0) — read with care"))
     for k in SHADOWS:
         d = pd.to_numeric(a[f"d_{k}"], errors="coerce")
-        L.append(f"  {tag.get(k, '(c)')} {k}: avg {_avg(a[f'sh_{k}'])} · Σ Δ {d.sum():+.2f} · better {int((d > 1e-9).sum())} / worse {int((d < -1e-9).sum())}")
+        L.append(f"  {tag.get(k, '(c)')} {k}: avg {_avg(a[f'sh_{k}'])} · Σ Δ {d.sum():+.2f} · better {int((d > 1e-9).sum())} / worse {int((d < -1e-9).sum())}"
+                 + f" · 🧮 {RM.loo_text(d.fillna(0), a.pair.astype(str) + ' ' + a.opened_at.astype(str).str[5:10])}")   # DL 406 leave-one-out
     L.append(f"  per fill (last {LIST_CAP}): " + " · ".join(
         f"{r.pair} {str(r.opened_at)[5:16]} T {_fmt(getattr(r, WEra.TP_COL))} live {_fmt(r.live)} V2b {_fmt(r.v2b)} | a {_fmt(r.shadow)} "
         + " ".join(f"{k} {_fmt(getattr(r, f'sh_{k}'))}" for k in SHADOWS) for r in a.tail(LIST_CAP).itertuples()))

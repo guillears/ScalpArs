@@ -1188,8 +1188,164 @@ def tp_shadow_lines(real, bud, now_ms, fetch=True, klines=None, slip=SLIP_DEF, s
         return L + [f"  unreadable ({str(e)[:80]})"]
 
 
+# ═══════════════════════════ 🩳🔒 OBS-FB2 — LOW-TURNOVER SWITCH (DECISION_LOG 407, operator 2026-10-28, frozen, observe-only) ═══════════════════════════
+# "yes register it" · "+5 −10 is interesting too, mainly due to the Avg Hold time" · "register it in the same line". The setups the sleeve
+# REFUSES today (turnover ≤ 1 → ledger SHADOW, no order) priced under two exits — LOW×TODAY (+8 / −15) and LOW×TP5_SL10 (+5 / −10) —
+# each with funding, against the real traded cohort (turnover > 1) at today's exit over the same period. The joint read that motivated it
+# (B25, in-sample — registration only, never counted): 7 shadows · today +4.83 (86 %, hold 50:48) · +5/−10 +4.02 (86 %, hold 19:32) vs
+# the 13 traded fills −2.71 % · the small exits (+2/−5, +1/−4) helped the traded fills but destroyed the low-turnover edge.
+OBS_FB2_DL = 407
+OBS_FB2_CELLS = {"LOW×TODAY": None, "LOW×TP5_SL10": (5.0, 10.0)}   # None = the live exit (_frozen_th)
+OBS_FB2_N, OBS_FB2_DAYS, OBS_FB2_P, OBS_FB2_MARGIN = 30, 10, 0.95, 1.0
+OBS_FB2_STATE = os.path.join(_R, "reports", ".flatbase_obs_fb2_gate.json")
+
+
+def price_shadow_cell(row, cell, bud, now_ms, fetch=True, klines=None, slip_pct=SLIP_DEF, funding=None):
+    """one shadow setup under an OBS-FB2 cell → (net % incl. funding, hold minutes, funding known) or None (window open / no data)."""
+    th = _frozen_th() if OBS_FB2_CELLS[cell] is None else _th_tp(*OBS_FB2_CELLS[cell])
+    hb = int(round(flatbase_params(_frozen_th())['max_hold_h'] * 12))
+    start = int(pd.Timestamp(row.t).value // 1_000_000) + BAR_MS
+    if klines is None:
+        import scout_long_stop4 as _LS
+        rows = _LS.fapi_klines(str(row.pair), "5m", start, hb, bud, CACHE, now=now_ms, fetch=fetch)
+    else:
+        rows = klines(str(row.pair), start, hb)
+    if not rows:
+        return None
+    r = price_path_exit(float(row.px), rows, th, slip_pct=slip_pct)
+    if r is None or r["reason"] == "OPEN":
+        return None
+    t1 = int(r["exit_open_ms"]) + BAR_MS
+    f = funding(str(row.pair), start, t1) if funding is not None else funding_sum_pct(str(row.pair), start, t1, bud, now_ms, fetch=fetch)
+    return (r["net_pct"] + (f or 0.0), (t1 - start) / 60_000.0, f is not None)
+
+
+def _boot_p_pos(vals, days, n=4000, seed=7):
+    """day-block bootstrap P(mean > 0). Pure."""
+    import numpy as _np
+    g = pd.Series(list(vals)).groupby(list(days)).apply(list).tolist()
+    if len(g) < 2:
+        return float("nan")
+    rng = _np.random.default_rng(seed)
+    hit = 0
+    for _ in range(n):
+        pick = [x for i in rng.integers(0, len(g), len(g)) for x in g[i]]
+        hit += (sum(pick) / len(pick)) > 0
+    return hit / n
+
+
+OBS_FB2_MIN_COMPARATOR = 5
+
+
+def obs_fb2_verdict(cell_rows, real_same, unpriced=0, unpriced_days=()):
+    """the frozen read on the FIRST fresh setups by entry time (≥ OBS_FB2_N on ≥ OBS_FB2_DAYS days), decided only when every one of them
+    is priced (review 2: a still-open 72 h window or a budget skip BLOCKS the read — early TP / SL exits never over-represented).
+    cell_rows = [(t, pair, net)] of the first N fresh setups, by time; unpriced = how many of those N are not priced yet; real_same = the
+    traded fills' net % over the same period (≥ OBS_FB2_MIN_COMPARATOR needed). → (verdict, text). Pure."""
+    days = {pd.Timestamp(t).date() for t, _, _ in cell_rows} | set(unpriced_days or ())
+    if len(cell_rows) + unpriced < OBS_FB2_N or len(days) < OBS_FB2_DAYS:
+        return "COLLECTING", f"⏳ {len(cell_rows) + unpriced}/{OBS_FB2_N} fresh setups on {len(days)}/{OBS_FB2_DAYS} days"
+    if unpriced:
+        return "COLLECTING", f"⏳ {unpriced} of the first {OBS_FB2_N} fresh setups not priced yet (window open / data) — the read waits"
+    if len(real_same) < OBS_FB2_MIN_COMPARATOR:
+        return "COLLECTING", f"⏳ traded comparator N {len(real_same)} < {OBS_FB2_MIN_COMPARATOR} over the same period"
+    v = [x for _, _, x in cell_rows]
+    avg = sum(v) / len(v)
+    ra = (sum(real_same) / len(real_same)) if real_same else float("nan")
+    p = _boot_p_pos(v, [pd.Timestamp(t).date() for t, _, _ in cell_rows])
+    pos = pd.Series([max(x, 0.0) for x in v])
+    by_day = pos.groupby([pd.Timestamp(t).date() for t, _, _ in cell_rows]).sum()
+    by_pair = pos.groupby([pr for _, pr, _ in cell_rows]).sum()
+    conc = max(by_day.max(), by_pair.max()) / pos.sum() if pos.sum() > 0 else 1.0
+    txt = (f"N {len(v)} on {len(days)} days · avg {avg:+.3f} % (funding incl.) · P(mean > 0) {p:.2f} · traded same period "
+           f"{'–' if ra != ra else f'{ra:+.3f} %'} (N {len(real_same)}) · top day / pair share {conc:.0%}")
+    if avg <= ra:
+        return "RETIRE", txt + " → the refused setups do NOT beat the traded ones"
+    if avg > 0 and p >= OBS_FB2_P and avg - ra >= OBS_FB2_MARGIN and conc < 0.5:
+        return "CANDIDATE", txt + " → CANDIDATE (operator decides the switch; then the backtest split by turnover + the 30–50 % haircut)"
+    return "KEEP_OBSERVING", txt + " → bar not met (frozen; never re-fit)"
+
+
+def obs_fb2_lines(real, bud, now_ms, fetch=True, klines=None, slip=SLIP_DEF, funding=None, state_path=OBS_FB2_STATE, shadows=None):
+    import json as _j
+    L = [f"🩳🔒 OBS-FB2 LOW-TURNOVER SWITCH (DECISION_LOG {OBS_FB2_DL}, frozen, observe-only): the REFUSED turnover ≤ 1 setups under "
+         "LOW×TODAY (+8 / −15) and LOW×TP5_SL10 (+5 / −10), funding incl., vs the traded (turnover > 1) fills at today's exit. Bar per cell "
+         f"(fresh setups only, decided once at ≥ {OBS_FB2_N} on ≥ {OBS_FB2_DAYS} UTC days): CANDIDATE iff avg > 0 ∧ day-block P(mean > 0) ≥ "
+         f"{OBS_FB2_P} ∧ avg − traded same-period avg ≥ +{OBS_FB2_MARGIN:g} pt ∧ no day / pair ≥ 50 % of the gain · RETIRE iff avg ≤ traded · "
+         "else KEEP OBSERVING. Hold time + return per hour held shown (a shorter hold frees the slot and the coin)."]
+    try:
+        reg_ms = _GK.dl_deploy_ms(OBS_FB2_DL, lag_min=10, label="OBS-FB2")
+        sh = load_shadows() if shadows is None else shadows
+        _tmin = float(flatbase_params(_frozen_th())["turnover_min"])
+        if len(sh) and "fb_turnover" in sh:   # review 2: only MEASURED turnover ≤ the floor (an unreadable-volume SHADOW is not this cohort)
+            _tv = pd.to_numeric(sh.fb_turnover, errors="coerce")
+            sh = sh[_tv.notna() & (_tv <= _tmin)]
+        state = {}
+        try:
+            if state_path and os.path.exists(state_path):
+                with open(state_path, encoding="utf-8") as fh:
+                    state = _j.load(fh) or {}
+        except Exception:
+            state = {}
+        for cell in OBS_FB2_CELLS:
+            rows, f_unk, fresh_all = [], 0, []
+            for r in sh.sort_values("t").itertuples() if len(sh) else []:
+                is_fresh = reg_ms is not None and int(pd.Timestamp(r.t).value // 1_000_000) >= reg_ms
+                p_ = price_shadow_cell(r, cell, bud, now_ms, fetch=fetch, klines=klines, slip_pct=slip, funding=funding)
+                if is_fresh:
+                    fresh_all.append((r.t, str(r.pair), None if p_ is None else p_[0], None if p_ is None else p_[1]))
+                if p_ is not None:
+                    rows.append((r.t, str(r.pair), p_[0], p_[1], is_fresh))
+                    f_unk += 0 if p_[2] else 1
+            first = []                                                       # the frozen sample = the shortest prefix (by entry time) of
+            for x in fresh_all:                                              # ≥ N fresh setups on ≥ DAYS UTC days, priced or not (review 2 F1:
+                first.append(x)                                              # a fixed first-30 on < 10 days would never decide)
+                if len(first) >= OBS_FB2_N and len({pd.Timestamp(y[0]).date() for y in first}) >= OBS_FB2_DAYS:
+                    break
+            fresh = [x for x in first if x[2] is not None]
+            unpriced = sum(1 for x in first if x[2] is None)
+            reg = [x[:4] for x in rows if not x[4]]
+
+            def _st(xs):
+                if not xs:
+                    return "N 0"
+                v = [x[2] for x in xs]
+                h = sorted(x[3] for x in xs)
+                avg_h = sum(h) / len(h)
+                return (f"N {len(v)} · WR {sum(1 for x in v if x > 0) / len(v):.0%} · avg {sum(v) / len(v):+.3f} % · hold {hhmm(avg_h)} "
+                        f"(median {hhmm(h[len(h) // 2])}) · {sum(v) / len(v) / max(avg_h / 60.0, 1e-9):+.3f} %/hour held")
+            if fresh:
+                t0, t1 = min(x[0] for x in fresh), max(x[0] for x in fresh)
+                real_same = [float(x) for o, x in zip(real.o, real.net) if t0 <= o <= t1] if len(real) else []
+            else:
+                real_same = []
+            if cell in state:
+                v, txt = state[cell]["verdict"], state[cell]["text"] + f" (frozen {state[cell]['at']})"
+            else:
+                v, txt = obs_fb2_verdict([(x[0], x[1], x[2]) for x in fresh], real_same, unpriced,
+                                         [pd.Timestamp(x[0]).date() for x in first if x[2] is None])
+                if v in ("CANDIDATE", "RETIRE", "KEEP_OBSERVING") and state_path:
+                    state[cell] = dict(verdict=v, text=txt, at=pd.Timestamp.now("UTC").isoformat()[:16])
+                    try:
+                        with open(state_path, "w", encoding="utf-8") as fh:
+                            _j.dump(state, fh, indent=1)
+                    except Exception:
+                        pass
+            L.append(f"  {cell}: FRESH {_st(fresh)} · registration (in-sample, never counted) {_st(reg)} → {v}: {txt}"
+                     + (f" · funding unknown on {f_unk} (counted 0)" if f_unk else ""))
+        if reg_ms is None:
+            L.append("  ⚠ the DECISION_LOG 407 commit is not in git yet — every setup is registration, nothing counted")
+        if len(real):
+            rh = [(pd.Timestamp(c) - pd.Timestamp(o)).total_seconds() / 60.0 for o, c in zip(real.o, real.c) if c is not None and not pd.isna(c)]
+            L.append(f"  traded comparator (turnover > 1, today's exit; funding where known — paper fills carry none, the shadows are charged it, a slight tilt against the shadows): N {len(real)} · avg {real.net.mean():+.3f} % · hold "
+                     f"{hhmm(sum(rh) / len(rh)) if rh else '–'}")
+    except Exception as e:
+        L.append(f"  OBS-FB2 unreadable ({type(e).__name__}: {str(e)[:80]})")
+    return L
+
+
 def run(now_ms=None, paths=None, dec_paths=None, since_ms=None, fetch=True, klines=None, funding=None, klines1m=None, th_long=None,
-        tp_state_path=TP_SH_STATE, tp_klines=None, tp_final_path=TP_SH_FINAL):
+        tp_state_path=TP_SH_STATE, tp_klines=None, tp_final_path=TP_SH_FINAL, obs_fb2_state_path=OBS_FB2_STATE):
     L = [f"## 🩳 FLATBASE_SHORT — flat-base FRENZY short (DECISION_LOG {DL}, discipline override, ALERT-only gates)", ""]
     now_ms = int(time.time() * 1000) if now_ms is None else int(now_ms)
     if since_ms is None:
@@ -1233,6 +1389,8 @@ def run(now_ms=None, paths=None, dec_paths=None, since_ms=None, fetch=True, klin
     L.append(f"Observe-cohort verdict: {ov} — {otxt}")
     L += tp_shadow_lines(real, bud, now_ms, fetch=fetch, klines=(tp_klines or klines), slip=slip, state_path=tp_state_path,
                          final_path=tp_final_path) + [""]
+    L += obs_fb2_lines(real, bud, now_ms, fetch=fetch, klines=klines, slip=slip, funding=funding, shadows=sh,
+                       state_path=obs_fb2_state_path) + [""]   # 🩳🔒 DL 407 (run()'s own shadow cohort)
     L += peak_age_lines(real, bud, now_ms, fetch=fetch, klines=(tp_klines or klines))
     # ── DL 348 addendum: the three observe lines (each its own section, crash-isolated; the same Budget) ──
     try:

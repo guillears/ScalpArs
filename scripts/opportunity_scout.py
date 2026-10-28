@@ -1296,6 +1296,22 @@ def run():
     except Exception as _stc_e:
         log(f"stamp coverage lines failed: {_stc_e}")
         _rg_sec += ["## 🧾🔒 STAMP COVERAGE per sleeve", "", f"Unavailable this run ({str(_stc_e)[:120]}).", ""]
+    try:                                               # 🧭 Oct-28 OBSERVATION LINES vs the LIVE EXIT (DECISION_LOG 406; config only, no network; never breaks the run)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import observe_registry as _obr
+        _rg_sec += _obr.run(now_ms)
+    except Exception as _obr_e:
+        log(f"observation-line exit registry failed: {_obr_e}")
+        _rg_sec += ["## 🧭 OBSERVATION LINES vs the LIVE EXIT", "", f"Unavailable this run ({str(_obr_e)[:120]}).", ""]
+    try:                                               # 🧭 Oct-28 LOSER / WINNER DECOMPOSITION (DECISION_LOG 406; 1m paths, budgeted public klines; BEFORE the sweep — its labels feed the sweep's ENTRY table; never breaks the run)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_path_decomposition as _spd
+        _rg_sec += _spd.run(now_ms)
+    except Exception as _spd_e:
+        log(f"path decomposition lines failed: {_spd_e}")
+        _rg_sec += ["## 🧭 LOSER / WINNER DECOMPOSITION", "", f"Unavailable this run ({str(_spd_e)[:120]}).", ""]
     try:                                               # 🔎 Oct-27 SEPARATOR SWEEP every sleeve (DECISION_LOG 398; local CSVs, cached per cohort; alert-only; never breaks the run)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

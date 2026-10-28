@@ -10083,3 +10083,98 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
 - **Reviews:** caveman (mode-switch race → mode captured and re-checked; config-driven false positives → `stamp_gap_exempt`) + deep
   (Recover-positions rows → origin rule; shutdown cancel). Tests: tests/test_entry_stamp_backfill.py (pure rows, window / grace /
   mode / status / floor, exemptions, mid-sweep switch, never raises, one in flight, wiring + both exports).
+
+## (406) 2026-10-28 — 🧭 Analysis methodology: ENTRY × EXIT from the price path (new permanent rule + tooling; analysis only, no trading change)
+- **Operator 10-28:** "exits cannot be independetly look of entries … we should optimize both! agree? in which order, what should be the
+  process?" → "what would you change in methodology of analisis?" → "this will be used for all sleeves … in B25 analisis, in scout,
+  everywhere?" → "yes save to claude.md and build it".
+- **Why (B25 FRENZY_WILLY, the motivating read):** 10 fills, 6 stops at −4. From each fill's own path: 5 of 6 losses never went
+  above +1 before the stop (ORDER +0.16 → stopped in 1 min, AGT +0.02, INIT −0.07, SOON +0.38, CAP 10-28 +1.00) = ENTRY failures no
+  exit can fix; every winner ran far past its target (HUMA +21.9 vs +1.25 booked, BMT +7.6 vs +1.9, AVA +8.7 vs +3.7) = EXIT money left.
+  The no-late-TP-on-runners shadow changed 1 of the 10 WILLY fills (+$134); the master +3.33 pts was −0.56 without CFX alone. The
+  booked-P&L W/L label is exit-dependent (an exit change relabels winners / losers) and exit lines silently went stale: the WILLY exit
+  cells kept comparing against the pre-V2b +1.25 exit and dropped most current fills.
+- **Rule (CLAUDE.md, condensed):** ① decomposition before any study (larger realised loss side first) · ② W/L on the ENTRY label from
+  the path (booked P&L second) · ③ joint entry × exit check before any ship · ④ observation lines carry their exit era; STALE → re-base
+  or retire the same day (operator decides), never read · ⑤ leave-one-out under every before → after · ⑥ DCR with each fill's ACTUAL
+  notional on the account path. Unchanged: master over backtest, locked gates, 30–50 % haircut, one ship at a time, window units, every
+  variable, theory card first.
+- **Built:**
+  - `scripts/path_labels.py` — entry label WORKED (+1 % gross our way before −Y; operator kept +1 % for every sleeve: "+1 % is real
+    money a small target could take", a per-sleeve "half the typical win" bar was proposed and REJECTED — "4 % is a lot") / NEVER (−Y
+    first, or the fill's own booked stop closed it first) / FLAT / AMBIG / PENDING · REACH (operator 10-28: "how far it went", the
+    continuous best move our way before the stop / 24 h — no threshold) · Y gross = TODAY's config stop for the fixed-stop sleeves
+    (WILLY / HT / LITE / RETRY / WIDE / LONG / FLATBASE / SPIKE_FADE), else the median |as-traded %| of the sleeve's LOSING stop closes
+    (STOP_LOSS / BR_ / FLIP_ / RH_HARD / _WIDE — never a trailing stop) over the master + every export, minus fees 0.09; one ruler per
+    sleeve (cohort-independent) · 24 h horizon (a later move never counts) · the entry minute bounded by the fill's stamped peak / trough
+    (no stamps + it alone decides → AMBIG) · best to close + 45 min, left / capture net of fees · groups recomputed from the CURRENT booked
+    % (the cache holds path facts only, keyed by LABEL_VERSION + fill + close + X / Y + stop flag) · fetch: limit 1000 (weight 5), shared
+    per-run budget ≤ 120 requests / 60 s / used weight 900, stop on the first network error, a missing weight header or a 418 / 429
+    cooldown, never a future minute, an empty window retried at most twice.
+  - `scripts/scout_path_decomposition.py` + Scout 🧭 section (before the sweep): ① current batch · ② master (the fills today's stack
+    keeps, read AS TRADED — the path, close and stop are the traded ones) · reach median winners / losers per sleeve.
+  - `scripts/sweep_separators.py --label path | reach` (the ENTRY label / the reach as the target; labels memoised per cohort); Scout 🔎 SEPARATOR SWEEP
+    now TWO tables — ENTRY LABEL (primary) then booked P&L — same null / family-wise read, one budget oldest-first, cache VERSION 6;
+    unsweepable cohorts no longer take a sweep slot.
+  - `scripts/observe_registry.py` + Scout 🧭 OBSERVATION LINES vs the LIVE EXIT: all 53 scout files classified (26 exit-priced · 2 proxy ·
+    18 booked · 8 none — the 10-28 audit), a test fails on an unclassified file. Today: 18 ⚠ STALE (every pre-V2b WILLY line, the
+    FRENZY_LONG walks at −3 vs live −4 from the shared `scout_willy_hold.exit_rule` / `scout_frenzy_exits.live_exit`, LITE without
+    LITE C, the WILLY_HT / NOMISS era filters) + 2 booked lines judged on fills spanning exit eras (frenzy_entry_lines, frenzy_wl_lines;
+    review M5) = 20; a key missing from the config shows as MISSING. Re-base / retire = the operator's call per line (B25 review).
+  - `scripts/review_math.py` — `loo` / `loo_text` (⚠ when one fill ≥ 50 % of Δ) and `dcr_account` (DL 386 definition, flows split,
+    each fill's actual notional). Wired: the WILLY V2b shadow lines (TGT20 +6.82 → −0.18 without TUSDT ⚠; NOLATE +8.54 → +6.06) and
+    `scripts/study_willy_nolate_runners.py` (B25 real-path DCR: WILLY + HT −5.43 → −3.86 %/day; WILLY only −6.13 → −5.01).
+  - `scripts/batch_review_checklist.py` — six new method rows (decomposition · entry-label W/L · joint check · stale lines · LOO · real DCR).
+- **First read (after the review fixes, informational):** B25 — entry side first for WILLY (−$910 vs −$641), LITE, LITE_RETRY,
+  SPIKE_FADE, momentum, flips, SURGE; exit side for HT. FLATBASE's pointer says EXIT (11 / 12 reach +1 before its 15 % stop — the +1
+  label is near-certain on a 15 % stop: good for the entry, uninformative as a separator) — its REACH carries the read: winners +13.1 %
+  vs losers +2.9 % before the stop. Master: entry side first everywhere except FRENZY_LONG / LITE (near-equal, exit by $68 / $54).
+  The pre-fix build had put SPIKE_FADE's master −$521 on the exit side — two entry-minute artefacts (FORM 08-14, PLUME 08-13); fixed.
+- **Known limits:** 1m resolution (AMBIG counted, not guessed); X = +1 % for every sleeve (operator choice — a sub-1 % stop, e.g.
+  momentum Y 0.62, is an asymmetric bar; a 15 % stop makes WORKED near-certain → read REACH there); master decomposition AS TRADED.
+- **Reviews (DL 406):** caveman + deep — H1 Y from wrong rows / units (trailing stops, re-priced %, net vs gross) → config / losing
+  stops, gross · H2 pre-fill prints in the entry minute → stamp-bounded / AMBIG · H3 a live stop before +X not counted → NEVER at the
+  close · M1 cached groups on a stale booked % → path facts only · M2 FLATBASE ruler → reach · M3 fetch robustness · M4 notional
+  basis → as traded · M5 two era-spanning booked lines → registry · cache tmp per pid · 24 h horizon cut · empty frame columns ·
+  tz-aware closes in dcr_account · loo length guard · --label validation · path Δ shown ×100 · the late-TP study's account merge
+  asserted and its intended-sizing DCR labelled.
+- **Review round 2 (caveman + deep, applied):** the live-stop rule only inside 24 h and only when the bars reach the close (else
+  PENDING) · the entry minute settled by the fill's own stamps first (peak ≥ +X and, if both lines were touched, a stop → WORKED;
+  trough ≤ −Y / stopped and no +X → NEVER; AMBIG only when both were crossed and bars 1+ disagree) · exchange holes ≤ 5 min skipped
+  (pass time from the real bar) · Y medians deduplicated across export snapshots (momentum 488 → 175 losing stops), Y rounded to 0.05 ·
+  PATTERN_FIXED_SL / SPIKE_SL are stops · SPIKE_BOUNCE / SPIKE_CHASE config stops · momentum-stack sleeves (BEARRUN / BULL_LONG /
+  BOUNCE_LONG) borrow the momentum ruler · a winner's group needs only the exit facts · the sweep labels the AS-TRADED % (never
+  stack_pct) and clears its memo per run · LABEL_VERSION 3, older keys pruned · the FLATBASE study is cache-only unless --fetch, its
+  split reads the REAL close and asserts the account join · the WILLY study dedups batches, books DCR on the close, masks the sleeve.
+- **Known limit (stated, not fixed):** momentum's stops are ATR-widened per fill (≈ 0.7–2.0) against one 0.6 ruler → some momentum
+  WINNERS read NEVER (11 master · 5 B25; no loser misattributed) — read momentum's entry label with that bias, or its REACH.
+- **Tests:** tests/test_path_labels.py (passage order / ambiguity / direction, groups, the stop table + dedup, pending / stop window /
+  24 h / entry minute by stamps / holes, reach, short, finish from the current booked %, cache facts only, the fetch budget, LOO,
+  real-path DCR with a flow + tz, registry coverage + stale + missing keys, sweep path / reach targets, wiring) ·
+  tests/test_sweep_all_sleeves.py updated for the two tables.
+
+## (407) 2026-10-28 — 🩳🔒 OBS-FB2 FLATBASE LOW-TURNOVER SWITCH registered (frozen observe line; no trading change)
+- **Operator 10-28:** FLATBASE review → "what about [the low-turnover lead] combined with the exit recommendations of +2 / −5 or
+  +1 / −4?" → "yes register it" · "+5 −10 is interesting too, mainly due to the Avg Hold time" · "register it in the same line".
+- **The joint read (B25, IN-SAMPLE — registration only, never counted):** the setups the sleeve REFUSES today (turnover ≤ 1 → ledger
+  SHADOW, no order), 7 on 3 days (4 in the 10-25 morning window): today's +8 / −15 → 86 % · +4.83 %/trade (+4.0 with funding) · hold
+  50:48 (median 56:48) · +5 / −10 → 86 % · +4.02 (+3.6 with funding) · hold 19:32 (median 16:18, ≈ 2.5× the % per hour held) · the small
+  exits destroy it (+2 / −5 +0.93, +1 / −4 +0.21). The TRADED cohort (turnover > 1, 13 fills): today −2.71 % · +2 / −5 +0.31 · +1 / −4
+  +0.15 (gain on 1 fill each removed: +22 / +21 pts — real, but around break-even under every exit). "Trade both" under any small exit
+  rests on one fill (INIT / LIGHT / KAT). → the joint answer: pick the coins (low turnover), keep a WIDE exit for them; no small exit on
+  top. Backtest: the exit study has no turnover split (a review item); the small exits it does have lose 0.5–1.6 %/trade every half.
+- **Registered (scripts/scout_flatbase_short.py `obs_fb2_lines`, FLATBASE scout section):** two cells — LOW×TODAY (+8 / −15) and
+  LOW×TP5_SL10 (+5 / −10) — each priced with funding on the refused setups' own 5m paths (the shadow pricer's convention), vs the
+  traded fills (turnover > 1) at today's exit over the same period (funding where known — paper fills carry none, the shadows are
+  charged it: a slight tilt AGAINST the shadows); hold avg / median and % per hour held printed. Cohort = SHADOW setups with a MEASURED
+  turnover ≤ the floor (an unreadable-volume SHADOW is not this cohort). FRESH = setups whose S4 bar is ≥ the DL 407 commit + 10 min
+  (the 7 above are registration, shown apart). 🔒 Frozen sample = the shortest prefix of fresh setups (by entry time, priced or not)
+  reaching ≥ 30 on ≥ 10 UTC days; the read waits until every one of them is priced (an open 72 h window never lets the early TP / SL
+  exits decide alone) and needs ≥ 5 traded comparator fills; decided ONCE (persisted reports/.flatbase_obs_fb2_gate.json): CANDIDATE (operator decides the switch: trade turnover ≤ 1 instead
+  of > 1) iff avg > 0 ∧ day-block bootstrap P(mean > 0) ≥ 0.95 ∧ avg − traded same-period avg ≥ +1.0 pt ∧ no day / pair ≥ 50 % of the
+  gain; RETIRE iff avg ≤ traded; else KEEP OBSERVING (frozen, never re-fit). A CANDIDATE then needs the backtest split by turnover and
+  the 30–50 % haircut before any ship. The DL 348 observe gate (shadow avg vs real avg after 30 real fills) stays as it was.
+- **Reviews (DL 407):** caveman + deep, two rounds — measured-turnover cohort · the grown prefix (a fixed first-30 on < 10 days never
+  decided) · unpriced setups block the read · comparator ≥ 5 · own state path in run() (tests never touch the real file).
+- **Tests:** tests/test_flatbase_short.py (both cells priced with funding + hold; the frozen bar: candidate / collecting / retire / thin
+  comparator / unpriced / one-day / one-pair; the prefix grows to the day count).

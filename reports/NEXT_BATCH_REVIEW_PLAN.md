@@ -4,6 +4,17 @@ Run all of this when the operator sends the next batch export (`scalpars_orders_
 
 ## 🧭 Method (binding, operator 2026-10-26)
 **🧭 BATCH REVIEW METHOD (operator 2026-10-26, binding for every batch review): ONE SLEEVE AT A TIME — ① master batch trades: before → after per batch for each watchlist item / candidate · ② current batch: before → after · ③ backtest: before → after · ④ the quant recommendation for that sleeve (a clear call per watchlist item) · ⑤ STOP for the operator's OK, then the next sleeve. New strategies: winners vs losers FIRST, then exits; momentum longs: W/L on the full master. Starts with the regenerated checklist (scripts/batch_review_checklist.py).**
+**🧭 ENTRY × EXIT — EVERY sleeve (operator 2026-10-28, DECISION_LOG 406: "exits cannot be looked at independently of entries … optimize
+both" · "used for all sleeves, in B25 analysis, in scout, everywhere"):** per sleeve, right after the theory card ⓪: ⓐ the LOSER / WINNER
+DECOMPOSITION (Scout 🧭 section or `venv/bin/python -I scripts/path_labels.py <export> --fetch`; master block from the scout) — NEVER_WORKED
+· STOPPED_RECOVERED · GAVE_BACK · DRIFT_LOSS · LEFT_ON_TABLE · CAPTURED with $ → the larger REALISED loss side is studied first ·
+ⓑ W/L on the ENTRY label + REACH FIRST (`sweep_separators.py <SLEEVE> --label path` / `--label reach` + the Scout ENTRY-LABEL sweep table), booked P&L second (a 15 % stop makes the +1 label near-certain — read REACH there, e.g. FLATBASE) ·
+ⓒ exits next, on the fills a candidate entry filter would keep AND on all fills (stop-width CFs on the live-stopped cohort) · ⓓ JOINT
+check before any ship (no flip between reads; every entry × exit combo counted in the luck test) · ⓔ every before → after with the
+🧮 leave-one-out line and the 📈 DCR on the real account path (actual notionals; B25 start $2,900, +$7,100 top-up 10-26 13:50) ·
+ⓕ the sleeve's ⚠ STALE observation lines (Scout 🧭 OBSERVATION LINES vs the LIVE EXIT) → a re-base / retire call per line for the
+operator — never read a STALE verdict.
+**🩳🔒 FLATBASE step (DECISION_LOG 407):** read OBS-FB2 (low-turnover switch, both cells) + the full exit table (`venv/bin/python -I scripts/study_flatbase_exit_b25.py <export>`: three blocks, hold before → after, real-path DCR, split, LOO, haircut) + ask for the exit study re-run split by turnover.
 **🔎 PER-SLEEVE STANDARD — EVERY sleeve, no exception (operator 2026-10-27, DECISION_LOG 398: "all SLEEVES should have it" · "Winners vs
 losers and before and after per batch"):** for EACH of SPIKE_FADE · FRENZY_WILLY · FRENZY_WILLY_HT · FLATBASE_SHORT · FRENZY_LITE ·
 FRENZY_LITE_RETRY · FRENZY_LONG · MOMENTUM LONG · MOMENTUM SHORT · FLIP:FAN_RATIO_GATE (+ FS / ML / MS screened pools) · BULLRUN_LONG ·

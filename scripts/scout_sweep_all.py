@@ -24,7 +24,7 @@ import sweep_separators as SW  # noqa: E402
 
 DL = 398
 CACHE = os.path.join(SW.ROOT, "reports", ".scout_sweep_cache.json")
-VERSION = 5   # bump when the sweep / null logic changes (the sources of both scripts are hashed into the key too)
+VERSION = 6   # bump when the sweep / null logic changes (the sources of both scripts are hashed into the key too)
 NULL_1D, NULL_2D = 150, 200  # each level is judged at p ≤ 0.05 / 3: 2 / 151 · 3 / 201 still pass (at 100 shuffles only 1 / 101 = beat EVERY shuffle) — 2D / 3D are ms per shuffle (DECISION_LOG 402, 403; the 3D null runs on the 2D shuffles), 1D ~0.5 s on the biggest sleeve
 P_BAR = 0.05
 LEVELS = 3                 # 1D + 2D + 3D-from-2D families → each judged at P_BAR / LEVELS (Bonferroni over the levels, DECISION_LOG 402, 403)
@@ -79,14 +79,15 @@ def _src_hash():
     return h.hexdigest()
 
 
-def _fingerprint(name, master, exports):
-    """the cohort AND its values (a COALESCE stamp backfill changes values, not N) + both scripts' source + the null sizes."""
-    df, split, note = SW.prepare(name, None, master, exports)
+def _fingerprint(name, master, exports, label="pnl"):
+    """the cohort AND its values (a COALESCE stamp backfill changes values, not N) + both scripts' source + the null sizes (+ the
+    label: a path label resolving from PENDING changes the hashed values → re-swept)."""
+    df, split, note = SW.prepare(name, None, master, exports, label)
     if df is None:
         return None
     cols = sorted(c for c in df.columns if c.startswith("entry_")) + ["pnl_percentage", "opened_at", "pair"]
     vh = int(pd.util.hash_pandas_object(df[cols].astype(str), index=False).sum() % (1 << 61))
-    key = json.dumps([VERSION, _src_hash(), NULL_1D, NULL_2D, name, len(df), split, vh])
+    key = json.dumps([VERSION, _src_hash(), NULL_1D, NULL_2D, name, label, len(df), split, vh])
     return hashlib.sha1(key.encode()).hexdigest()
 
 
@@ -98,19 +99,27 @@ def _load_cache(cache_path):
         return {}
 
 
-def sleeve_row_cached(name, master=SW.MASTER, exports=None, cache_path=CACHE, allow_compute=True):
+def _ckey(name, label):
+    return name if label == "pnl" else f"{name}|{label}"
+
+
+def sleeve_row_cached(name, master=SW.MASTER, exports=None, cache_path=CACHE, allow_compute=True, label="pnl"):
     """the cached row when the cohort fingerprint matches; else re-swept (allow_compute) or None (the caller's budget ran out)."""
     cache = _load_cache(cache_path) if cache_path else {}
-    fp = _fingerprint(name, master, exports)
-    if fp is not None and cache.get(name, {}).get("fp") == fp:
-        return cache[name]["row"]
-    if fp is not None and not allow_compute:
+    fp = _fingerprint(name, master, exports, label)
+    ck = _ckey(name, label)
+    if fp is not None and cache.get(ck, {}).get("fp") == fp:
+        return cache[ck]["row"]
+    if fp is None:   # not sweepable (too few fills / one era) — the note costs nothing (memoised labels), never a sweep or a budget slot
+        _d, _s, note = SW.prepare(name, None, master, exports, label)
+        return dict(name=name, note=note, n=0)
+    if not allow_compute:
         return None
-    r = sleeve_row(name, master, exports)
+    r = sleeve_row(name, master, exports, label=label)
     if fp is not None and cache_path:
         cache = _load_cache(cache_path)
         import time as _t
-        cache[name] = dict(fp=fp, row=r, t=_t.time())   # t = last swept: run() re-sweeps changed sleeves oldest-first (review: no starvation)
+        cache[ck] = dict(fp=fp, row=r, t=_t.time())   # t = last swept: run() re-sweeps changed sleeves oldest-first (review: no starvation)
         try:
             tmp = f"{cache_path}.{os.getpid()}.tmp"
             with open(tmp, "w") as fh:
@@ -121,9 +130,9 @@ def sleeve_row_cached(name, master=SW.MASTER, exports=None, cache_path=CACHE, al
     return r
 
 
-def sleeve_row(name, master=SW.MASTER, exports=None, null_1d=NULL_1D, null_2d=NULL_2D):
+def sleeve_row(name, master=SW.MASTER, exports=None, null_1d=NULL_1D, null_2d=NULL_2D, label="pnl"):
     """→ dict for one sleeve (pure on its inputs)."""
-    R = SW.run(name, None, True, master, exports)
+    R = SW.run(name, None, True, master, exports, label=label)
     if not R["n"]:
         return dict(name=name, note=R["note"], n=0)
     df, res = R["df"], R["res"]
@@ -161,7 +170,7 @@ def sleeve_row(name, master=SW.MASTER, exports=None, null_1d=NULL_1D, null_2d=NU
                 top=[(r.col[6:], r.gran, r.dA, r.dB) for r in top.itertuples()])
 
 
-def verdict(r):
+def verdict(r, unit="%"):
     if not r["n"]:
         return f"{(r.get('note') or 'too few fills').split(': ', 1)[-1]} — keep collecting"
     if r["tests"] == 0:
@@ -169,12 +178,12 @@ def verdict(r):
     bar = P_BAR / LEVELS
     pm, b, nb = r.get("pmax"), r.get("best"), r.get("null_best")
     pm2, b2, nb2 = r.get("pmax2"), r.get("best2"), r.get("null_best2")
-    t1 = f"1D best {b or 0:.2f} % vs luck {nb if nb is not None else 0:.2f} (p {'–' if pm is None else f'{pm:.3f}'})"
-    t2 = (f"2D best {b2 or 0:.2f} % vs luck {nb2 if nb2 is not None else 0:.2f} (p {'–' if pm2 is None else f'{pm2:.3f}'})"
+    t1 = f"1D best {b or 0:.2f} {unit} vs luck {nb if nb is not None else 0:.2f} (p {'–' if pm is None else f'{pm:.3f}'})"
+    t2 = (f"2D best {b2 or 0:.2f} {unit} vs luck {nb2 if nb2 is not None else 0:.2f} (p {'–' if pm2 is None else f'{pm2:.3f}'})"
           if pm2 is not None else ("2D: null not run" if not r.get("k2") else
                                    "2D: no consistent quadrant, real or shuffled (cells < 5 fills per era, or none agrees across eras)"))
     pm3, b3, nb3 = r.get("pmax3"), r.get("best3"), r.get("null_best3")
-    t3 = (f"3D best {b3 or 0:.2f} % vs luck {nb3 if nb3 is not None else 0:.2f} (p {'–' if pm3 is None else f'{pm3:.3f}'})"
+    t3 = (f"3D best {b3 or 0:.2f} {unit} vs luck {nb3 if nb3 is not None else 0:.2f} (p {'–' if pm3 is None else f'{pm3:.3f}'})"
           if pm3 is not None else ("3D: null not run" if not r.get("k3") else
                                    "3D: no consistent 2D cell, or no third variable splits one consistently (≥ 5 per half per era, "
                                    "same sign both eras), real or shuffled"))
@@ -187,10 +196,37 @@ def verdict(r):
 
 
 def run(names=None, master=SW.MASTER, exports=None, cache_path=CACHE, budget_s=None):
-    """budget_s: stop re-sweeping changed sleeves after this many seconds (cached rows are always shown); None = no limit."""
+    """budget_s: stop re-sweeping changed sleeves after this many seconds (cached rows are always shown); None = no limit. TWO tables
+    (DECISION_LOG 406): the ENTRY LABEL from the price path first (the primary winners-vs-losers target, exit-independent), then the
+    booked P&L (secondary). One budget for both, oldest-swept first across them."""
     import time
     t_start = time.time()
-    L = [f"## 🔎 SEPARATOR SWEEP — every sleeve (DECISION_LOG {DL}, alert-only)", "",
+    SW._LABEL_MEMO.clear()   # one label pass per run (labels resolving from PENDING refresh every run)
+    names = names if names is not None else [n for n in SW.sleeves(master, exports)] + ["FS", "ML", "MS"]
+    _c = _load_cache(cache_path) if cache_path else {}
+    got = {}
+    # review (DECISION_LOG 402): the budget is spent OLDEST-SWEPT FIRST (never-swept first), so a sleeve late in the list cannot be
+    # starved run after run by earlier ones that keep changing; the tables keep the fixed order below.
+    jobs = [(nm, lab) for lab in ("path", "pnl") for nm in names]
+    for nm, lab in sorted(jobs, key=lambda j: float((_c.get(_ckey(*j)) or {}).get("t") or 0.0)):
+        try:
+            got[(nm, lab)] = sleeve_row_cached(nm, master, exports, cache_path,
+                                               allow_compute=(budget_s is None or time.time() - t_start < budget_s), label=lab)
+        except Exception as e:
+            got[(nm, lab)] = e
+    return (_table(names, {n: got.get((n, "path")) for n in names}, "path")
+            + _table(names, {n: got.get((n, "pnl")) for n in names}, "pnl"))
+
+
+def _table(names, got, label):
+    unit = "(×100 = points of WORKED rate)" if label == "path" else "%"
+    head = ("## 🔎 SEPARATOR SWEEP — ENTRY LABEL from the price path (DECISION_LOG 406, PRIMARY; alert-only)" if label == "path" else
+            f"## 🔎 SEPARATOR SWEEP — booked P&L (DECISION_LOG {DL}, secondary since DECISION_LOG 406; alert-only)")
+    L = [head, "",
+         ("Target = each fill's ENTRY label (scripts/path_labels.py): 1 = WORKED (+1 % our way before the sleeve's stop distance), 0 = "
+          "NEVER; flat / ambiguous / pending fills dropped (counted in the note). Δ = WORKED-rate difference (0.10 = 10 points) — the "
+          "split is about the ENTRY, whatever exit runs. Same machinery, null and read as the booked table below." if label == "path" else
+          "Target = the booked P&L % (exit-dependent: a change of exit relabels winners and losers — read it after the entry table)."), "",
          "scripts/sweep_separators.py on each sleeve's REAL fills (master on today's stack + the current batch; FS / ML / MS = the "
          "SCREENED_BASELINE pool). Survivors = cross-era-consistent splits (sign / median / tercile, thresholds from era A); null = the same "
          f"tests with P&L shuffled in UTC-DAY blocks within each era (same-day fills move together — window units; 1D × {NULL_1D}; 2D × {NULL_2D}). "
@@ -200,17 +236,6 @@ def run(names=None, master=SW.MASTER, exports=None, cache_path=CACHE, budget_s=N
          "every 'no separator' / switch-off claim cites this table + the sleeve's own run.", "",
          "| Sleeve | N (master · batch) | Era split | Cols tested (numeric + flag/category · never stamped) | Blind spots (< 80 %) | 1D tests · survivors · null (count p) | 2D cells · survivors · null | 3D-from-2D tests (cells × other vars) · survivors · top | Top 1D (ΔA / ΔB %) | Read (family-wise: best split vs luck's best) |",
          "|---|---|---|---|---|---|---|---|---|---|"]
-    names = names if names is not None else [n for n in SW.sleeves(master, exports)] + ["FS", "ML", "MS"]
-    # review (DECISION_LOG 402): the budget is spent OLDEST-SWEPT FIRST (never-swept first), so a sleeve late in the list cannot be
-    # starved run after run by earlier ones that keep changing; the table keeps the fixed order below.
-    _c = _load_cache(cache_path) if cache_path else {}
-    got = {}
-    for nm in sorted(names, key=lambda n: float((_c.get(n) or {}).get("t") or 0.0)):
-        try:
-            got[nm] = sleeve_row_cached(nm, master, exports, cache_path,
-                                        allow_compute=(budget_s is None or time.time() - t_start < budget_s))
-        except Exception as e:
-            got[nm] = e
     for nm in names:
         r = got.get(nm)
         if isinstance(r, Exception):
@@ -222,7 +247,7 @@ def run(names=None, master=SW.MASTER, exports=None, cache_path=CACHE, budget_s=N
                      "`venv/bin/python scripts/scout_sweep_all.py` refreshes it |")
             continue
         if not r["n"]:
-            L.append(f"| {nm} | {r['note'].split(': ', 1)[-1]} | – | – | – | – | – | – | – | {verdict(r)} |")
+            L.append(f"| {nm} | {r['note'].split(': ', 1)[-1]} | – | – | – | – | – | – | – | {verdict(r, unit)} |")
             continue
         bl = ", ".join(f"{c[6:]} {v:.0%}" for c, v in list(r["bcov"].items())[:6]) + (f" +{len(r['blind']) - 6}" if len(r["blind"]) > 6 else "") if r["blind"] else "none"
         top = " · ".join(f"{c} {g} {a:+.2f}/{b:+.2f}" for c, g, a, b in r["top"]) or "–"
@@ -232,7 +257,7 @@ def run(names=None, master=SW.MASTER, exports=None, cache_path=CACHE, budget_s=N
                                                        if r.get("top3") else ""))
         L.append(f"| {nm} | {r['n']} ({r['nm']} · {r['nb']}){' ⚠ N<30' if r['n'] < 30 else ''} | {str(r['split'])[:10]} | "
                  f"{r['cols']} + {r.get('lev', 0)} · {r.get('empty', 0)} | {bl} | "
-                 f"{r['tests']} · {r['s1']} · {r['null1']:.1f} (p {'–' if r.get('p1') is None else format(r['p1'], '.3f')}) | {n2} | {n3} | {top} | {verdict(r)} |")
+                 f"{r['tests']} · {r['s1']} · {r['null1']:.1f} (p {'–' if r.get('p1') is None else format(r['p1'], '.3f')}) | {n2} | {n3} | {top} | {verdict(r, unit)} |")
     L += ["", "_Full per-sleeve output: `venv/bin/python scripts/sweep_separators.py <SLEEVE>` (or ALL). Blind-spot columns need their own "
           "read (scored subset) — never counted as 'rest'._", ""]
     return L

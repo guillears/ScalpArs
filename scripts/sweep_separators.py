@@ -16,7 +16,7 @@ RULES OF USE (locked in CLAUDE.md):
 - Consistency here is a SCREEN, not a ship: survivors still face the locked promotion
   gates (N, WR, avg, theory, haircut) before any config change.
 
-Usage: ./venv/bin/python scripts/sweep_separators.py [FS|ML|MS] [era_split_date]
+Usage: ./venv/bin/python scripts/sweep_separators.py [FS|ML|MS] [era_split_date] [--label pnl|path|reach]
        ./venv/bin/python scripts/sweep_separators.py <ENTRY_STRATEGY> [era_split_date]   e.g. SURGE_LONG · SPIKE_FADE · FRENZY_LITE ·
                                                        FRENZY_WILLY · FLATBASE_SHORT · BULLRUN_LONG · FLIP:FAN_RATIO_GATE · MOMENTUM:LONG
        ./venv/bin/python scripts/sweep_separators.py ALL                                    every bot sleeve with ≥ 6 real fills
@@ -27,6 +27,9 @@ rows of that entry_strategy kept by TODAY's stack (stack_keep, P&L = stack_pct �
 closed bot fills from every orders export (opened ≥ the batch start, as traded — the batch IS today's stack), dedup (opened_at, pair,
 direction), MANUAL out. Era split default = the cohort's median open date (both eras populated); a column below 80 % coverage is NOT
 tested and is listed as a blind spot (never silently dropped). N < 30 → printed as a screen on a thin cohort.
+🧭 2026-10-28 (DECISION_LOG 406): --label path = the PRIMARY target — the ENTRY label from each fill's price path (scripts/path_labels.py:
+WORKED = +1 % our way before the sleeve's stop distance, else NEVER), exit-independent; --label reach = how far it went our way before
+the stop (continuous); --label pnl (default) = the booked %, secondary.
 """
 import glob
 import os
@@ -78,6 +81,7 @@ def load_real(sleeve, master=MASTER, exports=None, batch_start=None):
         if batch_start is None and len(m):
             batch_start = max(BATCH_START, str(_k.max()))                       # the batch = fills after the master's last one
         m = m[(m.entry_strategy.astype(str) == es) & m.stack_keep.astype(str).isin(_TRUE)].copy()
+        m["pnl_traded"] = pd.to_numeric(m.pnl_percentage, errors="coerce")   # DL 406 review 2: path labels read the TRADED close / %
         if "stack_pct" in m:
             m["pnl_percentage"] = pd.to_numeric(m.stack_pct, errors="coerce")
         fr.append(m.assign(_src="master", _rank=-1))
@@ -99,6 +103,7 @@ def load_real(sleeve, master=MASTER, exports=None, batch_start=None):
     d["opened_at"] = d.opened_at.astype(str).str.replace(" ", "T").str[:19]
     d = d.sort_values("_rank", kind="stable").drop_duplicates(["opened_at", "pair", "direction"], keep="last")
     d["pnl_percentage"] = pd.to_numeric(d.pnl_percentage, errors="coerce")
+    d["pnl_traded"] = pd.to_numeric(d["pnl_traded"], errors="coerce").fillna(d.pnl_percentage) if "pnl_traded" in d else d.pnl_percentage
     d = d[(d.status.astype(str) == "CLOSED") & d.pnl_percentage.notna()]
     if dr:
         d = d[d.direction.astype(str) == dr]
@@ -386,29 +391,68 @@ def sweep_3d(df, res, cands, top=TOP_CELLS_3D, stats_only=False):
     return (r.sort_values("strength", ascending=False).reset_index(drop=True) if len(r) else r), tests
 
 
-def prepare(sleeve, split=None, master=MASTER, exports=None):
+LABELS = ("pnl", "path", "reach")
+_LABEL_MEMO = {}
+
+
+def apply_label(df, label):
+    """label 'pnl' (booked %, secondary since DECISION_LOG 406) · 'path' (the PRIMARY target: pnl_percentage := the ENTRY label, 1.0
+    WORKED / 0.0 NEVER — Δ is a WORKED-rate difference, 0.10 = 10 points) · 'reach' (operator 10-28: the best move our way before the
+    stop, in % points — no threshold). FLAT / AMBIG / PENDING dropped and counted. Cache-only (no network); memoised per cohort within a
+    run (the scout fingerprints and sweeps the same cohort). → (df, note)."""
+    if label not in LABELS:
+        raise ValueError(f"--label must be one of {LABELS}")
+    if label == "pnl":
+        return df, ""
+    _here = os.path.dirname(os.path.abspath(__file__))
+    if _here not in sys.path:
+        sys.path.insert(0, _here)
+    import path_labels as PL
+    _kc = [c for c in ("opened_at", "pair", "direction", "pnl_percentage", "closed_at") if c in df.columns]
+    mk = (label, len(df), int(pd.util.hash_pandas_object(df[_kc].astype(str), index=False).sum() % (1 << 61))) if len(df) and _kc else None
+    if mk is not None and mk in _LABEL_MEMO:
+        lab, t = _LABEL_MEMO[mk]
+    else:   # labels read the AS-TRADED % (the traded close / stop), never the re-priced stack_pct (review 2)
+        src = df.assign(pnl_percentage=df.pnl_traded) if "pnl_traded" in df.columns else df
+        lab, t = PL.entry_target(src, label=label, fetch=False)
+        lab = lab.assign(pnl_percentage=df.pnl_percentage.values)
+        if mk is not None:
+            _LABEL_MEMO[mk] = (lab, t)
+    lab = lab.assign(pnl_percentage=t.values)
+    kept = lab[lab.pnl_percentage.notna()].reset_index(drop=True)
+    vc = lab.path_label.value_counts()
+    if label == "reach":
+        return kept, (f" · REACH (path, DL 406): the best move our way before the stop, % points · scored {len(kept)} · not counted "
+                      f"{len(lab) - len(kept)} (ambig / pending bars) → Δ = reach difference in points")
+    return kept, (f" · ENTRY LABEL (path, DL 406): WORKED {int(vc.get('WORKED', 0))} · NEVER {int(vc.get('NEVER', 0))} · not counted "
+                  f"{len(lab) - len(kept)} (flat / ambig / pending bars) → Δ = WORKED-rate difference (0.10 = 10 points)")
+
+
+def prepare(sleeve, split=None, master=MASTER, exports=None, label="pnl"):
     """→ (df with era, split, note) or (None, None, reason)."""
     if sleeve in LEGACY:
         df = pd.read_csv(POOL)
         df = df[df.screen_sleeve == LEGACY[sleeve]].copy()
         split = split or '2026-06-30'
-        note = f"{sleeve}: SCREENED_BASELINE pool {len(df)} fills"
+        df, _lnote = apply_label(df.reset_index(drop=True), label)
+        note = f"{sleeve}: SCREENED_BASELINE pool {len(df)} fills" + _lnote
     else:
         df = load_real(sleeve, master, exports)
+        df, _lnote = apply_label(df, label)
         if len(df) < MIN_FILLS:
             return None, None, f"{sleeve}: {len(df)} real fills — too few to sweep (need ≥ {MIN_FILLS})"
         split = split or pd.to_datetime(df.opened_at).median().strftime("%Y-%m-%dT%H:%M:%S")   # same 'T' format as opened_at (review)
         note = (f"{sleeve}: {len(df)} REAL fills (master on today's stack {int((df._src == 'master').sum())} · current batch "
-                f"{int((df._src == 'batch').sum())}) · era split {split}" + (" · ⚠ N < 30: a screen on a thin cohort" if len(df) < 30 else ""))
+                f"{int((df._src == 'batch').sum())}) · era split {split}" + _lnote + (" · ⚠ N < 30: a screen on a thin cohort" if len(df) < 30 else ""))
     df['era'] = np.where(df.opened_at.astype(str) < split, 'A', 'B')
     if df.era.nunique() < 2:
         return None, None, f"only one era in pool for {sleeve} at split {split}"
     return df, split, note
 
 
-def run(sleeve, split=None, two_d=True, master=MASTER, exports=None, three_d=True):
+def run(sleeve, split=None, two_d=True, master=MASTER, exports=None, three_d=True, label="pnl"):
     """→ dict(note, n, split, cands, blind, res, cons, res2, n2, res3, n3) or dict(note) when not sweepable. Pure on its inputs."""
-    df, split, note = prepare(sleeve, split, master, exports)
+    df, split, note = prepare(sleeve, split, master, exports, label)
     if df is None:
         return dict(note=note, n=0)
     cands, levels, blind, empty, other = candidates(df, detail=True)
@@ -422,17 +466,25 @@ def run(sleeve, split=None, two_d=True, master=MASTER, exports=None, three_d=Tru
 
 
 def main(argv):
+    _LABEL_MEMO.clear()
+    label = "pnl"
+    if "--label" in argv:
+        i = argv.index("--label")
+        if i + 1 >= len(argv) or argv[i + 1] not in LABELS:
+            raise SystemExit(f"--label needs one of {LABELS}")
+        label = argv[i + 1]
+        argv = argv[:i] + argv[i + 2:]
     sleeve = argv[1] if len(argv) > 1 else 'FS'
     split = argv[2] if len(argv) > 2 else None
     if sleeve == "ALL":   # every bot sleeve, one sweep each
         for nm in sleeves():
             print(f"\n════════ {nm} ════════", flush=True)
             try:
-                main([argv[0], nm] + argv[2:3])
+                main([argv[0], nm] + argv[2:3] + ["--label", label])
             except Exception as e:   # one sleeve's failure never hides the others
                 print(f"⚠ {nm}: sweep failed — {type(e).__name__}: {str(e)[:160]}")
         return
-    R = run(sleeve, split)
+    R = run(sleeve, split, label=label)
     print(R["note"])
     if not R["n"]:
         return

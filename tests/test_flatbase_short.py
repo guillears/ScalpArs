@@ -733,7 +733,8 @@ def test_scout_gates_and_shadow_pricing(tmp_path):
     fund = []
     L = SC.run(now_ms=since + 30 * 86_400_000, paths=[str(orders)], dec_paths=[str(dec)], since_ms=since, klines=kl,
                funding=lambda sym, a, b: fund.append((sym, a, b)) or -0.5,
-               tp_klines=lambda *a: [], tp_state_path=str(tmp_path / "tp.json"), tp_final_path=str(tmp_path / "fin.json"))   # (367) own path
+               tp_klines=lambda *a: [], tp_state_path=str(tmp_path / "tp.json"), tp_final_path=str(tmp_path / "fin.json"),
+                obs_fb2_state_path=str(tmp_path / "fb2.json"))   # (367) own path
     txt = "\n".join(L)
     assert "real (net of funding)" in txt and "funding unknown on 12 fill(s)" in txt                       # paper rows: no funding column
     assert "slippage 0.030 %/taker side, funding incl." in txt and fund and fund[0][0] == "SHUSDT"
@@ -744,7 +745,7 @@ def test_scout_gates_and_shadow_pricing(tmp_path):
     a = SC.load_orders([str(live)])
     assert a.net.iloc[0] == pytest.approx(-1.0) and bool(a.fund_known.iloc[0])
     assert "operator-closed: 1" in txt and "N 12" in txt and "3 stop-outs in a row" in txt and "Gate verdict: REVIEW" in txt
-    assert got == [("SHUSDT", int(pd.Timestamp("2026-10-23T08:00:00").value // 10**6), 864)]           # the bar after the S4 bar, 72 h
+    assert set(got) == {("SHUSDT", int(pd.Timestamp("2026-10-23T08:00:00").value // 10**6), 864)}      # the bar after the S4 bar, 72 h (also OBS-FB2's two cells, DL 407)
     assert "1 setups · 1 priced" in txt and "⏳ 12/30 real fills" in txt
     assert SC.run(paths=[str(orders)], dec_paths=[str(dec)], since_ms=None, klines=kl, tp_state_path=None, tp_final_path=None) is not None
 
@@ -920,3 +921,45 @@ def test_scout_peak_age_rebuild_matches_the_engine_rule():
     if ref - 1 != k_pk:
         assert FB.s4_scan(_window(tie, ref), sp, _th())['peak_age_h'] == pytest.approx(s['peak_age_h'])
         assert SF.peak_age_from_rows(tie, sp, rows[ref][0])[0] == pytest.approx(s['peak_age_h'])
+
+
+# ── 🩳🔒 OBS-FB2 LOW-TURNOVER SWITCH (DECISION_LOG 407) ───────────────────────────────────────────────────────────────────────────
+def test_obs_fb2_cells_price_both_exits_with_hold():
+    import scout_flatbase_short as SF2
+    t = pd.Timestamp("2026-10-30 08:00")
+    row = NS(t=t, pair="AUSDT", px=100.0)
+    s0 = int(t.value // 1_000_000) + 300_000
+
+    def kl(sym, start, n):   # price slides 6 % down over 12 bars, then flat: +5 (TP5_SL10) hits first, +8 never
+        return [[s0 + i * 300_000, 100 - 0.5 * min(i, 12), 100 - 0.5 * min(i, 12) + 0.1, 100 - 0.5 * min(i, 12) - 0.1, 100 - 0.5 * min(i, 12), 1]
+                for i in range(n)]
+    a = SF2.price_shadow_cell(row, "LOW×TP5_SL10", None, 0, fetch=False, klines=kl, slip_pct=0.0, funding=lambda *x: -0.05)
+    b = SF2.price_shadow_cell(row, "LOW×TODAY", None, 0, fetch=False, klines=kl, slip_pct=0.0, funding=lambda *x: -0.05)
+    assert a is not None and a[0] == pytest.approx(5.0 - 0.045 - 0.018 - 0.05, abs=0.1) and a[1] < 120   # +5 maker TP, funding incl.
+    assert b is not None and b[1] >= 71 * 60 and b[0] > a[0]               # +8 never → held to the 72 h close (≈ +6 %)
+
+
+def test_obs_fb2_verdict_bar():
+    import scout_flatbase_short as SF2
+    days = pd.date_range("2026-11-01", periods=12, freq="D")
+    good = [(days[i % 12] + pd.Timedelta(hours=i), f"P{i}USDT", 4.0 + (i % 3)) for i in range(30)]
+    v, txt = SF2.obs_fb2_verdict(good, [-2.7] * 13)
+    assert v == "CANDIDATE" and "operator decides" in txt
+    assert SF2.obs_fb2_verdict(good[:29], [-2.7])[0] == "COLLECTING"
+    assert SF2.obs_fb2_verdict([(t, p, -1.0) for t, p, _ in good], [0.5] * 6)[0] == "RETIRE"
+    assert SF2.obs_fb2_verdict(good, [-2.7] * 4)[0] == "COLLECTING"            # comparator too thin
+    assert SF2.obs_fb2_verdict(good[:28], [-2.7] * 13, unpriced=2)[0] == "COLLECTING"   # an open window blocks the frozen read
+    one_day = [(days[0] + pd.Timedelta(minutes=i), f"P{i}USDT", 4.0) for i in range(30)]
+    assert SF2.obs_fb2_verdict(one_day, [-2.7] * 13)[0] == "COLLECTING"             # 1 day < 10 days
+    conc = [(t, "SAMEUSDT", x) for t, _, x in good]
+    assert SF2.obs_fb2_verdict(conc, [-2.7] * 13)[0] == "KEEP_OBSERVING"            # one pair carries the whole gain
+
+
+def test_obs_fb2_prefix_grows_until_the_day_count():
+    import scout_flatbase_short as SF2
+    days = pd.date_range("2026-11-01", periods=12, freq="D")
+    clustered = [(days[i // 4] + pd.Timedelta(minutes=i), f"P{i}USDT", 4.0) for i in range(32)]   # 4 a day → 30 on 8 days
+    assert SF2.obs_fb2_verdict(clustered[:30], [-2.7] * 13)[0] == "COLLECTING"
+    more = clustered + [(days[8] + pd.Timedelta(hours=1), "XUSDT", 4.0), (days[9] + pd.Timedelta(hours=1), "YUSDT", 4.0)]
+    assert SF2.obs_fb2_verdict(more, [-2.7] * 13)[0] in ("CANDIDATE", "KEEP_OBSERVING")       # the grown prefix reaches 10 days
+    assert SF2.obs_fb2_verdict(more[:28], [-2.7] * 13, unpriced=2, unpriced_days=[days[10], days[11]])[0] == "COLLECTING"

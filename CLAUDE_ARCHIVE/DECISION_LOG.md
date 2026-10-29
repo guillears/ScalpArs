@@ -10355,3 +10355,40 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
 - **Tests:** tests/test_scout_exit_shadows.py — flips-only sleeve / per-fill stops, net path incl. the real entry fee and the first
   minute, fixed walk, parity, verdict, crossing, run (export-age wait, cache, freeze once, unfrozen dry run, other sleeves out),
   signature re-walk, gap retry, misses on 3 days, pending window, NOT EVALUABLE, hook, registry.
+
+## (412) 2026-10-29 — 👁 WILLY_ADX55 watch line registered + WILLY stop-width exercise (answered: keep −4) (observe only, no trading change)
+- **Stop width (operator "do we test a wider SL for WILLY / HT?"):** no live line did (WILLY_STOP is ⚠ STALE on the old exit; the V2b
+  shadows all keep −4). Historical check on 47 of 50 WILLY fills (ICNT 10-16 + LSK 10-29 unpriced, 1000PEPE 10-29 not yet exported) and
+  9 of 10 HT (master on today's stack + B25), i.e. 12 of WILLY's 15 real stops, today's V2b exit (stored / rebuilt
+  spike-high target, late +0.25 @30, 90 min) with stop −4 / −5 / −6 / −8 / none: parity 19 / 19 on the fills that ran V2b; fills the −4
+  stop never touched Δ = 0 under every width. FRENZY_WILLY 47 fills / 15 d (−4: 74 % · +0.321, 12 stops): −5 −0.17 · −6 −0.22 · −8 −0.35
+  · none −0.26 %/fill; on the 12 stopped: saved 2 / 3 / 4 / 5 vs deeper 10 / 9 / 8 / 7 (holds without the top fill; master ≈ flat, B25
+  much worse). WILLY_HT 9 fills, 1 stop — too thin. → **−4 KEPT**, no tracker; WILLY's B25 problem is its entries.
+- **Watch line (operator after LSK −$485 + 1000PEPE −$905 on 10-29):** none of the live WILLY lines explains the latest losers (BTC1H:
+  mixed sides · DIP_SUB predicts the deep-candle / BTC-rising pair WINS — contradicted · MKTDIP is a TP line · wider stop refuted above).
+  Shared trait: the coin's entry_adx (the 5m ADX(14) at the fill — the bar just opened after the red signal bar) — B25 every WILLY / HT
+  fill with ADX > 55 (ORDER, T, LSK, 1000PEPE) a −4 stop; master 6 · 67 % · −0.34 vs ≤ 55 32 · 84 % · +0.91; as traded in the archive
+  (first WILLY fill 10-09) WILLY ADX > 55 10 fills on 9 days · 40 % · −1.67 vs 40 · 75 % · −0.03 — N, not the 8-day rule, holds the gate. BTC
+  STRONG_BULL (4 / 4 B25 stops) not registered — the master contradicts it (2 · 2 W).
+- **Operator questions answered before registering:** other FRENZY sleeves — LITE / LITE_RETRY / HT never enter at ADX > 55 (medians
+  23 – 34), FRENZY_LONG 2 of 36 fills (WIDE, off, 1 of 14) → nothing to track. ADX × RSI on WILLY (re-priced base: master stack_pct +
+  B25; 25 cells, ADX > 40 … 60 × RSI > / ≤ 65 … 80): ADX > 55 ∧ RSI > 70 9 · 33 % · −2.04 ≈ ADX > 55 alone 10 · 40 % · −1.81 (an ADX >
+  55 entry nearly always has RSI > 70; RSI > 74 with ADX ≤ 55 is WILLY's best cell, 15 · 87 % · +0.87) → RSI adds nothing; grid luck test (trade-level shuffle, 500) p 0.078 — suggestive, not proven;
+  the full sweep (sweep_separators FRENZY_WILLY, 3 labels, 1D / 2D / 3D) finds no separator above luck (p 0.27 – 0.93). ADX > 55 was
+  picked after seeing the losers → observe only.
+- **Line (scripts/scout_willy_adx_watch.py, in the opportunity scout):** CLOSED FRENZY_WILLY and FRENZY_WILLY_HT fills opened ≥ this
+  commit + 10 min, each sleeve decided SEPARATELY (operator 10-29), zone = entry_adx > 55 vs ≤ 55, booked %, operator-closed out,
+  missing stamp unscored. 🔒 FROZEN expectancy bar per sleeve: at zone N ≥ 15 on ≥ 8 UTC days, once — zone avg ≥ rest or ≥ 0 →
+  RETIRED; FILTER CANDIDATE (operator) iff zone WR < 69.0 % (frozen WILLY V2b breakeven on WILLY fills: avg win +1.806 / loss −4.009,
+  N 50; HT runs the same exit and stop → the same bar, though HT's own empirical breakeven is lower, 0.57 on N 10 — the bar is stricter
+  to pass for HT's entries, too thin for its own; HT had 0 zone fills at registration and may never reach the gate) ∧ mean < 0 at day-bootstrap P ≥ 0.95 ∧ no day / pair ≥ 50 % of the loss; else KEEP OBSERVING; deferred until an export ≥ the
+  crossing + 90 min. State SCOUT_WILLY_ADX55.json (gitignored); observe_registry BOOKED.
+- **Also noted (size, WILLY review step):** WILLY notional grew with the account ($4.5k → $9.8k → $12.1k → $22.6k); 1000PEPE (a $2.2B
+  coin, liquidity cap $500k not binding) lost −$905 on a normal −4 stop — several % of the account (no equity column in the export).
+- **Reviews (DL 412):** caveman — registry pins the V2b exit keys (a WILLY exit change → ⚠ STALE; the frozen breakeven belongs to that
+  exit) · the max-hold wait reads frenzy_willy_max_hold_minutes · a non-dict state record ignored · tests for operator-closed / pre-floor
+  / dedup / relative retire · deep — stop-width coverage stated (47 / 50, 9 / 10) · the RSI cell corrected (15 · 87 % · +0.87) and the
+  bases named · HT's bar stated · entry_adx = the 5m ADX at the fill (engine 9484 → 11812) · run tests independent of the live cap.
+- **Tests:** tests/test_scout_willy_adx_watch.py — constants, cohort (55 itself = rest, HT apart, other sleeves out, unscored), the
+  outcomes (candidate / retired ≥ rest / retired ≥ 0 / keep at WR ≥ breakeven / one-pair keep / collecting), export-age wait, freeze
+  once per sleeve, dry run, NOT EVALUABLE, hook, registry.

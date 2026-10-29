@@ -1464,6 +1464,14 @@ def run():
     except Exception as _mw4_e:
         log(f"ML_W4 line failed: {_mw4_e}")
         _rg_sec += ["## 👁 ML_W4", "", f"Unavailable this run ({str(_mw4_e)[:120]}).", ""]
+    try:                                               # 👁 Oct-29 WILLY_ADX55 watch line — WILLY / WILLY_HT entries on a coin with ADX > 55 (DECISION_LOG 412; frozen expectancy bar per sleeve, OBSERVE only; orders exports only, no network; never breaks the run)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_willy_adx_watch as _wax
+        _rg_sec += _wax.run(now_ms)
+    except Exception as _wax_e:
+        log(f"WILLY_ADX55 line failed: {_wax_e}")
+        _rg_sec += ["## 👁 WILLY_ADX55", "", f"Unavailable this run ({str(_wax_e)[:120]}).", ""]
     try:                                               # 🚪 Oct-29 EXIT_SHADOWS — FLIP only: fixed TP +1.5 / +2 / +3 vs the booked flip exit (DECISION_LOG 411; frozen verdict, OBSERVE only; budgeted public 1m; never breaks the run)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

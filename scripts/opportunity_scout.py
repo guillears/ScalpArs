@@ -1464,6 +1464,14 @@ def run():
     except Exception as _mw4_e:
         log(f"ML_W4 line failed: {_mw4_e}")
         _rg_sec += ["## 👁 ML_W4", "", f"Unavailable this run ({str(_mw4_e)[:120]}).", ""]
+    try:                                               # 🚪 Oct-29 EXIT_SHADOWS — FLIP only: fixed TP +1.5 / +2 / +3 vs the booked flip exit (DECISION_LOG 411; frozen verdict, OBSERVE only; budgeted public 1m; never breaks the run)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_exit_shadows as _exs
+        _rg_sec += _exs.run(now_ms)
+    except Exception as _exs_e:
+        log(f"EXIT_SHADOWS line failed: {_exs_e}")
+        _rg_sec += ["## 🚪 EXIT_SHADOWS", "", f"Unavailable this run ({str(_exs_e)[:120]}).", ""]
     try:                                               # 🔁📏 Oct-9 FRENZY_REENTRY_AFTER_WIN + FRENZY_STRETCHED (pre-registered; orders exports only, no Binance; never breaks the run)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

@@ -67,6 +67,7 @@ reports/SCOUT_LITE_STRETCH_REENTRY.json
 reports/SCOUT_WILLY_BTC1H.json
 reports/SCOUT_WILLY_BTC1H_V2B.json
 reports/SCOUT_ML_W4_WATCH.json
+reports/SCOUT_EXIT_SHADOWS.json
 reports/SCOUT_FRENZY_WL_LINES.json
 reports/SCOUT_*.json.*
 reports/.live_exports/

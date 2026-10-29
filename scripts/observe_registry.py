@@ -46,6 +46,14 @@ EXIT = {
     # / 390) and OBS-FB1 stay FROZEN to the +8 / −15 rule by design (labelled in their lines; parity is era-aware) — not stale, not the live exit.
     "scout_flatbase_short.py": dict(dl="348 · 367 · 370 · 390 · 407 · 408", sleeves="FLATBASE_SHORT (+ blocked WILLY leg)",
                                     walks={"flatbase_tp_pct": 5.0, "flatbase_stop_pct": 10.0, "flatbase_max_hold_hours": 72.0, **_OLD_WILLY}),
+    # 🚪 (411) exit shadows on FLIPS only (fades / momentum answered by history, operator 10-29) — the walks use each fill's LIVE stop
+    # (−0.7 widened to 1.5 × entry ATR, capped −1.2) and Δ reads the BOOKED flip exit (FAN flips' short runner trail, flip_fan_runner_strpk):
+    # a change to any of these keys makes the line STALE (the −0.7 base is a confidence-tier stop_loss outside `thresholds` — not pinned)
+    "scout_exit_shadows.py": dict(dl="411", sleeves="FLIP", walks={
+                                  "sl_atr_multiplier": 1.5, "sl_atr_widen_floor_pct": -1.2, "flip_fan_runner_strpk": True,
+                                  "runner_trail_short_enabled": True, "runner_trail_short_arm_peak": 0.4, "runner_trail_short_k": 0.5,
+                                  "runner_trail_short_use_atr": True, "runner_trail_short_atr_mult": 0.5,
+                                  "runner_trail_short_giveback_frac": 0.35, "flip_runner_strpk_shorts": True}),
     "scout_frenzy.py": dict(dl="195 · 196 · 205", sleeves="FRENZY_LONG / WIDE", walks=_FZ_STOP3),
     "scout_frenzy_exits.py": dict(dl="214 · 243 · 250 · 251 · 263 · 272 · 284 · 333 · 336", sleeves="FRENZY family + WILLY gate",
                                   walks={**_FZ_STOP3, **_NO_LITE_C, **_OLD_WILLY}),

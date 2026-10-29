@@ -393,6 +393,12 @@ new fills (opened after the 271 deploy, 2026-10-12) as their own line — they a
 - [ ] **AUDIT FLAG: the 'no more entry filters — exit + sizing is the lever' CURRENT_STATE line contradicts the operator's 10-09 'filters, not sizing' rule** — resolve wording at the PORTFOLIO step
 
 ## 1. FRENZY_WILLY
+- [ ] **🆚 WILLY vs WILLY_HT — why do the results differ? (operator 2026-10-29)** — B25: WILLY 10 · 40 % · −1.59 %/fill · −$985 (6 stops)
+      vs HT 9 · 78 % · +1.23 % · +$168 (1 stop). HT = the WILLY setups refused ONLY by turnover (24 h volume / mcap ≥ 1.0) → read the
+      difference as a TURNOVER question first (theory card: is a high-turnover spike a real-demand spike that bounces, a low-turnover one
+      a thin pump that keeps dumping?) · same days only (time-matched) · master per batch + B25 + backtest · entry label / reach / booked ·
+      per-pair / per-day concentration · leave-one-out. If turnover separates, the candidate is a WILLY turnover FLOOR (or HT at full size)
+      — joint with the HT Q1–Q3 items below and the slots study; analysed separately per sleeve.
 - [ ] **🎰 WILLY SLOTS 1 → 2 / 3? (operator 2026-10-29: "one WILLY at a time doesn't make sense anymore")** — the original reasons: one-at-a-time
       risk (10× · −4 stop ≈ $200–390 per stop in B25; WILLY setups cluster in hot hours → correlated stop-outs) + the global hold (OFF since
       DL 340, reason gone). B25 journal: 4 FRENZY_WILLY_MAX_SLOTS events in 6 days (ARK 10-25 00:55 → opened later as HT −1.50 · BANK 10-26

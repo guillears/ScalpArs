@@ -10318,3 +10318,40 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   W6 admits off); cell_multiplier_source and the W4 stamp 0 NaN on every export; _PROBE suffix covers every probe tag.
 - **Tests:** tests/test_scout_ml_w4_watch.py — constants, cohort (probes / other sleeves out, unscored apart, forward floor), the three
   outcomes + collecting, freeze once + OPEN hold + never re-decided, NOT EVALUABLE without the commit, scout hook, registry.
+
+## (411) 2026-10-29 — 🚪 exit exercises on history (fades · momentum long / short · flips) → today's exits KEPT; EXIT_SHADOWS tracks FLIPS only (+1.5 / +2 / +3, observe only)
+- **Why (operator):** the SPIKE_FADE review found winners "leaving profit" (master 28 of 63 winners LEFT_ON_TABLE — a hindsight measure)
+  and no scout line tracking exits. Operator rules: use exits other sleeves already run (no invented exits) · fades AND momentum / flips
+  · a fade is not a long hold (FRENZY's lessons). Then: "make an exercise on all historic fades now — same SL, different TP" → "drop the
+  fade part, it's answered" → the same check on momentum / flips first → "keep it only for flips with +1.5 / +2 / +3".
+- **Historical exercises (scratch, not shipped):** every full-size fill, master on today's stack + B25, re-walked on its own path with
+  its real entry fee (maker 0.018 on most momentum and about half the flip fills) and its live stop (fades −1.5; momentum / flips −0.7 widened to 1.5 ×
+  entry ATR, capped −1.2 — matches every B25 live stop), vs the booked result. Parity 84 / 88 fades, 257 / 262 others.
+  · **SPIKE_FADE 88** (booked 85 % · +0.258): fixed TP +0.5 … +3 at 30 min / 12 h all worse or tied (Δ −0.20 … −0.002; TP1.5 @12 h ties
+    only via PORTAL 08-15); tick-priced 52: −0.27 … −0.41, P(better) ≤ 0.14. Mechanism: the trail's breakeven lock — fixed +1.5 turns 21
+    booked winners into −1.5 stops (12 → 34 full stops). → KEPT, not tracked.
+  · **MOMENTUM LONG 177** (71 % · +0.110): TP1.5 0.00 · TP2 −0.01 · TP3 … TP6 −0.13 … −0.23 · WILLY late TP @30 −0.01 · 90-min cap −0.01;
+    tick-priced 138 all worse. B25's +0.51 / +0.58 for TP2 / TP3 was one batch (B2 / B14 / B16 / B19 / B23 the other way). → KEPT.
+  · **MOMENTUM SHORT 45** (78 % · +0.209): every fixed TP −0.18 … −0.54. → KEPT.
+  · **FLIP 40** (80 % · +0.204): TP2 / TP3 / TP4 +0.40 / +0.54 / +0.69 (P 0.95 – 0.97, below a multi-exit luck bar), carried by the
+    Jun-17 → Jul-1 washed-out window (TP4: 06-17 / 06-18 / 07-01 ≈ 23 of 27 pts); since September (n 16) TP3 −0.16 / TP4 −0.08 in
+    aggregate, TP2 +0.43 but Sep −0.39 (n 4) vs Oct +0.70 (n 12) with 4 of the 5 B25 flips ≈ +1.7 each → unresolved → the forward line.
+  Lesson (Claude): run the cheap historical check BEFORE building a forward tracker — it was drafted first (operator: "wasting my time").
+- **Bad fade entries (operator question):** the 10 NEVER_WORKED fades (−15.0 pts: BEL, SXT, PORTAL, FORM, ENSO, KOMA, SOLV, KMNO, PARTI,
+  RAYSOL) all sit in at least one live watch line: ① ADX Δ < 2.359 6 / 10 (34 winners too) · ② pair ADX ≤ 19.2 4 / 10 (17) · ⑤ 3 / 10
+  (10) · ⑥ 3 / 10 (3) · 41h 4 / 10 (12) · OBS-F1 late-tape weak spike 6 / 10 (10; late window approximated ≥ 09-13). No new line.
+- **🚪 EXIT_SHADOWS (scripts/scout_exit_shadows.py) — FLIP only:** forward full-size FLIP:* fills re-priced on their own path (shared
+  ticks, else public 1m pages ≤ 20 requests / run) with the real entry fee + taker exit, no slippage either side, the 1m-only first bar
+  opening at the entry; TP1.5 / TP2 / TP3 fixed, 12 h, the fill's live stop; vs the BOOKED result. Results cached under a signature
+  (exits + constants + the fill's fee / stop / booked % / reason → re-walk on change); a data gap retried on another UTC day; no path →
+  UNPRICEABLE after misses on 3 UTC days. Parity (live stop ⇔ the stop line) 40 / 40 on history. Not modelled: the STRONG_BUY signal_active_sl −1.0 (never fired on a flip). Registry pins the ATR stop keys and the FAN flip exit (flip_fan_runner_strpk + the short runner trail).
+- **🔒 Frozen verdict:** first prefix of ≥ 20 counted flips on ≥ 8 UTC days (all priced, newest export ≥ the prefix end + 1200 min),
+  once — per exit CANDIDATE (operator decides a reviewed study: haircut, before → after per batch with the daily compound return, revert
+  gate) iff mean Δ ≥ +0.10 %/fill ∧ day-bootstrap P(Δ > 0) ≥ 1 − 0.10 / 3 ∧ no fill ≥ 50 % of the gain ∧ parity ≥ 90 %; else KEEP.
+  Counted from this commit + 10 min; the latest 100 earlier flips = context, cache only. Flips ≈ 1 / day → a verdict in weeks.
+- **Reviews (DL 411, five rounds — scope changed three times):** per-fill ATR stop · registry pins the stop keys · export-age deferral ·
+  paging · misses on distinct days · per-fill cache + signature · real entry fee · no slippage either side · TRAILING_STOP is not a stop
+  close · unpriceable reasons printed · fades, momentum and the time overlays removed (answered by history).
+- **Tests:** tests/test_scout_exit_shadows.py — flips-only sleeve / per-fill stops, net path incl. the real entry fee and the first
+  minute, fixed walk, parity, verdict, crossing, run (export-age wait, cache, freeze once, unfrozen dry run, other sleeves out),
+  signature re-walk, gap retry, misses on 3 days, pending window, NOT EVALUABLE, hook, registry.

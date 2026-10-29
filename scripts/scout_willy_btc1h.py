@@ -22,10 +22,18 @@ COHORT         CLOSED FRENZY_WILLY LONG fills, non-MANUAL (MANUAL_* closes liste
                pin 2026-10-12 12:00 UTC + 10 min), so the counted cohort runs ONE live exit (+1.25 / −4 / 90); it was 2026-10-12 00:00
                before (0 forward fills then, nothing frozen). Fills from the WILLY_TIMECAP deploy floor (the "(DECISION_LOG 251)" commit) to
                that deploy = the B19 "pre-registration context" line — shown, NEVER counted.
-PRICING        every fill re-walked under WILLY's REGISTERED exit, PINNED since DECISION_LOG 356 (willy_rule → +1.25 / −4 / 90 min, the
-               DECISION_LOG 281 live exit; never read from the config again — V2 per-order targets / floor never enter the walk; V2 runner /
-               floor fills stay in the groups, walked like every fill, and are kept out of the parity line) with the
-               ticks-first hybrid walker (scout_frenzy_willy_exit.load_path / evaluate, DECISION_LOG 272; tick ruler, bot accounting).
+PRICING        🔁 RE-BASED 2026-10-29 (DECISION_LOG 409, operator; DL 406 stale-line rule): every counted fill is re-walked under TODAY's
+               live WILLY exit V2b (DL 358) — TP = the fill's stored target (frenzy_willy_tp_target_pct); a fill from before the V2 stamps
+               gets the target the engine would have stored: max(+1.25, min(+8, net at H × (1 − 1 %))) on the engine's fee convention
+               (scout_willy_exit_v2.target_at_k), H = its stamped spike high or, unstamped, rebuilt from the spike bar open to the red
+               signal bar close (ticks, else complete 1m — spike_high()); stop −4 throughout · late TP +0.25 from minute 30 · 90-min cap
+               (scout_willy_exit_v2.walk_v2, the same hybrid tick → 1m path). No target (no H / fee) → UNPRICED (final once its data is
+               due, listed). Parity = the walk vs the booked % on the fills that RAN V2b (stored target, opened ≥ the DL 358 deploy + 10
+               min, not a WILLY_FLOOR close). The frozen bars, the cohort, the split and the thresholds are UNCHANGED; only the ruler moved
+               (the entry is the tested variable — DL 406 ③ judges an entry line under the exit that runs). Fresh state file
+               (reports/SCOUT_WILLY_BTC1H_V2B.json): nothing had frozen under the old ruler. The old ruler (+1.25 / −4 / 90, no late TP —
+               the DL 281 exit the line was registered on) is printed as CONTEXT only, never decides.
+               Before 409: every fill re-walked under the PINNED +1.25 / −4 / 90 (DL 356) with scout_frenzy_willy_exit.evaluate (DL 272).
                Cache only (WILLY_TIMECAP's fetch pass fills the tick / 1m caches for the same fills). Walker parity vs the actual exit
                printed. Unpriced fills are listed and hold the freeze while their data is still due; a fill with a 1m part (provisional)
                holds it while its tick archive is pending. Group stats use the WALKED %.
@@ -38,7 +46,7 @@ FROZEN BAR     (pre-registered 2026-10-12, DECISION_LOG 275 — never changed la
                   gross loss;
                ③ else KEEP OBSERVING.
                Deferred while any fill ≤ the prefix end is OPEN, unpriced, or provisional (1m part with ticks still due).
-               Counted from the DECISION_LOG 281 deploy (one live exit: today's config, +1.25 / −4 / 90).
+               Counted from the DECISION_LOG 281 deploy; priced under today's live exit V2b since DECISION_LOG 409.
                (An empty kept side cannot trigger ①; ② still applies.)
                The frozen record keeps n_unscored_le_prefix (warm-up / lag / gap) so the excluded fills stay on record.
 SUB-READ       🩸 DIP_SUB (pre-registered 2026-10-12, DECISION_LOG 279; OBSERVE only, operator may approve; own state key "dip_sub"):
@@ -52,7 +60,7 @@ SUB-READ       🩸 DIP_SUB (pre-registered 2026-10-12, DECISION_LOG 279; OBSERV
                ① deep avg ≤ shallow avg → RETIRED; ② else CANDIDATE (operator decides; never automatic) iff day-clustered bootstrap
                P(deep mean − shallow mean > 0) ≥ 0.95 (4,000 resamples, seed 7) ∧ no single day and no single pair carries ≥ 50 % of the
                deep side's gross gain; ③ else KEEP OBSERVING. Same deferral as the main bar.
-               State reports/SCOUT_WILLY_BTC1H.json (gitignored) · rows reports/SCOUT_WILLY_BTC1H.csv.
+               State reports/SCOUT_WILLY_BTC1H_V2B.json (gitignored; DL 409 — was SCOUT_WILLY_BTC1H.json) · rows reports/SCOUT_WILLY_BTC1H.csv.
 Usage: venv/bin/python scripts/scout_willy_btc1h.py [--selftest]
 """
 import os
@@ -72,6 +80,7 @@ import scout_b1h_negflank as NF                     # noqa: E402  (BTC 5m cache 
 import scout_frenzy_willy_exit as FWX               # noqa: E402  (the 272 hybrid walker, thresholds namespace, order prep)
 import scout_willy_hold as WH                       # noqa: E402  (WILLY's live exit from trading_config.json)
 import willy_exit_era as WEra                       # noqa: E402  🎲² (DECISION_LOG 356) pinned old exit + exit-era split / header
+import scout_willy_exit_v2 as V2                    # noqa: E402  🔁 (DECISION_LOG 409) the live V2b walker + the engine's target convention
 
 WT = FWX.WT
 # FROZEN 2026-10-12 (DECISION_LOG 275) — never re-fit
@@ -88,13 +97,17 @@ def count_start():
 
 
 STRATEGY = "FRENZY_WILLY"
+SPIKE_COL = "entry_frenzy_spike_at"                 # 🔁 (409) the spike bar CLOSE time — H is rebuilt over [its open, the red bar close)
+V2B_COLS = (SPIKE_COL, "entry_fee", "quantity", "entry_price")   # what the V2b target needs (engine fee convention)
+LATE_ENTRY_MS = 60_000                              # 🔁 (409 review) a WILLY fill lands ~8 s after its red bar's close; later → H window unknown
+V2B_K, V2B_CAP = 1.0, 90                            # 🔁 (409) the live V2b exit: k 1 % below H, 90-min cap (registry-checked vs config)
 H_MS, M5_MS = 3_600_000, 300_000
 LAG_PENDING_MS = 3 * 86_400_000                     # a fill unscored because the BTC cache is behind holds the freeze ≤ 3 days
 PROVISIONAL = ("1m", "ticks+1m")
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _CACHE = os.path.join(_ROOT, "reports", "backtest_cache")
 BTC_FILES = (("k5m_full", "BTCUSDT.csv"), ("b19_5m", "BTCUSDT.csv"), ("negflank2d_ext", "5m", "BTCUSDT.csv"), ("scout_dailyup", "BTCUSDT_5m.csv"))
-STATE = os.path.join(_ROOT, "reports", "SCOUT_WILLY_BTC1H.json")
+STATE = os.path.join(_ROOT, "reports", "SCOUT_WILLY_BTC1H_V2B.json")   # 🔁 (409) fresh file for the re-based read (old file never froze)
 ROWS_CSV = os.path.join(_ROOT, "reports", "SCOUT_WILLY_BTC1H.csv")
 EVIDENCE = ("yr5 live-reachable WILLY cohort, +1 / −4 (reports/B19_WILLY_BTC1H.txt): kept (slope > 0) 286 fills · 142 days · 83 % · +0.185 "
             "(H1 +0.188 / H2 +0.181) · blocked (slope ≤ 0) 246 · 145 days · 77 % · −0.098 (H1 −0.100 / H2 −0.097), P(mean < 0) 0.76 · found "
@@ -105,7 +118,7 @@ BAR = (f"FROZEN bar (pre-registered 2026-10-12, DECISION_LOG 275): at the first 
        f"decides; never automatic) iff blocked mean < 0 with day-clustered bootstrap P(mean < 0) ≥ {P_MIN:.2f} ({BOOT_N:,} resamples, seed "
        f"{BOOT_SEED}) ∧ no single day and no single pair carries ≥ {SHARE_MAX * 100:.0f} % of the blocked side's gross loss; ③ else KEEP "
        f"OBSERVING. Deferred while any fill ≤ the prefix end is OPEN, unpriced, or provisional (1m part with ticks still due). "
-       f"Counted from the DECISION_LOG 281 deploy (one live exit: today's config, +1.25 / −4 / 90).")
+       f"Counted from the DECISION_LOG 281 deploy; priced under today's live exit V2b since DECISION_LOG 409.")
 ARM_STATE = "ARM CANDIDATE (operator decides; never automatic)"
 # 🩸 DIP_SUB — FROZEN 2026-10-12 (DECISION_LOG 279) — never re-fit
 DIP_COL, DIP_CUT, SUB_KEY = "entry_frenzy_bar_ret_pct", -1.16, "dip_sub"
@@ -118,8 +131,8 @@ SUB_BAR = (f"DIP_SUB frozen bar (pre-registered 2026-10-12, DECISION_LOG 279): a
            f"time) where EACH side reaches N ≥ {N_MIN} on ≥ {DAYS_MIN} distinct UTC days, decided ONCE — ① deep avg ≤ shallow avg → "
            f"RETIRED; ② else {SUB_STATE} iff day-clustered bootstrap P(deep mean − shallow mean > 0) ≥ {P_MIN:.2f} ({BOOT_N:,} resamples, "
            f"seed {BOOT_SEED}) ∧ no single day and no single pair carries ≥ {SHARE_MAX * 100:.0f} % of the deep side's gross gain; ③ else "
-           f"KEEP OBSERVING. Same deferral as the main bar. Counted from the DECISION_LOG 281 deploy (one live exit: today's config, "
-           f"+1.25 / −4 / 90).")
+           f"KEEP OBSERVING. Same deferral as the main bar. Counted from the DECISION_LOG 281 deploy; priced under today's live exit V2b "
+           f"since DECISION_LOG 409.")
 
 
 # ─────────────────────────── BTC 1 h EMA20 slope ───────────────────────────
@@ -201,14 +214,17 @@ def load_orders(orders=None):
     d = FWX._prep(cl)
     br = pd.DataFrame({"ts": pd.to_datetime(cl.opened_at.astype(str).str[:19], format="ISO8601", errors="coerce").values,
                        "pair": cl.pair.astype(str).values, "bar_ret": pd.to_numeric(cl[DIP_COL], errors="coerce").values,
-                       WEra.TP_COL: pd.to_numeric(cl[WEra.TP_COL], errors="coerce").values})   # DL 356: the fill's stored V2 target (NaN = pre-V2)
+                       WEra.TP_COL: pd.to_numeric(cl[WEra.TP_COL], errors="coerce").values,   # DL 356: the fill's stored V2 target (NaN = pre-V2)
+                       WEra.HIGH_COL: pd.to_numeric(cl[WEra.HIGH_COL], errors="coerce").values,   # 🔁 (409) the V2b target inputs
+                       SPIKE_COL: cl[SPIKE_COL].values, "entry_fee": pd.to_numeric(cl.entry_fee, errors="coerce").values,
+                       "quantity": pd.to_numeric(cl.quantity, errors="coerce").values})
     d = d.drop(columns=[WEra.TP_COL], errors="ignore")
     d = (d.merge(br.drop_duplicates(["ts", "pair"]), on=["ts", "pair"], how="left") if len(d)
-         else d.assign(bar_ret=pd.Series(dtype=float), **{WEra.TP_COL: pd.Series(dtype=float)}))
+         else d.assign(bar_ret=pd.Series(dtype=float), **{k: pd.Series(dtype=float) for k in (WEra.TP_COL, WEra.HIGH_COL, SPIKE_COL, "entry_fee", "quantity")}))
     return d, opens
 
 
-COLS = tuple(dict.fromkeys(tuple(WT.COLS) + (DIP_COL, "close_reason") + tuple(WEra.V2_COLS)))   # DL 356: the V2 stamps ride the reader
+COLS = tuple(dict.fromkeys(tuple(WT.COLS) + (DIP_COL, "close_reason") + tuple(WEra.V2_COLS) + V2B_COLS))   # DL 356: the V2 stamps ride the reader
 
 
 def _read_exports():
@@ -256,6 +272,85 @@ def price(r, rule, tcache=None):
     ok, _ = WT.parity(r.why, r.pct, {"v": {"LIVE": ev}})
     src = "ticks" if (P["n_tick"] > 0 and not ev["on_bar"]) else FWX.path_src(P)     # decided on a tick print = final
     return dict(walk=float(ev["pct"]), walk_why=ev["why"], walk_min=float(ev["xmin"]), src=src, par_ok=bool(ok))
+
+
+# ─────────────────────────── 🔁 (DECISION_LOG 409) re-based pricing: today's live exit V2b ───────────────────────────
+def spike_high(pair, spike_close_ms, red_close_ms, tcache=None):
+    """→ (H, 'ticks' / '1m') over [spike bar open, red signal bar close), or (None, None): tick prints when every needed UTC day has a full
+    tick file, else complete 1m highs from the caches (the WILLY high-target study's rebuild, DL 356)."""
+    a, b = int(spike_close_ms) - M5_MS, int(red_close_ms)
+    if b <= a:
+        return None, None
+    days = sorted({pd.Timestamp(a, unit="ms").strftime("%Y-%m-%d"), pd.Timestamp(b - 1, unit="ms").strftime("%Y-%m-%d")})
+    hs, full = [], True
+    for d in days:
+        z = WT._load_day(pair, d, tcache)
+        if z is None or z[2] is not None:
+            full = False
+            break
+        m = (z[0] >= a) & (z[0] < b)
+        if m.any():
+            hs.append(float(z[1][m].max()))
+    if full and hs:
+        return max(hs), "ticks"
+    k = WT.load_1m(pair)
+    s = k[(k.open_time >= a) & (k.open_time < b)] if len(k) else k
+    if len(s) and len(s) == (b - a) // WT.MIN:
+        return float(s.h.max()), "1m"
+    return None, None
+
+
+def v2b_target(r, tcache=None, high_fn=None):
+    """→ (target %, source) — the fill's stored V2 target, else the target the engine would have stored from its spike high H (stamped,
+    else rebuilt); (None, why) when H / the fee inputs are missing. Never raises on row data."""
+    t = WEra._num(getattr(r, WEra.TP_COL, None))
+    if t is not None:
+        return t, "stored"
+    H, src = WEra._num(getattr(r, WEra.HIGH_COL, None)), "stamped H"
+    if H is None:
+        try:
+            sp = pd.Timestamp(getattr(r, SPIKE_COL, None))
+        except (TypeError, ValueError):
+            sp = pd.NaT
+        if pd.isna(sp):
+            return None, "no spike time"
+        if int(r.te) % M5_MS > LATE_ENTRY_MS:
+            return None, "no spike high (entry > 60 s after a bar close — red bar unknown)"
+        sp = sp.tz_convert(None) if sp.tzinfo else sp
+        H, hs = (high_fn or spike_high)(r.pair, int(sp.value // 1_000_000), (int(r.te) // M5_MS) * M5_MS, tcache)
+        if H is None:
+            return None, "no spike high (path data missing)"
+        src = f"rebuilt H ({hs})"
+    tk = V2.target_at_k({"entry_price": r.E, WEra.HIGH_COL: H, "entry_fee": getattr(r, "entry_fee", None),
+                         "quantity": getattr(r, "quantity", None)}, V2B_K)
+    return (tk, src) if tk is not None else (None, "no fee / quantity")
+
+
+def ran_v2b(r, v2b_ms):
+    """the fill RAN the live V2b exit: stored target, opened at / after the DL 358 deploy + 10 min, not a V2-floor close. PURE."""
+    return (v2b_ms is not None and WEra._num(getattr(r, WEra.TP_COL, None)) is not None and int(r.te) >= int(v2b_ms)
+            and not str(r.why).endswith(WEra.FLOOR_REASON))
+
+
+def price_v2b(r, tcache=None, v2b_ms=None):
+    """→ dict(walk, walk_why, walk_min (nan — the V2b walker reports no exit time), src, par_ok, tgt, tgt_src) under today's V2b exit."""
+    tgt, ts = v2b_target(r, tcache)
+    P = FWX.load_path(r.pair, int(r.te), float(r.E), V2B_CAP, tcache)
+    if not len(P.get("t", [])):
+        return dict(walk=np.nan, walk_why="UNRES", walk_min=np.nan, src=None, par_ok=False, tgt=(np.nan if tgt is None else tgt), tgt_src=ts)
+    if tgt is None:
+        # 🔁 (409 deep review) no target: if the walk is the SAME at both target bounds (+1.25 and +8), the path never reached +1.25
+        # before its exit → every target gives it (monotone) → priced. Else NO_TARGET (an H-data gap holds the freeze, see run()).
+        lo, hi = V2.walk_v2(P, WEra.OLD_TP), V2.walk_v2(P, V2.TGT_MAX)
+        if lo["why"] != "UNRES" and lo["why"] == hi["why"] and abs(float(lo["pct"]) - float(hi["pct"])) < 1e-9:
+            return dict(walk=float(lo["pct"]), walk_why=lo["why"], walk_min=np.nan, src=FWX.path_src(P), par_ok=False, tgt=np.nan,
+                        tgt_src=f"target-invariant ({ts})")
+        return dict(walk=np.nan, walk_why="NO_TARGET", walk_min=np.nan, src=None, par_ok=False, tgt=np.nan, tgt_src=ts)
+    w = V2.walk_v2(P, tgt)
+    if w["why"] == "UNRES":
+        return dict(walk=np.nan, walk_why="UNRES", walk_min=np.nan, src=None, par_ok=False, tgt=tgt, tgt_src=ts)
+    ok = ran_v2b(r, v2b_ms) and abs(float(w["pct"]) - float(r.pct)) <= V2.PARITY_TOL
+    return dict(walk=float(w["pct"]), walk_why=w["why"], walk_min=np.nan, src=FWX.path_src(P), par_ok=bool(ok), tgt=tgt, tgt_src=ts)
 
 
 def pending(src, ticks_pend, page_due):
@@ -443,7 +538,8 @@ def _brief(g):
 
 def _store(rows, path):
     """merge into the CSV store (key opened_at|pair; this run's row wins) — every fill ever seen stays even after its export is gone."""
-    cols = ["k", "pair", "day", "era", "slope", "slope_status", "grp", "live_pct", "live_why", "walk", "walk_why", "walk_min", "src", "par_ok", "notional", "bar_ret", "sgrp"]
+    cols = ["k", "pair", "day", "era", "slope", "slope_status", "grp", "live_pct", "live_why", "walk", "walk_why", "walk_min", "src", "par_ok", "notional", "bar_ret", "sgrp",
+            "tgt", "tgt_src", "old", "ruler"]   # 🔁 (409) the V2b target + the old-ruler context walk; ruler v2b / pinned (blank = pre-409 row)
     new = rows.reindex(columns=cols)
     if os.path.exists(path):
         try:
@@ -467,12 +563,15 @@ def _fmt_uns(d):
 def run(now_ms=None, orders=None, fetch=True, state_path=None, rows_path=None, open_ts=None, th=None, floor=None, cstart=None, rule=None):
     """→ markdown lines (the caller wraps it in its own try). Ticks / 1m: cache only (WILLY_TIMECAP's fetch pass). BTC 5m: cache first,
     then NEG_DAILYUP's rate-limited fetcher (shared cooldown, used-weight stop at 900, 418/429 stop) only when fetch and the cache is
-    behind the newest counted fill. DL 356: the walk uses PINNED_RULE (th is ignored for the exit); `rule` = a synthetic exit for the
-    hermetic selftest harness ONLY — production callers never pass it."""
+    behind the newest counted fill. 🔁 DL 409: rule None (production) = every fill walked under today's live exit V2b (price_v2b), the
+    pinned DL 281 exit printed as context only; `rule` = a fixed exit for the hermetic selftest harness ONLY (the pre-409 walk)."""
     now_ms = now_ms or int(time.time() * 1000)
     state_path, rows_path = state_path or STATE, rows_path or ROWS_CSV
     WT._K1.clear()
+    v2b = rule is None                                                          # 🔁 (409) production prices under today's V2b exit
     rule = willy_rule(th) if rule is None else (float(rule[0]), (abs(float(rule[1])) if rule[1] else None), int(rule[2]))
+    if v2b:
+        rule = (rule[0], rule[1], V2B_CAP)                                      # the pending / tick-span checks use the V2b cap
     o, opens = load_orders(orders)
     if open_ts is not None:
         opens = list(open_ts)
@@ -501,12 +600,21 @@ def run(now_ms=None, orders=None, fetch=True, state_path=None, rows_path=None, o
     c["grp"] = [group(x) for x in c.slope]
     c["sgrp"] = [sub_group(a, b) for a, b in zip(c.slope, c.bar_ret)] if len(c) else []
     tc = {}
-    pr = [price(r, rule, tc) for r in c.itertuples()]
+    v2b_ms = _GK.dl_deploy_ms(358, lag_min=10, label="WILLY exit V2b") if v2b else None
+    pr = [price_v2b(r, tc, v2b_ms) if v2b else price(r, rule, tc) for r in c.itertuples()]
     for k in ("walk", "walk_why", "walk_min", "src", "par_ok"):
         c[k] = [x[k] for x in pr] if pr else []
+    c["tgt"] = [x.get("tgt", np.nan) for x in pr] if pr else []
+    c["tgt_src"] = [x.get("tgt_src") for x in pr] if pr else []
+    c["ran_v2b"] = [ran_v2b(r, v2b_ms) for r in c.itertuples()] if (v2b and len(c)) else False
+    c["old"] = ([price(r, PINNED_RULE, tc)["walk"] for r in c.itertuples()] if v2b else c.walk.values) if len(c) else []   # context ruler
     done = WT.load_attempts()["done"]
-    c["pend"] = [pending(s, WT.ticks_pending(r, rule[2], done, now_ms, tc), WT._kk(r.pair, r.te, WT._span(rule[2])) not in done)
-                 for s, r in zip(c.src, c.itertuples())]
+    c["ruler"] = "v2b" if v2b else "pinned"
+    c["pend"] = [pending(s, tp_ := WT.ticks_pending(r, rule[2], done, now_ms, tc), WT._kk(r.pair, r.te, WT._span(rule[2])) not in done)
+                 or (str(ts).endswith("(1m)") and bool(tp_))     # 🔁 (409) a 1m-rebuilt target can move once the tick day arrives → hold
+                 or (w_ == "NO_TARGET" and str(ts) == "no spike high (path data missing)")   # 409 review: a target-dependent fill whose
+                 # spike-window data is missing NEVER drops out silently — it holds the freeze (listed) until its H is readable
+                 for s, ts, w_, r in zip(c.src, c.tgt_src, c.walk_why, c.itertuples())]
     if len(c):
         _store(c.assign(k=c.ts.dt.strftime("%Y-%m-%dT%H:%M:%S"), live_pct=c.pct, live_why=c.why), rows_path)
     F, X = c[c.era == "forward"], c[c.era == "context"]
@@ -525,17 +633,27 @@ def run(now_ms=None, orders=None, fetch=True, state_path=None, rows_path=None, o
         if ch1 or ch2:
             NF.du_save_state(st, state_path)
     live_state, live_det = verdict(kept, blocked)
-    lab = f"+{rule[0]:g} / " + (f"−{rule[1]:g}" if rule[1] else "no stop") + f" / {rule[2]:g} min"
+    lab = (f"today's live exit V2b — TP = the stored / rebuilt spike-high target (≥ +1.25, ≤ +8) · −4 · late +0.25 @30 · {V2B_CAP} min, "
+           f"re-based DECISION_LOG 409" if v2b else f"+{rule[0]:g} / " + (f"−{rule[1]:g}" if rule[1] else "no stop") + f" / {rule[2]:g} min, pinned — DECISION_LOG 356")
     L = ["## 🧭🎲 WILLY_BTC1H — FRENZY_WILLY vs BTC 1 h EMA20 slope at entry (pre-registered 2026-10-12, DECISION_LOG 275, OBSERVE only)", "",
          f"Split (frozen): BTC 1 h EMA20 slope of the last CLOSED 1 h bar at entry (5m closes resampled on the hour, no look-ahead; < "
          f"{WARM_BARS} h warm-up or BTC cache behind → UNSCORED, never counted) > 0 → kept, ≤ 0 → blocked. Cohort: CLOSED non-MANUAL "
-         f"FRENZY_WILLY fills opened ≥ {cstart:%Y-%m-%d %H:%M} UTC ({COUNT_FROM} + 10 min: one live exit), every fill re-walked under WILLY's registered exit ({lab}, pinned — DECISION_LOG 356) with the ticks-first ruler "
-         f"(DECISION_LOG 272). Market-wide variable → DAY units (a WILLY on/off switch).", "",
+         f"FRENZY_WILLY fills opened ≥ {cstart:%Y-%m-%d %H:%M} UTC ({COUNT_FROM} + 10 min: one live exit), every fill re-walked under {lab} on the ticks-first path "
+         f"(DECISION_LOG 272). WILLY only — FRENZY_WILLY_HT is never in this line. Market-wide variable → DAY units (a WILLY on/off switch).", "",
          WEra.era_line(c.assign(close_reason=c.why) if len(c) else c, "WILLY_BTC1H",
-                       note=("V2 runner / floor fills stay in the groups (their ENTRY is the tested variable; every fill is walked under the "
-                             "pinned exit, never its booked V2 %) and are kept OUT of the walker-parity line") if _v2ch(c).any() else None), "",
+                       note=(("every fill (any era) is walked under today's V2b exit; parity is read only on the fills that RAN V2b") if v2b else
+                             ("V2 runner / floor fills stay in the groups (their ENTRY is the tested variable; every fill is walked under the "
+                              "pinned exit, never its booked V2 %) and are kept OUT of the walker-parity line")) if (v2b or _v2ch(c).any()) else None), "",
          *HDR, _row("kept (slope > 0)", kept), _row("**blocked (slope ≤ 0)**", blocked),
          _row("UNSCORED (no warmed / current BTC 1 h bar) — never counted", uns[uns.walk.notna()] if len(uns) else uns), ""]
+    if v2b and len(F):
+        def _old(g):
+            g = g[pd.notna(g.old)] if len(g) else g
+            return f"{len(g)} · {(g.old > 0).mean() * 100:.0f} % · {g.old.mean():+.3f}" if len(g) else "–"
+        fs = F[F.grp != "unscored"]
+        L.append(f"Context only (never decides): the same fills under the OLD ruler the line was registered on (+1.25 / −4 / 90, no late TP) — "
+                 f"kept {_old(fs[fs.grp == 'kept'])} · blocked {_old(fs[fs.grp == 'blocked'])}. Targets: "
+                 + " · ".join(f"{k} {v}" for k, v in F.tgt_src.astype(str).str.replace(r" \(.*", "", regex=True).value_counts().items()) + ".")
     nx = len(X)
     if nx:
         Xp = X[X.walk.notna()]
@@ -552,15 +670,18 @@ def run(now_ms=None, orders=None, fetch=True, state_path=None, rows_path=None, o
         L.append("Per fill: " + " · ".join(
             f"{r.ts:%m-%d %H:%M} {r.pair}{'' if r.era == 'forward' else ' (ctx)'} slope {('–' + ('/' + r.slope_status) if np.isnan(r.slope) else f'{r.slope:+.3f}')} "
             f"[{r.grp}] candle {('–' if pd.isna(r.bar_ret) else f'{r.bar_ret:+.2f}')}{'' if r.sgrp is None or r.sgrp != r.sgrp else f' ({r.sgrp})'} · live {r.pct:+.2f} → walked "
-            + (f"{r.walk:+.2f} ({r.walk_why} @ {r.walk_min:.0f} min) [{r.src}{'ᵖ' if r.src != 'ticks' else ''}]" if r.walk == r.walk else "UNPRICED")
+            + (f"{r.walk:+.2f} ({r.walk_why}{'' if r.walk_min != r.walk_min else f' @ {r.walk_min:.0f} min'}"
+               + (f", target +{r.tgt:.2f}" if v2b and r.tgt == r.tgt else "") + f") [{r.src}{'ᵖ' if r.src != 'ticks' else ''}]"
+               if r.walk == r.walk else "UNPRICED" + (f" ({r.tgt_src})" if v2b else ""))
             for r in c.itertuples()))
-        _ch = _v2ch(c)
-        pz = c[c.walk.notna() & ~_ch]                                # DL 356: a V2 runner / floor fill booked another exit → not a parity case
+        _ch = ~c.ran_v2b.astype(bool).values if v2b else _v2ch(c)   # 409: parity only on fills that RAN V2b · 356: V2 runner / floor out
+        pz = c[c.walk.notna() & ~_ch]
         pv = c[c.walk.notna() & _ch]
         off = pz[~pz.par_ok.astype(bool)]
-        L.append(f"Walker parity (walked vs the actual exit, reason + % within {WT.PARITY_TOL} pts): {int(pz.par_ok.astype(bool).sum())}/{len(pz)}"
-                 + (f" (+ {len(pv)} V2 runner / floor fill(s) out — booked the V2 exit, not the pinned one: "
-                    + " · ".join(f"{r.pair} target +{getattr(r, WEra.TP_COL):g} {r.why} {r.pct:+.2f}" for r in pv.itertuples()) + ")" if len(pv) else "")
+        L.append(f"Walker parity (walked vs the actual exit, {'% within ' + str(V2.PARITY_TOL) if v2b else 'reason + % within ' + str(WT.PARITY_TOL)} pts): {int(pz.par_ok.astype(bool).sum())}/{len(pz)}"
+                 + ((f" (+ {len(pv)} fill(s) that ran an older exit — not a parity case)" if v2b else
+                     f" (+ {len(pv)} V2 runner / floor fill(s) out — booked the V2 exit, not the pinned one: "
+                     + " · ".join(f"{r.pair} target +{getattr(r, WEra.TP_COL):g} {r.why} {r.pct:+.2f}" for r in pv.itertuples()) + ")") if len(pv) else "")
                  + ("" if not len(off) else " — off: " + " · ".join(f"{r.pair} live {r.why} {r.pct:+.3f} vs walk {r.walk_why} {r.walk:+.3f}" for r in off.itertuples()))
                  + f" · unpriced {int(c.walk.isna().sum())}" + (": " + " · ".join(
                      f"{r.ts:%m-%d %H:%M} {r.pair}" + ("" if r.pend else " (final — no data)") for r in c[c.walk.isna()].itertuples()) if c.walk.isna().any() else "")
@@ -643,8 +764,9 @@ def selftest():
         g281 = WT._git_ct("(DECISION_LOG 281)")
         chk(count_start() == WT.dl281_floor() == (pd.Timestamp("2026-10-12 12:00") if g281 is None else g281) + pd.Timedelta(minutes=10),
             f"(281) the counted floor = the DL 281 deploy shared with WILLY_TIMECAP ({count_start()})")
-        chk(all("Counted from the DECISION_LOG 281 deploy (one live exit" in x for x in (BAR, SUB_BAR, __doc__)) and "+1.25 / −4 / 90" in BAR,
-            "(281) bar / DIP_SUB / doc texts carry the DL 281 cohort sentence")
+        _dt = __doc__.replace("\n", " ").replace("               ", "")
+        chk(all("Counted from the DECISION_LOG 281 deploy; priced under today's live exit V2b since DECISION_LOG 409" in x for x in (BAR, SUB_BAR, _dt)),
+            "(281 · 409) bar / DIP_SUB / doc texts carry the DL 281 cohort + DL 409 ruler sentence")
         WT.S4_DEPLOY_GREP, WT.S4_DEPLOY_PIN = "(no such commit — selftest)", "2026-10-11 23:50:00"     # fixtures: counted from 10-12 00:00
         chk(count_start() == pd.Timestamp("2026-10-12 00:00"), "fixture floor pinned through the shared WILLY_TIMECAP constants")
         chk("pre-registered 2026-10-12, DECISION_LOG 275" in BAR and "pre-registered 2026-10-12, DECISION_LOG 275" in __doc__, "bar text")

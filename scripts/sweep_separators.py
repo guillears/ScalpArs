@@ -31,7 +31,6 @@ tested and is listed as a blind spot (never silently dropped). N < 30 → printe
 WORKED = +1 % our way before the sleeve's stop distance, else NEVER), exit-independent; --label reach = how far it went our way before
 the stop (continuous); --label pnl (default) = the booked %, secondary.
 """
-import glob
 import os
 import sys
 import warnings
@@ -52,7 +51,11 @@ _TRUE = ("True", "true", "1", "1.0")
 
 
 def _exports():
-    return sorted(glob.glob(os.path.expanduser("~/Downloads/scalpars_orders_*.csv")), key=os.path.getmtime)
+    _d = os.path.dirname(os.path.abspath(__file__))
+    if _d not in sys.path:
+        sys.path.insert(0, _d)
+    import export_glob as _EG   # 🗄 (DECISION_LOG 409) Downloads + the permanent exports_archive/
+    return sorted(_EG.glob_exports(os.path.expanduser("~/Downloads/scalpars_orders_*.csv")), key=os.path.getmtime)
 
 
 _CSV = {}

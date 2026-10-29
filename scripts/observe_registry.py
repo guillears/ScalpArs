@@ -28,7 +28,10 @@ EXIT = {
     "scout_willy_timecap.py": dict(dl="264 · 278 · 281 · 285 · 290 · 297", sleeves="FRENZY_WILLY", walks=_OLD_WILLY),
     "scout_willy_tp125.py": dict(dl="265", sleeves="FRENZY_WILLY", walks=_OLD_WILLY),
     "scout_willy_stop.py": dict(dl="268 · 269", sleeves="FRENZY_WILLY", walks=_OLD_WILLY),
-    "scout_willy_btc1h.py": dict(dl="275 · 279", sleeves="FRENZY_WILLY", walks=_OLD_WILLY),
+    # 🔁 (409) re-based 2026-10-29: every fill walked under today's V2b exit (the old +1.25 / −4 / 90 ruler printed as context only)
+    "scout_willy_btc1h.py": dict(dl="275 · 279 · 409", sleeves="FRENZY_WILLY", walks={"frenzy_willy_high_target_enabled": True,
+                                 "frenzy_willy_high_k_pct": 1.0, "frenzy_willy_high_tp_max_pct": 8.0, "frenzy_willy_stop_pct": 4.0,
+                                 "frenzy_willy_late_tp_minutes": 30.0, "frenzy_willy_late_tp_pct": 0.25, "frenzy_willy_max_hold_minutes": 90}),
     "scout_willy_mktdip.py": dict(dl="305", sleeves="FRENZY_WILLY", walks=_OLD_WILLY),
     "scout_willy_avgdown.py": dict(dl="313", sleeves="FRENZY_WILLY", walks=_OLD_WILLY),
     "scout_willy_hold.py": dict(dl="251", sleeves="FRENZY_WILLY · FRENZY family", walks={**_OLD_WILLY, **_FZ_STOP3, **_NO_LITE_C}),

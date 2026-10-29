@@ -18,7 +18,6 @@ OBSERVE         decisions-export journal (e = WILLY) events ≥ the deploy: FREN
                 off — counted only, not priced) · _VOL24_LOW (refused at the red bar by the volume floor).
 Usage           venv/bin/python scripts/scout_willy_nomiss.py           (batch review; no network, no bot API)
 """
-import glob
 import os
 import sys
 import time
@@ -124,7 +123,7 @@ def _line(name, g):
 def read_events(paths=None, since=None):
     """{event: (N, days)} of the e = WILLY R_NOMISS journal events ≥ since — dedup (t, pair, gate) across the decisions exports."""
     if paths is None:
-        paths = sorted({p for pat in DEC_PATTERNS for p in glob.glob(pat)}, key=os.path.getmtime)
+        paths = sorted({p for pat in DEC_PATTERNS for p in EG.glob_exports(pat)}, key=os.path.getmtime)   # 🗄 (409) + exports_archive/
     fr = []
     for f in paths:
         try:

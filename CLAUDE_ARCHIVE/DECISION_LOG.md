@@ -10237,3 +10237,54 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   read-back · UNPRICEABLE_FINAL out · open fill holds · fbx_ran eras incl. the end bound · real_by_exit (booked vs re-walk vs straddler,
   missing count, unreadable net) · parity / split per era · FBX inside run() · registry re-based · backstop 10.5 / TP price at 5 % ·
   fallback 10 · badge fallbacks 5 / 10. Full suite 2478 passed.
+
+## (409) 2026-10-29 — 🗄 Permanent export archive + 🔁 WILLY_BTC1H re-based to today's V2b exit (analysis / scout only, no trading change)
+- **Why (archive):** the operator cleaned ~/Downloads and emptied the Trash (believing the project held copies — it did not); every scout
+  reads the dashboard exports from ~/Downloads, so 83 orders exports and every decisions journal left the scouts' view (the 10-29 scout
+  saw 12 WILLY fills, not 48). Orders were NOT lost (reports/BASELINE*_orders.csv + reports/.live_exports filtered copies + today's
+  export); the decisions journal 2026-09-28 → 10-14 IS lost (rolling ~3-day dashboard window; no Time Machine). 10-14 → 10-23 survives
+  in reports/BASELINE22–24_decisions.csv; the operator's fresh 10-29 12:01 decisions export reaches back to 10-22 22:40 (all of B25).
+- **Ship (archive):** scripts/export_glob.py — a pattern in ~/Downloads also reads `exports_archive/` (project, gitignored, local), and
+  every call first copies any new Downloads export into it (mtime kept; a name in both places read once). Non-Downloads patterns
+  (self-test temp dirs, reports/) unchanged. Readers that globbed Downloads directly now go through export_glob: sweep_separators,
+  path_labels, scout_flatbase_short (decisions), scout_willy_nomiss. One-off backfill scripts/export_archive_backfill.py (run 10-29):
+  19 Downloads exports + 20 live filtered copies + 15 BASELINE orders files under export names (paper B9–B21, no B12 →
+  scalpars_orders_paper_<last fill + 1 min>_BASELINE<N>.csv, live B22–B24 → scalpars_orders_live_…; B5 = the August live test, skipped
+  as before) → 54 files, then the 10-29 decisions export. Check: the WILLY_BTC1H cohort is back to 48 (34 counted · 14 context), as on
+  the 10-29 04:42 scout run. Operator's idea "read the master instead" answered: the master has no decisions journal, holds the current
+  batch only after a review, and is re-priced on today's stack — the archive is the single source for the scouts; the master stays the
+  review's evidence.
+- **Fix found by the suite (DL 408 latent):** test_runs_in_tests_never_write_the_real_tp_state failed from 10-29 — run() read the FBX
+  switch time from git, and the test's synthetic fills (10-30) fell after the real switch. run() takes `fbx_switch_ms` ("git" in
+  production); every FLATBASE test run() pins it (None) and the AST check requires it.
+- **Re-base (WILLY_BTC1H, DL 275 / 279, operator "re-base the BTC trend line to today's exit"):** the line was ⚠ STALE (DL 406
+  registry: it walked +1.25 / −4 / 90 with no late TP; the live exit is V2b since DL 358). Every counted fill is now walked under V2b:
+  TP = the stored target, else the target the engine would have stored from the spike high H (stamped, else rebuilt over [spike bar
+  open, red bar close) from ticks / complete 1m — 22 of 34 rebuilt, 11 stored; ICNT 10-16 has no H data but its walk is the same at
+  +1.25 and +8 (stopped −4.06 before touching +1.25) → priced "target-invariant") · −4 · late +0.25 @30 · 90 min
+  (scout_willy_exit_v2.walk_v2). A fill without H whose walk DOES depend on the target holds the freeze (never drops out silently); an
+  entry > 60 s after a bar close never rebuilds H (red bar unknown). Cohort, split, bars and thresholds UNCHANGED; fresh state file
+  SCOUT_WILLY_BTC1H_V2B.json (the old file never froze); the old ruler printed as context only. Parity on the fills that ran V2b: 10/10
+  within 0.15. WILLY only (FRENZY_WILLY_HT never in the line; operator 10-29: WILLY and WILLY_HT analysed separately from now on).
+- **Result at re-base (10-29 export, BTC 5m to 10-28 16:35):** live read kept (BTC rising) 13 · 8 d · 69 % · −0.017 % vs blocked 21 ·
+  8 d · 67 % · +0.001 %, P(mean < 0) 0.52 → RETIRED side. The FROZEN read (crossing prefix to BMT 10-28 14:00, freezes on the first
+  scout run after BMT's ticks are final): blocked 20 · 8 d · 70 % · +0.201 % vs kept 13 · −0.017 % → **RETIRED** (blocked avg ≥ kept
+  avg). Old ruler (context): kept 13 · +0.043 vs blocked 21 · −0.746 — the "BTC falling loses" signal was the old walker's missing late
+  TP / spike target (DUSK 10-15 −4.0 → +0.25, INIT 10-23 +1.25 → +7.42, AVA +1.25 → +3.69). 🧮 the kept side holds RSR 10-12 +6.60
+  (without it the kept side is lower still — the retire does not lean on it). Derived twice: scout run vs an independent prototype —
+  identical on the 30 shared fills (the gap: 3 fills of 10-12 whose exports were deleted); the deep review re-derived the frozen
+  prefix (blocked 20 · +0.201) and the ICNT flip independently. DIP_SUB (same ruler): deep 7 · +0.531 vs shallow 6 · −0.656,
+  COLLECTING (each side needs 15 on 8 days).
+- **Reviews (DL 409):** caveman — sync repairs a truncated copy (size / mtime), 60-s throttle, stale *.tmp cleanup, backfill guards
+  (no timestamps / blank is_paper → skipped), rows CSV `ruler` column (v2b / pinned), 1m-rebuilt targets hold while ticks are due,
+  unused imports, docstring notes (filtered live copies; delete a bad export from BOTH folders); not applied: "late entry widens H"
+  → the engine's H runs to the red bar the fill entered on, guarded instead by the 60-s entry check. Deep — HIGH: ICNT (counted
+  kept-side loser) was dropped as unpriced-final → the frozen verdict would have been KEEP OBSERVING instead of RETIRED → target-
+  invariant pricing + hold · MEDIUM: tests reached the real archive / Downloads sync → tests/conftest.py autouse fixture points
+  export_glob at temp dirs · LOW: end-to-end price_v2b tests · doc counts (15 BASELINE files; frozen-prefix numbers). Passed: stored
+  target = target_at_k(stamped H) on 11 / 11 fills; rebuilt H = stamped H on 10 / 10; window = the engine's frenzy_walk peak; no
+  double counting (every reader dedups by opened_at[:19] + pair + side); newest_per_mode never picks a BASELINE file; coverage spans
+  only shrink; path_labels stop table identical with / without the archive.
+- **Tests:** export_glob archive (sync + survive deletion + read once + live filter + decisions + non-Downloads untouched) · backfill
+  naming / mtime / August + mixed skipped · readers use the finder · WILLY_BTC1H target stored / stamped / rebuilt / missing, ran_v2b,
+  registry = live config, state path, texts · FLATBASE switch pinned.

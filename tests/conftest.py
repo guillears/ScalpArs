@@ -118,3 +118,14 @@ def _mcap_isolated(request, monkeypatch, tmp_path):
     async def _no_fetch(pair, timeout_s=20.0):   # 🏷 (311) the post-fill one-pair backfill never touches the network in a test
         return _mcs.get(pair)
     monkeypatch.setattr(_mcs, "fetch_pair_now", _no_fetch)
+
+
+@pytest.fixture(autouse=True)
+def _export_archive_isolated(tmp_path_factory, monkeypatch):
+    """🗄 (DECISION_LOG 409 review) no test reads or writes the real exports_archive/: the archive and its Downloads trigger point at an empty
+    temp dir, so a test globbing the real ~/Downloads sees exactly the pre-409 behaviour (Downloads only). Archive tests set their own."""
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
+    import export_glob as _EG
+    d = tmp_path_factory.mktemp("export_archive")
+    monkeypatch.setattr(_EG, "DOWNLOADS", str(d / "downloads"))
+    monkeypatch.setattr(_EG, "ARCHIVE_DIR", str(d / "archive"))

@@ -48,7 +48,6 @@ its own section, each crash-isolated; one shared Budget for the whole run; final
               WIDE and momentum share it, no sleeve) is listed as UNATTRIBUTED, never priced. Compared with the holding short's own result.
 Usage           venv/bin/python scripts/scout_flatbase_short.py [--no-fetch]
 """
-import glob
 import json
 import math
 import os
@@ -64,6 +63,7 @@ _D in sys.path or sys.path.insert(0, _D)
 _R = os.path.dirname(_D)
 _R in sys.path or sys.path.insert(0, _R)
 import scout_gatekit as _GK                                  # noqa: E402
+import export_glob as _EG                                    # noqa: E402  🗄 (DECISION_LOG 409) Downloads + exports_archive/
 import scout_willy_hold_off as _HO                           # noqa: E402  (the shared orders-export loader: dedup, CLOSED wins, paper + live)
 from services.flatbase import (FLATBASE_SHORT, flatbase_gate, flatbase_observe_gate, price_path_exit, flatbase_params,   # noqa: E402
                                BAR_MS, BOUNDARY_MS, net_of_funding_pct, s4_scan, ST_NOT_FLAT, ST_MISSED, ST_REFUSED, ST_UNREADABLE,
@@ -106,7 +106,7 @@ def _frozen_th():
 def load_shadows(paths=None):
     """every SHADOW ledger row from the decisions exports, dedup (pair, fb_spike_at) — the newest file wins."""
     if paths is None:
-        paths = sorted({p for pat in DEC_PATTERNS for p in glob.glob(pat)}, key=os.path.getmtime)
+        paths = sorted({p for pat in DEC_PATTERNS for p in _EG.glob_exports(pat)}, key=os.path.getmtime)   # 🗄 (409) + exports_archive/
     fr = []
     for f in paths:
         try:
@@ -234,7 +234,7 @@ def _fnum(v):
 
 
 def _dec_paths():
-    return sorted({p for pat in DEC_PATTERNS for p in glob.glob(pat)}, key=os.path.getmtime)
+    return sorted({p for pat in DEC_PATTERNS for p in _EG.glob_exports(pat)}, key=os.path.getmtime)   # 🗄 (409) + exports_archive/
 
 
 def read_decisions(paths=None, cols=None):
@@ -1558,7 +1558,8 @@ def real_by_exit_fn(real, walks, switch_ms):
 
 
 def run(now_ms=None, paths=None, dec_paths=None, since_ms=None, fetch=True, klines=None, funding=None, klines1m=None, th_long=None,
-        tp_state_path=TP_SH_STATE, tp_klines=None, tp_final_path=TP_SH_FINAL, obs_fb2_state_path=OBS_FB2_STATE, fbx_state_path=FBX_STATE):
+        tp_state_path=TP_SH_STATE, tp_klines=None, tp_final_path=TP_SH_FINAL, obs_fb2_state_path=OBS_FB2_STATE, fbx_state_path=FBX_STATE,
+        fbx_switch_ms="git"):
     L = [f"## 🩳 FLATBASE_SHORT — flat-base FRENZY short (DECISION_LOG {DL}, discipline override, ALERT-only gates)", ""]
     now_ms = int(time.time() * 1000) if now_ms is None else int(now_ms)
     if since_ms is None:
@@ -1590,7 +1591,8 @@ def run(now_ms=None, paths=None, dec_paths=None, since_ms=None, fetch=True, klin
         if p_ is not None:
             priced.append((r.t, p_[0])); f_unk += 0 if p_[1] else 1
     walks, finals = {}, set()
-    sw_ms = _GK.dl_deploy_ms(FBX_DL, lag_min=10, label="FLATBASE exit switch")
+    # fbx_switch_ms: "git" = the DL 408 commit + 10 min (production); tests pin it (None = no switch) so a run never depends on the date
+    sw_ms = _GK.dl_deploy_ms(FBX_DL, lag_min=10, label="FLATBASE exit switch") if fbx_switch_ms == "git" else fbx_switch_ms
     tp_L = tp_shadow_lines(real, bud, now_ms, fetch=fetch, klines=(tp_klines or klines), slip=slip, state_path=tp_state_path,
                            final_path=tp_final_path, walks_out=walks, switch_ms=sw_ms, finals_out=finals)
     try:                                                               # 🔁 (408) the traded fills at the DL 348 rule — the shadows' exit

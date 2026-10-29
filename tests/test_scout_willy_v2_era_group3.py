@@ -66,33 +66,42 @@ def test_btc1h_exit_pinned_and_config_change_does_not_move_it(tmp_path, monkeypa
 
 
 def _btc1h_run(tmp_path, monkeypatch, rows):
-    seen = []
+    seen, v2b = [], []
 
     def fake_price(r, rule, tcache=None):
         seen.append(rule)
         runner = WEra.is_v2_changed({TP: getattr(r, TP), "close_reason": r.why})
         return dict(walk=1.25, walk_why="TP", walk_min=5.0, src="ticks", par_ok=not runner)   # a runner can never match the old exit
+
+    def fake_v2b(r, tcache=None, v2b_ms=None):
+        v2b.append(r.pair)
+        return dict(walk=1.25, walk_why="TP", walk_min=np.nan, src="ticks", par_ok=WB.ran_v2b(r, v2b_ms), tgt=1.25, tgt_src="stored")
     monkeypatch.setattr(WB, "price", fake_price)
+    monkeypatch.setattr(WB, "price_v2b", fake_v2b)
     monkeypatch.setattr(WB, "pending", lambda *a, **k: False)
     monkeypatch.setattr(WB, "load_btc5m", lambda: pd.DataFrame({"open_time": pd.Series(dtype="int64"), "c": pd.Series(dtype=float)}))
     monkeypatch.setattr(WT, "load_attempts", lambda: {"done": set()})
     monkeypatch.setattr(WT, "ticks_pending", lambda *a, **k: False)
+    monkeypatch.setattr(WB._GK, "dl_deploy_ms", lambda *a, **k: int(pd.Timestamp("2026-10-23").value // 10**6))
     now = int(pd.Timestamp("2026-10-26").value // 10**6)
     out = "\n".join(WB.run(now, orders=pd.DataFrame(rows), fetch=False, state_path=str(tmp_path / "s.json"),
                            rows_path=str(tmp_path / "r.csv"), floor="2026-10-01", cstart="2026-10-01"))
-    return out, seen
+    return out, seen, v2b
 
 
-def test_btc1h_walk_pinned_era_line_and_runner_out_of_parity(tmp_path, monkeypatch):
+def test_btc1h_rebased_walks_v2b_old_ruler_context_only(tmp_path, monkeypatch):
+    """🔁 DL 409: production walks every fill under today's V2b exit; the pinned +1.25 / −4 / 90 is computed only as CONTEXT (config 2.0
+    still ignored); parity is read only on the fill that RAN V2b (V125: stored target, after the DL 358 deploy; RUN closed on the V2
+    floor and OLD is pre-V2 → not parity cases)."""
     (tmp_path / "trading_config.json").write_text(json.dumps({"thresholds": {"frenzy_willy_tp_pct": 2.0}}))
     monkeypatch.setattr(WH, "ROOT", str(tmp_path))
-    out, seen = _btc1h_run(tmp_path, monkeypatch, _three())
-    assert seen and set(seen) == {(1.25, 4.0, 90)}, seen                 # every fill walked under the pinned exit, config 2.0 ignored
+    out, seen, v2b = _btc1h_run(tmp_path, monkeypatch, _three())
+    assert sorted(v2b) == ["OLDUSDT", "RUNUSDT", "V125USDT"]
+    assert seen and set(seen) == {(1.25, 4.0, 90)}, seen                 # the context ruler stays pinned
     assert out.count(ERA + "WILLY_BTC1H)") == 1 and "pre-V2 1 · V2 2 (runner target / floor 1)" in out
     par = [l for l in out.split("\n") if l.startswith("Walker parity")][0]
-    assert ": 2/2" in par and "1 V2 runner / floor fill(s) out" in par and "RUNUSDT target +3.5 WILLY_FLOOR" in par, par
-    assert "V125USDT" not in par.split("out")[-1]                        # the +1.25 V2 fill stays a parity case
-    assert "+1.25 / −4 / 90 min, pinned — DECISION_LOG 356" in out
+    assert ": 1/1" in par and "+ 2 fill(s) that ran an older exit" in par, par
+    assert "re-based DECISION_LOG 409" in out and "Context only (never decides)" in out
 
 
 def test_btc1h_reader_asks_for_v2_columns():

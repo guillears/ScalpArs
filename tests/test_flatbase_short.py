@@ -731,7 +731,7 @@ def test_scout_gates_and_shadow_pricing(tmp_path):
         return [[start, 1.0, 1.0, 0.91, 0.91, 1.0]]                                                  # the TP touches on the first bar
     since = int(pd.Timestamp("2026-10-22").value // 10**6)
     fund = []
-    L = SC.run(now_ms=since + 30 * 86_400_000, paths=[str(orders)], dec_paths=[str(dec)], since_ms=since, klines=kl,
+    L = SC.run(fbx_switch_ms=None, now_ms=since + 30 * 86_400_000, paths=[str(orders)], dec_paths=[str(dec)], since_ms=since, klines=kl,
                funding=lambda sym, a, b: fund.append((sym, a, b)) or -0.5,
                tp_klines=lambda *a: [], fbx_state_path=str(tmp_path / "fbx.json"), tp_state_path=str(tmp_path / "tp.json"), tp_final_path=str(tmp_path / "fin.json"),
                 obs_fb2_state_path=str(tmp_path / "fb2.json"))   # (367) own path
@@ -748,7 +748,7 @@ def test_scout_gates_and_shadow_pricing(tmp_path):
     assert "operator-closed: 1" in txt and "N 12" in txt and "3 stop-outs in a row" in txt and "Gate verdict: REVIEW" in txt
     assert set(got) == {("SHUSDT", int(pd.Timestamp("2026-10-23T08:00:00").value // 10**6), 864)}      # the bar after the S4 bar, 72 h (also OBS-FB2's two cells, DL 407)
     assert "1 setups · 1 priced" in txt and "⏳ 12/30 real fills" in txt
-    assert SC.run(paths=[str(orders)], dec_paths=[str(dec)], since_ms=None, klines=kl, fbx_state_path=str(tmp_path / "fbx.json"), tp_state_path=None, tp_final_path=None) is not None
+    assert SC.run(fbx_switch_ms=None, paths=[str(orders)], dec_paths=[str(dec)], since_ms=None, klines=kl, fbx_state_path=str(tmp_path / "fbx.json"), tp_state_path=None, tp_final_path=None) is not None
 
 
 def test_gate_rules():

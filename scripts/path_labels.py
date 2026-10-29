@@ -33,7 +33,6 @@ Usage: venv/bin/python -I scripts/path_labels.py [orders.csv …] [--fetch] [--s
        (no file → the newest ~/Downloads/scalpars_orders_*.csv; --since defaults to sweep_separators.BATCH_START)
 """
 import functools
-import glob
 import json
 import os
 import sys
@@ -481,7 +480,8 @@ def report_lines(lab, title="current batch"):
 
 
 def _exports():
-    return sorted(glob.glob(os.path.expanduser("~/Downloads/scalpars_orders_*.csv")), key=os.path.getmtime)
+    import export_glob as _EG   # 🗄 (DECISION_LOG 409) Downloads + the permanent exports_archive/
+    return sorted(_EG.glob_exports(os.path.expanduser("~/Downloads/scalpars_orders_*.csv")), key=os.path.getmtime)
 
 
 def main(argv):

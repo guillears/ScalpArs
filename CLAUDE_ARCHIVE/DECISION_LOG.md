@@ -10288,3 +10288,33 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
 - **Tests:** export_glob archive (sync + survive deletion + read once + live filter + decisions + non-Downloads untouched) · backfill
   naming / mtime / August + mixed skipped · readers use the finder · WILLY_BTC1H target stored / stamped / rebuilt / missing, ran_v2b,
   registry = live config, state path, texts · FLATBASE switch pinned.
+
+## (410) 2026-10-29 — 👁 ML_W4 watch line registered (observe only, no trading change)
+- **Question (operator):** "still no separator of winners vs losers in momentum longs (B25 19 + master)?" → sweep_separators MOMENTUM:LONG
+  with the luck test, three labels. All fills (343, 166 of them *_PROBE fires): not above luck at any level (path 1D p 0.053 · 2D 0.41
+  · 3D 0.50). Operator caught that "unmatched only" admits no W4 → the W4 longs come ONLY through routes exempt from
+  long_unmatched_only: NONEXP_CALM3D (19 of 25) and probe fires (6); the probe mix was a FULL-SIZE-ONLY rule miss (memory) → re-run on
+  full-size only (177 = master 158 on today's stack + B25 19): path 1D 0.29 vs luck 0.29 (p 0.060) · 2D p 0.82 · 3D p 0.96; reach
+  p 0.56 / 0.84 / 0.54; booked p 0.88 / 0.99 / 0.12 → NO separator. Strongest single split everywhere: entry_pattern_w4_match (WORKED
+  −29 pts, both eras). Full-size W4 19 · 14 d · 47 % · −0.068 %/fill (all NONEXP_CALM3D) vs the rest of NONEXP 15 · 87 % · +0.30 and
+  the normal route 143 · 72 % · +0.114. Blocking W4 (full-size, re-priced): sleeve +0.110 → +0.132 %/fill (N 177 → 158; master +0.125 →
+  +0.148, B25 −0.009 → +0.008; Δ +0.021 before the 30–50 % haircut ≈ +0.011…+0.015 after) — luck-level (p 0.060) → OBSERVE FIRST. (The
+  "−0.015 → −0.008" first told the operator was the probe-mixed pool — corrected by the deep review.)
+  As traded in the archived exports (09-18 → 10-29): W4 12 · 17 % · −0.475 vs rest 69 · 57 % · −0.100 (context).
+- **Line (scripts/scout_ml_w4_watch.py, in the opportunity scout):** CLOSED full-size MOMENTUM LONG fills opened ≥ this commit + 10 min,
+  zone = W4-matched vs rest, booked %, operator-closed out, missing stamp unscored. 🔒 FROZEN expectancy bar (CLAUDE.md, Sep-25): at the
+  first prefix with zone N ≥ 15 on ≥ 8 UTC days, decided once — zone avg ≥ rest avg OR zone avg ≥ 0 → RETIRED (both stated
+  pre-registration choices beyond the CLAUDE.md bar; empty rest → judged on the candidate test alone); FILTER CANDIDATE (operator) iff zone WR
+  < 62.0 % (frozen full-size breakeven: avg win +0.487 / loss −0.797, N 177) ∧ mean < 0 at day-bootstrap P ≥ 0.95 ∧ no day / pair ≥ 50 %
+  of the zone loss; else KEEP OBSERVING. Deferred until the newest orders export was downloaded ≥ the crossing fill + the momentum time
+  cap (max_holding_time_minutes 1200) — the exports hold CLOSED rows only, so an OPEN-row hold alone could never fire (deep review). Candidate rule if it ever passes: the
+  NONEXP_CALM3D route obeys the W4 block (haircut + pre-committed revert first). State SCOUT_ML_W4_WATCH.json (gitignored);
+  observe_registry BOOKED. Also queued (review plan §1): WILLY slots 1 → 2 / 3 study (operator 10-29).
+- **Reviews (DL 410):** caveman — OPEN rows hold only from the newest export per mode (a reset-wiped position never holds forever),
+  docstring prefix / empty-rest semantics, dedup + stamp-variant test · deep — the −0.015 → −0.008 figure was probe-mixed (corrected
+  above) · the OPEN-row hold was dead (exports carry CLOSED only) → export-stamp ≥ crossing + 1200 min · zone avg ≥ 0 retires · a dry
+  run (no state path) never prints "Frozen" · vacuous test assertion fixed, isolated tests for WR / day-pair share / mean ≥ 0 · −0.796.
+  Passed: breakeven 0.6204 on 177 full-size; every registration number; NONEXP exempt in the engine; no other full-size W4 route (W2 /
+  W6 admits off); cell_multiplier_source and the W4 stamp 0 NaN on every export; _PROBE suffix covers every probe tag.
+- **Tests:** tests/test_scout_ml_w4_watch.py — constants, cohort (probes / other sleeves out, unscored apart, forward floor), the three
+  outcomes + collecting, freeze once + OPEN hold + never re-decided, NOT EVALUABLE without the commit, scout hook, registry.

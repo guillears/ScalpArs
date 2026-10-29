@@ -73,7 +73,7 @@ BOOKED = {   # booked P&L — `era` = drops fills by WILLY exit era (registered 
     # review M5: booked WR judged against TODAY's breakeven over FRENZY fills spanning exit eras (LONG −3 → −4, LITE pre-C)
     "scout_frenzy_entry_lines.py": {**_FZ_STOP3}, "scout_frenzy_wl_lines.py": {**_FZ_STOP3, **_NO_LITE_C}, "scout_lite_late_btcfall.py": None, "scout_lite_ob_thin.py": None, "scout_lite_off30.py": None,
     "scout_lite_z3.py": None, "scout_long_resize.py": None, "scout_ml_cooldown.py": None, "scout_ml_regime_lines.py": None,
-    "scout_ml_trend_lines.py": None, "scout_ml_turn.py": None, "scout_rebound.py": None, "scout_willy_hold_off.py": None,
+    "scout_ml_trend_lines.py": None, "scout_ml_w4_watch.py": None, "scout_ml_turn.py": None, "scout_rebound.py": None, "scout_willy_hold_off.py": None,
     "scout_willy_ht.py": _OLD_WILLY, "scout_willy_nomiss.py": _OLD_WILLY,
 }
 NONE = {"scout_features.py", "scout_features_parity.py", "scout_gatekit.py", "scout_gvol.py", "scout_staircase.py",

@@ -393,6 +393,14 @@ new fills (opened after the 271 deploy, 2026-10-12) as their own line — they a
 - [ ] **AUDIT FLAG: the 'no more entry filters — exit + sizing is the lever' CURRENT_STATE line contradicts the operator's 10-09 'filters, not sizing' rule** — resolve wording at the PORTFOLIO step
 
 ## 1. FRENZY_WILLY
+- [ ] **🎰 WILLY SLOTS 1 → 2 / 3? (operator 2026-10-29: "one WILLY at a time doesn't make sense anymore")** — the original reasons: one-at-a-time
+      risk (10× · −4 stop ≈ $200–390 per stop in B25; WILLY setups cluster in hot hours → correlated stop-outs) + the global hold (OFF since
+      DL 340, reason gone). B25 journal: 4 FRENZY_WILLY_MAX_SLOTS events in 6 days (ARK 10-25 00:55 → opened later as HT −1.50 · BANK 10-26
+      12:55 → HT +4.32 · ERA 10-26 13:00 + CAP 13:20 never opened, HT slot full too); 3 of 4 on one afternoon. STUDY: every slot-full
+      setup since the WILLY launch (master + B25 journals; journal 09-28 → 10-14 lost, DL 409 — list the gap), each priced under today's V2b
+      exit as if opened at its armed bar → 1 vs 2 vs 3 slots (and HT slot 1 vs 2): total, avg %, DCR before → after on the real account
+      path, WORST DAY and same-hour stop clusters, leave-one-out, in-sample haircut; WILLY and WILLY_HT read SEPARATELY (operator 10-29).
+      Judged with the WILLY W/L entry work (more slots of a losing cohort = more loss) — joint check, DL 406 ③.
 - [ ] **WILLY_HT Q1 (operator 2026-10-25): should HT exist at all?** — scout_willy_ht.py's frozen DL 341 gate (first 30 HT on ≥ 10 days vs same-period WILLY) + the DL 365 ladder — ✅ operator 10-26 (DL 378): decided by the V2b today's-exit comparison vs same-days WILLY (DL 365 bar), an OPERATOR CALL below the starved DL 341 gate; clear keep / off recommendation
 - [ ] **WILLY_HT Q2: or HT with its OWN exit / protection?** — the DL 373 per-sleeve split (every V2b shadow on HT vs WILLY fills, read on the 'same days only' line); name the exit if one separates
 - [ ] **WILLY_HT Q3: or filter HT winners vs losers so kept HT fills share WILLY's exit?** — W/L screen on HT fills FIRST (sweep_separators.py output, exhaustive 2D + shuffled null + OOS, blind spots); filter only at the expectancy bar (N ≥ 15, ≥ 8 windows, 95 % window-bootstrap), else observe-only; then the exit read

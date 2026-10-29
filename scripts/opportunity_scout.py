@@ -1456,6 +1456,14 @@ def run():
     except Exception as _mmr_e:
         log(f"ML_MATCHED_REFUSALS line failed: {_mmr_e}")
         _rg_sec += ["## 🧷 ML_MATCHED_REFUSALS", "", f"Unavailable this run ({str(_mmr_e)[:120]}).", ""]
+    try:                                               # 👁 Oct-29 ML_W4 watch line — W4-matched full-size momentum longs vs the rest (DECISION_LOG 410; frozen expectancy bar, OBSERVE only; orders exports only, no network; never breaks the run)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_ml_w4_watch as _mw4
+        _rg_sec += _mw4.run(now_ms)
+    except Exception as _mw4_e:
+        log(f"ML_W4 line failed: {_mw4_e}")
+        _rg_sec += ["## 👁 ML_W4", "", f"Unavailable this run ({str(_mw4_e)[:120]}).", ""]
     try:                                               # 🔁📏 Oct-9 FRENZY_REENTRY_AFTER_WIN + FRENZY_STRETCHED (pre-registered; orders exports only, no Binance; never breaks the run)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

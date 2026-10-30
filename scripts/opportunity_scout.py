@@ -1472,6 +1472,14 @@ def run():
     except Exception as _wax_e:
         log(f"WILLY_ADX55 line failed: {_wax_e}")
         _rg_sec += ["## 👁 WILLY_ADX55", "", f"Unavailable this run ({str(_wax_e)[:120]}).", ""]
+    try:                                               # 👁 Oct-30 LONG_ADX35 — FRENZY_LONG with coin ADX > 35, frozen expectancy bar (DECISION_LOG 418; forward)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_long_adx35_watch as _lax
+        _rg_sec += _lax.run(now_ms)
+    except Exception as _lax_e:
+        log(f"LONG_ADX35 line failed: {_lax_e}")
+        _rg_sec += ["## 👁 LONG_ADX35", "", f"Unavailable this run ({str(_lax_e)[:120]}).", ""]
     try:                                               # 👁 Oct-30 FB_CONFIRM — FLATBASE entered after a 4-hour close below the signal vs today's entry, frozen bar (DECISION_LOG 417; forward, budgeted public 5m)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

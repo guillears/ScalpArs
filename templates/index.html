@@ -4872,7 +4872,7 @@
                                 <div class="flex items-center gap-2"><span class="text-gray-500 text-sm w-16 text-right">≥ $</span><input type="number" class="res-sched-bal w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="500000"><span class="text-gray-500">→ trade $</span><input type="number" class="res-sched-trd w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="300000"><span class="res-sched-resv text-gray-500 text-sm"></span></div>
                                 <div class="flex items-center gap-2"><span class="text-gray-500 text-sm w-16 text-right">≥ $</span><input type="number" class="res-sched-bal w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="1000000"><span class="text-gray-500">→ trade $</span><input type="number" class="res-sched-trd w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="500000"><span class="res-sched-resv text-gray-500 text-sm"></span></div>
                             </div>
-                            <p class="text-xs text-gray-500 mt-1">Each line = "at balance ≥ $X, tradeable = $T" (reserve = balance − T, auto-grows; withdrawals pull from the reserve and it self-rebuilds). Below the first tier = no reserve (full balance trades). Active tier = highest ≤ balance. <span id="res-schedule-readout" class="text-emerald-400/80"></span></p>
+                            <p class="text-xs text-gray-500 mt-1">Each line = "at balance ≥ $X, tradeable = $T" (reserve = balance − T, auto-grows; withdrawals pull from the reserve and it self-rebuilds). Balance = USDT + open margin (BNB not counted). The fee reserve applies on top. Below the first tier = fee reserve only. Active tier = highest ≤ balance. <span id="res-schedule-readout" class="text-emerald-400/80"></span></p>
                         </div>
                         <div>
                             <label class="block text-sm text-gray-400 mb-2">Paper Balance</label>
@@ -5061,7 +5061,7 @@
                                 <div class="flex items-center gap-2"><span class="text-gray-500 text-sm w-16 text-right">≥ $</span><input type="number" class="lev-sched-bal w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="100000"><span class="text-gray-500">→</span><input type="number" class="lev-sched-lev w-20 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="1" step="1" placeholder="5"><span class="text-gray-500 text-sm">×</span></div>
                                 <div class="flex items-center gap-2"><span class="text-gray-500 text-sm w-16 text-right">≥ $</span><input type="number" class="lev-sched-bal w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="—"><span class="text-gray-500">→</span><input type="number" class="lev-sched-lev w-20 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="1" step="1" placeholder="—"><span class="text-gray-500 text-sm">×</span></div>
                             </div>
-                            <p class="text-xs text-gray-500 mt-1">④ Each line = "at balance ≥ $X, cap leverage to N×" (ascending). Final ceiling = highest tier ≤ equity — de-lever as the account grows (ruin-risk knob, sibling of ②). Leave all blank = off. <span id="lev-schedule-readout" class="text-emerald-400/80"></span></p>
+                            <p class="text-xs text-gray-500 mt-1">④ Each line = "at balance ≥ $X, cap leverage to N×" (ascending). Balance = USDT + open margin (BNB not counted). Final ceiling = highest tier ≤ equity — de-lever as the account grows (ruin-risk knob, sibling of ②). Leave all blank = off. <span id="lev-schedule-readout" class="text-emerald-400/80"></span></p>
                         </div>
                         <div class="md:col-span-2">
                             <label class="block text-sm text-gray-400 mb-2">🖐 Manual stop by leverage <span class="text-gray-500">(read-only — derived, not a setting)</span></label>
@@ -9951,7 +9951,7 @@
                 }
                 window._lastStatusIsPaper = data.is_paper;   // read by the manual-entry confirmation (LIVE warning)
                 { const _u = data.manual_block_unreadable || null; if (_u !== (window._manualBlockUnreadable || null)) { window._manualBlockUnreadable = _u; try { renderManualBlockBanner(null); } catch (e) {} } }   // ⛔ (343 review #4)
-                if (data.sizing_equity != null) { window._ssEquity = Number(data.sizing_equity); window._ssFeeBurn = Number(data.fee_reserve_burn_usd || 0); try { renderSleeveSizing(); } catch (_e) {} }   // ⚖️ Oct-4
+                if (data.sizing_equity != null) { window._ssEquity = Number(data.sizing_equity); window._ssFeeBurn = Number(data.fee_reserve_burn_usd || 0); try { if (window._resSchedRead) window._resSchedRead(); if (window._levSchedRead) window._levSchedRead(); } catch (e) {} try { renderSleeveSizing(); } catch (_e) {} }   // ⚖️ Oct-4
                 { const _mp = document.getElementById('manual-entry-btn'); if (_mp && data.manual_max_open_positions != null) { _mp.classList.toggle('hidden', Number(data.manual_max_open_positions) <= 0); if (_mp.classList.contains('hidden')) { try { closeManualModal(); } catch (e) {} } } }   // 🖐 cap 0 = manual entry off (shown in paper AND live since Oct-2) · Oct-20: hides the 🖐 button (and closes the pop-up)
                 document.getElementById('total-portfolio').textContent = formatUSD(data.total_portfolio);
                 // 🏦 (344) the card's "incl. open P&L" line was removed (operator 10-22: card too busy) — the text exports keep it (window._lastOpenPnl)
@@ -22108,9 +22108,9 @@
                     }
                     t.sort((a, b) => a[0] - b[0]); return t;
                 };
-                const _updLevRead = function(){
+                const _updLevRead = window._levSchedRead = function(){
                     const out = document.getElementById('lev-schedule-readout'); if (!out) return;
-                    const t = _readLevTiers(); const bal = Number(window._levSchedBalance || 0);
+                    const t = _readLevTiers(); const bal = Number(window._ssEquity ?? window._levSchedBalance ?? 0);   // (423) the engine's sizing base, not the paper seed
                     if (!t.length) { out.textContent = ''; return; }
                     let cap = null; for (const tier of t) { if (bal >= tier[0]) cap = tier[1]; else break; }
                     out.textContent = (cap !== null) ? `→ active: ${cap}× @ $${Math.round(bal).toLocaleString()}` : `→ off (balance below first tier)`;
@@ -22144,12 +22144,14 @@
                                 ? `reserve $${Math.max(0, b - v).toLocaleString()}` : '';
                         }
                         t.sort((a, b) => a[0] - b[0]);
-                        const bal = Number(window._levSchedBalance || 0);
+                        const bal = Number(window._ssEquity ?? window._levSchedBalance ?? 0);   // (423) USDT + open margin, what the engine keys tiers on (the paper seed read "active" while the engine was below the tier)
+                        const _basis = window._ssEquity != null ? 'USDT + margin' : 'paper seed';   // until the first balance read
                         let tgt = null; for (const tier of t) { if (bal >= tier[0]) tgt = tier[1]; else break; }
                         out.textContent = (tgt !== null && tgt > 0)   // tgt<=0 = fail-open like the engine (M2)
-                            ? `→ active: trade $${Math.round(tgt).toLocaleString()} / reserve $${Math.round(Math.max(0, bal - tgt)).toLocaleString()} @ $${Math.round(bal).toLocaleString()}`
-                            : `→ below first tier: full balance tradeable`;
+                            ? `→ active: trade $${Math.round(tgt).toLocaleString()} / reserve $${Math.round(Math.max(0, bal - tgt)).toLocaleString()} + fee reserve @ ${_basis} $${Math.round(bal).toLocaleString()}`
+                            : `→ below first tier @ ${_basis} $${Math.round(bal).toLocaleString()}: no schedule reserve, fee reserve only`;
                     };
+                    window._resSchedRead = upd;
                     { const _fr = document.getElementById('config-fee-reserve-usd'); if (_fr) _fr.value = (config.investment.fee_reserve_usd !== undefined && config.investment.fee_reserve_usd !== null) ? config.investment.fee_reserve_usd : 15; }
                     { const _fh = document.getElementById('config-fee-reserve-hours'); if (_fh) _fh.value = (config.investment.fee_reserve_hours !== undefined && config.investment.fee_reserve_hours !== null) ? config.investment.fee_reserve_hours : 12; }
                     { const _fp = document.getElementById('config-fee-reserve-pct'); if (_fp) _fp.value = (config.investment.fee_reserve_pct !== undefined && config.investment.fee_reserve_pct !== null) ? config.investment.fee_reserve_pct : 2.5; }

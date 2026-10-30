@@ -159,3 +159,9 @@ def test_paper_preview_warns_about_double_counting():
     m = open("main.py", encoding="utf-8").read()
     i = m.index("async def investor_deposit")
     assert "do not do both" in m[i:i + 1800]
+
+
+def test_schedule_readouts_use_the_engine_sizing_base():
+    h = open("templates/index.html", encoding="utf-8").read()
+    assert h.count("Number(window._ssEquity ?? window._levSchedBalance ?? 0)") == 3 and "window._resSchedRead = upd;" in h and "window._levSchedRead = function" in h
+    assert "full balance tradeable" not in h and "if (window._resSchedRead) window._resSchedRead();" in h

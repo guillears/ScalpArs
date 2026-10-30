@@ -3,7 +3,7 @@ import asyncio
 from datetime import datetime
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 import main
@@ -110,6 +110,20 @@ def test_rebuild_with_a_deposit_opening_row_closes_founding_room(monkeypatch):
         assert await main._nav_rebuild_once(db) is True
         st = (await db.execute(select(models.BotState))).scalars().one()
         assert st.founding_allocated_usd == 3000.0
+    asyncio.run(run())
+
+
+def test_rebuild_finds_a_log_row_stored_without_microseconds(monkeypatch):
+    """production's changed_at comes from func.now(): text with no fraction, which == a bound datetime never matches (second deploy refused on it)."""
+    monkeypatch.setattr(main.trading_engine, "is_paper_mode", True)
+
+    async def run():
+        db = await _db()
+        await _case(db, monkeypatch)
+        await db.execute(text("UPDATE config_change_log SET changed_at = '2026-10-26 13:50:00'"))
+        await db.flush()
+        db.expire_all()
+        assert await main._nav_rebuild_once(db) is True
     asyncio.run(run())
 
 

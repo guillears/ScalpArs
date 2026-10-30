@@ -13347,7 +13347,8 @@ async def _nav_rebuild_once(db: AsyncSession) -> bool:
     # the batch's capital = today's config − the top-up, IF the log row agrees with today's config. runtime_initial_total_usd is NOT it: never re-anchored on a reset (production read 1,300.31)
     _c = config.trading_config
     start = float(_c.paper_balance or 0) + float(_c.paper_bnb_initial_usd or 0) - flows[0][1]
-    _row = (await db.execute(select(ConfigChangeLog.old_value, ConfigChangeLog.new_value).where(and_(ConfigChangeLog.field == "paper_balance", ConfigChangeLog.changed_at == flows[0][0])))).first()
+    _row = (await db.execute(select(ConfigChangeLog.old_value, ConfigChangeLog.new_value).where(and_(ConfigChangeLog.field == "paper_balance", ConfigChangeLog.changed_at >= flows[0][0] - timedelta(seconds=1),
+                                                                                                          ConfigChangeLog.changed_at <= flows[0][0] + timedelta(seconds=1))))).first()   # a window: SQLite compares datetimes as text, and a func.now() row has no microseconds, so == never matches
     if _row is None or abs(float(_row[1]) - float(_c.paper_balance or 0)) > 0.01 or abs(float(_row[0]) + float(_c.paper_bnb_initial_usd or 0) - start) > 0.01:
         logger.warning(f"[NAV_REBUILD] skipped: the top-up log row {_row} does not agree with today's config (start {start:.2f})")
         return False

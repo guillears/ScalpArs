@@ -1472,6 +1472,14 @@ def run():
     except Exception as _wax_e:
         log(f"WILLY_ADX55 line failed: {_wax_e}")
         _rg_sec += ["## 👁 WILLY_ADX55", "", f"Unavailable this run ({str(_wax_e)[:120]}).", ""]
+    try:                                               # 👁 Oct-30 WILLY_GAP — WILLY / HT with ADX > 55 or EMA8–13 gap ≤ 0.90, frozen expectancy bar per sleeve (DECISION_LOG 414; forward)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_willy_gap_watch as _wgp
+        _rg_sec += _wgp.run(now_ms)
+    except Exception as _wgp_e:
+        log(f"WILLY_GAP line failed: {_wgp_e}")
+        _rg_sec += ["## 👁 WILLY_GAP", "", f"Unavailable this run ({str(_wgp_e)[:120]}).", ""]
     try:                                               # 👁 Oct-30 FADE_NOSTRETCH — SPIKE_FADE with no overshoot to revert, frozen expectancy bar (DECISION_LOG 413; forward)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

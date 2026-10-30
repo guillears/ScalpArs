@@ -87,6 +87,10 @@ BOOKED = {   # booked P&L — `era` = drops fills by WILLY exit era (registered 
                                       "runner_trail_short_be_lock_pct": 0.1, "runner_trail_short_atr_min": 0.0, "spike_lock_exempt_fade": True, "spike_fade_sl_pct": -1.5, "runner_trail_short_arm_peak": 0.4, "runner_trail_short_atr_mult": 0.5,
                                       "runner_trail_short_giveback_frac": 0.35, "spike_fade_late_arm_after_min": 15.0, "spike_fade_late_arm_peak": 0.3,
                                       "hard_tp_ladder_short": "1.0:0.25,1.5:0.30,2.0:0.40,3.0:0.60,4.0:0.80"},
+    # (414) WILLY_GAP judges booked WR against the same frozen V2b breakeven (69.0 %) → the same pins
+    "scout_willy_gap_watch.py": {"frenzy_willy_high_target_enabled": True, "frenzy_willy_stop_pct": 4.0, "frenzy_willy_high_k_pct": 1.0,
+                                 "frenzy_willy_high_tp_max_pct": 8.0, "frenzy_willy_max_hold_minutes": 90,
+                                 "frenzy_willy_late_tp_minutes": 30.0, "frenzy_willy_late_tp_pct": 0.25},
     # (412) WILLY_ADX55 judges booked WR against the frozen V2b breakeven (69.0 %) → pinned to the V2b exit keys
     "scout_willy_adx_watch.py": {"frenzy_willy_high_target_enabled": True, "frenzy_willy_stop_pct": 4.0, "frenzy_willy_high_k_pct": 1.0,
                                  "frenzy_willy_high_tp_max_pct": 8.0, "frenzy_willy_max_hold_minutes": 90,

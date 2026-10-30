@@ -1472,6 +1472,14 @@ def run():
     except Exception as _wax_e:
         log(f"WILLY_ADX55 line failed: {_wax_e}")
         _rg_sec += ["## 👁 WILLY_ADX55", "", f"Unavailable this run ({str(_wax_e)[:120]}).", ""]
+    try:                                               # 👁 Oct-30 FB_CONFIRM — FLATBASE entered after a 4-hour close below the signal vs today's entry, frozen bar (DECISION_LOG 417; forward, budgeted public 5m)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_flatbase_confirm_watch as _fbc
+        _rg_sec += _fbc.run(now_ms)
+    except Exception as _fbc_e:
+        log(f"FB_CONFIRM line failed: {_fbc_e}")
+        _rg_sec += ["## 👁 FB_CONFIRM", "", f"Unavailable this run ({str(_fbc_e)[:120]}).", ""]
     try:                                               # 👁 Oct-30 ML_MKT_HOT — momentum longs bought with > 50 % of the market up over 4 h, operator's frozen bar (DECISION_LOG 416; forward, budgeted public 1h)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

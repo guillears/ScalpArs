@@ -25,6 +25,7 @@ _FZ_STOP3 = {"frenzy_long_stop_pct": 3.0}                         # FRENZY_LONG 
 _NO_LITE_C = {"frenzy_lite_c_enabled": False}                     # LITE walked at +3 for every fill (live LITE C +2 out of zone, DL 301)
 
 EXIT = {
+    "scout_flatbase_confirm_watch.py": dict(dl="417", sleeves="FLATBASE_SHORT", walks={"flatbase_tp_pct": 5.0, "flatbase_stop_pct": 10.0, "flatbase_max_hold_hours": 72.0}),
     "scout_willy_timecap.py": dict(dl="264 · 278 · 281 · 285 · 290 · 297", sleeves="FRENZY_WILLY", walks=_OLD_WILLY),
     "scout_willy_tp125.py": dict(dl="265", sleeves="FRENZY_WILLY", walks=_OLD_WILLY),
     "scout_willy_stop.py": dict(dl="268 · 269", sleeves="FRENZY_WILLY", walks=_OLD_WILLY),

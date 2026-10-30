@@ -1472,6 +1472,14 @@ def run():
     except Exception as _wax_e:
         log(f"WILLY_ADX55 line failed: {_wax_e}")
         _rg_sec += ["## 👁 WILLY_ADX55", "", f"Unavailable this run ({str(_wax_e)[:120]}).", ""]
+    try:                                               # 👁 Oct-30 RETRY_BTC1H — FRENZY_LITE_RETRY with BTC 1 h slope ≤ 0, frozen expectancy bar (DECISION_LOG 415; forward)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_retry_btc1h_watch as _rbt
+        _rg_sec += _rbt.run(now_ms)
+    except Exception as _rbt_e:
+        log(f"RETRY_BTC1H line failed: {_rbt_e}")
+        _rg_sec += ["## 👁 RETRY_BTC1H", "", f"Unavailable this run ({str(_rbt_e)[:120]}).", ""]
     try:                                               # 👁 Oct-30 WILLY_GAP — WILLY / HT with ADX > 55 or EMA8–13 gap ≤ 0.90, frozen expectancy bar per sleeve (DECISION_LOG 414; forward)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

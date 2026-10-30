@@ -10,17 +10,19 @@ WHY             AVAUSDT FRENZY_LITE 10-23 03:00 UTC: a LITE entry 14.9 h after t
                 LITE_BTC1H_FALLING (scout_frenzy_wl_lines.py, DECISION_LOG 288), this cell sits inside it — read the two together.
 CELL (frozen)   FRENZY_LITE / FRENZY_LITE_RETRY fill with entry_frenzy_hours ≥ 12.0 ∧ entry_btc_1h_slope ≤ 0. A missing stamp → UNSCORED
                 (listed, never counted as rest). Never re-fit.
+🔀 SPLIT (operator 2026-10-30, DECISION_LOG 415, no verdict had frozen): LITE and LITE_RETRY are read and decided SEPARATELY, same cell, same gate,
+                each with its own frozen state (RETRY behaves oppositely on BTC slope: pooled 7 fills = LITE 4 · +0.87 vs RETRY 3 · −3.00).
 COHORT          ① MASTER history (operator): reports/MASTER_POOL_stacked.csv LITE-family rows with stack_keep (today's stack: y = stack_pct,
                 $ = stack_pnl) · ② FORWARD: CLOSED LITE-family fills in the orders exports (paper + live via export_glob) whose key
                 (opened_at[:19], pair, direction) is not in the master, y = pnl_percentage, $ = pnl. Both: operator-closed (MANUAL /
-                MANUAL_* / EXTERNAL_CLOSE) out — scout_gatekit; dedup on the key, CLOSED wins, never id; *_PROBE fills out. The gate reads ① + ②
+                MANUAL_* / EXTERNAL_CLOSE) out — scout_gatekit; dedup on the key, CLOSED wins, never id; *_PROBE fills out. Each sleeve's gate reads its own ① + ②
                 POOLED (operator override of the study's forward-only cohort). Basis mix: master = stack_pct (today's stack), forward = as
                 traded — the verdict is PERSISTED once decided, so a master rebuild can never move it. MASTER MAY ONLY VETO an arm (review:
                 a strong master REST or diluted master losing days could otherwise make an arm easier) — see the gate.
-🔒 GATE (frozen 2026-10-23, the study's spec) — decided ONCE at the first prefix by open time where the cell reaches N ≥ 15 on ≥ 8 UTC days
+🔒 GATE (frozen 2026-10-23, the study's spec; per sleeve since DL 415) — decided ONCE at the first prefix by open time where the cell reaches N ≥ 15 on ≥ 8 UTC days
                 (rest = scored non-cell fills opened ≤ the prefix end):
                   RETIRE                     if cell avg ≥ rest avg;
-                  ARM CANDIDATE (operator    iff cell WR < LITE breakeven (|avg loss| / (avg win + |avg loss|) of the prefix's LITE-family
+                  ARM CANDIDATE (operator    iff cell WR < LITE breakeven (|avg loss| / (avg win + |avg loss|) of the prefix's fills of that sleeve
                   picks block or ½ size)         fills when N ≥ 30, else 62 % — TP +2 vs −3 with fees) ∧ day-clustered bootstrap
                                                  P(cell avg < 0) ≥ 0.95 (4,000, seed 7) ∧ no single day or pair ≥ 50 % of the cell's gross loss;
                                              AND, so the master can only veto, the same on the FORWARD fills of the prefix alone: forward
@@ -52,7 +54,7 @@ GATE_N, GATE_DAYS, P_MIN, SHARE_MAX = 15, 8, 0.95, 0.50
 BE_FALLBACK, BE_MIN_N = 62.0, 30
 BOOT_N, BOOT_SEED = 4000, 7
 MASTER = os.path.join(_R, "reports", "MASTER_POOL_stacked.csv")
-STATE = os.path.join(_R, "reports", ".lite_late_btcfall_gate.json")      # 🔒 the frozen verdict, written once at the read
+STATE = os.path.join(_R, "reports", ".lite_late_btcfall_gate.json")      # 🔒 base name: one frozen verdict per sleeve (state_for), written once at the read
 PATTERN = os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")
 COLS = ("opened_at", "pair", "direction", "status", "entry_strategy", "pnl", "pnl_percentage", "close_reason", "is_paper",
         "entry_frenzy_hours", "entry_btc_1h_slope", "frenzy_lite_tp_used", "stack_keep", "stack_pct", "stack_pnl", "era")
@@ -213,6 +215,11 @@ def frozen_verdict(state_path, v, txt):
     return v, txt, False
 
 
+def state_for(state_path, es):
+    """the sleeve's own frozen-verdict file (DL 415). None stays None (no write)."""
+    return state_path.replace(".json", f"_{es}.json") if state_path else None
+
+
 def run(now_ms=None, paths=None, master_path=MASTER, state_path=STATE):
     L = [f"## 🕰🧭 LITE_LATE_BTCFALL — LITE ≥ {LATE_H:.0f} h after the spike ∧ BTC 1 h slope ≤ 0 (DECISION_LOG {DL}, observe-only, frozen gate)", ""]
     m, mox, mkeys = load_master(master_path)
@@ -221,16 +228,16 @@ def run(now_ms=None, paths=None, master_path=MASTER, state_path=STATE):
     pool["grp"] = classify(pool) if len(pool) else []
     L.append(f"Cohort: LITE + LITE_RETRY · master (today's stack) {len(m)} + forward exports {len(f)} · operator-closed out "
              f"(master {len(mox)}, forward {len(fox)})")
-    for src, lab in (("master", "MASTER history"), ("forward", "FORWARD (exports, not in master)"), (None, "POOLED (the gate reads this)")):
-        g = pool if src is None else pool[pool.src == src]
-        L.append(f"{lab}:")
-        for grp, name in (("cell", "cell (late ∧ BTC falling)"), ("rest", "rest of LITE"), ("unscored", "unscored (stamp missing)")):
-            L.append("  " + _line(name, g[g.grp == grp] if len(g) else g))
-    for es in LITE_FAMILY:                                           # per sleeve (pooled)
-        g = pool[pool.entry_strategy.astype(str) == es] if len(pool) else pool
-        L.append(f"{es} pooled: cell " + _line("", g[g.grp == "cell"] if len(g) else g)[4:] + " · rest " + _line("", g[g.grp == "rest"] if len(g) else g)[4:])
-    v, txt, _ = frozen_verdict(state_path, *gate(pool))
-    L.append(f"Gate verdict: {v} — {txt}")
+    for es in LITE_FAMILY:                                           # 🔀 (415) each sleeve read and decided on its own
+        p_s = pool[pool.entry_strategy.astype(str) == es] if len(pool) else pool
+        L.append(f"### {es}")
+        for src, lab in (("master", "MASTER history"), ("forward", "FORWARD (exports, not in master)"), (None, "master + forward (the gate reads this)")):
+            g = p_s if src is None else (p_s[p_s.src == src] if len(p_s) else p_s)
+            L.append(f"{lab}:")
+            for grp, name in (("cell", "cell (late ∧ BTC falling)"), ("rest", "rest of the sleeve"), ("unscored", "unscored (stamp missing)")):
+                L.append("  " + _line(name, g[g.grp == grp] if len(g) else g))
+        v, txt, _ = frozen_verdict(state_for(state_path, es), *gate(p_s))
+        L.append(f"Gate verdict: {v} — {txt}")
     c = pool[pool.grp == "cell"].sort_values("o") if len(pool) else pool
     if len(c):
         L.append("Cell fills: " + " · ".join(f"{r.pair} {r.o:%m-%d %H:%M} {r.entry_strategy} [{r.src}] {r.h:.1f} h slope {r.s:+.3f} "

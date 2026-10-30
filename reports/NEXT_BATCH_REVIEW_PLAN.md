@@ -143,9 +143,10 @@ the review must beat the null, not just pass both eras.
    info-only confidence line (N ≥ 30 / 10 days · WR > breakeven ≈ 74 % · avg ≥ +0.10 at P ≥ 0.95 · Σ $ > 0 · haircut). Show it next to
    ② master (32 fills re-walked at +1.5 TP: −4 +0.22 %/fill · 78 % vs −3 −0.27 · 63 %) and ③ backtest (623 · 73 % · −0.04 at −4).
 ②i **🕰🧭 LITE_LATE_BTCFALL (DECISION_LOG 353, observe-only, frozen gate)** — run scripts/scout_lite_late_btcfall.py (also in the opportunity
-   scout): LITE + LITE_RETRY fills ≥ 12 h after the spike with BTC's 1 h slope ≤ 0 vs the rest of LITE — MASTER history · FORWARD · POOLED
+   scout): LITE + LITE_RETRY fills ≥ 12 h after the spike with BTC's 1 h slope ≤ 0 vs the rest of LITE — per sleeve (DL 415): MASTER history · FORWARD · master + forward
    (N · days · WR · avg · Σ · $), the cell fill list, the gate verdict (read at 15 fills on 8 days), next to LITE_BTC1H_FALLING and the
    backtest ref (cell −0.57 vs rest +0.03; failed 2026 OOS). Save the batch export first — an unsaved reset loses the forward fills.
+②m **👁 RETRY_BTC1H (DECISION_LOG 415)** — run scripts/scout_retry_btc1h_watch.py at the LITE_RETRY step (frozen read at 15 zone fills on 8 days → OPERATOR CALL); LITE_LATE_BTCFALL is read per sleeve since DL 415.
 ②j **🎲²ᵇ WILLY EXIT V2b (DECISION_LOG 358 — the DL 356 floor REMOVED; target at the spike high kept; frozen revert gates)** — run
    scripts/scout_willy_exit_v2.py (also in the opportunity scout). Live exit: stored target TP (resting maker) · stop −4 throughout · late TP
    +0.25 @30 for every trade · cap 90 · no floor. Read, in this order: ⓐ the era line ("exit era: pre-V2 N · V2 N (runner target / floor N)") —

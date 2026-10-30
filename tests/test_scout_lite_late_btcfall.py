@@ -116,6 +116,17 @@ def test_decided_once_on_the_crossing_prefix(tmp_path):
     assert a == b
 
 
+def test_each_sleeve_decides_alone(tmp_path):
+    lite = [_row(i, 13, -0.1, 2.0, day=i // 2) for i in range(16)]                                     # LITE cell wins
+    retry = [_row(100 + i, 13, -0.1, -3.0 if i % 4 else 2.0, day=i // 2, strat="FRENZY_LITE_RETRY") for i in range(16)]
+    rr = [_row(200 + i, 3, 0.1, 2.0 if i % 3 else -3.0, day=i // 3, strat="FRENZY_LITE_RETRY") for i in range(30)]
+    st = str(tmp_path / "g.json")
+    out = "\n".join(S.run(paths=[_csv(tmp_path, lite + retry + rr, "s.csv")], master_path=os.path.join(str(tmp_path), "none.csv"), state_path=st))
+    a, b = out.split("### FRENZY_LITE_RETRY")
+    assert "Gate verdict: KEEP_OBSERVING" in a and "ARM_CANDIDATE" not in a and "Gate verdict: ARM_CANDIDATE" in b
+    assert not os.path.exists(st) and os.path.exists(str(tmp_path / "g_FRENZY_LITE_RETRY.json")) and os.path.exists(str(tmp_path / "g_FRENZY_LITE.json"))
+
+
 def test_empty_inputs_never_raise(tmp_path):
     out = "\n".join(S.run(paths=[], master_path=os.path.join(str(tmp_path), "missing.csv"), state_path=None))
     assert "COLLECTING" in out and "AVAUSDT" in out

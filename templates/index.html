@@ -1829,8 +1829,8 @@
                     </tr></thead><tbody id="frenzy-flags-body" class="divide-y divide-white/5"><tr><td colspan="11" class="px-3 py-3 text-center text-gray-500">—</td></tr></tbody></table></div>
                     <h4 class="text-xs font-semibold text-orange-300 mt-4 mb-1">🔥 FRENZY Fills (FRENZY_LONG · FRENZY_LITE · FRENZY_LITE_RETRY · FRENZY_WILLY · FRENZY_WILLY_HT · FLATBASE_SHORT)</h4>
                     <div class="overflow-x-auto"><table class="w-full text-xs"><thead><tr class="text-gray-400 border-b border-white/10">
-                        <th class="px-2 py-1 text-left">Cohort</th><th class="px-2 py-1 text-right">N</th><th class="px-2 py-1 text-right">WR%</th><th class="px-2 py-1 text-right">avg%</th><th class="px-2 py-1 text-right">Total$</th><th class="px-2 py-1 text-right">avgPk%</th><th class="px-2 py-1 text-right">Episodes</th><th class="px-2 py-1 text-left">Review</th>
-                    </tr></thead><tbody id="frenzy-body" class="divide-y divide-white/5"><tr><td colspan="8" class="px-3 py-3 text-center text-gray-500">—</td></tr></tbody></table></div>
+                        <th class="px-2 py-1 text-left">Cohort · review</th><th class="px-2 py-1 text-right">N</th><th class="px-2 py-1 text-right">WR%</th><th class="px-2 py-1 text-right">avg%</th><th class="px-2 py-1 text-right">Total$</th><th class="px-2 py-1 text-right">avgPk%</th><th class="px-2 py-1 text-right">Episodes</th>
+                    </tr></thead><tbody id="frenzy-body" class="divide-y divide-white/5"><tr><td colspan="7" class="px-3 py-3 text-center text-gray-500">—</td></tr></tbody></table></div>
                     <h4 class="text-xs font-semibold text-orange-300 mt-4 mb-1">🎯 LITE C Tally (DECISION_LOG 301, off since 10-30, DL 420 — while on: zone kept the LITE TP, outside took the LITE C TP)</h4>
                     <div class="overflow-x-auto"><table class="w-full text-xs"><thead><tr class="text-gray-400 border-b border-white/10">
                         <th class="px-2 py-1 text-left">Cohort</th><th class="px-2 py-1 text-right">N</th><th class="px-2 py-1 text-right">WR%</th><th class="px-2 py-1 text-right">Σ P&amp;L %</th><th class="px-2 py-1 text-right">avg%</th><th class="px-2 py-1 text-right">Total$</th><th class="px-2 py-1 text-right">TP used</th><th class="px-2 py-1 text-left">Lifetime</th>
@@ -18489,18 +18489,17 @@
                         fzB.innerHTML = (data.frenzy_rows && data.frenzy_rows.length) ? data.frenzy_rows.map(r => {
                             const tc = (r.total_usd || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
                             const _open = window._fzCoinOpen && window._fzCoinOpen[r.coin];
-                            const _tog = (r.coin && !_fzCoinSeen[r.coin]) ? (_fzCoinSeen[r.coin] = 1, `<tr class="cursor-pointer hover:bg-white/5" onclick="fzToggleCoins('${_fzE(r.coin)}')"><td colspan="8" class="px-2 py-1 text-xs text-gray-500">  ${_open ? '▾' : '▸'} coins (${_fzCoinN[r.coin]})</td></tr>`) : '';
+                            const _tog = (r.coin && !_fzCoinSeen[r.coin]) ? (_fzCoinSeen[r.coin] = 1, `<tr class="cursor-pointer hover:bg-white/5" onclick="fzToggleCoins('${_fzE(r.coin)}')"><td colspan="7" class="px-2 py-1 pl-6 text-xs text-gray-500">${_open ? '▾' : '▸'} coins (${_fzCoinN[r.coin]})</td></tr>`) : '';
                             return _tog + `<tr class="hover:bg-white/5${r.coin && !_open ? ' hidden' : ''}"${r.coin ? ` data-fz-coin="${_fzE(r.coin)}"` : ''}>
-                                <td class="px-2 py-1.5 text-orange-300 font-medium whitespace-pre">${_fzE(r.row)}</td>
+                                <td class="px-2 py-1.5 ${/^\s/.test(r.row || '') ? 'pl-6' : ''}"><div class="text-orange-300 font-medium">${_fzE((r.row || '').trim())}</div>${r.gate ? `<div class="text-gray-500 mt-0.5 leading-snug">${_fzE(r.gate)}</div>` : ''}</td>
                                 <td class="px-2 py-1.5 text-right text-gray-300">${r.n}</td>
                                 <td class="px-2 py-1.5 text-right text-gray-300">${r.wr != null ? r.wr.toFixed(1) : '—'}</td>
                                 <td class="px-2 py-1.5 text-right ${tc}">${_fzS(r.avg_pct, 3)}</td>
                                 <td class="px-2 py-1.5 text-right ${tc} font-bold">$${(r.total_usd || 0).toFixed(2)}</td>
                                 <td class="px-2 py-1.5 text-right text-gray-400">${_fzS(r.avg_peak, 2)}</td>
                                 <td class="px-2 py-1.5 text-right text-gray-400">${r.episodes ?? '—'}</td>
-                                <td class="px-2 py-1.5 text-gray-400">${_fzE(r.gate || '')}</td>
                             </tr>`;
-                        }).join('') : '<tr><td colspan="8" class="px-3 py-3 text-center text-gray-500">No FRENZY fills yet</td></tr>';
+                        }).join('') : '<tr><td colspan="7" class="px-3 py-3 text-center text-gray-500">No FRENZY fills yet</td></tr>';
                     }
                     const lcB = document.getElementById('lite-c-body');   // 🎯 (DECISION_LOG 301) LITE C Tally
                     if (lcB) {

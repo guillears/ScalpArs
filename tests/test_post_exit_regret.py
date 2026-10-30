@@ -92,3 +92,46 @@ def test_frenzy_clean_up():
         assert stale not in main, stale
     assert '_fz_lbl + _fz_exit_label(_fz_es) + ")"' in main and '"coin": _fz_es' in main and "FLATBASE_EXIT_408_AT" in main
     assert "fzToggleCoins" in h and h.count("r.coin && !_open ? ' hidden'") == 1
+
+
+def test_frenzy_fills_review_sits_under_the_cohort():
+    h = _html()
+    e = h.index('<tbody id="frenzy-body"')
+    head = h[h.rfind("<thead>", 0, e):e]
+    assert ">Cohort · review</th>" in head and ">Review</th>" not in head and head.count("<th ") == 7
+    assert '<tr><td colspan="7"' in h[e:e + 120] and "whitespace-pre\">${_fzE(r.row)}" not in h and "${_fzE(r.gate)}</div>" in h
+
+
+def test_regret_by_sleeve_table_and_plan_item():
+    sys.path.insert(0, os.path.join(ROOT, "scripts"))
+    import pandas as pd
+    import post_exit_regret_by_sleeve as P
+    t = dt.datetime(2026, 10, 30)
+    d = pd.DataFrame([dict(vars(_o("FRENZY_TP")), opened_at=str(t), closed_at=str(t + dt.timedelta(minutes=30))), dict(vars(_o("MAX_HOLD_TIME", peak=None)), opened_at=str(t), closed_at=str(t + dt.timedelta(minutes=30)))])
+    out = "\n".join(P.table(d))
+    assert "| FRENZY_TP | 1 | 1L/0S | -1.00 | +0.50 | 5 | -2.00 | 9 | 100 % | +0.10 |" in out and "No post-exit data: MAX_HOLD_TIME 1" in out
+    rows = "\n".join(P.trades(d))
+    assert "| FRENZY_TP | -1.00 | – |" in rows and "| MAX_HOLD_TIME | -1.00 | – |" in rows and rows.count("\n") == 3   # header, rule, each trade
+    plan = open(os.path.join(ROOT, "reports", "NEXT_BATCH_REVIEW_PLAN.md"), encoding="utf-8").read()
+    assert "EACH TRADE" in plan
+    assert "POST-EXIT REGRET AT EVERY EXIT REVIEW" in plan and "post_exit_regret_by_sleeve.py" in plan
+
+
+def test_regret_by_sleeve_views():
+    sys.path.insert(0, os.path.join(ROOT, "scripts"))
+    import pandas as pd
+    import post_exit_regret_by_sleeve as P
+    d = pd.DataFrame(dict(entry_strategy=["MOMENTUM", "MOMENTUM", "SPIKE_FADE", "MOMENTUM"], direction=["LONG", "SHORT", "SHORT", "LONG"], stack_keep=[True, True, False, True], is_probe=[False, False, False, True]))
+    assert sorted(n for n, _ in P.split_sleeves(d)) == ["MOMENTUM_LONG", "MOMENTUM_SHORT", "SPIKE_FADE"]
+    v, note = P.master_view(d)
+    assert len(v) == 2 and "SPIKE_FADE 1" in note and "MOMENTUM 1" in note and len(P.master_view(d, True)[0]) == 4
+    f = pd.DataFrame(dict(opened_at=["2026-10-27 12:00", "2026-10-28 12:00", "2026-10-29 12:00"], closed_at=["2026-10-27 20:00", "2026-10-28 23:00", "2026-10-29 20:00"]))
+    assert [(a, len(b)) for a, b in P.versions("FLATBASE_SHORT", f)] == [("today's exit +5 / −10", 1), ("older exit +8 / −15", 1), ("open across the change (mixed)", 1)]
+    l = pd.DataFrame(dict(frenzy_lite_tp_used=[2.0, None, 3.0]))
+    assert [len(b) for _, b in P.versions("FRENZY_LITE", l)] == [1, 2] and P.versions("FRENZY_WILLY", l)[0][0] == ""
+    assert P._over(dict(post_exit_trough_minutes=316.0)) and not P._over(dict(post_exit_peak_minutes=45.0, post_exit_trough_minutes=None))
+    try:
+        P.main(["x"])
+        raise AssertionError("--since must be required")
+    except SystemExit as e:
+        assert "--since" in str(e)

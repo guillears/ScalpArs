@@ -33,25 +33,22 @@ async def _db():
     return async_sessionmaker(eng, expire_on_commit=False)()
 
 
-async def _case(db, monkeypatch, investors=1, ledger=1, realized=10111.09, opening=datetime(2026, 10, 23, 19, 0), flow=("2900.0", "10000.0", TOPUP)):
-    db.add(models.BotState(runtime_initial_total_usd=3000.0, nav_epoch_start="2026-10-23", nav_epoch_started_at=T0, founding_allocated_usd=2012.02))
+async def _case(db, monkeypatch, investors=1, ledger=1, paper_balance=10000.0, pre_value=1651.5, row_type="FOUNDING", opening=datetime(2026, 10, 23, 19, 0), flow=("2900.0", "10000.0", TOPUP)):
+    db.add(models.BotState(runtime_initial_total_usd=1300.31, nav_epoch_start="2026-10-23", nav_epoch_started_at=T0, founding_allocated_usd=2012.02))
     for k in range(investors):
         db.add(models.Investor(name=f"I{k}", shares=2012.02, total_deposited=2012.02, total_withdrawn=0.0))
     await db.flush()
     for k in range(ledger):
-        db.add(models.InvestorLedger(investor_id=1, type="FOUNDING", amount=2012.02, nav_at_time=1.0, shares_delta=2012.02, created_at=opening))
+        db.add(models.InvestorLedger(investor_id=1, type=row_type, amount=2012.02, nav_at_time=1.0, shares_delta=2012.02, created_at=opening))
     db.add(models.ConfigChangeLog(field="paper_balance", old_value=flow[0], new_value=flow[1], changed_at=flow[2]))
     base = dict(pair="AUSDT", direction="LONG", status="CLOSED", is_paper=True, entry_price=1.0, quantity=1.0, investment=1.0, leverage=1, confidence="HIGH", notional_value=1.0)
     for o, c, p in ((datetime(2026, 10, 24), datetime(2026, 10, 24, 1), -1348.5), (datetime(2026, 10, 27), datetime(2026, 10, 27, 1), 1359.59)):
         db.add(models.Order(opened_at=o, closed_at=c, pnl=p, **base))
-    for d, v, u in (("2026-10-24", 1651.5, datetime(2026, 10, 24, 12)), ("2026-10-26", 8751.5, datetime(2026, 10, 26, 23)), ("2026-10-30", 10049.0, datetime(2026, 10, 30, 23))):
+    for d, v, u in (("2026-10-24", pre_value, datetime(2026, 10, 24, 12)), ("2026-10-26", 8751.5, datetime(2026, 10, 26, 23)), ("2026-10-30", 10049.0, datetime(2026, 10, 30, 23))):
         db.add(models.NavSnapshot(date=d, portfolio_value=v, total_shares=2012.02, nav_per_share=v / 2012.02, updated_at=u))
     await db.flush()
 
-    async def comps(_d, fresh=True):
-        return {"realized_equity": realized}
-    monkeypatch.setattr(main, "_portfolio_components", comps)
-    monkeypatch.setattr(main.config.trading_config, "paper_balance", 10000.0)
+    monkeypatch.setattr(main.config.trading_config, "paper_balance", paper_balance)
     monkeypatch.setattr(main.config.trading_config, "paper_bnb_initial_usd", 100.0)
 
 
@@ -77,7 +74,7 @@ def test_rebuild_restates_once_and_keeps_values(monkeypatch):
     asyncio.run(run())
 
 
-@pytest.mark.parametrize("kw", [dict(investors=2), dict(ledger=2), dict(realized=10500.0), dict(opening=datetime(2026, 10, 28)),
+@pytest.mark.parametrize("kw", [dict(investors=2), dict(ledger=2), dict(paper_balance=25000.0), dict(pre_value=2500.0), dict(opening=datetime(2026, 10, 28)),
                                 dict(flow=("2900.0", "10000.0", datetime(2026, 11, 3))), dict(flow=("2900.0", "9000.0", TOPUP))])
 def test_rebuild_refuses_data_that_does_not_fit(monkeypatch, kw):
     monkeypatch.setattr(main.trading_engine, "is_paper_mode", True)
@@ -88,6 +85,31 @@ def test_rebuild_refuses_data_that_does_not_fit(monkeypatch, kw):
         assert await main._nav_rebuild_once(db) is False
         inv = (await db.execute(select(models.Investor))).scalars().first()
         assert inv.shares == 2012.02
+    asyncio.run(run())
+
+
+def test_rebuild_refuses_without_a_pre_topup_snapshot(monkeypatch):
+    monkeypatch.setattr(main.trading_engine, "is_paper_mode", True)
+
+    async def run():
+        db = await _db()
+        await _case(db, monkeypatch)
+        s = (await db.execute(select(models.NavSnapshot).where(models.NavSnapshot.date == "2026-10-24"))).scalars().one()
+        await db.delete(s)
+        await db.flush()
+        assert await main._nav_rebuild_once(db) is False
+    asyncio.run(run())
+
+
+def test_rebuild_with_a_deposit_opening_row_closes_founding_room(monkeypatch):
+    monkeypatch.setattr(main.trading_engine, "is_paper_mode", True)
+
+    async def run():
+        db = await _db()
+        await _case(db, monkeypatch, row_type="DEPOSIT")
+        assert await main._nav_rebuild_once(db) is True
+        st = (await db.execute(select(models.BotState))).scalars().one()
+        assert st.founding_allocated_usd == 3000.0
     asyncio.run(run())
 
 

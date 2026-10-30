@@ -13293,6 +13293,7 @@ async def _nav_epoch_after_share_change(db: AsyncSession, shares_before: float):
     return True
 
 
+NAV_REBUILD_START_TOL = 150.0   # USD: pre-top-up snapshots carry open P&L and fees
 NAV_REBUILD_TOPUP_DAY = datetime(2026, 10, 26).date()   # (422) the one top-up the one-time restatement may touch
 
 
@@ -13343,11 +13344,12 @@ async def _nav_rebuild_once(db: AsyncSession) -> bool:
     if flows[0][0] < ep_at or led[0].created_at is None or led[0].created_at >= flows[0][0]:
         logger.warning("[NAV_REBUILD] skipped: the top-up must fall inside the epoch, after the investor's opening row")
         return False
-    start = await _paper_capital_seed(db)
+    # the batch's capital = today's config − the top-up, IF the log row agrees with today's config. runtime_initial_total_usd is NOT it: never re-anchored on a reset (production read 1,300.31)
     _c = config.trading_config
-    _derived = float(_c.paper_balance or 0) + float(_c.paper_bnb_initial_usd or 0) - flows[0][1]
-    if abs(_derived - start) > 1.0:
-        logger.warning(f"[NAV_REBUILD] skipped: seed {start:.2f} vs config minus top-up {_derived:.2f}")
+    start = float(_c.paper_balance or 0) + float(_c.paper_bnb_initial_usd or 0) - flows[0][1]
+    _row = (await db.execute(select(ConfigChangeLog.old_value, ConfigChangeLog.new_value).where(and_(ConfigChangeLog.field == "paper_balance", ConfigChangeLog.changed_at == flows[0][0])))).first()
+    if _row is None or abs(float(_row[1]) - float(_c.paper_balance or 0)) > 0.01 or abs(float(_row[0]) + float(_c.paper_bnb_initial_usd or 0) - start) > 0.01:
+        logger.warning(f"[NAV_REBUILD] skipped: the top-up log row {_row} does not agree with today's config (start {start:.2f})")
         return False
     closed = [(c, float(p or 0)) for c, p in (await db.execute(select(Order.closed_at, Order.pnl).where(and_(Order.is_paper == True, Order.status == 'CLOSED')))).all() if c is not None]
     steps, final_shares = rebuild_plan(start, flows, closed)
@@ -13357,11 +13359,12 @@ async def _nav_rebuild_once(db: AsyncSession) -> bool:
     if not snaps or any(x.date < _nav_day_utc3(_first) for x in snaps):
         logger.warning(f"[NAV_REBUILD] skipped: {len(snaps)} epoch snapshots, or one older than the batch's first order")
         return False
-    _open_fees = (await db.execute(select(func.coalesce(func.sum(Order.entry_fee), 0.0)).where(and_(Order.is_paper == True, Order.status == 'OPEN')))).scalar() or 0.0
-    expect = start + flows[0][1] + sum(p for _, p in closed) - float(_open_fees)
-    realized = (await _portfolio_components(db))["realized_equity"]
-    if abs(expect - realized) > 5.0:   # paper accounting is exact: the seed, the top-up and the fills must explain the book
-        logger.warning(f"[NAV_REBUILD] skipped: start {start:.2f} + top-up + closed P&L − open fees = {expect:.2f} vs realized equity {realized:.2f}")
+    # independent proof of the start: snapshots written BEFORE the top-up, while config still said the old balance. Value − closed P&L so far = the capital then (open positions move it, hence the tolerance)
+    _pre = [x for x in snaps if x.updated_at and x.updated_at < flows[0][0]]
+    _implied = sorted(x.portfolio_value - sum(p for c, p in closed if c < x.updated_at) for x in _pre)
+    logger.warning(f"[NAV_REBUILD] start {start:.2f}, implied by pre-top-up snapshots: {[round(v, 2) for v in _implied]}")
+    if not _implied or abs(_implied[len(_implied) // 2] - start) > NAV_REBUILD_START_TOL:
+        logger.warning("[NAV_REBUILD] skipped: pre-top-up snapshots do not confirm the start capital")
         return False
     for s in snaps:
         sh = shares_at(s.updated_at, start, steps)
@@ -13376,10 +13379,9 @@ async def _nav_rebuild_once(db: AsyncSession) -> bool:
         _prev = after
     inv.shares = final_shares
     inv.total_deposited = start + sum(a for _, a in flows)
-    if led[0].type == "FOUNDING":
-        st = (await db.execute(select(BotState).limit(1))).scalar_one_or_none()
-        if st is not None:
-            st.founding_allocated_usd = max(float(st.founding_allocated_usd or 0.0), start)
+    st = (await db.execute(select(BotState).limit(1))).scalar_one_or_none()
+    if st is not None:   # all capital now belongs to the investor: no founding room left, whatever the opening row was
+        st.founding_allocated_usd = max(float(st.founding_allocated_usd or 0.0), start)
     logger.warning(f"[NAV_REBUILD] {inv.name}: shares {old_sh:.4f} → {final_shares:.4f}, deposited {old_dep:.2f} → {inv.total_deposited:.2f}, {len(snaps)} snapshots restated")
     return True
 

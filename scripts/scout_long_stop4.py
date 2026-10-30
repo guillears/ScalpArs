@@ -48,6 +48,7 @@ import os
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import zipfile
 
@@ -214,6 +215,7 @@ def rebase(P, f):
 class Budget:
     def __init__(self):
         self.used, self.stop, self.why, self.archives, self.requests = 0, False, "", 0, 0
+        self.errors = 0                                          # (416) transient fetch errors this run ([] from one is not "no data")
 
     def halt(self, why):
         self.stop, self.why = True, self.why or why
@@ -246,7 +248,7 @@ def fapi_klines(sym, interval, start, limit, bud, cache_dir, now=None, fetch=Tru
     time.sleep(PACE_S)
     bud.requests += 1
     try:
-        with urllib.request.urlopen(FAPI_URL.format(s=sym, i=interval, a=int(start), n=int(limit)), timeout=15) as r:
+        with urllib.request.urlopen(FAPI_URL.format(s=urllib.parse.quote(sym), i=interval, a=int(start), n=int(limit)), timeout=15) as r:
             rows = json.loads(r.read().decode())
             bud.used = int(r.headers.get("X-MBX-USED-WEIGHT-1M") or bud.used)
     except urllib.error.HTTPError as e:
@@ -257,8 +259,10 @@ def fapi_klines(sym, interval, start, limit, bud, cache_dir, now=None, fetch=Tru
         if e.code == 403:
             bud.halt("HTTP 403 (WAF / geo) — run stopped")
             return None
+        bud.errors += e.code != 400                               # (416) 400 = no such symbol; anything else is a transient failure
         return []
     except Exception:
+        bud.errors += 1
         return []
     out = [[int(x[0]), float(x[1]), float(x[2]), float(x[3]), float(x[4]), float(x[5])] for x in rows if int(x[0]) + step <= now]
     if len(out) == int(limit):

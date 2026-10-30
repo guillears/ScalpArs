@@ -1472,6 +1472,14 @@ def run():
     except Exception as _wax_e:
         log(f"WILLY_ADX55 line failed: {_wax_e}")
         _rg_sec += ["## 👁 WILLY_ADX55", "", f"Unavailable this run ({str(_wax_e)[:120]}).", ""]
+    try:                                               # 👁 Oct-30 ML_MKT_HOT — momentum longs bought with > 50 % of the market up over 4 h, operator's frozen bar (DECISION_LOG 416; forward, budgeted public 1h)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_ml_mkt_hot_watch as _mhw
+        _rg_sec += _mhw.run(now_ms)
+    except Exception as _mhw_e:
+        log(f"ML_MKT_HOT line failed: {_mhw_e}")
+        _rg_sec += ["## 👁 ML_MKT_HOT", "", f"Unavailable this run ({str(_mhw_e)[:120]}).", ""]
     try:                                               # 👁 Oct-30 RETRY_BTC1H — FRENZY_LITE_RETRY with BTC 1 h slope ≤ 0, frozen expectancy bar (DECISION_LOG 415; forward)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

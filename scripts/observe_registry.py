@@ -61,10 +61,10 @@ EXIT = {
     "scout_frenzy_tp_revert.py": dict(dl="283 · 284", sleeves="FRENZY_LONG / WIDE", walks=_FZ_STOP3),
     "scout_frenzy_willy_exit.py": dict(dl="267", sleeves="FRENZY_LONG / WIDE / LITE", walks={"frenzy_willy_tp_pct": 1.0, **_FZ_STOP3}),
     "scout_frenzy_v2b_shadow.py": dict(dl="379", sleeves="FRENZY_LITE · LONG", walks={"frenzy_long_stop_pct": 4.0, "frenzy_stop_pct": 3.0,
-                                       "frenzy_lite_c_enabled": True, "frenzy_lite_c_tp_pct": 2.0, "frenzy_tp_pct": 1.5}),
+                                       "frenzy_lite_c_enabled": False, "frenzy_tp_pct": 1.5}),   # re-based on +3 (DL 420)
     "scout_lite_c.py": dict(dl="301", sleeves="FRENZY_LITE", walks={"frenzy_lite_c_enabled": True, "frenzy_lite_c_tp_pct": 2.0,
                                                                     "frenzy_lite_tp_pct": 3.0, "frenzy_stop_pct": 3.0}),
-    "scout_lite_green_retry.py": dict(dl="315 · 316 · 355", sleeves="FRENZY_LITE · RETRY", walks={"frenzy_lite_c_tp_pct": 2.0,
+    "scout_lite_green_retry.py": dict(dl="315 · 316 · 355", sleeves="FRENZY_LITE · RETRY", walks={"frenzy_lite_c_enabled": True, "frenzy_lite_c_tp_pct": 2.0,
                                       "frenzy_lite_tp_pct": 3.0, "frenzy_stop_pct": 3.0}),
     "scout_lite_stretch_reentry.py": dict(dl="272 · 284", sleeves="FRENZY_LITE", walks=_NO_LITE_C),
     "scout_long_stop4.py": dict(dl="315 · 317 · 355", sleeves="FRENZY_LONG", walks={"frenzy_tp_pct": 1.5, "frenzy_long_stop_pct": 4.0}),
@@ -80,7 +80,7 @@ PROXY = {"scout_bearrun_v2.py": "359", "scout_bearrun_r24.py": "369"}
 BOOKED = {   # booked P&L — `era` = drops fills by WILLY exit era (registered on the old +1.25 exit)
     "scout_b1h_negflank.py": None, "scout_fade_late_weak.py": None, "scout_fade_watch.py": None,
     # review M5: booked WR judged against TODAY's breakeven over FRENZY fills spanning exit eras (LONG −3 → −4, LITE pre-C)
-    "scout_frenzy_entry_lines.py": {**_FZ_STOP3}, "scout_frenzy_wl_lines.py": {**_FZ_STOP3, **_NO_LITE_C}, "scout_lite_late_btcfall.py": None, "scout_lite_ob_thin.py": None, "scout_lite_off30.py": None,
+    "scout_frenzy_entry_lines.py": {**_FZ_STOP3}, "scout_frenzy_wl_lines.py": {**_FZ_STOP3, **_NO_LITE_C}, "scout_lite_late_btcfall.py": {"frenzy_lite_c_enabled": False, "frenzy_lite_tp_pct": 3.0, "frenzy_stop_pct": 3.0}, "scout_lite_ob_thin.py": None, "scout_lite_off30.py": None,
     "scout_lite_z3.py": None, "scout_long_resize.py": None, "scout_ml_cooldown.py": None, "scout_ml_regime_lines.py": None,
     "scout_ml_trend_lines.py": None, "scout_ml_w4_watch.py": None, "scout_ml_mkt_hot_watch.py": None,
     # (413) FADE_NOSTRETCH judges booked WR against the frozen breakeven of today's fade exit (72.1 %) → pinned to its keys
@@ -88,9 +88,10 @@ BOOKED = {   # booked P&L — `era` = drops fills by WILLY exit era (registered 
                                       "runner_trail_short_be_lock_pct": 0.1, "runner_trail_short_atr_min": 0.0, "spike_lock_exempt_fade": True, "spike_fade_sl_pct": -1.5, "runner_trail_short_arm_peak": 0.4, "runner_trail_short_atr_mult": 0.5,
                                       "runner_trail_short_giveback_frac": 0.35, "spike_fade_late_arm_after_min": 15.0, "spike_fade_late_arm_peak": 0.3,
                                       "hard_tp_ladder_short": "1.0:0.25,1.5:0.30,2.0:0.40,3.0:0.60,4.0:0.80"},
-    # (415) RETRY_BTC1H judges booked WR against the frozen breakeven of today's LITE exit (60.0 %) → pinned to its keys
-    "scout_retry_btc1h_watch.py": {"frenzy_lock_arm_pct": 0.0, "frenzy_stop_pct": 3.0, "frenzy_lite_tp_pct": 3.0, "frenzy_lite_c_enabled": True, "frenzy_lite_c_tp_pct": 2.0,
-                                   "frenzy_lite_c_vol_mult": 20.0, "frenzy_lite_c_btc_slope_min": 0.0, "frenzy_max_hold_minutes": 720},
+    # (415) RETRY_BTC1H judges booked WR against the frozen breakeven of today's LITE exit (+3 / −3: 50.0 %, DL 420) → pinned to its keys
+    "scout_retry_btc1h_watch.py": {"frenzy_lock_arm_pct": 0.0, "frenzy_stop_pct": 3.0, "frenzy_lite_tp_pct": 3.0, "frenzy_lite_c_enabled": False, "frenzy_max_hold_minutes": 720},   # re-based on +3 (DL 420)
+    # (420) LITE_C_REVERT: fills booked on +3 / −3 / 12 h vs the old +2 shadow
+    "scout_lite_c_revert_watch.py": {"frenzy_lite_c_enabled": False, "frenzy_lite_tp_pct": 3.0, "frenzy_stop_pct": 3.0, "frenzy_max_hold_minutes": 720, "frenzy_lock_arm_pct": 0.0},
     # (418) LONG_ADX35 judges booked WR against the frozen +1.5 / −4 breakeven (72.7 %) → pinned to that exit
     "scout_long_adx35_watch.py": {"frenzy_tp_pct": 1.5, "frenzy_long_stop_pct": 4.0, "frenzy_max_hold_minutes": 720, "frenzy_lock_arm_pct": 0.0},
     # (414) WILLY_GAP judges booked WR against the same frozen V2b breakeven (69.0 %) → the same pins

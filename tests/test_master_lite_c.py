@@ -18,27 +18,31 @@ def test_frozen_lite_c_matches_live_json():
     assert B.FRENZY_LITE_TP_FROZEN == float(th["frenzy_lite_tp_pct"])
 
 
+def _lite_cf():
+    c = pd.read_csv(os.path.join(ROOT, "reports", "LITE_C_REVERT_CF.csv"))
+    return {(a[:19], p): v for a, p, v in zip(c.opened_at.astype(str), c.pair, c.cf_pct)}
+
+
 def test_lite_c_rule():
-    tp = B.frenzy_lite_c_tp_frozen
-    assert tp(20.0, 0.01) == 3.0 and tp(82.7, 0.0865) == 3.0                     # zone (B21 WAL)
-    assert tp(19.9, 0.5) == 2.0 and tp(50.0, 0.0) == 2.0 and tp(71.1, -0.23) == 2.0   # vol < 20 / slope not > 0 (B18 MET)
-    assert tp(None, 0.3) == 2.0 and tp(float("nan"), 0.3) == 2.0 and tp(30.0, None) == 2.0   # missing stamp → the lower TP
+    tp = B.frenzy_lite_c_tp_frozen                                                # LITE C off since DL 420: +3 for every fill
+    assert tp(20.0, 0.01) == 3.0 and tp(19.9, 0.5) == 3.0 and tp(50.0, 0.0) == 3.0 and tp(None, 0.3) == 3.0
     fp = B.frenzy_fixed_pct
-    assert fp("FRENZY_LITE", 2.59, -3.43, tp(16.4, -0.2)) == 2.0                  # EPIC 10-15: saved
-    assert fp("FRENZY_LITE", 3.02, 2.80, tp(7.7, -0.27)) == 2.0                   # DEEP 10-14: capped
-    assert fp("FRENZY_LITE", 1.23, -2.54, tp(50.8, -0.03)) == -2.54               # DUSK 10-15: peak < 2 → as traded
+    assert fp("FRENZY_LITE", 2.59, -3.43, tp(16.4, -0.2)) == -3.43                # EPIC 10-15: back to the stop
+    assert fp("FRENZY_LITE", 3.02, 2.80, tp(7.7, -0.27)) == 3.0                   # DEEP 10-14: +3
+    assert fp("FRENZY_LITE", 1.23, -2.54, tp(50.8, -0.03)) == -2.54               # DUSK 10-15: as traded
 
 
-def test_master_lite_rows_priced_at_c_tp():
+def test_master_lite_rows_priced_at_plus_3():
     M = pd.read_csv(os.path.join(ROOT, "reports", "MASTER_POOL_stacked.csv"), low_memory=False)
     k = M[(M.stack_keep == True) & (M.entry_strategy.astype(str) == "FRENZY_LITE")]
     assert len(k) >= 24
-    t = np.array([B.frenzy_lite_c_tp_frozen(v, s) for v, s in zip(k.entry_frenzy_vol_mult, k.entry_btc_1h_slope)])
+    cf = _lite_cf()
     pk = pd.to_numeric(k.peak_pnl, errors="coerce").values
-    exp = np.where(pk >= t, t, k.pnl_percentage.values)
+    exp = np.where(pk >= 3.0, 3.0, k.pnl_percentage.values)
+    exp = np.array([cf.get((str(a)[:19], p), e) for a, p, e in zip(k.opened_at, k.pair, exp)])
     assert np.allclose(k.stack_pct.values, exp)
     b22 = k[k.era == "B22"].set_index("pair")
-    assert np.isclose(b22.loc["EPICUSDT", "stack_pct"], 2.0) and np.isclose(b22.loc["DEEPUSDT", "stack_pct"], 2.0)
+    assert np.isclose(b22.loc["EPICUSDT", "stack_pct"], -3.43, atol=0.01) and np.isclose(b22.loc["DEEPUSDT", "stack_pct"], 3.0)
 
 
 def test_b22_archived_live_batch():

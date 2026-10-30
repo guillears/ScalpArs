@@ -9233,7 +9233,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                     Order.entry_strategy == _lc_es, Order.status == 'CLOSED', Order.is_paper == trading_engine.is_paper_mode,
                     Order.pnl_percentage.isnot(None), Order.lite_c_zone.isnot(None))))).all()
                 for _lz, _lbl in ((True, f"ZONE · vol ≥ {getattr(_lc_th, 'frenzy_lite_c_vol_mult', 20)}× ∧ BTC 1h slope > {getattr(_lc_th, 'frenzy_lite_c_btc_slope_min', 0.0)}% → LITE TP"),
-                                  (False, "outside (missing readings included) → LITE C TP"),
+                                  (False, ("outside (missing readings included) → LITE C TP" if getattr(_lc_th, 'frenzy_lite_c_enabled', False) else "outside → LITE TP since the revert (DL 420); older fills ran the LITE C TP")),
                                   (None, "no LITE C stamp (opened before DECISION_LOG 301)")):
                     _g = [o for o in _lc_all if getattr(o, 'lite_c_zone', None) is _lz]
                     if _lz is None and not _g:
@@ -9248,7 +9248,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                     lite_c_rows.append({"row": _lbl, "n": _n, "wr": (round(100.0 * sum(1 for p in _ps if p > 0) / _n, 1) if _n else None),
                                         "sum_pct": round(sum(_ps), 3), "avg_pct": (round(sum(_ps) / _n, 3) if _n else None),
                                         "total_usd": round(sum(float(o.pnl or 0) for o in _g), 2),
-                                        "tp_used": (" / ".join(f"+{t:g}" for t in _tps) if _tps else ("config" if _n else "")),
+                                        "tp_used": (" / ".join(f"+{t:g}" for t in _tps) + (" / config" if any(getattr(o, 'frenzy_lite_tp_used', None) is None for o in _g) else "") if _tps else ("config" if _n else "")),
                                         "note": (f"lifetime {len(_lf)} closed · Σ {sum(_lf):+.2f}%" if _lz is not None else "")})
         except Exception as _lc_err:
             logger.warning(f"[PERF] LITE C tally skipped: {_lc_err!r}")

@@ -749,7 +749,7 @@
     "frenzy_trail_giveback_pct": 1.5,
     "frenzy_tp_pct": 1.5,
     "frenzy_lite_tp_pct": 3.0,
-    "frenzy_lite_c_enabled": true,
+    "frenzy_lite_c_enabled": false,
     "frenzy_lite_c_vol_mult": 20.0,
     "frenzy_lite_c_btc_slope_min": 0.0,
     "frenzy_lite_c_tp_pct": 2.0,

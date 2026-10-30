@@ -111,7 +111,7 @@ def test_frozen_blacklists_match_live_config():
 
 def test_master_refuses_the_six_and_keeps_no_blacklisted_pair():
     m = pd.read_csv(_ROOT / "reports" / "MASTER_POOL_stacked.csv", low_memory=False)
-    assert (m.stack_version == bmp.STACK_VERSION).all() and bmp.STACK_VERSION == "2026-10-27a"
+    assert (m.stack_version == bmp.STACK_VERSION).all() and bmp.STACK_VERSION == "2026-10-30a"
     key = m.pair + "@" + m.opened_at.astype(str).str[:19]
     for pair, t in NAMED_FB:
         r = m[key == f"{pair}@{t}"].iloc[0]

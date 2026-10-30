@@ -28,18 +28,20 @@ def test_frenzy_fixed_tp_pricing():
     lt = float(th["frenzy_lite_tp_pct"])
     assert lt == 3.0                                                             # DECISION_LOG 284: LITE's own TP, LONG / WIDE +1.5
     # 10-16a (DECISION_LOG 301) LITE C: a LITE fill runs +3 inside the zone (vol mult ≥ 20 ∧ BTC 1h slope > 0), else +2 (missing stamp → +2)
-    assert th["frenzy_lite_c_enabled"] is True and float(th["frenzy_lite_c_tp_pct"]) == 2.0
-    vm, bs = pd.to_numeric(f.entry_frenzy_vol_mult, errors="coerce"), pd.to_numeric(f.entry_btc_1h_slope, errors="coerce")
-    zone = (vm >= float(th["frenzy_lite_c_vol_mult"])) & (bs > float(th["frenzy_lite_c_btc_slope_min"]))
+    assert th["frenzy_lite_c_enabled"] is False                                   # DECISION_LOG 420: LITE C off, every LITE fill +3
     lite = f.entry_strategy.astype(str) == "FRENZY_LITE"
-    tps = np.where(lite, np.where(zone, lt, float(th["frenzy_lite_c_tp_pct"])), tp)
-    hit = f[f.peak_pnl.astype(float).values >= tps]
-    assert len(hit) >= 4 and np.allclose(hit.stack_pct, tps[f.peak_pnl.astype(float).values >= tps])
-    assert ((hit.entry_strategy.astype(str) == "FRENZY_LITE") & np.isclose(hit.stack_pct, 3.0)).any()                     # zone LITE fills (B19 W / MAGIC / STRK …) book +3
-    two = hit[(hit.entry_strategy.astype(str) == "FRENZY_LITE") & np.isclose(hit.stack_pct, 2.0)]
-    assert {"METUSDT", "HEMIUSDT", "BTWUSDT", "DEEPUSDT", "EPICUSDT"} <= set(two.pair)   # 301: capped MET / HEMI / DEEP, saved BTW / EPIC
-    rest = f[f.peak_pnl.astype(float).values < tps]
-    assert len(rest) > 0 and np.allclose(rest.stack_pct, rest.pnl_percentage)    # −3 stops before +3 stay as traded
+    tps = np.where(lite, lt, tp)
+    _c = pd.read_csv(os.path.join(ROOT, "reports", "LITE_C_REVERT_CF.csv"))
+    _c = set(zip(_c.opened_at.astype(str).str[:19], _c.pair))
+    cf = np.array([(str(a)[:19], p) in _c for a, p in zip(f.opened_at, f.pair)])   # really closed at +2: re-walked
+    reached = f.peak_pnl.astype(float).values >= tps
+    hit = f[reached & ~cf]
+    assert len(hit) >= 4 and np.allclose(hit.stack_pct, tps[reached & ~cf])
+    three = f[lite & np.isclose(f.stack_pct, 3.0)]
+    assert {"METUSDT", "HEMIUSDT", "DEEPUSDT"} <= set(three.pair)                 # 420: the capped ones back at +3
+    assert (f[f.pair.isin(["BTWUSDT", "EPICUSDT"]) & lite].stack_pct < 0).any()   # 420: the saved ones back to the stop
+    rest = f[~reached & ~cf]
+    assert len(rest) > 0 and np.allclose(rest.stack_pct, rest.pnl_percentage)    # stops before +3 stay as traded
     assert (np.sign(f.stack_pnl) == np.sign(f.stack_pct)).all()
 
 
@@ -86,7 +88,7 @@ def test_wide_off_refused_in_master():
     assert len(w) >= 12 and not (w.stack_keep == True).any() and (w.stack_pnl == 0).all() and w.stack_pct.isna().all()
     assert set(w.stack_block_reason) <= {"FRENZY_WIDE_OFF", "PAIR_BLACKLIST", "SLEEVE_PAIR_BLACKLIST"} and (w.stack_block_reason == "FRENZY_WIDE_OFF").sum() >= 12
     bld = open(os.path.join(ROOT, "scripts", "build_master_pool.py"), encoding="utf-8").read()
-    assert "k, why = False, 'FRENZY_WIDE_OFF'" in bld and (M.stack_version == "2026-10-27a").all()
+    assert "k, why = False, 'FRENZY_WIDE_OFF'" in bld and (M.stack_version == "2026-10-30a").all()
     assert os.path.exists(os.path.join(ROOT, "reports", "WIDE_STREAK_REBUILD.csv"))   # the hold-green replay input stays (re-enable path)
 
 
@@ -94,7 +96,7 @@ def test_b17_archived():
     M = _m()
     assert (M.era == "B17").sum() == 25 and os.path.exists(os.path.join(ROOT, "reports", "BASELINE17_batch1003-1006_orders.csv"))
     bld = open(os.path.join(ROOT, "scripts", "build_master_pool.py")).read()
-    assert 'STACK_VERSION = "2026-10-27a"' in bld and "frenzy_fixed_pct(strat," in bld and 'reason[n] = "FRENZY_BEARISH_DAY"' in bld
+    assert 'STACK_VERSION = "2026-10-30a"' in bld and "frenzy_fixed_pct(strat," in bld and 'reason[n] = "FRENZY_BEARISH_DAY"' in bld
     assert "WIDE_HG_MAX_ATR_FROZEN = 12.0, 3.0" in bld and "Prior 10-06d — 10-06d:" in bld   # the STACK history keeps every step
 
 

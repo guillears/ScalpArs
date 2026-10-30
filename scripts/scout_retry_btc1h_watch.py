@@ -6,11 +6,11 @@ QUESTION   Does FRENZY_LITE_RETRY lose when BTC's 1 h trend is falling? LITE its
 EVIDENCE   (in-sample, NEVER counted) master on today's stack 2 + B25 16: zone 12 · 42 % · −0.92 %/fill vs 6 · 100 % · +2.51 (day-block p ≈ 0.04). B25 16 · 56 % · 0.00 → 6 · 100 % · +2.51,
            daily compound −0.06 → +2.11 (each trade = account), real account −0.13 → +1.68. AGAINST: seen after the fact, 18 fills, nearly all one batch; the backtest has no separate RETRY → observe only. CAVEAT: all 12 zone fills ran TP +2, 3 of the 6 rest fills TP +3 (LITE C), so "zone ≥ rest" starts with a mechanical edge for rest.
 COHORT     CLOSED FRENZY_LITE_RETRY LONG fills, full size (*_PROBE out), from the orders exports (export_glob: Downloads + exports_archive/), dedup (opened_at[:19], pair) —
-           CLOSED beats OPEN, newest export wins; operator-closed out (scout_gatekit). COUNTED: opened ≥ the DECISION_LOG 415 commit + 10 min (forward only). zone =
+           CLOSED beats OPEN, newest export wins; operator-closed out (scout_gatekit). COUNTED: opened ≥ the DECISION_LOG 420 commit + 10 min (forward only; re-based on +3 / −3 when LITE C went off). zone =
            entry_btc_1h_slope ≤ 0 · rest = > 0 · stamp missing → UNSCORED (listed, never counted). P&L = the booked pnl_percentage.
 FROZEN BAR (CLAUDE.md expectancy bar, never re-fit): at the first prefix (by open time) where the ZONE reaches N ≥ 15 on ≥ 8 distinct UTC days, decided ONCE —
-           ① zone avg ≥ rest avg, OR zone avg ≥ 0 → RETIRED; ② else FILTER CANDIDATE (operator decides; never automatic) iff zone WR < the frozen breakeven WR 60.0 % (the zone is always TP +2 / −3 by
-           LITE C construction) ∧ zone mean < 0 at a day-clustered bootstrap P(mean < 0) ≥ 0.95 (4,000 resamples, seed 7) ∧ no single day and no single pair carries
+           ① zone avg ≥ rest avg, OR zone avg ≥ 0 → RETIRED; ② else FILTER CANDIDATE (operator decides; never automatic) iff zone WR < the frozen breakeven WR 50.0 % (the zone runs TP +3 / −3 since DL 420;
+           60.0 % on +2 / −3 before) ∧ zone mean < 0 at a day-clustered bootstrap P(mean < 0) ≥ 0.95 (4,000 resamples, seed 7) ∧ no single day and no single pair carries
            ≥ 50 % of the zone's gross loss; ③ else KEEP OBSERVING. Deferred until the newest orders export was downloaded ≥ the prefix end + 780 min (exports carry CLOSED rows only; RETRY's
            12 h hold + an hour). observe_registry pins the LITE exit keys (an exit change → ⚠ STALE). A candidate ships only after the 30–50 % in-sample haircut, a before → after per batch
            with the daily compound return and a pre-committed revert.
@@ -34,7 +34,8 @@ DL = 415
 SLEEVE = "FRENZY_LITE_RETRY"
 SLOPE_CUT = 0.0
 N_MIN, DAYS_MIN = 15, 8
-BE_WR = 0.600                      # FROZEN 2026-10-30: the zone is always TP +2 / −3 (LITE C never applies at slope ≤ 0) → 3 / (2 + 3)
+FLOOR_DL = 420                     # re-based the day LITE C went off: only fills on +3 / −3 count
+BE_WR = 0.500                      # FROZEN 2026-10-30 (DL 420): the zone now runs TP +3 / −3 → 3 / (3 + 3); was 60.0 % on +2 / −3
 P_MIN, SHARE_MAX = 0.95, 0.50
 BOOT_N, BOOT_SEED = 4000, 7
 WAIT_MIN = 780
@@ -124,15 +125,15 @@ def _row(lab, g):
 
 
 def run(now_ms=None, paths=None, state_path=STATE, since_ms=None):
-    """→ markdown lines. since_ms None → the DECISION_LOG 415 commit + 10 min (not in git → NOT EVALUABLE). state_path None → no write."""
+    """→ markdown lines. since_ms None → the DECISION_LOG 420 commit + 10 min (not in git → NOT EVALUABLE). state_path None → no write."""
     now_ms = int(time.time() * 1000) if now_ms is None else int(now_ms)
     L = [f"## 👁 RETRY_BTC1H — FRENZY_LITE_RETRY with BTC 1 h slope ≤ {SLOPE_CUT:g} "
          f"(pre-registered 2026-10-30, DECISION_LOG {DL}, OBSERVE only)", ""]
     since_given = since_ms
     if since_ms is None:
-        since_ms = _GK.dl_deploy_ms(DL, lag_min=10, label="RETRY_BTC1H watch line")
+        since_ms = _GK.dl_deploy_ms(FLOOR_DL, lag_min=10, label="RETRY_BTC1H watch line")
     if since_ms is None:
-        return L + [f"⚠ NOT EVALUABLE — the DECISION_LOG {DL} commit is not in git yet; nothing is counted.", ""]
+        return L + [f"⚠ NOT EVALUABLE — the DECISION_LOG {FLOOR_DL} commit is not in git yet; nothing is counted.", ""]
     since = pd.Timestamp(int(since_ms), unit="ms")
     c, newest = load(paths)
     c = c[c.o >= since] if len(c) else c
@@ -141,7 +142,7 @@ def run(now_ms=None, paths=None, state_path=STATE, since_ms=None):
     sc = keep[keep.zone != "unscored"] if len(keep) else keep
     zone, rest = sc[sc.zone == "zone"], sc[sc.zone == "rest"]
     uns = keep[keep.zone == "unscored"] if len(keep) else keep
-    L += [f"Cohort: CLOSED full-size RETRY fills opened ≥ {since:%Y-%m-%d %H:%M} UTC ({'DL ' + str(DL) + ' commit + 10 min' if since_given is None else 'floor given'}) · "
+    L += [f"Cohort: CLOSED full-size RETRY fills opened ≥ {since:%Y-%m-%d %H:%M} UTC ({'DL ' + str(FLOOR_DL) + ' commit + 10 min' if since_given is None else 'floor given'}) · "
           f"{_GK.operator_closed_line(ox)}.", "", "| Group | N | days | WR | avg % | Σ$ as traded |", "|---|---|---|---|---|---|",
           _row("**zone (BTC 1 h slope ≤ 0)**", zone), _row("rest", rest), _row("UNSCORED (no slope stamp) — never counted", uns), ""]
     why = []

@@ -125,6 +125,7 @@ def walk(bars, entry):
 def main():
     a = fills()
     a, opx = _GK.split_operator_closed(a) if len(a) else (a, a)   # 🧰 (331) operator-closed (MANUAL / EXTERNAL_CLOSE): not the bot's exit
+    print("✅ RESOLVED 2026-10-30 (DECISION_LOG 420): this gate fired (EARLY KILL) and LITE C is off. Frozen history only; the live read is scripts/scout_lite_c_revert_watch.py.")
     print(f"LITE C revert gate (DECISION_LOG 301) · cohort FRENZY_LITE closed fills opened ≥ {COHORT_START} UTC → {len(a)}"
           f" · {_GK.operator_closed_line(opx)}")
     if not len(a):

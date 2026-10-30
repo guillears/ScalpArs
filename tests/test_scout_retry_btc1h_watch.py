@@ -40,7 +40,7 @@ def _cohort(tmp_path, spec):
 
 
 def test_frozen_constants():
-    assert (W.DL, W.SLEEVE, W.SLOPE_CUT, W.N_MIN, W.DAYS_MIN, W.BE_WR, W.P_MIN, W.SHARE_MAX, W.WAIT_MIN) == (415, "FRENZY_LITE_RETRY", 0.0, 15, 8, 0.600, 0.95, 0.50, 780)
+    assert (W.DL, W.SLEEVE, W.SLOPE_CUT, W.N_MIN, W.DAYS_MIN, W.BE_WR, W.P_MIN, W.SHARE_MAX, W.WAIT_MIN) == (415, "FRENZY_LITE_RETRY", 0.0, 15, 8, 0.500, 0.95, 0.50, 780)
     assert "reports/SCOUT_RETRY_BTC1H.json" in open(os.path.join(ROOT, ".gitignore")).read().split("\n")
 
 
@@ -56,12 +56,12 @@ def test_zone_boundary_unscored_and_cohort(tmp_path):
 def test_verdict_outcomes(tmp_path):
     z, r = _cohort(tmp_path, _zr([-3.0] * 12 + [2.0] * 3))
     st, det = W.verdict(z, r)
-    assert st == W.CANDIDATE and "WR 20% (breakeven 60.0%)" in det, det
+    assert st == W.CANDIDATE and "WR 20% (breakeven 50.0%)" in det, det
     assert W.verdict(*_cohort(tmp_path, _zr([2.5] * 15)))[0] == "RETIRED"
     assert W.verdict(*_cohort(tmp_path, _zr([0.2] * 15, rest=1.0)))[0] == "RETIRED"
     assert W.verdict(*_cohort(tmp_path, _zr([-0.5] * 15, rest=-1.0)))[0] == "RETIRED"
     st, det = W.verdict(*_cohort(tmp_path, _zr([-3.0] * 6 + [1.5] * 9)))
-    assert st == "KEEP OBSERVING" and "WR 60%" in det, det                # mean −0.3 < 0, but WR 60 % is not below the 60 % breakeven
+    assert st == "KEEP OBSERVING" and "WR 60%" in det, det                # mean −0.3 < 0, but WR 60 % is not below the 50 % breakeven
     assert W.verdict(*_cohort(tmp_path, _zr([-3.0] * 15, days=1)))[0] == "COLLECTING"
 
 
@@ -100,4 +100,4 @@ def test_not_evaluable_hook_and_registry(monkeypatch):
     assert "_rbt.run(now_ms)" in src[j:j + 200] and "except Exception as _rbt_e" in src[j:j + 400]
     import observe_registry as OR
     era = OR.BOOKED["scout_retry_btc1h_watch.py"]
-    assert era["frenzy_stop_pct"] == 3.0 and era["frenzy_lite_c_enabled"] is True
+    assert era["frenzy_stop_pct"] == 3.0 and era["frenzy_lite_c_enabled"] is False

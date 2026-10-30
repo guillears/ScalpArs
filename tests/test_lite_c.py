@@ -230,7 +230,7 @@ def test_model_migration_config_ui_and_report_parity():
     assert f["frenzy_lite_c_enabled"].default is False and f["frenzy_lite_c_vol_mult"].default == 20.0
     assert f["frenzy_lite_c_btc_slope_min"].default == 0.0 and f["frenzy_lite_c_tp_pct"].default == 2.0
     j = json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
-    assert (j["frenzy_lite_c_enabled"], j["frenzy_lite_c_vol_mult"], j["frenzy_lite_c_btc_slope_min"], j["frenzy_lite_c_tp_pct"]) == (True, 20.0, 0.0, 2.0)
+    assert (j["frenzy_lite_c_enabled"], j["frenzy_lite_c_vol_mult"], j["frenzy_lite_c_btc_slope_min"], j["frenzy_lite_c_tp_pct"]) == (False, 20.0, 0.0, 2.0)
     h = _src("templates", "index.html")
     for _id in ("config-fz-lite-c-enabled", "config-fz-lite-c-vol", "config-fz-lite-c-slope", "config-fz-lite-c-tp", "lite-c-body"):
         assert h.count(f'id="{_id}"') == 1, _id

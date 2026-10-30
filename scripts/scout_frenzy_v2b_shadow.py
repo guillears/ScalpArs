@@ -178,10 +178,10 @@ _ERAS = {}
 
 def eras():
     """deploy floors (ms, commit + 10 min) of the exit changes the replica needs: 250 (fixed TP replaces the DL 205 lock / trail — older
-    fills are not replicable and stay out) · 283 (TP +1.5) · 284 (LITE own +3) · 301 (LITE C) · 317 (LONG −4). Missing → None (the current
+    fills are not replicable and stay out) · 283 (TP +1.5) · 284 (LITE own +3) · 301 (LITE C) · 317 (LONG −4) · 420 (LITE C off). Missing → None (the current
     rule is used on that side)."""
     if not _ERAS:
-        for n in (250, 283, 284, 301, 317):
+        for n in (250, 283, 284, 301, 317, 420):
             try:
                 _ERAS[n] = _GK.dl_deploy_ms(n, lag_min=LAG_MIN, label=f"FRENZY_V2B_SHADOW replica era DL {n}")
             except Exception:
@@ -213,19 +213,17 @@ def live_exit(r, era=None):
         return 1.5, st, "era"
     if _before(te, era.get(301)):
         return 3.0, st, "era"
+    if era.get(420) is not None and not _before(te, era.get(420)):   # LITE C off: new fills store no TP and run +3
+        return 3.0, st, "era"
     return frenzy_lite_c_tp(LITE_C, r.get("entry_frenzy_vol_mult"), r.get("entry_btc_1h_slope"))[0], st, "liteC"
 
 
 def today_exit(r):
-    """→ (tp, stop) of TODAY's live exit for this fill — the Δ BASELINE: LITE (+ RETRY) the stored LITE C TP (frenzy_lite_tp_used) else the
-    LITE C rule on the fill's stamps, −3 · LONG +1.5 / −4 (HARDCODED — no stored LONG TP column; update on a LONG TP change)."""
-    from services.frenzy import frenzy_lite_c_tp
+    """→ (tp, stop) of TODAY's live exit for this fill — the Δ BASELINE: LITE (+ RETRY) +3 / −3 (LITE C off since DL 420: old fills are compared with today's +3 too) ·
+    LONG +1.5 / −4 (HARDCODED — no stored LONG TP column; update on a LONG TP change)."""
     if SLEEVE_OF.get(str(r.get("entry_strategy")), "LONG") == "LONG":
         return TODAY_LONG
-    tp = _f(r.get("frenzy_lite_tp_used"))
-    if not (tp and tp > 0):
-        tp = frenzy_lite_c_tp(LITE_C, r.get("entry_frenzy_vol_mult"), r.get("entry_btc_1h_slope"))[0]
-    return float(tp), OWN_STOP["LITE"]
+    return float(LITE_C.frenzy_lite_tp_pct), OWN_STOP["LITE"]
 
 
 def lite_zone(r):
@@ -536,7 +534,7 @@ def t2_check(g, sleeve):
         bad = [k for k, v in av.items() if v > 0]
         return "      T2 check (LONG, predicted worse than TODAY's +1.5 / −4): " + " · ".join(f"{k} Δ {v:+.3f}" for k, v in av.items()) + (
             f" → REFUTES T2 ({', '.join(bad)} beat +1.5)" if bad else " → CONSISTENT with T2 (no higher TP beats +1.5)")
-    return "      T2 check (LITE, how far winners run vs TODAY's LITE C / −3): " + " · ".join(f"{k} Δ {v:+.3f}" for k, v in av.items())
+    return "      T2 check (LITE, how far winners run vs TODAY's +3 / −3): " + " · ".join(f"{k} Δ {v:+.3f}" for k, v in av.items())
 
 
 def block_lines(c, title):
@@ -679,7 +677,7 @@ def run(now_ms=None, raw=None, floor_ms="auto", path_fn=None, h_fn=None, fetch=T
          f"gate, OPERATOR CALL)", ""] + THEORY + [
         f"Shadows: LITE {', '.join(SHADOWS['LITE'])} · LONG {', '.join(SHADOWS['LONG'])}. V2B = T max(+1.25, min(+8, net@H×0.99)) / −4 / "
         f"late +0.25 @30 / 90 · V2B_OWN = same with −3 · TPx = fixed +x / today's sleeve stop (LITE −3 · LONG −4) / 12 h. Δ = shadow − "
-        f"TODAY's live exit re-walked on the same path (LITE: stored LITE C TP / −3 · LONG +1.5 / −4); the era replica is the parity check "
+        f"TODAY's live exit re-walked on the same path (LITE: +3 / −3 · LONG +1.5 / −4); the era replica is the parity check "
         f"only. Numbers move as paths arrive (1m tails → ticks, H pages)."]
     if raw is None:
         raw = read_sources()

@@ -74,6 +74,7 @@ reports/SCOUT_RETRY_BTC1H.json
 reports/SCOUT_ML_MKT_HOT.json
 reports/SCOUT_FB_CONFIRM.json
 reports/SCOUT_LONG_ADX35.json
+reports/SCOUT_LITE_C_REVERT.json
 reports/SCOUT_FADE_NOSTRETCH.json
 reports/SCOUT_FRENZY_WL_LINES.json
 reports/SCOUT_*.json.*

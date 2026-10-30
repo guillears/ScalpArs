@@ -30,7 +30,10 @@ def test_stack_pct_ignores_size_reprices():
     assert frenzy_tp.sum() > 0 and np.allclose(k.stack_pct[frenzy_tp & (k.entry_strategy.astype(str) != "FRENZY_WILLY")], tps[frenzy_tp & (k.entry_strategy.astype(str) != "FRENZY_WILLY")])       # 10-08a: peak ≥ +3 books +3 (every era)
     willy = k.entry_strategy.astype(str) == "FRENZY_WILLY"                     # 10-12c (282): today's WILLY exit re-walked (WILLY_EXIT_CF.csv)
     frenzy_tp = frenzy_tp & ~willy
-    plain = k[~path & ~frenzy_tp & ~willy]
+    _lcf = pd.read_csv(os.path.join(ROOT, "reports", "LITE_C_REVERT_CF.csv"))   # 10-30a (420): fills that really closed at +2, re-walked at +3 / −3
+    _lcf = set(zip(_lcf.opened_at.astype(str).str[:19], _lcf.pair))
+    cf_row = pd.Series([(str(a)[:19], p) in _lcf for a, p in zip(k.opened_at, k.pair)], index=k.index)
+    plain = k[~path & ~frenzy_tp & ~willy & ~cf_row]
     assert np.allclose(plain.stack_pct, plain.pnl_percentage)          # size-only rows keep the live pct
     resized = plain[(plain.stack_pnl - plain.pnl).abs() > 0.05]        # e.g. 2× rows re-priced to 1× / 1.5×
     assert len(resized) > 0 and np.allclose(resized.stack_pct, resized.pnl_percentage)

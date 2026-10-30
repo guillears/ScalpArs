@@ -185,7 +185,7 @@ def test_delta_is_vs_today_not_the_era_replica(tmp_path):
     assert x.rep_era == pytest.approx(-3.2) and x.rep == pytest.approx(1.5)
     assert x.sh_TP2 == pytest.approx(2.0) and x.d_TP2 == pytest.approx(0.5)            # TP2 at −4 survives the −3.2 dip
     assert S.today_exit(_row(te, "FRENZY_LITE", entry_frenzy_vol_mult=25)) == (3.0, 3.0)
-    assert S.today_exit(_row(te, "FRENZY_LITE", entry_frenzy_vol_mult=5)) == (2.0, 3.0)
+    assert S.today_exit(_row(te, "FRENZY_LITE", entry_frenzy_vol_mult=5)) == (3.0, 3.0)   # LITE C off since DL 420
     assert S.today_exit(_row(te, "FRENZY_LITE_RETRY", frenzy_lite_tp_used=3.0, entry_frenzy_vol_mult=5)) == (3.0, 3.0)
 
 

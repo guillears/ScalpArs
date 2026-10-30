@@ -146,11 +146,12 @@ the review must beat the null, not just pass both eras.
    scout): LITE + LITE_RETRY fills ≥ 12 h after the spike with BTC's 1 h slope ≤ 0 vs the rest of LITE — per sleeve (DL 415): MASTER history · FORWARD · master + forward
    (N · days · WR · avg · Σ · $), the cell fill list, the gate verdict (read at 15 fills on 8 days), next to LITE_BTC1H_FALLING and the
    backtest ref (cell −0.57 vs rest +0.03; failed 2026 OOS). Save the batch export first — an unsaved reset loses the forward fills.
+②r **👁 LITE_C_REVERT (DECISION_LOG 420)** — run scripts/scout_lite_c_revert_watch.py at the LITE and RETRY steps, unprompted (full item under "LITE C REVERTED").
 ②q **👁 LONG_ADX35 (DECISION_LOG 418)** — run scripts/scout_long_adx35_watch.py at the FRENZY_LONG step (frozen read at 15 zone fills on 8 days → OPERATOR CALL; the cut was post-hoc and the backtest reversed at registration; read beside the DL 317 re-size tally).
 ②p **👁 FB_CONFIRM (DECISION_LOG 417)** — run scripts/scout_flatbase_confirm_watch.py at the FLATBASE step (frozen read at 15 priced signals on 8 days → OPERATOR CALL; a candidate redoes real-sizing daily compound + leave-one-out).
 ②n **👁 ML_MKT_HOT (DECISION_LOG 416)** — run scripts/scout_ml_mkt_hot_watch.py at the momentum-long step (frozen read at 15 zone fills on 8 days → OPERATOR CALL on the operator's own bar; before → after with the daily compound in the line); also WILLY and WILLY_HT, decided apart, and LITE display only. A FILTER CANDIDATE redoes the daily compound on real sizing (review_math.dcr_account) + leave-one-out before the operator call.
 ②o **📏 MOMENTUM LONG RE-SIZE ON ML_MKT_HOT (operator 10-30, DECISION_LOG 416)** — when ML_MKT_HOT freezes, price full-size momentum longs sized up in the rest side (market not hot) against the Pattern W multiplier bar (N ≥ 30, WR ≥ 70 %, avg ≥ +0.10 %, Total $ > 0; first step 1.5×), before → after with the daily compound on real account sizes, worst-loss check, exchange / liquidity caps that may already bind.
-②m **👁 RETRY_BTC1H (DECISION_LOG 415)** — run scripts/scout_retry_btc1h_watch.py at the LITE_RETRY step (frozen read at 15 zone fills on 8 days → OPERATOR CALL); LITE_LATE_BTCFALL is read per sleeve since DL 415.
+②m **👁 RETRY_BTC1H (DECISION_LOG 415, re-based DL 420)** — run scripts/scout_retry_btc1h_watch.py at the LITE_RETRY step (counts from DL 420, breakeven 50 %; frozen read at 15 zone fills on 8 days → OPERATOR CALL); LITE_LATE_BTCFALL is read per sleeve since DL 415.
 ②j **🎲²ᵇ WILLY EXIT V2b (DECISION_LOG 358 — the DL 356 floor REMOVED; target at the spike high kept; frozen revert gates)** — run
    scripts/scout_willy_exit_v2.py (also in the opportunity scout). Live exit: stored target TP (resting maker) · stop −4 throughout · late TP
    +0.25 @30 for every trade · cap 90 · no floor. Read, in this order: ⓐ the era line ("exit era: pre-V2 N · V2 N (runner target / floor N)") —
@@ -780,10 +781,9 @@ Extend the impulse grids to the batch end (scripts/study_ml_impulse_fetch.py + s
 ## 👁 LITE_WEAKBTC_BUYBLIP / Z3 (DECISION_LOG 300) — run at every batch review
 Extend the impulse grid, then `venv/bin/python scripts/scout_lite_z3.py`; descriptive only (DEMOTED by review): show ZONE vs REST inside the LITE_BTC1H_FALLING read — no gate.
 
-### 🎯 LITE C revert gate (DECISION_LOG 301, ARMED 2026-10-15)
-`venv/bin/python scripts/scout_lite_c.py` — zone (+3) vs outside (+2) tallies; outside fills that closed at +2 priced vs +3/−3 on 1m klines
-(saved / capped / timeout / same, Σ Δ). Verdict vs the frozen gate: EARLY KILL Σ Δ ≤ −4 · FIRST READ 10 outside Σ Δ ≤ 0 · MAIN READ 20 on
-≥ 8 days Σ Δ ≤ 0 or day / pair ≥ 50 % of the gain → revert (`frenzy_lite_c_enabled` false). Report it unprompted with the three blocks.
+### 🎯 LITE C REVERTED 2026-10-30 (DECISION_LOG 420) — 🔴 READ AT EVERY BATCH REVIEW, UNPROMPTED
+`venv/bin/python scripts/scout_lite_c_revert_watch.py` — was going back to +3 % right? LITE and RETRY apart: every fill the old rule would have put on +2, booked vs a +2 shadow, WR · avg · daily compound both ways, Σ Δ (+1 went on to +3 · −5 reached +2 then stopped). 🔒 FROZEN at 20 outside fills on ≥ 8 days, once per sleeve: Σ Δ ≤ 0 → RE-ARM CANDIDATE (operator) · Σ Δ > 0 ∧ no day / pair ≥ 50 % of the positive Δ → REVERT CONFIRMED · else KEEP OBSERVING. Report the tally even before the read (N, Σ Δ, how many stopped after +2), with master and backtest beside it.
+**At this review also:** ① LITE / RETRY reads split at the revert (DL 420 commit + 10 min): before = +2 / +3 mix, after = +3 only; never pool them. ② Before archiving the batch run `scripts/build_lite_c_revert_cf.py` so its +2 closes are re-priced at +3, then rebuild the master. ③ Lines re-based: RETRY_BTC1H counts only from DL 420, breakeven 50 %; FRENZY_V2B_SHADOW's TODAY baseline is +3. `scout_lite_c.py` is resolved (STALE) and `scout_lite_green_retry.py` still prices +2 (STALE): don't read their verdicts. ④ LITE_LATE_BTCFALL fallback breakeven is now 50 %, pinned to +3; LITE_OFF30H3, LITE_Z3 and STRETCH_REENTRY compute theirs from fills, so re-check them on +3 fills before reading a verdict.
 
 ### 👁 LITE_OB_THIN (DECISION_LOG 302, long shot)
 `venv/bin/python scripts/scout_lite_ob_thin.py` — needs the Decisions exports covering the batch (BOOK rows; each export carries only 3 days — check there is no gap). Report THIN vs not: N, DIED / RAN, precision vs the 38 % bar, gap + P, verdict.

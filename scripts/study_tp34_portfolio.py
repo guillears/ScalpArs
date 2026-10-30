@@ -49,12 +49,14 @@ def tier(tab, x):
 
 
 def size(equity, margin_used):
-    tgt = tier(RES, equity)
+    from services.trading_engine import _reserve_schedule_target
+    tgt = _reserve_schedule_target(INV["reserve_schedule"], equity)   # DL 424: the engine's straight line
     sres = max(0.0, equity - tgt) if tgt else 0.0
     fee_eq = min(equity, tgt) if tgt else equity
     fres = max(float(INV["fee_reserve_usd"]), fee_eq * float(INV["fee_reserve_pct"]) / 100)
-    inv = max(0.0, equity - sres - fres) / MAXPOS
-    tradeable = max(0.0, equity - margin_used - sres - fres)
+    held = max(sres, fres) if tgt else fres
+    inv = max(0.0, equity - held) / MAXPOS
+    tradeable = max(0.0, equity - margin_used - held)
     return min(inv, tradeable), tier(LEVS, equity)
 
 

@@ -2923,10 +2923,10 @@ class InvestmentConfig(BaseModel):
     working_capital_target: float = 0.0  # USD tradeable cap for working_capital mode (0 = off)
     # Jul 2, 2026 (operator-directed): FULLY AUTOMATIC version of working_capital — mode="schedule"
     # walks this balance→tradeable table by itself (no manual milestone flips). Format mirrors
-    # leverage_balance_schedule: "balance:tradeable_target, ..." ascending; active target = highest
-    # tier ≤ TOTAL EQUITY (free+margin — Jul-2 engine change; NOT free balance); below the first tier → no reserve. The v3
+    # leverage_balance_schedule: "balance:tradeable_target, ..." ascending; target = a straight line between
+    # the tiers (DL 424), flat above the last, on TOTAL EQUITY (free+margin — Jul-2 engine change; NOT free balance); below the first tier → no reserve. First line 9750 = 97.5 % of 10,000 meets the 2.5 % fee reserve: no dip at the line (recheck if the fee % changes). The v3
     # operating table (CURRENT_STATE capital-scaling) expressed as tiers. Empty = off.
-    reserve_schedule: str = ""  # e.g. "10000:9500, 25000:23000, ..., 1000000:500000" (the live table, DECISION_LOG 404)
+    reserve_schedule: str = ""  # e.g. "10000:9750, 25000:23000, ..., 2000000:800000" (the live table, DECISION_LOG 404 · 424: a straight line between tiers, the larger of this or the fee reserve)
     # 2026-10-28 (operator, DECISION_LOG 404 — "think big, design this for scaling"): trading_config.json moves to
     # "10000:9500, 25000:23000, 50000:40000, 100000:75000, 150000:105000, 250000:162500, 500000:300000, 1000000:500000"
     # (tradeable share AT EACH TIER THRESHOLD 95 / 92 / 80 / 75 / 70 / 65 / 60 / 50 % — between tiers the reserve absorbs the
@@ -2937,7 +2937,7 @@ class InvestmentConfig(BaseModel):
     # Leverage schedule unchanged ("0:20, 25000:15", Aug-20 drawdown-derived). Follow-up (not built): step back one tier
     # after a 30 % drop from the peak above $25k; a market-capacity ceiling on tradeable $ before $50k.
     # Aug 21, 2026 (operator) — FEE RESERVE FLOOR: USDT that sizing never deploys, on top of whatever
-    # the reserve mode/schedule says. Root cause on record: the reserve_schedule has no tier below
+    # the reserve mode says (schedule with an active tier: the larger of the two, DL 424). Root cause on record: the reserve_schedule has no tier below
     # $10k, so a sub-$10k book goes 100% into margin and the runway-triggered BNB auto-swap starves
     # ("[BNB_SWAP] Cannot swap: insufficient USDT (available=-0.00)" at 17:36:49 Aug-21, the second
     # the 4th position opened). $75 ≈ 1.5 days of burn at $2.17/h, covers the $50-minimum swap.

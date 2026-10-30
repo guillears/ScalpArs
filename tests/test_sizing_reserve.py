@@ -49,17 +49,17 @@ def test_reserve_split_below_first_tier(monkeypatch):
 
 def test_reserve_split_tier_10k_schedule_aware_fee_base(monkeypatch):
     _setup(monkeypatch)
-    # $10k tier: schedule holds 2000; fee pct leg keys on the TRADEABLE TARGET
-    # (Sep-3 ship): 2.5% x 8000 = 200 -> reserve 2200, tradeable 7800.
+    # $10k tier: schedule holds 2000; fee pct leg keys on the TRADEABLE TARGET (2.5% x 8000 = 200)
+    # DL 424: the larger of the two, never both -> reserve 2000, tradeable 8000.
     r, t, _ = main._reserve_split(10000.0, 0.0)
-    assert abs(r - 2200.0) < 0.01 and abs(t - 7800.0) < 0.01
+    assert abs(r - 2000.0) < 0.01 and abs(t - 8000.0) < 0.01
 
 
 def test_reserve_split_tier_500k(monkeypatch):
     _setup(monkeypatch)
-    # 500k: schedule 400k + 2.5% x 100k target = 2.5k -> tradeable 97.5k
+    # 500k: schedule 400k, larger than the fee leg 2.5k (DL 424) -> tradeable 100k
     r, t, _ = main._reserve_split(500000.0, 0.0)
-    assert abs(r - 402500.0) < 0.5 and abs(t - 97500.0) < 0.5
+    assert abs(r - 400000.0) < 0.5 and abs(t - 100000.0) < 0.5
 
 
 def test_reserve_with_deployed_margin(monkeypatch):
@@ -67,7 +67,7 @@ def test_reserve_with_deployed_margin(monkeypatch):
     # equity 10k with 6k in margin: tier on TOTAL equity; displayed reserve
     # capped at free balance; tradeable = free - reserve.
     r, t, _ = main._reserve_split(4000.0, 6000.0)
-    assert abs(r - 2200.0) < 0.01 and abs(t - 1800.0) < 0.01
+    assert abs(r - 2000.0) < 0.01 and abs(t - 2000.0) < 0.01
 
 
 def test_burn_leg_requires_maturity(monkeypatch):
@@ -195,4 +195,39 @@ def test_live_reserve_schedule_is_sane():
     tiers = [(float(x.split(":")[0]), float(x.split(":")[1])) for x in live.split(",") if x.strip()]
     assert tiers and [b for b, _ in tiers] == sorted(b for b, _ in tiers) and [t for _, t in tiers] == sorted(t for _, t in tiers)
     assert all(0 < t < b for b, t in tiers)
-    assert len(tiers) <= 8                                              # the UI editor has 8 rows: a 9th tier would be dropped on Save
+    assert len(tiers) <= 9                                              # the UI editor has 9 rows (DL 424): a 10th tier would be dropped on Save
+
+
+def test_reserve_schedule_is_a_straight_line_and_flat_above_the_last_tier():
+    """DL 424: no tier makes tradeable jump; the leverage schedule stays stepped."""
+    S = "10000:9750, 25000:23000, 50000:40000, 1000000:500000, 2000000:800000"
+    f = te._reserve_schedule_target
+    assert f(S, 9999.99) is None and f(S, 10000) == 9750 and f(S, 25000) == 23000 and f(S, 5e6) == 800000
+    assert abs(f(S, 17500) - 16375) < 1e-6 and abs(f(S, 1.5e6) - 650000) < 1e-6
+    assert f("", 50000) is None and f("garbage", 50000) is None and f(S, None) is None
+    pts = [f(S, e) for e in range(10000, 2000001, 5000)]
+    assert all(b >= a for a, b in zip(pts, pts[1:]))                         # tradeable never falls as the balance rises
+    assert _lookup_leverage_schedule(S, 24999) == 9750
+
+
+def test_engine_and_card_agree_on_the_larger_of_the_two(monkeypatch):
+    _setup(monkeypatch)
+    inv = config.trading_config.investment
+    monkeypatch.setattr(inv, "reserve_schedule", "10000:9750, 25000:23000")
+    monkeypatch.setattr(inv, "mode", "equal_split")
+    monkeypatch.setattr(inv, "max_open_positions", 4)
+    monkeypatch.setattr(inv, "max_investment_size", 10**9)
+    monkeypatch.setattr(inv, "min_investment_size", 0.0)
+    conf, level = next((k, v) for k, v in config.trading_config.confidence_levels.items() if v.enabled)
+    monkeypatch.setattr(level, "investment_multiplier", 1.0)
+    r, t, _ = main._reserve_split(15000.0, 0.0)
+    assert abs(t - (9750 + 13250 / 3)) < 0.01 and abs(r - (15000 - t)) < 0.01
+    i, _, _ = te.trading_engine.calculate_position_size(15000.0, conf, total_portfolio=15000.0)
+    assert abs(i - t / 4) < 0.01                                             # engine and card agree between tiers
+    r_m, t_m, _ = main._reserve_split(9000.0, 6000.0)                        # the same equity with margin deployed: same reserve, tradeable from free
+    i_m, _, _ = te.trading_engine.calculate_position_size(9000.0, conf, total_portfolio=15000.0)
+    assert abs(r_m - r) < 0.01 and abs(t_m - (9000 - r)) < 0.01 and abs(i_m - t / 4) < 0.01
+    r2, t2, _ = main._reserve_split(9999.0, 0.0)
+    assert abs(r2 - 249.98) < 0.01 and t2 > 9700                             # below the first line: fee reserve only, no dip at the line
+    _, t3, _ = main._reserve_split(10000.0, 0.0)
+    assert t3 >= t2

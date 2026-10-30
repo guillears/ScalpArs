@@ -26,6 +26,9 @@ BOOK, SLOT = 3000.0, 0.975 / 4
 T0, TS, T1 = pd.Timestamp("2026-01-04"), pd.Timestamp("2026-05-20"), pd.Timestamp("2026-10-04")
 RES_SCHED = [(float(b), float(t)) for b, t in (x.split(":") for x in json.load(open(os.path.join(ROOT, "trading_config.json")))
                                                  ["investment"]["reserve_schedule"].split(","))]   # the LIVE table (DL 404), never a copy
+RES_SCHED_STR = json.load(open(os.path.join(ROOT, "trading_config.json")))["investment"]["reserve_schedule"]
+sys.path.insert(0, ROOT)
+from services.trading_engine import _reserve_schedule_target  # noqa: E402
 LEV = lambda m: max(1, int(round(20 * m)))                       # engine: round(20 × lev mult)
 FADE_CAP_PCT, FADE_CEIL = 0.005, 500_000.0
 ATR_NEW, ATR_OLD, HG_STREAK, TP = 3.0, 2.5, 12, 3.0
@@ -50,7 +53,7 @@ def oct6_fill_ratio():
         o = ms(rs.opened_at)
         k = np.searchsorted(cl, o, side="right")
         eq = 5000 + np.where(k > 0, cum[np.maximum(k - 1, 0)], 0.0)
-        tgt = np.array([max([t for b, t in RES_SCHED if e >= b], default=np.nan) for e in eq])
+        tgt = np.array([np.nan if (_t := _reserve_schedule_target(RES_SCHED_STR, e)) is None else _t for e in eq])   # DL 424: the engine's straight line
         base = np.where(np.isnan(tgt), eq, tgt) * SLOT
         fr = np.minimum(1.0, rs.investment.astype(float).values / base / rs.cell_multiplier.astype(float).values)
         for p, oa, v in zip(rs.pair, rs.opened_at.astype(str), fr):

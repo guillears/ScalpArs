@@ -4871,8 +4871,9 @@
                                 <div class="flex items-center gap-2"><span class="text-gray-500 text-sm w-16 text-right">≥ $</span><input type="number" class="res-sched-bal w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="250000"><span class="text-gray-500">→ trade $</span><input type="number" class="res-sched-trd w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="162500"><span class="res-sched-resv text-gray-500 text-sm"></span></div>
                                 <div class="flex items-center gap-2"><span class="text-gray-500 text-sm w-16 text-right">≥ $</span><input type="number" class="res-sched-bal w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="500000"><span class="text-gray-500">→ trade $</span><input type="number" class="res-sched-trd w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="300000"><span class="res-sched-resv text-gray-500 text-sm"></span></div>
                                 <div class="flex items-center gap-2"><span class="text-gray-500 text-sm w-16 text-right">≥ $</span><input type="number" class="res-sched-bal w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="1000000"><span class="text-gray-500">→ trade $</span><input type="number" class="res-sched-trd w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="500000"><span class="res-sched-resv text-gray-500 text-sm"></span></div>
+                                <div class="flex items-center gap-2"><span class="text-gray-500 text-sm w-16 text-right">≥ $</span><input type="number" class="res-sched-bal w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="2000000"><span class="text-gray-500">→ trade $</span><input type="number" class="res-sched-trd w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="800000"><span class="res-sched-resv text-gray-500 text-sm"></span></div>
                             </div>
-                            <p class="text-xs text-gray-500 mt-1">Each line = "at balance ≥ $X, tradeable = $T" (reserve = balance − T, auto-grows; withdrawals pull from the reserve and it self-rebuilds). Balance = USDT + open margin (BNB not counted). The fee reserve applies on top. Below the first tier = fee reserve only. Active tier = highest ≤ balance. <span id="res-schedule-readout" class="text-emerald-400/80"></span></p>
+                            <p class="text-xs text-gray-500 mt-1">Each line = "at balance $X, tradeable = $T" (reserve = balance − T). A gain, loss, or withdrawal moves tradeable along the line, so most of it lands on tradeable (88 % between the first two lines). Between two lines tradeable grows on a straight line; above the last line it stays flat. Balance = USDT + open margin (BNB not counted). The reserve is this or the fee reserve, whichever is larger. Below the first line = fee reserve only. <span id="res-schedule-readout" class="text-emerald-400/80"></span></p>
                         </div>
                         <div>
                             <label class="block text-sm text-gray-400 mb-2">Paper Balance</label>
@@ -20926,6 +20927,14 @@
             return t.sort((a, b) => a[0] - b[0]);
         }
         function _ssLookup(tiers, eq) { let v = null; for (const t of tiers) { if (eq >= t[0]) v = t[1]; else break; } return v; }   // = _lookup_leverage_schedule
+        function _ssReserveTarget(tiers, eq) {   // = _reserve_schedule_target (DL 424): a straight line between the tiers, flat above the last
+            if (!tiers.length || eq < tiers[0][0]) return null;
+            for (let i = 0; i + 1 < tiers.length; i++) {
+                const [b0, t0] = tiers[i], [b1, t1] = tiers[i + 1];
+                if (eq < b1) return b1 > b0 ? t0 + (t1 - t0) * (eq - b0) / (b1 - b0) : t0;
+            }
+            return tiers[tiers.length - 1][1];
+        }
         function _ssUsd(x) { return '$' + Math.round(x).toLocaleString(); }
         function _ssMult(x) { return (Math.round(x * 100) / 100).toString() + '×'; }
         function _ssBase() {
@@ -20934,7 +20943,7 @@
             const rval = _ssNum('config-reserve-value', 0);
             let reserve = 0, schedTgt = null;
             if (rmode === 'schedule') {
-                const tgt = _ssLookup(_ssTiers('res-sched-bal', 'res-sched-trd'), eq);
+                const tgt = _ssReserveTarget(_ssTiers('res-sched-bal', 'res-sched-trd'), eq);
                 if (tgt !== null && tgt > 0) { reserve = Math.max(0, eq - tgt); schedTgt = tgt; }
             } else if (rmode === 'working_capital') { reserve = rval > 0 ? Math.max(0, eq - rval) : 0; }
             else if (rmode === 'percentage') { reserve = eq * rval / 100; }
@@ -20944,17 +20953,18 @@
             const feeBurn = _ssNum('config-fee-reserve-hours', 12) > 0 ? Math.max(0, Number(window._ssFeeBurn || 0)) : 0;   // server-computed burn leg
             const feeEq = schedTgt !== null ? Math.min(eq, schedTgt) : eq;
             const fee = Math.max(feeUsd, feePct > 0 && feeEq ? feeEq * feePct / 100 : 0, feeBurn);
-            const tradeable = Math.max(0, eq - reserve - fee);
+            const held = schedTgt !== null ? Math.max(reserve, fee) : reserve + fee;   // (424) engine mirror
+            const tradeable = Math.max(0, eq - held);
             const imode = document.getElementById('config-investment-mode')?.value || 'equal_split';
             const ival = _ssNum('config-investment-value', 0);
             const maxPos = parseInt(document.getElementById('config-max-positions')?.value) || 5;
             let slot;
             if (imode === 'percentage') slot = tradeable * ival / 100;
-            else if (imode === 'equal_split') slot = Math.max(0, eq - reserve - fee) / maxPos;   // flat book: reserve_from_total = reserve
+            else if (imode === 'equal_split') slot = Math.max(0, eq - held) / maxPos;   // flat book: reserve_from_total = reserve
             else slot = Math.min(ival, tradeable);
             const confOn = (document.getElementById('config-strong_buy-mode')?.value || 'both') !== 'disabled';
             return {
-                eq, reserve, fee, tradeable, slot, maxPos, imode, confOn,
+                eq, reserve, fee, held, schedActive: schedTgt !== null, tradeable, slot, maxPos, imode, confOn,
                 confInv: _ssNum('config-strong_buy-multiplier', 1.0), confLev: _ssNum('config-strong_buy-leverage', 20),
                 minInv: _ssNum('config-min-investment', 100), maxInv: _ssNum('config-max-investment', 50000),
                 levCap: _ssLookup(_ssTiers('lev-sched-bal', 'lev-sched-lev'), eq),
@@ -21127,7 +21137,7 @@
             const B = _ssBase(), S = _ssRowSpecs(B);
             const basis = document.getElementById('ss-basis');
             if (basis) basis.textContent = B.eq > 0
-                ? `Empty book at ${_ssUsd(B.eq)} sizing equity (USDT free + open margin): reserve ${_ssUsd(B.reserve)} + fee reserve ${_ssUsd(B.fee)} → tradeable ${_ssUsd(B.tradeable)}`
+                ? `Empty book at ${_ssUsd(B.eq)} sizing equity (USDT free + open margin): ${B.schedActive ? `reserve ${_ssUsd(B.held)} (larger of schedule ${_ssUsd(B.reserve)} / fee ${_ssUsd(B.fee)})` : `reserve ${_ssUsd(B.reserve)} + fee reserve ${_ssUsd(B.fee)}`} → tradeable ${_ssUsd(B.tradeable)}`
                   + (B.imode === 'equal_split' ? ` ÷ ${B.maxPos} slots = ${_ssUsd(B.slot)} per slot` : ` → base ${_ssUsd(B.slot)} (${B.imode})`)
                   + ` · base leverage ${B.confLev}× (STRONG_BUY level — the sleeves always open at it; momentum may also be V_STRONG)` + (B.levCap !== null ? ` · schedule cap ${B.levCap}×` : '') + '.'
                 : 'Waiting for the balance…';
@@ -22146,9 +22156,9 @@
                         t.sort((a, b) => a[0] - b[0]);
                         const bal = Number(window._ssEquity ?? window._levSchedBalance ?? 0);   // (423) USDT + open margin, what the engine keys tiers on (the paper seed read "active" while the engine was below the tier)
                         const _basis = window._ssEquity != null ? 'USDT + margin' : 'paper seed';   // until the first balance read
-                        let tgt = null; for (const tier of t) { if (bal >= tier[0]) tgt = tier[1]; else break; }
+                        const tgt = _ssReserveTarget(t, bal);
                         out.textContent = (tgt !== null && tgt > 0)   // tgt<=0 = fail-open like the engine (M2)
-                            ? `→ active: trade $${Math.round(tgt).toLocaleString()} / reserve $${Math.round(Math.max(0, bal - tgt)).toLocaleString()} + fee reserve @ ${_basis} $${Math.round(bal).toLocaleString()}`
+                            ? `→ active: trade $${Math.round(tgt).toLocaleString()} / reserve $${Math.round(Math.max(0, bal - tgt)).toLocaleString()} (or the fee reserve if larger) @ ${_basis} $${Math.round(bal).toLocaleString()}`
                             : `→ below first tier @ ${_basis} $${Math.round(bal).toLocaleString()}: no schedule reserve, fee reserve only`;
                     };
                     window._resSchedRead = upd;

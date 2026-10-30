@@ -1180,7 +1180,7 @@ def _reserve_split(free_balance: float, deployed_margin: float = 0.0):
     _inv = config.trading_config.investment
     _sched_tgt_active = None  # mirror of the engine's schedule-aware fee pct-leg base (Aug-28)
     if _inv.reserve_mode == "schedule":
-        from services.trading_engine import _lookup_leverage_schedule as _sched_lookup
+        from services.trading_engine import _reserve_schedule_target as _sched_lookup
         _equity = free_balance + max(0.0, deployed_margin or 0.0)
         _tgt = _sched_lookup(getattr(_inv, 'reserve_schedule', ''), _equity)
         reserve = min(free_balance, max(0.0, _equity - _tgt)) if (_tgt is not None and _tgt > 0) else 0.0
@@ -1202,7 +1202,7 @@ def _reserve_split(free_balance: float, deployed_margin: float = 0.0):
     if _fee_pct > 0 and _fee_eq:
         _fee_res = max(_fee_res, _fee_eq * _fee_pct / 100.0)
     _fee_res = max(_fee_res, _fee_reserve_burn_leg())
-    reserve += _fee_res
+    reserve = max(reserve, _fee_res) if _sched_tgt_active is not None else reserve + _fee_res   # (424) engine mirror: the larger of the two with an active tier
     reserve = min(reserve, max(0.0, free_balance))
     return round(reserve, 2), round(max(0.0, free_balance - reserve), 2), _inv.reserve_mode
 

@@ -2314,6 +2314,25 @@ def _fan_qs_cell_match(th, qs, bear, rng):
     except (ValueError, TypeError):
         return (1.0, 1.0, None)
 
+def _reserve_schedule_target(schedule, equity):
+    """📐 (DECISION_LOG 424) Balance→tradeable for the reserve schedule: a straight line between the tiers, so every gain grows the tradeable money and no tier makes trades jump.
+    None below the first tier or on an empty / malformed schedule (fail-open, no schedule reserve); flat above the last tier. Pure."""
+    try:
+        s = (schedule or '').strip()
+        if not s or equity is None:
+            return None
+        tiers = sorted((float(a), float(b)) for a, b in (p.split(':') for p in s.split(',') if p.strip()))
+        eq = float(equity)
+        if not tiers or eq < tiers[0][0]:
+            return None
+        for (b0, t0), (b1, t1) in zip(tiers, tiers[1:]):
+            if eq < b1:
+                return t0 + (t1 - t0) * (eq - b0) / (b1 - b0) if b1 > b0 else t0
+        return tiers[-1][1]
+    except (TypeError, ValueError):
+        return None
+
+
 def _lookup_leverage_schedule(schedule, equity):
     """Balance→leverage CEILING (Jun 26). schedule = "bal0:lev0, bal1:lev1, ..." ascending
     balance tiers; returns the max leverage for the highest balance threshold ≤ equity, or
@@ -6594,7 +6613,7 @@ class TradingEngine:
             # max(0, free − reserve) clamps to 0 when already at/over target. Below the first tier
             # (or empty/malformed schedule) → no reserve = full balance tradeable. Fail-open.
             _sched_eq = total_portfolio if total_portfolio else available_balance
-            _tgt = _lookup_leverage_schedule(
+            _tgt = _reserve_schedule_target(
                 getattr(tc.investment, 'reserve_schedule', ''), _sched_eq)
             reserve = max(0.0, _sched_eq - _tgt) if (_tgt is not None and _tgt > 0) else 0.0
             _sched_tgt_active = _tgt if (_tgt is not None and _tgt > 0) else None
@@ -6612,7 +6631,7 @@ class TradingEngine:
 
         # Aug 21 (operator): fee-reserve FLOOR — USDT sizing never deploys, so the BNB auto-swap can
         # always refuel (sub-$10k books have no schedule tier → went 100% into margin). Applies on
-        # top of every reserve mode. 0 = off.
+        # top of every reserve mode, except an active schedule tier: the larger of the two (DL 424). 0 = off.
         # Aug-25 (operator): fee reserve = max(absolute min, pct x total equity, hours x live
         # BNB burn/hr). Pct leg is balance-proof; burn leg is activity-aware; usd is only the
         # micro-balance safety min. Same three legs mirrored in main._reserve_split (display).
@@ -6640,7 +6659,8 @@ class TradingEngine:
             _need = _fee_hrs * _burn
             _have = self._bnb_held_usd()
             _fee_res = max(_fee_res, _need if _have is None else max(0.0, _need - _have))
-        reserve += _fee_res
+        # (DECISION_LOG 424) with an active schedule tier the reserve is USDT that can already fund the next BNB swap: the larger of the two, never both
+        reserve = max(reserve, _fee_res) if _sched_tgt_active is not None else reserve + _fee_res
 
         # Available after reserve
         tradeable = max(0, available_balance - reserve)
@@ -6656,7 +6676,7 @@ class TradingEngine:
                 # silently fell back to reserve_fixed in schedule mode → per-position base ignored
                 # the working-capital target ((equity-500)/5 ≈ $30k instead of target/5 = $10k at
                 # the $150k tier). Same target lookup as the safe-reserve calc above.
-                _es_tgt = _lookup_leverage_schedule(
+                _es_tgt = _reserve_schedule_target(
                     getattr(tc.investment, 'reserve_schedule', ''), base)
                 reserve_from_total = max(0.0, base - _es_tgt) if (_es_tgt is not None and _es_tgt > 0) else 0.0
             elif tc.investment.reserve_mode == "working_capital":
@@ -6666,7 +6686,8 @@ class TradingEngine:
                 reserve_from_total = base * (tc.investment.reserve_percentage / 100)
             else:
                 reserve_from_total = tc.investment.reserve_fixed
-            reserve_from_total += _fee_res  # fee-reserve floor rides the equal-split base too
+            # fee-reserve floor rides the equal-split base too · (424) same rule as above
+            reserve_from_total = max(reserve_from_total, _fee_res) if _sched_tgt_active is not None else reserve_from_total + _fee_res
             investment = max(0, base - reserve_from_total) / max_pos
         else:
             investment = min(tc.investment.fixed_amount, tradeable)

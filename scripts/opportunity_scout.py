@@ -1472,6 +1472,14 @@ def run():
     except Exception as _wax_e:
         log(f"WILLY_ADX55 line failed: {_wax_e}")
         _rg_sec += ["## 👁 WILLY_ADX55", "", f"Unavailable this run ({str(_wax_e)[:120]}).", ""]
+    try:                                               # 👁 Oct-30 FADE_NOSTRETCH — SPIKE_FADE with no overshoot to revert, frozen expectancy bar (DECISION_LOG 413; forward)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_fade_nostretch_watch as _fns
+        _rg_sec += _fns.run(now_ms)
+    except Exception as _fns_e:
+        log(f"FADE_NOSTRETCH line failed: {_fns_e}")
+        _rg_sec += ["## 👁 FADE_NOSTRETCH", "", f"Unavailable this run ({str(_fns_e)[:120]}).", ""]
     try:                                               # 🚪 Oct-29 EXIT_SHADOWS — FLIP only: fixed TP +1.5 / +2 / +3 vs the booked flip exit (DECISION_LOG 411; frozen verdict, OBSERVE only; budgeted public 1m; never breaks the run)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

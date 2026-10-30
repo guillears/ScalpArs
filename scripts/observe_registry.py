@@ -82,6 +82,11 @@ BOOKED = {   # booked P&L — `era` = drops fills by WILLY exit era (registered 
     "scout_frenzy_entry_lines.py": {**_FZ_STOP3}, "scout_frenzy_wl_lines.py": {**_FZ_STOP3, **_NO_LITE_C}, "scout_lite_late_btcfall.py": None, "scout_lite_ob_thin.py": None, "scout_lite_off30.py": None,
     "scout_lite_z3.py": None, "scout_long_resize.py": None, "scout_ml_cooldown.py": None, "scout_ml_regime_lines.py": None,
     "scout_ml_trend_lines.py": None, "scout_ml_w4_watch.py": None,
+    # (413) FADE_NOSTRETCH judges booked WR against the frozen breakeven of today's fade exit (72.1 %) → pinned to its keys
+    "scout_fade_nostretch_watch.py": {"hard_tp_enabled": True, "runner_trail_short_enabled": True, "runner_trail_short_use_atr": True, "runner_trail_short_be_ratchet_enabled": False,
+                                      "runner_trail_short_be_lock_pct": 0.1, "runner_trail_short_atr_min": 0.0, "spike_lock_exempt_fade": True, "spike_fade_sl_pct": -1.5, "runner_trail_short_arm_peak": 0.4, "runner_trail_short_atr_mult": 0.5,
+                                      "runner_trail_short_giveback_frac": 0.35, "spike_fade_late_arm_after_min": 15.0, "spike_fade_late_arm_peak": 0.3,
+                                      "hard_tp_ladder_short": "1.0:0.25,1.5:0.30,2.0:0.40,3.0:0.60,4.0:0.80"},
     # (412) WILLY_ADX55 judges booked WR against the frozen V2b breakeven (69.0 %) → pinned to the V2b exit keys
     "scout_willy_adx_watch.py": {"frenzy_willy_high_target_enabled": True, "frenzy_willy_stop_pct": 4.0, "frenzy_willy_high_k_pct": 1.0,
                                  "frenzy_willy_high_tp_max_pct": 8.0, "frenzy_willy_max_hold_minutes": 90,

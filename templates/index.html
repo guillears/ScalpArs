@@ -4539,6 +4539,7 @@
         <section>
             <div class="flex items-center justify-between mb-4">
                 <h2 class="text-lg font-semibold text-gray-300">Portfolio Management</h2>
+                <p id="nav-unbooked" class="hidden text-xs text-amber-400"></p>
                 <div class="flex gap-2">
                 <button onclick="openFundDepositModal()" class="px-3 py-1.5 bg-sky-700 hover:bg-sky-600 text-white text-sm rounded-lg">+ Deposit Funds</button>
                 <button onclick="openFundWithdrawModal()" class="px-3 py-1.5 bg-amber-700 hover:bg-amber-600 text-white text-sm rounded-lg">− Withdraw Funds</button>
@@ -11814,6 +11815,7 @@
             const hist = invData.nav_history || [];
             lines.push(`\n${hr}`);
             lines.push('## NAV / SHARE HISTORY (daily, UTC-3)\n');
+            if (invData.nav_unbooked_usd != null) lines.push(`⚠ Outside money $${invData.nav_unbooked_usd.toFixed(2)} does not match the investor ledger`);
             if (epoch) lines.push(`NAV history since ${epoch} (earlier history kept)`);
             if (!hist.length) { lines.push(`No NAV history since ${epoch} yet`); return lines; }
             lines.push(`Current NAV: $${(invData.nav_per_share || 0).toFixed(6)}  |  High-Water Mark: $${(invData.nav_high_water || 0).toFixed(6)}  |  Portfolio: $${(invData.portfolio_value || 0).toFixed(2)}  |  Tradeable: ${(invData.tradeable != null ? '$' + invData.tradeable.toFixed(2) : '-')}  |  Reserve: ${(invData.reserve != null ? '$' + invData.reserve.toFixed(2) : '-')} (${invData.reserve_mode || '-'})`);
@@ -21402,6 +21404,16 @@
             const labels = hist.map(h => h.date.slice(5));  // MM-DD
             const navs = hist.map(h => h.nav);
             const hwm = data.nav_high_water;
+            // (DECISION_LOG 422) at a new peak the HWM moves with the live NAV on every 10 s poll: refresh the numbers in place, never rebuild and re-animate the chart
+            if (window._navChart && window._navChart.canvas === canvas && window._navChart.data.labels.length === labels.length) {
+                const _c = window._navChart;
+                _c.data.labels = labels;
+                _c.data.datasets[0].data = navs;
+                _c.data.datasets[1].data = navs.map(() => hwm);
+                _c.data.datasets[2].data = navs.map(() => 1.0);
+                _c.update('none');
+                return;
+            }
             if (window._navChart) window._navChart.destroy();
             window._navChart = new Chart(canvas, {
                 type: 'line',
@@ -21532,6 +21544,8 @@
 
                 // High-water mark + NAV/share history chart
                 const hwmEl = document.getElementById('portfolio-hwm');
+                const _nu = document.getElementById('nav-unbooked');
+                if (_nu) { _nu.textContent = data.nav_unbooked_usd != null ? `⚠ Outside money $${data.nav_unbooked_usd.toFixed(2)} does not match the investor ledger: if it is a real deposit or withdrawal, book it, or NAV reads it as profit / loss.` : ''; _nu.classList.toggle('hidden', data.nav_unbooked_usd == null); }
                 if (hwmEl && data.nav_high_water != null) {
                     hwmEl.classList.remove('hidden');
                     document.getElementById('portfolio-hwm-val').textContent = `$${data.nav_high_water.toFixed(4)}`;

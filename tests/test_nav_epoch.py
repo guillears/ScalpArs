@@ -461,6 +461,7 @@ async def test_deposit_preview_warns_only_for_a_shareless_fund(db, monkeypatch):
     assert res["preview"] and res["nav_start_warning"]
     z = await db.get(models.Investor, z_id)
     assert z.shares == 0.0                                         # preview wrote nothing
+    monkeypatch.setattr(main.trading_engine, "is_paper_mode", False)   # DL 422: paper previews carry their own top-up warning
     await _inv(db, "Holder", 100.0)                                # fund has shares -> live NAV pricing, no warning
     res = await main.investor_deposit(main.InvestorDeposit(investor_id=z_id, amount=1000.0, preview=True), db)
     assert res["nav_start_warning"] is None and res["nav"] == 50.0

@@ -376,6 +376,7 @@ async def _nav_snapshot_once(db: AsyncSession, now_utc: datetime = None) -> bool
     if portfolio <= 0:
         logger.warning(f"[NAV_LOOP] Skipping snapshot: non-positive portfolio value {portfolio}")
         return False
+    await _nav_unbooked_check(db, portfolio)   # (422) flag only until it has been seen on real live data
     nav = portfolio / total_shares
     today = _nav_day_utc3(_now_utc)
     snap = (await db.execute(select(NavSnapshot).where(NavSnapshot.date == today))).scalar_one_or_none()
@@ -406,8 +407,9 @@ async def nav_snapshot_loop():
     logger.info("[NAV_LOOP] NAV snapshot loop started (hourly)")
     while not should_stop:
         try:
-            async with AsyncSessionLocal() as db:
-                await _nav_snapshot_once(db)
+            async with _investor_lock:   # (422) shares and equity read together, never inside a top-up
+                async with AsyncSessionLocal() as db:
+                    await _nav_snapshot_once(db)
         except Exception as e:
             logger.error(f"[NAV_LOOP] Error in NAV snapshot loop: {e}")
         await asyncio.sleep(3600)
@@ -588,6 +590,14 @@ async def lifespan(app: FastAPI):
                 await locked_commit(_ep_db)
     except Exception as _epe:
         logger.warning(f"[NAV_EPOCH] startup backfill skipped: {_epe}")
+    # 📈 (DECISION_LOG 422) one-time restatement of a paper fund whose top-up read as profit
+    try:
+        async with _investor_lock:
+            async with AsyncSessionLocal() as _nr_db:
+                if await _nav_rebuild_once(_nr_db):
+                    await locked_commit(_nr_db)
+    except Exception as _nre:
+        logger.error(f"[NAV_REBUILD] failed, nothing changed: {_nre}")
 
     # Live Terminal — start background heartbeat task once event loop is up
     _start_terminal_heartbeat()
@@ -13283,6 +13293,137 @@ async def _nav_epoch_after_share_change(db: AsyncSession, shares_before: float):
     return True
 
 
+NAV_REBUILD_TOPUP_DAY = datetime(2026, 10, 26).date()   # (422) the one top-up the one-time restatement may touch
+
+
+async def _nav_paper_flows(db: AsyncSession):
+    """(422) paper_balance / paper_bnb_initial_usd edits after the batch's first paper order = paper top-ups [(time, amount)]; earlier edits are the starting capital (same rule as DL 386)."""
+    _first = (await db.execute(select(func.min(Order.opened_at)).where(Order.is_paper == True))).scalar()
+    if _first is None:
+        return []
+    rows = (await db.execute(select(ConfigChangeLog.changed_at, ConfigChangeLog.old_value, ConfigChangeLog.new_value).where(and_(
+        ConfigChangeLog.field.in_(("paper_balance", "paper_bnb_initial_usd")), ConfigChangeLog.changed_at > _first)).order_by(ConfigChangeLog.changed_at))).all()
+    out = []
+    for t, o, n in rows:
+        try:
+            a = float(n) - float(o)
+        except (TypeError, ValueError):
+            continue
+        if abs(a) >= 0.005:
+            out.append((t, a))
+    return out
+
+
+async def _nav_rebuild_once(db: AsyncSession) -> bool:
+    """(422) ONE-TIME, paper only: the current fund's history was priced with a top-up counted as profit. Restates the sole investor and the epoch's nav_snapshots on the real path: start capital at
+    NAV 1.00, each top-up minted at the NAV before it. portfolio_value and updated_at of every snapshot stay; old values are logged. Refuses (logs, changes nothing) unless the data fits exactly; the
+    ledger marker makes it run once. The caller commits."""
+    from services.nav_flows import REBUILD_MARK, rebuild_plan, shares_at
+    from sqlalchemy.orm.attributes import flag_modified
+    if not trading_engine.is_paper_mode:
+        return False
+    if (await db.execute(select(func.count(InvestorLedger.id)).where(InvestorLedger.note.like(f"%{REBUILD_MARK}%")))).scalar():
+        return False
+    flows = await _nav_paper_flows(db)
+    # pinned to the one known case (operator's 10-26 top-up): any other history is left alone, whatever it looks like
+    if not (len(flows) == 1 and abs(flows[0][1] - 7100.0) < 0.01 and flows[0][0].date() == NAV_REBUILD_TOPUP_DAY):
+        if flows:
+            logger.warning(f"[NAV_REBUILD] skipped: flows {flows} are not the 10-26 +$7,100 top-up")
+        return False
+    invs = (await db.execute(select(Investor))).scalars().all()
+    ep_day, ep_at = await _get_nav_epoch(db)
+    if len(invs) != 1 or ep_day is None or ep_at is None or invs[0].shares <= _NAV_SHARES_EPS:
+        logger.warning(f"[NAV_REBUILD] skipped: needs exactly one investor with shares and an epoch (investors {len(invs)}, epoch {ep_day})")
+        return False
+    inv = invs[0]
+    led = (await db.execute(select(InvestorLedger).where(InvestorLedger.investor_id == inv.id))).scalars().all()
+    if len(led) != 1 or led[0].type not in ("FOUNDING", "DEPOSIT", "OPENING"):
+        logger.warning(f"[NAV_REBUILD] skipped: {inv.name} has {len(led)} ledger rows, expected the single opening one")
+        return False
+    if flows[0][0] < ep_at or led[0].created_at is None or led[0].created_at >= flows[0][0]:
+        logger.warning("[NAV_REBUILD] skipped: the top-up must fall inside the epoch, after the investor's opening row")
+        return False
+    start = await _paper_capital_seed(db)
+    _c = config.trading_config
+    _derived = float(_c.paper_balance or 0) + float(_c.paper_bnb_initial_usd or 0) - flows[0][1]
+    if abs(_derived - start) > 1.0:
+        logger.warning(f"[NAV_REBUILD] skipped: seed {start:.2f} vs config minus top-up {_derived:.2f}")
+        return False
+    closed = [(c, float(p or 0)) for c, p in (await db.execute(select(Order.closed_at, Order.pnl).where(and_(Order.is_paper == True, Order.status == 'CLOSED')))).all() if c is not None]
+    steps, final_shares = rebuild_plan(start, flows, closed)
+    clause = _nav_epoch_clause(ep_day, ep_at)
+    snaps = (await db.execute(select(NavSnapshot).where(clause).order_by(NavSnapshot.date))).scalars().all()
+    _first = (await db.execute(select(func.min(Order.opened_at)).where(Order.is_paper == True))).scalar()
+    if not snaps or any(x.date < _nav_day_utc3(_first) for x in snaps):
+        logger.warning(f"[NAV_REBUILD] skipped: {len(snaps)} epoch snapshots, or one older than the batch's first order")
+        return False
+    _open_fees = (await db.execute(select(func.coalesce(func.sum(Order.entry_fee), 0.0)).where(and_(Order.is_paper == True, Order.status == 'OPEN')))).scalar() or 0.0
+    expect = start + flows[0][1] + sum(p for _, p in closed) - float(_open_fees)
+    realized = (await _portfolio_components(db))["realized_equity"]
+    if abs(expect - realized) > 5.0:   # paper accounting is exact: the seed, the top-up and the fills must explain the book
+        logger.warning(f"[NAV_REBUILD] skipped: start {start:.2f} + top-up + closed P&L − open fees = {expect:.2f} vs realized equity {realized:.2f}")
+        return False
+    for s in snaps:
+        sh = shares_at(s.updated_at, start, steps)
+        logger.warning(f"[NAV_REBUILD] {s.date}: value {s.portfolio_value} · shares {s.total_shares} → {sh:.6f} · NAV {s.nav_per_share} → {s.portfolio_value / sh:.6f}")
+        s.total_shares, s.nav_per_share = round(sh, 6), round(s.portfolio_value / sh, 6)
+        flag_modified(s, "updated_at")   # keep the write time: the column's onupdate would stamp now and break the epoch rule
+    old_sh, old_dep = inv.shares, inv.total_deposited
+    _log_investor_ledger(db, inv.id, "ADJUST", abs(start - old_dep), 1.0, start - old_sh, note=f"{REBUILD_MARK}: opening capital ${start:,.2f} at NAV 1.00 (was ${old_dep:,.2f})")
+    _prev = start
+    for (t, amt), (_, after, nav, eq) in zip(sorted(flows, key=lambda x: x[0]), steps):
+        _log_investor_ledger(db, inv.id, "ADJUST", abs(amt), nav, after - _prev, note=f"{REBUILD_MARK}: paper top-up {t:%m-%d %H:%M} UTC, equity before ${eq:,.2f}")
+        _prev = after
+    inv.shares = final_shares
+    inv.total_deposited = start + sum(a for _, a in flows)
+    if led[0].type == "FOUNDING":
+        st = (await db.execute(select(BotState).limit(1))).scalar_one_or_none()
+        if st is not None:
+            st.founding_allocated_usd = max(float(st.founding_allocated_usd or 0.0), start)
+    logger.warning(f"[NAV_REBUILD] {inv.name}: shares {old_sh:.4f} → {final_shares:.4f}, deposited {old_dep:.2f} → {inv.total_deposited:.2f}, {len(snaps)} snapshots restated")
+    return True
+
+
+async def _paper_topup_mint(db: AsyncSession, flow: float, nav: float, note: str) -> bool:
+    """(422) a paper top-up never moves NAV: every investor gets shares pro rata at the NAV before it. The caller commits."""
+    from services.nav_flows import prorata_mint
+    invs = [i for i in (await db.execute(select(Investor))).scalars().all() if i.shares > _NAV_SHARES_EPS]
+    plan = prorata_mint({i.id: i.shares for i in invs}, flow, nav)
+    for i in invs:
+        ds, du = plan[i.id]
+        i.shares = max(0.0, i.shares + ds)
+        i.total_deposited = max(0.0, i.total_deposited + du)
+        _log_investor_ledger(db, i.id, "ADJUST", abs(du), nav, ds, note=note)
+    return bool(invs)
+
+
+_NAV_UNBOOKED = {"usd": None}   # (422) live: outside money the buttons did not book (flag only: banner + log, never touches shares or snapshots)
+
+
+async def _nav_unbooked_check(db: AsyncSession, reference_equity: float):
+    """(422) live only: Binance transfers since the fund's NAV start vs the ledger's cash rows. Fail-open: a read error never blocks. → the unbooked $ or None."""
+    from services.nav_flows import unbooked_flow
+    if trading_engine.is_paper_mode:
+        _NAV_UNBOOKED.update(usd=None)
+        return None
+    _, ep_at = await _get_nav_epoch(db)
+    if ep_at is None:
+        logger.info("[NAV_FLOW] no NAV epoch set: unbooked check skipped")
+        return None
+    try:
+        rows = await _external_flow_rows(db, int(ep_at.replace(tzinfo=timezone.utc).timestamp() * 1000))
+        led = (await db.execute(select(InvestorLedger.type, InvestorLedger.amount).where(InvestorLedger.created_at >= ep_at))).all()
+    except Exception as _e:
+        logger.warning(f"[NAV_FLOW] unbooked check skipped: {str(_e)[:100]}")
+        return None
+    booked = sum(float(a or 0) for t, a in led if t == "DEPOSIT") - sum(float(a or 0) for t, a in led if t in ("WITHDRAW", "CASHOUT"))
+    gap = unbooked_flow(sum(a for _, a in rows), booked, reference_equity)
+    if gap is not None and _NAV_UNBOOKED["usd"] != gap:
+        logger.warning(f"[NAV_FLOW_UNBOOKED] outside money ${gap:+,.2f} does not match the ledger: if it is a real deposit or withdrawal, book it, or NAV reads it as profit / loss")
+    _NAV_UNBOOKED.update(usd=gap)
+    return gap
+
+
 async def _nav_epoch_startup_backfill(db: AsyncSession) -> bool:
     """One-time rule for funds that emptied BEFORE this code existed (the Oct-21 live delete): no shares, no epoch,
     but old snapshots still on the chart -> start the history now. Re-runs are no-ops once an epoch exists. The
@@ -13536,6 +13677,7 @@ async def list_investors(db: AsyncSession = Depends(get_db)):
         "portfolio_value": round(portfolio_value, 2),
         "nav_history": nav_history,
         "nav_high_water": round(high_water, 6),
+        "nav_unbooked_usd": _NAV_UNBOOKED.get("usd"),                          # (422) live outside money that does not match the ledger
         "nav_epoch_start": _ep_day,                                            # 📈 (337) None = no epoch (whole history)
         "nav_epoch_started_at": (_ep_at.isoformat() + "Z") if _ep_at else None,
         "reserve": _reserve,
@@ -13650,8 +13792,10 @@ async def investor_deposit(body: InvestorDeposit, db: AsyncSession = Depends(get
         raise HTTPException(503, "NAV unavailable — refusing to price share issuance (retry shortly)")
     new_shares = body.amount / nav
     if getattr(body, "preview", False):          # 📈 (337 I4) dry run — nothing written
-        return {"ok": True, "preview": True, "new_shares": round(new_shares, 6), "nav": round(nav, 6),
-                "nav_start_warning": await _nav_start_warning_for(db, body.amount)}
+        _w = await _nav_start_warning_for(db, body.amount)
+        if trading_engine.is_paper_mode:   # (422) a Settings top-up already mints: both would count the same money twice
+            _w = ((_w + " ") if _w else "") + "Paper: this adds shares without adding paper money. To add capital use Paper Balance in Settings, which mints the shares itself; do not do both."
+        return {"ok": True, "preview": True, "new_shares": round(new_shares, 6), "nav": round(nav, 6), "nav_start_warning": _w}
     inv.shares += new_shares
     inv.total_deposited += body.amount
     await db.flush()
@@ -14133,8 +14277,42 @@ async def update_config(config_update: ConfigUpdate):
         if old_val != new_val:
             changes.append({"field": key, "old": str(old_val), "new": str(new_val)})
 
+    # (422) a paper top-up must not read as profit: price it BEFORE the equity moves, mint after the save
+    _pf = 0.0
+    for _k in ("paper_balance", "paper_bnb_initial_usd"):
+        try:
+            _pf += float(new_flat.get(_k) or 0) - float(old_flat.get(_k) or 0)
+        except (TypeError, ValueError):
+            pass
+    _pf_nav = None
+    if abs(_pf) >= 0.005 and trading_engine.is_paper_mode:
+        from services.nav_flows import prorata_mint
+        try:
+            async with AsyncSessionLocal() as _pdb:
+                if (await _get_total_shares(_pdb)) > _NAV_SHARES_EPS:
+                    _pf_nav = await _get_nav_per_share(_pdb)
+                    if _pf_nav <= 0:
+                        raise ValueError(f"NAV {_pf_nav}")
+                    prorata_mint({i.id: i.shares for i in (await _pdb.execute(select(Investor))).scalars().all() if i.shares > _NAV_SHARES_EPS}, _pf, _pf_nav)
+        except Exception as _pe:   # never let capital move without shares: nothing is saved
+            logger.error(f"[NAV_TOPUP_UNPRICED] paper ${_pf:+,.2f}: {_pe}")
+            raise HTTPException(status_code=503, detail=f"Configuration NOT saved: the paper balance change could not be priced into shares ({str(_pe)[:80]})")
+
     # Save
     if save_trading_config(new_config):
+        if _pf_nav is not None and _pf_nav > 0:
+            try:
+                async with _investor_lock:
+                    async with AsyncSessionLocal() as _pdb:
+                        if await _paper_topup_mint(_pdb, _pf, _pf_nav, f"paper top-up ${_pf:+,.2f}: shares at NAV {_pf_nav:.6f} (DL 422)"):
+                            await locked_commit(_pdb)
+                    # shares and equity move together: no await between the mint's commit and the new config
+                    import config as _cfg_mod
+                    _cfg_mod.trading_config = new_config
+                    _paper_book_invalidate()
+                logger.info(f"[NAV_TOPUP] paper ${_pf:+,.2f} minted at NAV {_pf_nav:.6f}")
+            except Exception as _pe:
+                logger.error(f"[NAV_TOPUP_UNMINTED] a paper top-up of ${_pf:+,.2f} moved equity without shares: {_pe}")
         # Log changes to DB
         if changes:
             try:

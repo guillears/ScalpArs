@@ -3395,43 +3395,8 @@ class TradingEngine:
         for order in candidates:
             if not order.close_reason or not order.closed_at:
                 continue
-            # Jun 14: strip FLIP_ (then FL_) so flip exits resolve to base reason.
-            _reason_base = _rh_strip(order.close_reason)   # 🩹 Oct-2 recovery hold (same rule as the live registration)
-            if _reason_base.startswith("FLIP_"):
-                _reason_base = _reason_base[5:]
-            if _reason_base.startswith("FL_"):
-                _reason_base = _reason_base[3:]
-            if _reason_base.startswith("BR_"):  # Aug 21 gate 57: bull-run sleeve reasons
-                _reason_base = _reason_base[3:]
-            _reason_base = _rh_strip(_reason_base)   # FL_RH_x → x
-            # May 7: added EMA13_CROSS_EXIT and EMA_STACK_CROSS_EXIT to recovery
-            # whitelist. Without them, EMA13/EMA_STACK trades that spanned a
-            # bot restart never got post_exit_peak_pnl written → silently
-            # missing from Post-Exit Regret Deep Dive table. Live registration
-            # whitelist (line ~3171) already had these; recovery had drifted.
-            # May 19: same drift caught for FAST_EXIT. Live whitelist (line ~3171)
-            # had FAST_EXIT; this recovery path didn't. Added now to align.
-            # May 21: added PATTERN_FIXED_TP/SL to recovery whitelist (matches live
-            # whitelist at ~line 3663). Without this, Pattern Cell Ship rule trades
-            # that close + span a bot restart wouldn't get post_exit_peak_pnl
-            # tracked → silently missing from Post-Exit Regret Deep Dive.
-            if not _reason_base.startswith(RH_STOP_CLASS) and not (_reason_base.startswith("BREAKEVEN_EXIT") or _reason_base.startswith("SIGNAL_LOST") or
-                    _reason_base.startswith("TICK_MOMENTUM_EXIT") or _reason_base.startswith("RSI_MOMENTUM_EXIT") or
-                    _reason_base.startswith("RSI_HANDOFF_EXIT") or _reason_base.startswith("EMA13_CROSS_EXIT") or
-                    _reason_base.startswith("EMA_STACK_CROSS_EXIT") or _reason_base.startswith("STOP_LOSS") or
-                    _reason_base.startswith("REGIME_CHANGE") or _reason_base.startswith("TRAILING_STOP") or _reason_base.startswith("LADDER_FLOOR") or
-                    _reason_base.startswith("RUNNER_TRAIL") or
-                    _reason_base.startswith("MOMENTUM_EXIT") or _reason_base.startswith("SLOPE_EXIT") or
-                    _reason_base.startswith("NO_EXPANSION") or _reason_base.startswith("RECOVERED") or
-                    _reason_base.startswith("DEEP_STOP") or _reason_base.startswith("EMERGENCY_SL") or
-                    _reason_base.startswith("FAST_EXIT") or
-                    _reason_base.startswith("ATR_FIXED_TP") or
-                    _reason_base.startswith("HARD_TP") or  # Jul 20: hard TP cap — regret rows are its revert-gate data
-                    _reason_base.startswith("SPIKE_") or  # Jul 27: spike option-D reasons (SL/FLOOR/RSI_COOL) — post-exit rows are the BANANA-watch + fade-looseness read instruments
-
-                    _reason_base.startswith("PATTERN_FIXED_TP") or _reason_base.startswith("FRENZY_TP") or _reason_base.startswith("WILLY_LATE_TP") or _reason_base.startswith("WILLY_FLOOR") or _reason_base.startswith("PATTERN_FIXED_SL") or   # WILLY_FLOOR: historical V2-era rows (floor removed, DL 358)
-                    # Jun 14: Flip Entry exits — keep post-exit tracking alive across restart
-                    _reason_base.startswith("FLIP_")):
+            # (DECISION_LOG 419) same as the live registration: every exit name is tracked
+            if not order.exit_price:
                 continue
 
             closed_utc = order.closed_at if order.closed_at.tzinfo else order.closed_at.replace(tzinfo=None)
@@ -17900,6 +17865,10 @@ class TradingEngine:
                             ]
                         if (order.entry_strategy or '') == "FRENZY_WILLY":   # 🔒 (251) the hold ended (exit-retry path)
                             self._wh_spawn(self._willy_hold_flush(drop_wid=order.id))
+                        try:
+                            self._register_post_exit_tracking(order, order.close_reason)   # (DECISION_LOG 419) this path too: every exit name is tracked
+                        except Exception as _pe_reg_err:
+                            logger.error(f"[POST_EXIT_REG_FAILED] {order.pair}: {_pe_reg_err}")
                         return order
                 except Exception as e:
                     logger.error(f"[EXTERNAL_CLOSE] {order.pair}: reconcile check failed: {e}")
@@ -18660,7 +18629,7 @@ class TradingEngine:
         return order
 
     def _register_post_exit_tracking(self, order: Order, reason: str):
-        """Register a BE or Signal Lost exit trade for post-exit price tracking (regret metric)."""
+        """Register any closed trade for post-exit price tracking (regret metric, DECISION_LOG 419: every exit name)."""
         tc = config.trading_config
         if not getattr(tc, 'post_exit_tracking_enabled', False):
             return
@@ -18674,8 +18643,8 @@ class TradingEngine:
         if _reason_base.startswith("BR_"):  # Aug 21 gate 57: bull-run sleeve reasons (BR_STOP_LOSS → STOP_LOSS etc.)
             _reason_base = _reason_base[3:]
         _reason_base = _rh_strip(_reason_base)   # FL_RH_x → x
-        # WILLY_FLOOR below: historical only (🎲² DL 356 V2 floor, removed by DL 358 — no new row carries it)
-        if not _reason_base.startswith(RH_STOP_CLASS) and not (_reason_base.startswith("BREAKEVEN_EXIT") or _reason_base.startswith("SIGNAL_LOST") or _reason_base.startswith("TICK_MOMENTUM_EXIT") or _reason_base.startswith("RSI_MOMENTUM_EXIT") or _reason_base.startswith("RSI_HANDOFF_EXIT") or _reason_base.startswith("EMA13_CROSS_EXIT") or _reason_base.startswith("EMA_STACK_CROSS_EXIT") or _reason_base.startswith("STOP_LOSS") or _reason_base.startswith("REGIME_CHANGE") or _reason_base.startswith("TRAILING_STOP") or _reason_base.startswith("LADDER_FLOOR") or _reason_base.startswith("RUNNER_TRAIL") or _reason_base.startswith("MOMENTUM_EXIT") or _reason_base.startswith("SLOPE_EXIT") or _reason_base.startswith("NO_EXPANSION") or _reason_base.startswith("RECOVERED") or _reason_base.startswith("DEEP_STOP") or _reason_base.startswith("EMERGENCY_SL") or _reason_base.startswith("FAST_EXIT") or _reason_base.startswith("ATR_FIXED_TP") or _reason_base.startswith("HARD_TP") or _reason_base.startswith("SPIKE_") or _reason_base.startswith("PATTERN_FIXED_TP") or _reason_base.startswith("FRENZY_TP") or _reason_base.startswith("WILLY_LATE_TP") or _reason_base.startswith("WILLY_FLOOR") or _reason_base.startswith("PATTERN_FIXED_SL") or _reason_base.startswith("BACKSTOP_STOP")):
+        # (DECISION_LOG 419) every exit name is tracked: no whitelist, a new close reason can never drop out of Post-Exit Regret again
+        if not order.exit_price:
             return
         minutes = getattr(tc, 'post_exit_tracking_minutes', 45)
         tracker = websocket_tracker.get_tracker(order.pair)

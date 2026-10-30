@@ -1827,7 +1827,7 @@
                     <div class="overflow-x-auto"><table class="w-full text-xs"><thead><tr class="text-gray-400 border-b border-white/10">
                         <th class="px-2 py-1 text-left">Pair</th><th class="px-2 py-1 text-left">Spike (local)</th><th class="px-2 py-1 text-right">Hours</th><th class="px-2 py-1 text-right">Gain since spike</th><th class="px-2 py-1 text-right">Off peak</th><th class="px-2 py-1 text-right">vs avg price</th><th class="px-2 py-1 text-right">Volume ×</th><th class="px-2 py-1 text-right">ATR 5m</th><th class="px-2 py-1 text-right">24 h vol</th><th class="px-2 py-1 text-left">Long status</th><th class="px-2 py-1 text-left">Last setup</th>
                     </tr></thead><tbody id="frenzy-flags-body" class="divide-y divide-white/5"><tr><td colspan="11" class="px-3 py-3 text-center text-gray-500">—</td></tr></tbody></table></div>
-                    <h4 class="text-xs font-semibold text-orange-300 mt-4 mb-1">🔥 FRENZY Fills (FRENZY_LONG · FRENZY_WIDE · FRENZY_LITE · FRENZY_WILLY) · 🔁 FRENZY_LITE_RETRY</h4>
+                    <h4 class="text-xs font-semibold text-orange-300 mt-4 mb-1">🔥 FRENZY Fills (FRENZY_LONG · FRENZY_LITE · FRENZY_LITE_RETRY · FRENZY_WILLY · FRENZY_WILLY_HT · FLATBASE_SHORT)</h4>
                     <div class="overflow-x-auto"><table class="w-full text-xs"><thead><tr class="text-gray-400 border-b border-white/10">
                         <th class="px-2 py-1 text-left">Cohort</th><th class="px-2 py-1 text-right">N</th><th class="px-2 py-1 text-right">WR%</th><th class="px-2 py-1 text-right">avg%</th><th class="px-2 py-1 text-right">Total$</th><th class="px-2 py-1 text-right">avgPk%</th><th class="px-2 py-1 text-right">Episodes</th><th class="px-2 py-1 text-left">Review</th>
                     </tr></thead><tbody id="frenzy-body" class="divide-y divide-white/5"><tr><td colspan="8" class="px-3 py-3 text-center text-gray-500">—</td></tr></tbody></table></div>
@@ -1835,10 +1835,6 @@
                     <div class="overflow-x-auto"><table class="w-full text-xs"><thead><tr class="text-gray-400 border-b border-white/10">
                         <th class="px-2 py-1 text-left">Cohort</th><th class="px-2 py-1 text-right">N</th><th class="px-2 py-1 text-right">WR%</th><th class="px-2 py-1 text-right">Σ P&amp;L %</th><th class="px-2 py-1 text-right">avg%</th><th class="px-2 py-1 text-right">Total$</th><th class="px-2 py-1 text-right">TP used</th><th class="px-2 py-1 text-left">Lifetime</th>
                     </tr></thead><tbody id="lite-c-body" class="divide-y divide-white/5"><tr><td colspan="8" class="px-3 py-3 text-center text-gray-500">—</td></tr></tbody></table></div>
-                    <h4 class="text-xs font-semibold text-orange-300 mt-4 mb-1">🔥 FRENZY Short Observations (no trade — closes below EMA50 / EMA200 on flagged pairs)</h4>
-                    <div class="overflow-x-auto max-h-72 overflow-y-auto"><table class="w-full text-xs"><thead class="sticky top-0 bg-[#12121a]"><tr class="text-gray-400 border-b border-white/10">
-                        <th class="px-2 py-1 text-left">Bar close (local)</th><th class="px-2 py-1 text-left">Pair</th><th class="px-2 py-1 text-right">Line</th><th class="px-2 py-1 text-right">Price</th><th class="px-2 py-1 text-right">Hours</th><th class="px-2 py-1 text-right">Run</th><th class="px-2 py-1 text-right">Off peak</th><th class="px-2 py-1 text-right">vs avg price</th><th class="px-2 py-1 text-right">Volume ×</th><th class="px-2 py-1 text-right">ATR 5m</th><th class="px-2 py-1 text-right">BTC RSI</th><th class="px-2 py-1 text-right">Bull / Bear %</th>
-                    </tr></thead><tbody id="frenzy-breaks-body" class="divide-y divide-white/5"><tr><td colspan="12" class="px-3 py-3 text-center text-gray-500">—</td></tr></tbody></table></div>
                 </div>
 
                 <!-- Entry Extension / Late Entry Risk (May 13 PM) -->
@@ -2919,6 +2915,72 @@
                     </div>
                 </div>
                 
+                <!-- Post-Exit Regret Deep Dive -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Post-Exit Regret Deep Dive</h3>
+                    <p class="text-xs text-gray-500 mb-3">What happened to price after every exit (45min tracking window). All times measured from exit.</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium">Reason</th>
+                                    <th class="px-3 py-2 font-medium text-center">#</th>
+                                    <th class="px-3 py-2 font-medium text-center">Dir</th>
+                                    <th class="px-3 py-2 font-medium text-center">Avg Duration</th>
+                                    <th class="px-3 py-2 font-medium text-center text-amber-400" title="May 22: Avg entry_atr_pct% across this bucket. Direct view of the volatility character. ATR ≥0.47% means sl_atr_multiplier=1.5 widens base SL.">AvgATR%</th>
+                                    <th class="px-3 py-2 font-medium text-center text-amber-400" title="May 22: ATR-SL at 1.5× = -(AvgATR × 1.5). Compare to AvgClose: if ATR-SL is wider (more negative) than -0.7% base SL, ATR widening would have fired here. If ATR-SL is closer to zero than AvgClose, the trade still got stopped because the move was real (not noise).">ATR-SL@1.5×</th>
+                                    <th class="px-3 py-2 font-medium text-center">Avg Close %</th>
+                                    <th class="px-3 py-2 font-medium text-center text-emerald-400">Avg Post Peak %</th>
+                                    <th class="px-3 py-2 font-medium text-center text-emerald-400">Peak Min</th>
+                                    <th class="px-3 py-2 font-medium text-center text-cyan-300" title="May 31: Leash Shadow stretch-trail counterfactual (≤0.5× peak stretch) — the AGGRESSIVE recoverable-regret ceiling, running the actual post-exit path (respects the dip, unlike Post Peak). Armed post-deploy trades only.">Strpk %</th>
+                                    <th class="px-3 py-2 font-medium text-center text-cyan-300" title="May 31: avg minutes from open to the strpk exit. Compare to Duration: fired AFTER the real close = post (held the runner); BEFORE = pre (exited earlier).">Strpk Min</th>
+                                    <th class="px-3 py-2 font-medium text-center text-cyan-300" title="May 31: Leash Shadow stretch-to-entry counterfactual (≤ entry stretch) — the CONSERVATIVE recoverable-regret floor. Read Close% → [Stren, Strpk] band → Post Peak ceiling.">Stren %</th>
+                                    <th class="px-3 py-2 font-medium text-center text-cyan-300" title="May 31: avg minutes from open to the stren exit (vs Duration = pre/post-close).">Stren Min</th>
+                                    <th class="px-3 py-2 font-medium text-center text-red-400">Avg Post Trough %</th>
+                                    <th class="px-3 py-2 font-medium text-center text-red-400">Trough Min</th>
+                                    <th class="px-3 py-2 font-medium text-center text-yellow-400">Peak First %</th>
+                                    <th class="px-3 py-2 font-medium text-center text-sky-400">Avg Final %</th>
+                                    <th class="px-3 py-2 font-medium text-center text-orange-400">Sig Lost %</th>
+                                    <th class="px-3 py-2 font-medium text-center text-orange-400">Sig Lost Min</th>
+                                    <th class="px-3 py-2 font-medium text-center text-orange-400">P&L @ Sig Lost</th>
+                                    <th class="px-3 py-2 font-medium text-center text-purple-400">Reachable Peak %</th>
+                                    <th class="px-3 py-2 font-medium text-center text-cyan-400">RSI Exit %</th>
+                                    <th class="px-3 py-2 font-medium text-center text-cyan-400">RSI Exit Min</th>
+                                    <th class="px-3 py-2 font-medium text-center text-cyan-400">RSI Exit P&L</th>
+                                    <th class="px-3 py-2 font-medium text-center text-fuchsia-400" title="May 16: % of trades where EMA13 cross-against-direction would have fired post-exit (strict mode if configured)">EMA13X %</th>
+                                    <th class="px-3 py-2 font-medium text-center text-fuchsia-400" title="Avg minutes after exit when EMA13 cross would have fired">EMA13X Min</th>
+                                    <th class="px-3 py-2 font-medium text-center text-fuchsia-400" title="Avg P&L % at the moment EMA13 cross would have fired">EMA13X P&L</th>
+                                    <th class="px-3 py-2 font-medium text-center text-violet-400" title="May 23: avg minutes after exit when BTC regime first stopped supporting trade direction. '-' = regime never flipped in tracking window (= original exit was structurally correct, holding would have ridden into post-exit trough).">RegFlipMin</th>
+                                    <th class="px-3 py-2 font-medium text-center text-violet-400" title="May 23: avg P&L at the regime-flip moment. Compare vs Close%: if RegFlip P&L > Close%, holding to regime would have been better than the current exit. Combined with RegFlipMin: short Min + better P&L = consider switching exit logic to regime-based.">RegFlip P&L</th>
+                                    <th class="px-3 py-2 font-medium text-center text-amber-400" title="% of trades that would have recovered to -0.20% P&L if held">Rec -0.20%</th>
+                                    <th class="px-3 py-2 font-medium text-center text-amber-400" title="% of trades that would have recovered to -0.10% P&L if held">Rec -0.10%</th>
+                                    <th class="px-3 py-2 font-medium text-center text-amber-400" title="% of trades that would have recovered to -0.05% P&L if held">Rec -0.05%</th>
+                                    <th class="px-3 py-2 font-medium text-center text-amber-400" title="% of trades where post-exit price moved +0.05% from exit">Rec 0.05%</th>
+                                    <th class="px-3 py-2 font-medium text-center text-amber-400" title="% of trades where post-exit price moved +0.10% from exit">Rec 0.10%</th>
+                                    <th class="px-3 py-2 font-medium text-center text-emerald-400" title="% of trades where the entry signal came back within 45min after exit">SigReg%</th>
+                                    <th class="px-3 py-2 font-medium text-center text-emerald-400" title="Avg minutes until signal regained">RegMin</th>
+                                    <th class="px-3 py-2 font-medium text-center text-emerald-400" title="Avg P&L% when signal was regained">RegP&L</th>
+                                    <th class="px-3 py-2 font-medium text-center text-rose-400" title="Avg deepest P&L% reached before signal was regained (floor before recovery)">Floor@SigReg</th>
+                                    <th class="px-3 py-2 font-medium text-center text-pink-400" title="% of trades WITHOUT signal regain that recovered to -0.20% P&L">NR -0.20%</th>
+                                    <th class="px-3 py-2 font-medium text-center text-pink-400" title="% of trades WITHOUT signal regain that recovered to -0.10% P&L">NR -0.10%</th>
+                                    <th class="px-3 py-2 font-medium text-center text-pink-400" title="% of trades WITHOUT signal regain that recovered to -0.05% P&L">NR -0.05%</th>
+                                    <th class="px-3 py-2 font-medium text-right text-violet-400" title="Avg price vs EMA5 distance at exit (positive = favorable side)">EMA5 Dist</th>
+                                    <th class="px-3 py-2 font-medium text-right text-violet-400" title="Avg EMA5 slope at exit">EMA5 Slope</th>
+                                    <th class="px-3 py-2 font-medium text-center text-violet-400" title="% of trades where price crossed EMA5 during trade">EMA5 X%</th>
+                                </tr>
+                            </thead>
+                            <tbody id="post-exit-regret-body" class="divide-y divide-white/5">
+                                <tr><td colspan="38" class="px-3 py-4 text-center text-gray-500">No post-exit data yet</td></tr>
+                            </tbody>
+                        </table>
+                        <p class="text-xs text-gray-500 mt-3 leading-relaxed">
+                            <span class="text-rose-400">Floor@SigReg</span> — Deepest P&L reached before signal recovered. If above SL config, the hard stop survives until recovery.
+                            <span class="text-pink-400 ml-3">NR columns</span> — Recovery rates for trades where signal did NOT come back. Use to evaluate exiting at a tighter level (e.g. -0.20%) instead of waiting for SL.
+                        </p>
+                        <p id="post-exit-untracked" class="text-xs text-gray-500 mt-1"></p>
+                    </div>
+                </div>
+
                 <!-- 🩹 Recovery Hold (Oct 2 · DECISION_LOG 172) -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-teal-300 mb-1">🩹 Recovery Hold</h3>
@@ -9122,10 +9184,16 @@
             for (const r of rows) out.push(`${(r.row || '').padEnd(70)} ${String(r.n).padStart(4)} ${(r.wr != null ? r.wr.toFixed(1) : '-').padStart(6)} ${sg(r.sum_pct, 2).padStart(8)} ${sg(r.avg_pct, 3).padStart(8)} ${('$' + (r.total_usd || 0).toFixed(2)).padStart(10)} ${String(r.tp_used || '-').padStart(8)}  ${r.note || ''}`);
             return out;
         }
+        function fzToggleCoins(es) {   // (DECISION_LOG 419) per-coin rows are collapsed by default; the choice survives the table's refresh
+            window._fzCoinOpen = window._fzCoinOpen || {};
+            window._fzCoinOpen[es] = !window._fzCoinOpen[es];
+            document.querySelectorAll(`tr[data-fz-coin="${es}"]`).forEach(tr => tr.classList.toggle('hidden', !window._fzCoinOpen[es]));
+            const b = document.querySelector(`tr[onclick="fzToggleCoins('${es}')"] td`); if (b) b.textContent = b.textContent.replace(/[▸▾]/, window._fzCoinOpen[es] ? '▾' : '▸');
+        }
         function frenzyReportLines(perf, hr2) {
             const out = [];
             const sg = (v, d) => (v != null ? ((v >= 0 ? '+' : '') + Number(v).toFixed(d)) : '-');
-            if (!((perf.frenzy_rows && perf.frenzy_rows.length) || (perf.frenzy_flags && perf.frenzy_flags.length) || (perf.frenzy_breaks && perf.frenzy_breaks.length) || perf.frenzy_monitor)) return out;
+            if (!((perf.frenzy_rows && perf.frenzy_rows.length) || (perf.frenzy_flags && perf.frenzy_flags.length) || perf.frenzy_monitor)) return out;
             out.push(`\n${hr2}`);
             out.push('## 🔥 FRENZY Sleeve (pairs in a volume frenzy — FRENZY_LONG armed · shorts observe-only — Oct 2)\n');
             out.push(`  ${frenzyMonitorStr(perf.frenzy_monitor)}`);
@@ -9134,15 +9202,10 @@
                 out.push(`${'Pair'.padEnd(16)} ${'Spike UTC'.padEnd(12)} ${'Hrs'.padStart(5)} ${'Gain%'.padStart(7)} ${'OffPk%'.padStart(7)} ${'vsAvg%'.padStart(7)} ${'Vol×'.padStart(6)} ${'ATR%'.padStart(5)} ${'Vol24h$M'.padStart(9)}  Long status / last setup`);
                 for (const f of perf.frenzy_flags) out.push(`${(frenzyMark(f) + ' ' + f.pair).padEnd(16)} ${(f.spike || '').padEnd(12)} ${(f.hours != null ? f.hours.toFixed(1) : '-').padStart(5)} ${sg(f.gain_pct, 0).padStart(7)} ${sg(f.off_peak_pct, 0).padStart(7)} ${sg(f.vs_vwap_pct, 1).padStart(7)} ${(f.vol_mult != null ? f.vol_mult.toFixed(0) : '-').padStart(6)} ${(f.atr_pct != null ? f.atr_pct.toFixed(2) : '-').padStart(5)} ${(f.volume_24h != null ? (f.volume_24h / 1e6).toFixed(0) : '-').padStart(9)}  ${frenzyReportStatus(f)}${f.last_fire ? ' | ' + frenzyLastFireLocal(f.last_fire) : ''}${f.willy_last ? ' | 🎲 ' + frenzyLastFireLocal(f.willy_last) : ''}${f.willy_pending ? ' | 🟥 ' + frenzyWillyPendingText(f) : ''}${f.lite_retry_last ? ' | 🔁 ' + frenzyLastFireLocal(f.lite_retry_last) : ''}${f.stale ? ' (not read this bar)' : ''}`);
             } else out.push('  none');
-            out.push('\n## 🔥 FRENZY Fills (FRENZY_LONG · FRENZY_WIDE · FRENZY_LITE · FRENZY_WILLY) · 🔁 FRENZY_LITE_RETRY\n');
+            out.push('\n## 🔥 FRENZY Fills (FRENZY_LONG · FRENZY_LITE · FRENZY_LITE_RETRY · FRENZY_WILLY · FRENZY_WILLY_HT · FLATBASE_SHORT)\n');
             if (perf.frenzy_rows && perf.frenzy_rows.length) {
                 out.push(`${'Cohort'.padEnd(74)} ${'N'.padStart(4)} ${'WR%'.padStart(6)} ${'avg%'.padStart(8)} ${'Total$'.padStart(10)} ${'avgPk%'.padStart(7)} ${'Epis'.padStart(5)}  Review`);
                 for (const r of perf.frenzy_rows) out.push(`${(r.row || '').padEnd(74)} ${String(r.n).padStart(4)} ${(r.wr != null ? r.wr.toFixed(1) : '-').padStart(6)} ${sg(r.avg_pct, 3).padStart(8)} ${('$' + (r.total_usd || 0).toFixed(2)).padStart(10)} ${sg(r.avg_peak, 2).padStart(7)} ${String(r.episodes ?? '-').padStart(5)}  ${r.gate || ''}`);
-            } else out.push('  none');
-            out.push('\n## 🔥 FRENZY Short Observations (no trade — closes below EMA50 / EMA200 on flagged pairs)\n');
-            if (perf.frenzy_breaks && perf.frenzy_breaks.length) {
-                out.push(`${'Bar close UTC'.padEnd(13)} ${'Pair'.padEnd(14)} ${'Line'.padStart(6)} ${'Price'.padStart(11)} ${'Hrs'.padStart(5)} ${'Run%'.padStart(6)} ${'OffPk%'.padStart(7)} ${'vsAvg%'.padStart(7)} ${'Vol×'.padStart(6)} ${'ATR%'.padStart(5)} ${'BTCrsi'.padStart(6)} ${'Bull/Bear'.padStart(9)}`);
-                for (const b of perf.frenzy_breaks) out.push(`${(b.at || '').padEnd(13)} ${(b.pair || '').padEnd(14)} ${('EMA' + b.line).padStart(6)} ${String(b.price ?? '-').padStart(11)} ${(b.hours != null ? b.hours.toFixed(1) : '-').padStart(5)} ${sg(b.run_pct, 0).padStart(6)} ${sg(b.off_peak_pct, 0).padStart(7)} ${sg(b.vs_vwap_pct, 1).padStart(7)} ${(b.vol_mult != null ? b.vol_mult.toFixed(0) : '-').padStart(6)} ${(b.atr_pct != null ? b.atr_pct.toFixed(2) : '-').padStart(5)} ${(b.btc_rsi != null ? b.btc_rsi.toFixed(1) : '-').padStart(6)} ${((b.bull_pct != null ? b.bull_pct.toFixed(0) : '-') + '/' + (b.bear_pct != null ? b.bear_pct.toFixed(0) : '-')).padStart(9)}`);
             } else out.push('  none');
             out.push('  No automatic off. Review at 40 closed fills: keep read = mean > 0 after costs AND >= 12 winners (DECISION_LOG 176).');
             return out;
@@ -10786,6 +10849,49 @@
                 lines.push(`${'ALL WINNERS'.padEnd(18)} ${String(allWinCount).padEnd(5)} ${'100%'.padEnd(7)} ${awDir.padEnd(10)} ${''.padEnd(14)} ${((allWinTrough/allWinCount).toFixed(4)+'%').padStart(11)} ${(allWinWorst.toFixed(4)+'%').padStart(9)} ${((allWinPeak/allWinCount).toFixed(4)+'%').padStart(10)} ${((allWinClose/allWinCount).toFixed(4)+'%').padStart(10)} ${((allWinDrop/allWinCount).toFixed(4)+'%').padStart(9)} ${'-'.padStart(9)} ${'-'.padStart(10)} ${('$'+(allWinTotal.toFixed(2))).padStart(11)} ${''.padEnd(10)} ${awSig.padEnd(8)}`);
             }
 
+            if ((perf.post_exit_regret_deep_dive && perf.post_exit_regret_deep_dive.length > 0) || (perf.post_exit_untracked && perf.post_exit_untracked.length > 0)) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Post-Exit Regret Deep Dive\n');
+                lines.push(`${'Reason'.padEnd(20)} ${'#'.padEnd(4)} ${'Dir'.padEnd(8)} ${'Duration'.padEnd(10)} ${'AvgATR%'.padStart(8)} ${'ATR-SL@1.5x'.padStart(10)} ${'Close%'.padStart(9)} ${'PostPeak%'.padStart(10)} ${'PeakMin'.padStart(8)} ${'Strpk%'.padStart(9)} ${'StrpkMin'.padStart(9)} ${'Stren%'.padStart(9)} ${'StrenMin'.padStart(9)} ${'PostTrgh%'.padStart(10)} ${'TrghMin'.padStart(8)} ${'PkFirst%'.padStart(9)} ${'Final%'.padStart(9)} ${'SigLost%'.padStart(9)} ${'SLMin'.padStart(7)} ${'P&L@SL'.padStart(9)} ${'ReachPk%'.padStart(9)} ${'RSIEx%'.padStart(8)} ${'RSIMin'.padStart(7)} ${'RSIP&L'.padStart(9)} ${'EMA13X%'.padStart(8)} ${'EMA13XMin'.padStart(9)} ${'EMA13XP&L'.padStart(10)} ${'RegFlMin'.padStart(9)} ${'RegFlP&L'.padStart(10)} ${'R-.20%'.padStart(8)} ${'R-.10%'.padStart(8)} ${'R-.05%'.padStart(8)} ${'R+.05%'.padStart(8)} ${'R+.10%'.padStart(8)} ${'SigReg%'.padStart(8)} ${'RegMin'.padStart(7)} ${'RegP&L'.padStart(9)} ${'Flr@SR'.padStart(9)} ${'NR-.20%'.padStart(8)} ${'NR-.10%'.padStart(8)} ${'NR-.05%'.padStart(8)} ${'EMA5Dst'.padStart(10)} ${'EMA5Slp'.padStart(10)} ${'EMA5X%'.padStart(8)}`);
+                // Null-safe formatters — essential because FL_RECOVERED / FL_DEEP_STOP /
+                // FL_EMERGENCY_SL / FL_NO_EXPANSION rows may have null fields if none of the
+                // trades in the group reached a post-exit peak/trough/signal-loss event.
+                const _perFp = (v) => v != null ? (v >= 0 ? '+' : '') + v.toFixed(4) + '%' : '-';
+                const _perFm = (v) => v != null ? v.toFixed(1) + 'm' : '-';
+                const _perFpct = (v) => v != null ? v.toFixed(1) + '%' : '-';
+                for (const r of (perf.post_exit_regret_deep_dive || [])) {
+                    const dirStr = `${r.longs}L/${r.shorts}S`;
+                    const slMin = r.avg_sig_lost_min != null ? r.avg_sig_lost_min.toFixed(1) : '-';
+                    const slPnl = _perFp(r.avg_pnl_at_sig_lost);
+                    const reachPk = _perFp(r.avg_reachable_peak);
+                    const rsiExPct = _perFpct(r.rsi_exit_pct);
+                    const rsiExMin = r.avg_rsi_exit_min != null ? r.avg_rsi_exit_min.toFixed(1) : '-';
+                    const rsiExPnl = _perFp(r.avg_rsi_exit_pnl);
+                    const ema13xPct = _perFpct(r.ema13_cross_pct);
+                    const ema13xMin = r.avg_ema13_cross_min != null ? r.avg_ema13_cross_min.toFixed(1) : '-';
+                    const ema13xPnl = _perFp(r.avg_ema13_cross_pnl);
+                    const regFlMin = r.avg_regime_flip_min != null ? r.avg_regime_flip_min.toFixed(1) : '-';
+                    const regFlPnl = _perFp(r.avg_regime_flip_pnl);
+                    const recNeg020 = _perFpct(r.recovery_neg020_pct);
+                    const recNeg010 = _perFpct(r.recovery_neg010_pct);
+                    const recNeg005 = _perFpct(r.recovery_neg005_pct);
+                    const rec005 = _perFpct(r.recovery_005_pct);
+                    const rec010 = _perFpct(r.recovery_010_pct);
+                    const sigRegPct = _perFpct(r.sig_regained_pct);
+                    const sigRegMin = r.avg_sig_regained_min != null ? r.avg_sig_regained_min.toFixed(1) : '-';
+                    const sigRegPnl = _perFp(r.avg_pnl_at_sig_regained);
+                    const flrSR = r.avg_floor_before_sig_regain != null ? r.avg_floor_before_sig_regain.toFixed(4) + '%' : '-';
+                    const nrNeg020 = _perFpct(r.nr_rec_neg020_pct);
+                    const nrNeg010 = _perFpct(r.nr_rec_neg010_pct);
+                    const nrNeg005 = _perFpct(r.nr_rec_neg005_pct);
+                    const ema5Dst = _perFp(r.avg_exit_ema5_dist);
+                    const ema5Slp = _perFp(r.avg_exit_ema5_slope);
+                    const ema5X = _perFpct(r.exit_ema5_crossed_pct);
+                    lines.push(`${r.reason.padEnd(20)} ${String(r.count).padEnd(4)} ${dirStr.padEnd(8)} ${(r.avg_duration||'-').padEnd(10)} ${(r.avg_atr_pct != null ? r.avg_atr_pct.toFixed(3)+'%' : '   -  ').padStart(8)} ${(r.atr_sl_15x != null ? r.atr_sl_15x.toFixed(3)+'%' : '   -  ').padStart(10)} ${_perFp(r.avg_close_pnl).padStart(9)} ${_perFp(r.avg_post_peak).padStart(10)} ${_perFm(r.avg_peak_min).padStart(8)} ${_perFp(r.avg_strpk_pct).padStart(9)} ${_perFm(r.avg_strpk_min).padStart(9)} ${_perFp(r.avg_stren_pct).padStart(9)} ${_perFm(r.avg_stren_min).padStart(9)} ${_perFp(r.avg_post_trough).padStart(10)} ${_perFm(r.avg_trough_min).padStart(8)} ${_perFpct(r.peak_first_pct).padStart(9)} ${_perFp(r.avg_final_pnl).padStart(9)} ${_perFpct(r.sig_lost_pct).padStart(9)} ${slMin.padStart(7)} ${slPnl.padStart(9)} ${reachPk.padStart(9)} ${rsiExPct.padStart(8)} ${rsiExMin.padStart(7)} ${rsiExPnl.padStart(9)} ${ema13xPct.padStart(8)} ${ema13xMin.padStart(9)} ${ema13xPnl.padStart(10)} ${regFlMin.padStart(9)} ${regFlPnl.padStart(10)} ${recNeg020.padStart(8)} ${recNeg010.padStart(8)} ${recNeg005.padStart(8)} ${rec005.padStart(8)} ${rec010.padStart(8)} ${sigRegPct.padStart(8)} ${sigRegMin.padStart(7)} ${sigRegPnl.padStart(9)} ${flrSR.padStart(9)} ${nrNeg020.padStart(8)} ${nrNeg010.padStart(8)} ${nrNeg005.padStart(8)} ${ema5Dst.padStart(10)} ${ema5Slp.padStart(10)} ${ema5X.padStart(8)}`);
+                }
+                if (perf.post_exit_untracked && perf.post_exit_untracked.length) lines.push(`\nClosed with no post-exit data yet: ${perf.post_exit_untracked.map(u => `${u.reason} ${u.n}`).join(' · ')}`);
+            }
+
             if (perf.recovery_hold && perf.recovery_hold.n > 0) {   // 🩹 Oct 2 (DECISION_LOG 172)
                 const _rh = perf.recovery_hold; const _rg = (v, d) => v == null ? '-' : (v >= 0 ? '+' : '') + Number(v).toFixed(d);
                 lines.push(`\n${hr2}`);
@@ -11020,7 +11126,7 @@
                 lines.push(`  Sizing now: ${bearLevLabel(_bem?.lev_mult ?? window._cachedConfig?.thresholds?.bearrun_lev_mult ?? 0.05)} · ARM BAR (200, windows from 10-04 22:00): >=5 windows, >=3 positive AND sum>0 (window-mean pnl %) => lev x1.0 (manual) · 5x ROLLBACK (252): sum of window-mean pnl % over the first 3 complete 5x windows < 0 => lev x0.05 · KILL BAR (any size above the 1x probe, from fill 1): first 10 fills WR<=45% OR net<0, or 2 consecutive net-negative windows => toggle OFF (gate 60)`);
             }
 
-            lines.push(...frenzyReportLines(perf, hr2));   // 🔥 FRENZY Sleeve · Flagged Pairs · Fills · Short Observations
+            lines.push(...frenzyReportLines(perf, hr2));   // 🔥 FRENZY Sleeve · Flagged Pairs · Fills
             lines.push(...liteCReportLines(perf, hr2));   // 🎯 (DECISION_LOG 301) LITE C Tally
             lines.push(...manualBlockReportLines(perf, hr2));   // ⛔ (DECISION_LOG 343) Manual block state
 
@@ -12644,6 +12750,49 @@
                     lines.push(`${'ALL WINNERS'.padEnd(18)} ${String(allWinCount).padEnd(5)} ${'100%'.padEnd(7)} ${awDir.padEnd(10)} ${''.padEnd(14)} ${((allWinTrough/allWinCount).toFixed(4)+'%').padStart(11)} ${(allWinWorst.toFixed(4)+'%').padStart(9)} ${((allWinPeak/allWinCount).toFixed(4)+'%').padStart(10)} ${((allWinClose/allWinCount).toFixed(4)+'%').padStart(10)} ${((allWinDrop/allWinCount).toFixed(4)+'%').padStart(9)} ${'-'.padStart(9)} ${'-'.padStart(10)} ${('$'+(allWinTotal.toFixed(2))).padStart(11)} ${''.padEnd(10)} ${awSig.padEnd(8)}`);
                 }
 
+                if ((perf.post_exit_regret_deep_dive && perf.post_exit_regret_deep_dive.length > 0) || (perf.post_exit_untracked && perf.post_exit_untracked.length > 0)) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Post-Exit Regret Deep Dive\n');
+                    lines.push(`${'Reason'.padEnd(20)} ${'#'.padEnd(4)} ${'Dir'.padEnd(8)} ${'Duration'.padEnd(10)} ${'AvgATR%'.padStart(8)} ${'ATR-SL@1.5x'.padStart(10)} ${'Close%'.padStart(9)} ${'PostPeak%'.padStart(10)} ${'PeakMin'.padStart(8)} ${'Strpk%'.padStart(9)} ${'StrpkMin'.padStart(9)} ${'Stren%'.padStart(9)} ${'StrenMin'.padStart(9)} ${'PostTrgh%'.padStart(10)} ${'TrghMin'.padStart(8)} ${'PkFirst%'.padStart(9)} ${'Final%'.padStart(9)} ${'SigLost%'.padStart(9)} ${'SLMin'.padStart(7)} ${'P&L@SL'.padStart(9)} ${'ReachPk%'.padStart(9)} ${'RSIEx%'.padStart(8)} ${'RSIMin'.padStart(7)} ${'RSIP&L'.padStart(9)} ${'EMA13X%'.padStart(8)} ${'EMA13XMin'.padStart(9)} ${'EMA13XP&L'.padStart(10)} ${'RegFlMin'.padStart(9)} ${'RegFlP&L'.padStart(10)} ${'R-.20%'.padStart(8)} ${'R-.10%'.padStart(8)} ${'R-.05%'.padStart(8)} ${'R+.05%'.padStart(8)} ${'R+.10%'.padStart(8)} ${'SigReg%'.padStart(8)} ${'RegMin'.padStart(7)} ${'RegP&L'.padStart(9)} ${'Flr@SR'.padStart(9)} ${'NR-.20%'.padStart(8)} ${'NR-.10%'.padStart(8)} ${'NR-.05%'.padStart(8)} ${'EMA5Dst'.padStart(10)} ${'EMA5Slp'.padStart(10)} ${'EMA5X%'.padStart(8)}`);
+                    // Null-safe formatters — essential because FL_RECOVERED / FL_DEEP_STOP /
+                    // FL_EMERGENCY_SL / FL_NO_EXPANSION rows may have null fields if none of
+                    // the trades in the group reached a post-exit peak/trough/signal-loss event.
+                    const _perFp2 = (v) => v != null ? (v >= 0 ? '+' : '') + v.toFixed(4) + '%' : '-';
+                    const _perFm2 = (v) => v != null ? v.toFixed(1) + 'm' : '-';
+                    const _perFpct2 = (v) => v != null ? v.toFixed(1) + '%' : '-';
+                    for (const r of (perf.post_exit_regret_deep_dive || [])) {
+                        const dirStr = `${r.longs}L/${r.shorts}S`;
+                        const slMin = r.avg_sig_lost_min != null ? r.avg_sig_lost_min.toFixed(1) : '-';
+                        const slPnl = _perFp2(r.avg_pnl_at_sig_lost);
+                        const reachPk = _perFp2(r.avg_reachable_peak);
+                        const rsiExPct = _perFpct2(r.rsi_exit_pct);
+                        const rsiExMin = r.avg_rsi_exit_min != null ? r.avg_rsi_exit_min.toFixed(1) : '-';
+                        const rsiExPnl = _perFp2(r.avg_rsi_exit_pnl);
+                        const ema13xPct = _perFpct2(r.ema13_cross_pct);
+                        const ema13xMin = r.avg_ema13_cross_min != null ? r.avg_ema13_cross_min.toFixed(1) : '-';
+                        const ema13xPnl = _perFp2(r.avg_ema13_cross_pnl);
+                        const regFlMin = r.avg_regime_flip_min != null ? r.avg_regime_flip_min.toFixed(1) : '-';
+                        const regFlPnl = _perFp2(r.avg_regime_flip_pnl);
+                        const recNeg020 = _perFpct2(r.recovery_neg020_pct);
+                        const recNeg010 = _perFpct2(r.recovery_neg010_pct);
+                        const recNeg005 = _perFpct2(r.recovery_neg005_pct);
+                        const rec005 = _perFpct2(r.recovery_005_pct);
+                        const rec010 = _perFpct2(r.recovery_010_pct);
+                        const sigRegPct = _perFpct2(r.sig_regained_pct);
+                        const sigRegMin = r.avg_sig_regained_min != null ? r.avg_sig_regained_min.toFixed(1) : '-';
+                        const sigRegPnl = _perFp2(r.avg_pnl_at_sig_regained);
+                        const flrSR = r.avg_floor_before_sig_regain != null ? r.avg_floor_before_sig_regain.toFixed(4) + '%' : '-';
+                        const nrNeg020 = _perFpct2(r.nr_rec_neg020_pct);
+                        const nrNeg010 = _perFpct2(r.nr_rec_neg010_pct);
+                        const nrNeg005 = _perFpct2(r.nr_rec_neg005_pct);
+                        const ema5Dst = _perFp2(r.avg_exit_ema5_dist);
+                        const ema5Slp = _perFp2(r.avg_exit_ema5_slope);
+                        const ema5X = _perFpct2(r.exit_ema5_crossed_pct);
+                        lines.push(`${r.reason.padEnd(20)} ${String(r.count).padEnd(4)} ${dirStr.padEnd(8)} ${(r.avg_duration||'-').padEnd(10)} ${(r.avg_atr_pct != null ? r.avg_atr_pct.toFixed(3)+'%' : '   -  ').padStart(8)} ${(r.atr_sl_15x != null ? r.atr_sl_15x.toFixed(3)+'%' : '   -  ').padStart(10)} ${_perFp2(r.avg_close_pnl).padStart(9)} ${_perFp2(r.avg_post_peak).padStart(10)} ${_perFm2(r.avg_peak_min).padStart(8)} ${_perFp2(r.avg_strpk_pct).padStart(9)} ${_perFm2(r.avg_strpk_min).padStart(9)} ${_perFp2(r.avg_stren_pct).padStart(9)} ${_perFm2(r.avg_stren_min).padStart(9)} ${_perFp2(r.avg_post_trough).padStart(10)} ${_perFm2(r.avg_trough_min).padStart(8)} ${_perFpct2(r.peak_first_pct).padStart(9)} ${_perFp2(r.avg_final_pnl).padStart(9)} ${_perFpct2(r.sig_lost_pct).padStart(9)} ${slMin.padStart(7)} ${slPnl.padStart(9)} ${reachPk.padStart(9)} ${rsiExPct.padStart(8)} ${rsiExMin.padStart(7)} ${rsiExPnl.padStart(9)} ${ema13xPct.padStart(8)} ${ema13xMin.padStart(9)} ${ema13xPnl.padStart(10)} ${regFlMin.padStart(9)} ${regFlPnl.padStart(10)} ${recNeg020.padStart(8)} ${recNeg010.padStart(8)} ${recNeg005.padStart(8)} ${rec005.padStart(8)} ${rec010.padStart(8)} ${sigRegPct.padStart(8)} ${sigRegMin.padStart(7)} ${sigRegPnl.padStart(9)} ${flrSR.padStart(9)} ${nrNeg020.padStart(8)} ${nrNeg010.padStart(8)} ${nrNeg005.padStart(8)} ${ema5Dst.padStart(10)} ${ema5Slp.padStart(10)} ${ema5X.padStart(8)}`);
+                    }
+                    if (perf.post_exit_untracked && perf.post_exit_untracked.length) lines.push(`\nClosed with no post-exit data yet: ${perf.post_exit_untracked.map(u => `${u.reason} ${u.n}`).join(' · ')}`);
+                }
+
                 if (perf.recovery_hold && perf.recovery_hold.n > 0) {   // 🩹 Oct 2 (DECISION_LOG 172)
                     const _rh = perf.recovery_hold; const _rg = (v, d) => v == null ? '-' : (v >= 0 ? '+' : '') + Number(v).toFixed(d);
                     lines.push(`\n${hr2}`);
@@ -13178,7 +13327,7 @@
                 lines.push(`  Sizing now: ${bearLevLabel(_bem?.lev_mult ?? window._cachedConfig?.thresholds?.bearrun_lev_mult ?? 0.05)} · ARM BAR (200, windows from 10-04 22:00): >=5 windows, >=3 positive AND sum>0 (window-mean pnl %) => lev x1.0 (manual) · 5x ROLLBACK (252): sum of window-mean pnl % over the first 3 complete 5x windows < 0 => lev x0.05 · KILL BAR (any size above the 1x probe, from fill 1): first 10 fills WR<=45% OR net<0, or 2 consecutive net-negative windows => toggle OFF (gate 60)`);
             }
 
-            lines.push(...frenzyReportLines(perf, hr2));   // 🔥 FRENZY Sleeve · Flagged Pairs · Fills · Short Observations
+            lines.push(...frenzyReportLines(perf, hr2));   // 🔥 FRENZY Sleeve · Flagged Pairs · Fills
             lines.push(...liteCReportLines(perf, hr2));   // 🎯 (DECISION_LOG 301) LITE C Tally
             lines.push(...manualBlockReportLines(perf, hr2));   // ⛔ (DECISION_LOG 343) Manual block state
 
@@ -17774,6 +17923,76 @@
                     slBody.innerHTML = '<tr><td colspan="18" class="px-3 py-4 text-center text-gray-500">No stop loss trades yet</td></tr>';
                 }
                 
+                // Post-Exit Regret Deep Dive
+                const peBody = document.getElementById('post-exit-regret-body');
+                const perd = data.post_exit_regret_deep_dive;
+                if (perd && perd.length > 0) {
+                    let peRows = perd.map(r => {
+                        const closeClass = r.avg_close_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const peakClass = r.avg_post_peak >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const troughClass = r.avg_post_trough >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const finalClass = r.avg_final_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const peakFirstClass = r.peak_first_pct >= 50 ? 'text-emerald-400' : 'text-red-400';
+                        const sigLostPnlClass = r.avg_pnl_at_sig_lost != null ? (r.avg_pnl_at_sig_lost >= 0 ? 'text-emerald-400' : 'text-red-400') : '';
+                        const reachClass = r.avg_reachable_peak != null ? (r.avg_reachable_peak >= 0 ? 'text-emerald-400' : 'text-red-400') : '';
+                        const rsiPnlClass = r.avg_rsi_exit_pnl != null ? (r.avg_rsi_exit_pnl >= 0 ? 'text-emerald-400' : 'text-red-400') : '';
+                        return `
+                            <tr class="hover:bg-white/5">
+                                <td class="px-3 py-2 font-medium text-cyan-400">${r.reason}</td>
+                                <td class="px-3 py-2 text-center">${r.count}</td>
+                                <td class="px-3 py-2 text-center"><span class="text-emerald-400 text-xs">${r.longs}L</span> / <span class="text-red-400 text-xs">${r.shorts}S</span></td>
+                                <td class="px-3 py-2 text-center text-gray-400">${r.avg_duration}</td>
+                                <td class="px-3 py-2 text-right text-amber-400">${r.avg_atr_pct != null ? r.avg_atr_pct.toFixed(3) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right text-amber-400">${r.atr_sl_15x != null ? r.atr_sl_15x.toFixed(3) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right ${closeClass} font-medium">${r.avg_close_pnl >= 0 ? '+' : ''}${r.avg_close_pnl.toFixed(4)}%</td>
+                                <td class="px-3 py-2 text-right ${peakClass} font-medium">${r.avg_post_peak >= 0 ? '+' : ''}${r.avg_post_peak.toFixed(4)}%</td>
+                                <td class="px-3 py-2 text-right text-emerald-400">${r.avg_peak_min.toFixed(1)}m</td>
+                                <td class="px-3 py-2 text-right text-cyan-300 font-medium">${r.avg_strpk_pct != null ? (r.avg_strpk_pct >= 0 ? '+' : '') + r.avg_strpk_pct.toFixed(4) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right text-cyan-300">${r.avg_strpk_min != null ? r.avg_strpk_min.toFixed(1) + 'm' : '-'}</td>
+                                
+                                <td class="px-3 py-2 text-right text-cyan-300 font-medium">${r.avg_stren_pct != null ? (r.avg_stren_pct >= 0 ? '+' : '') + r.avg_stren_pct.toFixed(4) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right text-cyan-300">${r.avg_stren_min != null ? r.avg_stren_min.toFixed(1) + 'm' : '-'}</td>
+                                <td class="px-3 py-2 text-right ${troughClass} font-medium">${r.avg_post_trough >= 0 ? '+' : ''}${r.avg_post_trough.toFixed(4)}%</td>
+                                <td class="px-3 py-2 text-right text-red-400">${r.avg_trough_min.toFixed(1)}m</td>
+                                <td class="px-3 py-2 text-right ${peakFirstClass} font-medium">${r.peak_first_pct.toFixed(1)}%</td>
+                                <td class="px-3 py-2 text-right ${finalClass} font-medium">${r.avg_final_pnl >= 0 ? '+' : ''}${r.avg_final_pnl.toFixed(4)}%</td>
+                                <td class="px-3 py-2 text-right text-orange-400">${r.sig_lost_pct.toFixed(1)}%</td>
+                                <td class="px-3 py-2 text-right text-orange-400">${r.avg_sig_lost_min != null ? r.avg_sig_lost_min.toFixed(1) + 'm' : '-'}</td>
+                                <td class="px-3 py-2 text-right ${sigLostPnlClass} font-medium">${r.avg_pnl_at_sig_lost != null ? (r.avg_pnl_at_sig_lost >= 0 ? '+' : '') + r.avg_pnl_at_sig_lost.toFixed(4) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right ${reachClass} font-medium">${r.avg_reachable_peak != null ? (r.avg_reachable_peak >= 0 ? '+' : '') + r.avg_reachable_peak.toFixed(4) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right text-cyan-400">${r.rsi_exit_pct != null ? r.rsi_exit_pct.toFixed(1) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right text-cyan-400">${r.avg_rsi_exit_min != null ? r.avg_rsi_exit_min.toFixed(1) + 'm' : '-'}</td>
+                                <td class="px-3 py-2 text-right ${rsiPnlClass} font-medium">${r.avg_rsi_exit_pnl != null ? (r.avg_rsi_exit_pnl >= 0 ? '+' : '') + r.avg_rsi_exit_pnl.toFixed(4) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right text-fuchsia-400">${r.ema13_cross_pct != null ? r.ema13_cross_pct.toFixed(1) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right text-fuchsia-400">${r.avg_ema13_cross_min != null ? r.avg_ema13_cross_min.toFixed(1) + 'm' : '-'}</td>
+                                <td class="px-3 py-2 text-right font-medium ${r.avg_ema13_cross_pnl != null ? (r.avg_ema13_cross_pnl >= 0 ? 'text-emerald-400' : 'text-red-400') : 'text-fuchsia-400'}">${r.avg_ema13_cross_pnl != null ? (r.avg_ema13_cross_pnl >= 0 ? '+' : '') + r.avg_ema13_cross_pnl.toFixed(4) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right text-violet-400" title="May 23: minutes from close until BTC regime first stopped supporting trade direction. '-' means regime never flipped in tracking window (= original exit was structurally correct).">${r.avg_regime_flip_min != null ? r.avg_regime_flip_min.toFixed(1) + 'm' : '-'}</td>
+                                <td class="px-3 py-2 text-right font-medium ${r.avg_regime_flip_pnl != null ? (r.avg_regime_flip_pnl >= 0 ? 'text-emerald-400' : 'text-red-400') : 'text-violet-400'}" title="May 23: P&L at the moment regime flipped. Compare vs Close% — if higher, holding to regime would have been better. If lower or '-', current exit was right.">${r.avg_regime_flip_pnl != null ? (r.avg_regime_flip_pnl >= 0 ? '+' : '') + r.avg_regime_flip_pnl.toFixed(4) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right font-medium ${r.recovery_neg020_pct >= 44 ? 'text-emerald-400' : 'text-amber-400'}">${r.recovery_neg020_pct != null ? r.recovery_neg020_pct.toFixed(1) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right font-medium ${r.recovery_neg010_pct >= 44 ? 'text-emerald-400' : 'text-amber-400'}">${r.recovery_neg010_pct != null ? r.recovery_neg010_pct.toFixed(1) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right font-medium ${r.recovery_neg005_pct >= 44 ? 'text-emerald-400' : 'text-amber-400'}">${r.recovery_neg005_pct != null ? r.recovery_neg005_pct.toFixed(1) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right font-medium ${r.recovery_005_pct >= 44 ? 'text-emerald-400' : 'text-red-400'}">${r.recovery_005_pct != null ? r.recovery_005_pct.toFixed(1) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right font-medium ${r.recovery_010_pct >= 44 ? 'text-emerald-400' : 'text-red-400'}">${r.recovery_010_pct != null ? r.recovery_010_pct.toFixed(1) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right font-medium ${r.sig_regained_pct > 0 ? 'text-emerald-400' : 'text-gray-500'}">${r.sig_regained_pct != null ? r.sig_regained_pct.toFixed(1) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right text-emerald-400">${r.avg_sig_regained_min != null ? r.avg_sig_regained_min.toFixed(1) + 'm' : '-'}</td>
+                                <td class="px-3 py-2 text-right ${r.avg_pnl_at_sig_regained != null ? (r.avg_pnl_at_sig_regained >= 0 ? 'text-emerald-400' : 'text-red-400') : ''} font-medium">${r.avg_pnl_at_sig_regained != null ? (r.avg_pnl_at_sig_regained >= 0 ? '+' : '') + r.avg_pnl_at_sig_regained.toFixed(4) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right ${r.avg_floor_before_sig_regain != null ? 'text-rose-400' : 'text-gray-500'} font-medium">${r.avg_floor_before_sig_regain != null ? r.avg_floor_before_sig_regain.toFixed(4) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right font-medium ${r.nr_rec_neg020_pct != null && r.nr_rec_neg020_pct >= 44 ? 'text-emerald-400' : 'text-pink-400'}">${r.nr_rec_neg020_pct != null ? r.nr_rec_neg020_pct.toFixed(1) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right font-medium ${r.nr_rec_neg010_pct != null && r.nr_rec_neg010_pct >= 44 ? 'text-emerald-400' : 'text-pink-400'}">${r.nr_rec_neg010_pct != null ? r.nr_rec_neg010_pct.toFixed(1) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right font-medium ${r.nr_rec_neg005_pct != null && r.nr_rec_neg005_pct >= 44 ? 'text-emerald-400' : 'text-pink-400'}">${r.nr_rec_neg005_pct != null ? r.nr_rec_neg005_pct.toFixed(1) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right ${r.avg_exit_ema5_dist != null ? (r.avg_exit_ema5_dist >= 0 ? 'text-emerald-400' : 'text-red-400') : ''} font-medium">${r.avg_exit_ema5_dist != null ? (r.avg_exit_ema5_dist >= 0 ? '+' : '') + r.avg_exit_ema5_dist.toFixed(4) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right ${r.avg_exit_ema5_slope != null ? (r.avg_exit_ema5_slope >= 0 ? 'text-emerald-400' : 'text-red-400') : ''} font-medium">${r.avg_exit_ema5_slope != null ? (r.avg_exit_ema5_slope >= 0 ? '+' : '') + r.avg_exit_ema5_slope.toFixed(4) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-center ${r.exit_ema5_crossed_pct != null && r.exit_ema5_crossed_pct > 50 ? 'text-red-400' : 'text-emerald-400'} font-medium">${r.exit_ema5_crossed_pct != null ? r.exit_ema5_crossed_pct.toFixed(1) + '%' : '-'}</td>
+                            </tr>
+                        `;
+                    }).join('');
+                    peBody.innerHTML = peRows;
+                } else {
+                    peBody.innerHTML = '<tr><td colspan="44" class="px-3 py-4 text-center text-gray-500">No post-exit data yet</td></tr>';
+                }
+                const peUn = document.getElementById('post-exit-untracked');
+                if (peUn) peUn.textContent = (data.post_exit_untracked && data.post_exit_untracked.length) ? 'Closed with no post-exit data yet: ' + data.post_exit_untracked.map(u => `${u.reason} ${u.n}`).join(' · ') : '';
+
                 // Winning Trades Drawdown
                 const wdBody = document.getElementById('winning-drawdown-body');
                 const wdd = data.winning_trades_drawdown;
@@ -18265,9 +18484,13 @@
                     }
                     const fzB = document.getElementById('frenzy-body');
                     if (fzB) {
+                        const _fzCoinN = {}; (data.frenzy_rows || []).forEach(r => { if (r.coin) _fzCoinN[r.coin] = (_fzCoinN[r.coin] || 0) + 1; });
+                        const _fzCoinSeen = {};
                         fzB.innerHTML = (data.frenzy_rows && data.frenzy_rows.length) ? data.frenzy_rows.map(r => {
                             const tc = (r.total_usd || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
-                            return `<tr class="hover:bg-white/5">
+                            const _open = window._fzCoinOpen && window._fzCoinOpen[r.coin];
+                            const _tog = (r.coin && !_fzCoinSeen[r.coin]) ? (_fzCoinSeen[r.coin] = 1, `<tr class="cursor-pointer hover:bg-white/5" onclick="fzToggleCoins('${_fzE(r.coin)}')"><td colspan="8" class="px-2 py-1 text-xs text-gray-500">  ${_open ? '▾' : '▸'} coins (${_fzCoinN[r.coin]})</td></tr>`) : '';
+                            return _tog + `<tr class="hover:bg-white/5${r.coin && !_open ? ' hidden' : ''}"${r.coin ? ` data-fz-coin="${_fzE(r.coin)}"` : ''}>
                                 <td class="px-2 py-1.5 text-orange-300 font-medium whitespace-pre">${_fzE(r.row)}</td>
                                 <td class="px-2 py-1.5 text-right text-gray-300">${r.n}</td>
                                 <td class="px-2 py-1.5 text-right text-gray-300">${r.wr != null ? r.wr.toFixed(1) : '—'}</td>
@@ -18294,23 +18517,6 @@
                                 <td class="px-2 py-1.5 text-gray-400">${_fzE(r.note || '')}</td>
                             </tr>`;
                         }).join('') : '<tr><td colspan="8" class="px-3 py-3 text-center text-gray-500">No FRENZY_LITE fills yet</td></tr>';
-                    }
-                    const fzO = document.getElementById('frenzy-breaks-body');
-                    if (fzO) {
-                        fzO.innerHTML = (data.frenzy_breaks && data.frenzy_breaks.length) ? data.frenzy_breaks.map(b => `<tr class="hover:bg-white/5">
-                            <td class="px-2 py-1.5 text-gray-300 whitespace-nowrap">${surgeTime(b.at_ms, b.at, true, true)}</td>
-                            <td class="px-2 py-1.5 text-orange-300">${_fzE(b.pair)}</td>
-                            <td class="px-2 py-1.5 text-right ${b.line === 200 ? 'text-rose-300' : 'text-gray-300'}">EMA${b.line}</td>
-                            <td class="px-2 py-1.5 text-right font-mono text-gray-300">${b.price != null ? formatPrice(b.price) : '—'}</td>
-                            <td class="px-2 py-1.5 text-right text-gray-400">${b.hours != null ? b.hours.toFixed(1) : '—'}</td>
-                            <td class="px-2 py-1.5 text-right text-gray-400">${_fzS(b.run_pct, 0)}%</td>
-                            <td class="px-2 py-1.5 text-right text-gray-400">${_fzS(b.off_peak_pct, 0)}%</td>
-                            <td class="px-2 py-1.5 text-right text-gray-400">${_fzS(b.vs_vwap_pct, 1)}%</td>
-                            <td class="px-2 py-1.5 text-right text-gray-400">${b.vol_mult != null ? b.vol_mult.toFixed(0) + '×' : '—'}</td>
-                            <td class="px-2 py-1.5 text-right text-gray-400">${b.atr_pct != null ? b.atr_pct.toFixed(2) + '%' : '—'}</td>
-                            <td class="px-2 py-1.5 text-right text-gray-400">${b.btc_rsi != null ? b.btc_rsi.toFixed(1) : '—'}</td>
-                            <td class="px-2 py-1.5 text-right text-gray-400">${b.bull_pct != null ? b.bull_pct.toFixed(0) : '—'} / ${b.bear_pct != null ? b.bear_pct.toFixed(0) : '—'}</td>
-                        </tr>`).join('') : '<tr><td colspan="12" class="px-3 py-3 text-center text-gray-500">No short observation recorded yet</td></tr>';
                     }
                 }
                 // ⚡ Sep 30: SURGE sleeves table + trigger line

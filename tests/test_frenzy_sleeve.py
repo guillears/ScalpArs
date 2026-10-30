@@ -175,10 +175,10 @@ def test_config_parity_and_every_surface():
         assert html.count(f'id="{_id}"') == 1, _id
         assert html.count(key) >= (1 if key in listed.values() else 2), key               # list-driven fields appear once; the rest are loaded and saved by name
     assert "FRENZY_NUM_FIELDS.map(" in html and "of FRENZY_NUM_FIELDS)" in html           # one list drives the load and the save
-    for _id in ("frenzy-monitor-line", "frenzy-flags-body", "frenzy-body", "frenzy-breaks-body"):
+    for _id in ("frenzy-monitor-line", "frenzy-flags-body", "frenzy-body"):
         assert html.count(f'id="{_id}"') == 1 and html.count(f"getElementById('{_id}')") == 1
     assert html.count("lines.push(...frenzyReportLines(perf, hr2));") == 2                # clipboard AND saved-file exports
-    for title in ("## 🔥 FRENZY Flagged Pairs (now)", "## 🔥 FRENZY Fills (FRENZY_LONG · FRENZY_WIDE · FRENZY_LITE · FRENZY_WILLY) · 🔁 FRENZY_LITE_RETRY", "## 🔥 FRENZY Short Observations"):
+    for title in ("## 🔥 FRENZY Flagged Pairs (now)", "## 🔥 FRENZY Fills (FRENZY_LONG · FRENZY_LITE · FRENZY_LITE_RETRY · FRENZY_WILLY · FRENZY_WILLY_HT · FLATBASE_SHORT)"):
         assert html.count(title) == 1
     assert '<option value="FRENZY_LONG">' in html and "frenzyMark(_fz)" in html
 
@@ -192,7 +192,7 @@ def test_engine_and_api_wiring():
     assert "_frenzy_kill" not in eng and "frenzy_kill_verdict" not in eng                 # operator: no automatic off
     main = open(os.path.join(ROOT, "main.py"), encoding="utf-8").read()
     assert main.count("'FRENZY_LONG'") >= 3 and "'Frenzy-Long'" in main and "'Frenzy-Wide'" in main and main.count("'FRENZY_WIDE'") >= 3
-    for key in ('"frenzy_rows"', '"frenzy_flags"', '"frenzy_breaks"', '"frenzy_monitor"'):
+    for key in ('"frenzy_rows"', '"frenzy_flags"', '"frenzy_monitor"'):
         assert main.count(key) == 3, key                                                  # the payload + both fallback payloads
     import models as M
     cols = {c.name for c in M.Order.__table__.columns}
@@ -230,18 +230,15 @@ def test_flagged_pairs_are_pinned_and_marked_in_the_pairs_payload(monkeypatch):
             for pair, vol in (("BTCUSDT", 9e9), ("NEARUSDT", 5e8), ("QNTUSDT", 4e8)):
                 db.add(models.PairData(pair=pair, price=4.9, volume_24h=vol, ema5=4.9, ema8=4.91, ema13=4.92, ema20=4.94, rsi=43.0, adx=24.0,
                                        signal="NO_TRADE", confidence="NO_TRADE", updated_at=now))
-            db.add(models.FrenzyBreak(pair="QNTUSDT", line=50, bar_close_at=now.replace(microsecond=0), price=1.5, hours=41.0, run_pct=100.0,
-                                      off_peak_pct=-25.0, vs_vwap_pct=-1.0, vol_mult=120.0, atr_pct=1.9, volume_24h=3e8, btc_rsi=48.0, bull_pct=40.0, bear_pct=35.0))
             await db.commit()
-            return await main.get_pairs(db=db, limit=50), await main._frenzy_break_rows(db)
-    rows, breaks = asyncio.run(run())
+            return await main.get_pairs(db=db, limit=50)
+    rows = asyncio.run(run())
     # flagged first with the NEWEST spike on top (TINY's spike is 10 min later, though it has less volume and is outside the Top list); the rest by volume
     assert [r["pair"] for r in rows] == ["TINYUSDT", "QNTUSDT", "BTCUSDT", "NEARUSDT"]
     q, t = rows[1], rows[0]
     assert q["frenzy"]["in_state"] and q["frenzy"]["late"] and not q.get("frenzy_only")
     assert t["frenzy_only"] is True and t["price"] == 1.61 and t["volume_24h"] == 4e7 and t["atr_pct"] == 1.8 and t["signal"] is None
     assert rows[2]["frenzy"] is None
-    assert breaks and breaks[0]["pair"] == "QNTUSDT" and breaks[0]["line"] == 50
     fl = main._frenzy_flag_rows()
     assert [f["pair"] for f in fl] == ["QNTUSDT", "TINYUSDT"] and main._frenzy_monitor_payload()["flagged"] == 2
 

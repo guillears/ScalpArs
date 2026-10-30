@@ -937,7 +937,7 @@ def test_ui_inputs_load_save_and_both_exports():
     assert html.count("lines.push(..._buildConfigLines(cfg, changelog, hr, hr2, status));") == 2
     assert "WILLY ${m.willy_enabled ? 'ON' : 'OFF'}" in html and "first red candle ≤ ${m.willy_red_wait ?? '-'} min" in html and "waiting red · expires ' + frenzyWillyClock(x.exp_ms)" in html
     assert html.count("lines.push(...frenzyReportLines(perf, hr2));") == 2
-    assert html.count("FRENZY Fills (FRENZY_LONG · FRENZY_WIDE · FRENZY_LITE · FRENZY_WILLY)") == 2
+    assert html.count("FRENZY Fills (FRENZY_LONG · FRENZY_LITE · FRENZY_LITE_RETRY · FRENZY_WILLY · FRENZY_WILLY_HT · FLATBASE_SHORT)") == 2
     assert '<option value="FRENZY_WILLY">' in html and "strat === 'FRENZY_WILLY') return tags" in html
     assert "if (['FRENZY_WILLY', 'FRENZY_WILLY_HT'].includes(o.entry_strategy || '')) {" in html   # 🎲¼ (341) HT = WILLY's exit badge and ">🎯 TP +${_wTp}% · ${_wSl} · ${_wMh}m</span>" in html and "'no SL'" in html
     assert "(?:WIDE |LITE |WILLY [AB] )?opened/.exec((f && f.willy_last) || '')" in html
@@ -960,7 +960,7 @@ def test_api_payload_and_sleeve_rows(monkeypatch):
     v = M._frenzy_flag_view(dict(pair="X", spike_ts=LAST, willy_last="w", willy_pending=dict(trig="B", armed_ms=1, exp_ms=2)))
     assert v["willy_last"] == "w" and v["willy_pending"]["trig"] == "B"
     main = open(os.path.join(ROOT, "main.py"), encoding="utf-8").read()
-    assert '("FRENZY_WILLY", "FRENZY_WILLY (new flag + ON not taken · red-candle entry · turnover < 1× mcap · TP +1 / no SL / 120 min · global hold · declared exception)")' in main
+    assert '("FRENZY_WILLY", "FRENZY_WILLY (new flag + ON not taken · red-candle entry · turnover < 1× mcap · declared exception")' in main
     assert "  A · new flag" in main and "_wrt(_wrd(" in main and ".order_by(Order.opened_at.asc())" in main and "'FRENZY_WILLY', 'MANUAL')" in main
     assert "🔒 WILLY hold (lifetime) — automated setups refused while a WILLY was open" in main and 'e="WILLY_HOLD"' in main
     assert "getattr(_th, 'frenzy_willy_enabled', False)):" in main

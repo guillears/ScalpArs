@@ -161,7 +161,6 @@ def test_fixed_tp_wiring():
     assert eng.count("use_tp=True, sleeve=order.entry_strategy, resting_tp=_rtp_on_m, tp_override=getattr(order, 'frenzy_lite_tp_used', None))   # 🎯 fixed TP (196) · LITE's own TP (284) · LITE C stored TP (301)\n") + eng.count("use_tp=True, sleeve=order_info.get('entry_strategy'), resting_tp=_rtp_on_rt, tp_override=order_info.get('frenzy_lite_tp_used'))   # 🎯 fixed TP (196) · LITE's own TP (284) · LITE C stored TP (301)\n") == 2                # sleeve candle + realtime paths
     assert eng.count("use_tp=True)   # 🎯 fixed TP (196): manual FRENZY exit too") == 2   # manual candle + realtime paths
     assert eng.count('"FRENZY_TP": "MANUAL_TP"') == 2
-    assert eng.count('_reason_base.startswith("FRENZY_TP")') == 2               # post-exit tracking (live + recovery whitelists)
     import json
     from services.frenzy import frenzy_tp_for, frenzy_exit_for
     # DECISION_LOG 284: FRENZY_LITE's own TP (> 0 overrides, ≤ 0 / blank / NaN → the shared one); LONG / WIDE / manual always the shared

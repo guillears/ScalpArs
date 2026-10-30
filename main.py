@@ -25,7 +25,7 @@ from sqlalchemy import select, and_, or_, func, desc, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import init_db, get_db, AsyncSessionLocal, locked_commit, locked_execute_commit
-from models import Order, Transaction, BotState, PairData, ConfigChangeLog, BnbSwapLog, Investor, InvestorLedger, FrenzyBreak, PhantomFlip, NavSnapshot, MonitorPeriod, BearMonitorPeriod, SurgeTrigger, OrderbookSnap, WillyHoldBlock, FlatbaseEpisode, MatchedLongRefusal
+from models import Order, Transaction, BotState, PairData, ConfigChangeLog, BnbSwapLog, Investor, InvestorLedger, PhantomFlip, NavSnapshot, MonitorPeriod, BearMonitorPeriod, SurgeTrigger, OrderbookSnap, WillyHoldBlock, FlatbaseEpisode, MatchedLongRefusal
 import config
 from config import (
     trading_config, save_trading_config, load_trading_config,
@@ -3415,13 +3415,7 @@ async def _close_orphan_orders(db: AsyncSession, binance_pairs: set) -> list:
                         if _bk_st and str(_bk_st.get('algoStatus', '')).upper() == 'TRIGGERED':
                             order.close_reason = "BACKSTOP_STOP"
                             logger.critical(f"[BACKSTOP_FIRED] {order.pair}: resting stop TRIGGERED while the bot was blind — recorded BACKSTOP_STOP (algoId={order.backstop_algo_id})")
-                            try:
-                                # review fix (operator directive): backstop fires get the full
-                                # 45min post-exit regret tracking — reconciler mints this reason,
-                                # so it must register the tracking itself.
-                                trading_engine._register_post_exit_tracking(order, "BACKSTOP_STOP")
-                            except Exception as _bk_reg_err:
-                                logger.error(f"[BACKSTOP_REGRET_REG_FAILED] {order.pair}: {_bk_reg_err}")
+                            # backstop fires get the 45min post-exit tracking: registered below, once the row is fully booked (DECISION_LOG 419)
                         else:
                             # review fix: NOT triggered (or unknown) → the resting stop is an
                             # orphan; cancel best-effort so it can never flatten a FUTURE
@@ -3494,6 +3488,10 @@ async def _close_orphan_orders(db: AsyncSession, binance_pairs: set) -> list:
                 order.pnl_percentage = round(((raw - fee) / notional) * 100, 4)
                 order.exit_fee = round(_exit_fee_usd, 4)
                 order.total_fee = round((order.entry_fee or 0) + order.exit_fee, 4)
+                try:
+                    trading_engine._register_post_exit_tracking(order, order.close_reason)   # (DECISION_LOG 419) every reconciled close (backstop, external, resting TP), once fully booked
+                except Exception as _pe_reg_err:
+                    logger.error(f"[POST_EXIT_REG_FAILED] {order.pair}: {_pe_reg_err}")
                 trading_engine._touch_finalize(order, order.pnl_percentage, order.close_reason)   # 🛑👁 (317, dual review) observe-only touch outcome (never raises)
 
                 tx = Transaction(
@@ -3639,7 +3637,7 @@ async def get_performance(regime: str = None, window_hours: int = None,
             "frenzy_rows": [],
             "lite_c_rows": [],
             "frenzy_flags": [],
-            "frenzy_breaks": [],
+            "post_exit_regret_deep_dive": [], "post_exit_untracked": [],
             "frenzy_monitor": None,
             "multiplier_cell_performance": {"longs": [], "shorts": [], "summary": {}},
             "pattern_cell_performance": {"rules": [], "summary": {}},
@@ -4428,18 +4426,7 @@ def _frenzy_flag_rows():
         return []
 
 
-async def _frenzy_break_rows(db, limit=400):
-    """🔥 FRENZY SHORT OBSERVATIONS (no trade): the latest EMA50 / EMA200 breaks recorded on flagged pairs, newest first (the
-    dashboard table scrolls; both text exports print every row sent). The full ledger is the frenzy_breaks table."""
-    try:
-        _rs = (await db.execute(select(FrenzyBreak).order_by(FrenzyBreak.bar_close_at.desc()).limit(limit))).scalars().all()
-        return [{"at": r.bar_close_at.strftime('%m-%d %H:%M'), "at_ms": int((r.bar_close_at - datetime(1970, 1, 1)).total_seconds() * 1000),
-                 "pair": r.pair, "line": r.line, "price": r.price, "hours": r.hours, "run_pct": r.run_pct, "off_peak_pct": r.off_peak_pct,
-                 "vs_vwap_pct": r.vs_vwap_pct, "vol_mult": r.vol_mult, "atr_pct": r.atr_pct, "volume_24h": r.volume_24h,
-                 "btc_rsi": r.btc_rsi, "bull_pct": r.bull_pct, "bear_pct": r.bear_pct} for r in _rs]
-    except Exception as _e:
-        logger.debug(f"[PERF] frenzy observations skipped: {_e}")
-        return []
+FLATBASE_EXIT_408_AT = datetime(2026, 10, 28, 21, 37)   # the DECISION_LOG 408 commit + 10 min (+5 / −10 live)
 
 
 async def _surge_trigger_rows(db, limit=50):
@@ -6048,7 +6035,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "frenzy_rows": [],
             "lite_c_rows": [],
             "frenzy_flags": [],
-            "frenzy_breaks": [],
+            "post_exit_regret_deep_dive": [], "post_exit_untracked": [],
             "frenzy_monitor": None,
             "multiplier_cell_performance": {"longs": [], "shorts": [], "summary": {}},
             "pattern_cell_performance": {"rules": [], "summary": {}},
@@ -9054,8 +9041,24 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
     # 🔥 Oct-2 FRENZY sleeve (DECISION_LOG 176): FRENZY_LONG fills (all · by exit · by spike episode) with the review count read on
     # the LIFETIME closed fills (unfiltered — a dashboard filter must never move it), and the recorded short observations.
     frenzy_rows = []
+    def _fz_exit_label(es):
+        """(DECISION_LOG 419) the sleeve's exit values, read from the live config (fixed-TP exits; a trail mode is not described)."""
+        _t = config.trading_config.thresholds
+        _g = lambda k, d: getattr(_t, k, d)
+        _st, _tp, _hr = _g('frenzy_stop_pct', 3.0), _g('frenzy_tp_pct', 1.5), _g('frenzy_max_hold_minutes', 720) / 60
+        if es == "FRENZY_LONG":
+            return f" · TP +{_tp:g} / SL −{(_g('frenzy_long_stop_pct', 0) or _st):g} / {_hr:g} h"
+        if es == "FRENZY_WIDE":
+            return f" · TP +{_tp:g} / SL −{_st:g} / {_hr:g} h"
+        if es in ("FRENZY_LITE", "FRENZY_LITE_RETRY"):
+            return f" · TP +{_g('frenzy_lite_tp_pct', 3.0):g}" + (f" or +{_g('frenzy_lite_c_tp_pct', 2.0):g} (LITE C)" if _g('frenzy_lite_c_enabled', False) else "") + f" / SL −{_st:g} / {_hr:g} h"
+        if es in ("FRENZY_WILLY", "FRENZY_WILLY_HT"):
+            return (f" · target at the spike high, up to +{_g('frenzy_willy_high_tp_max_pct', 8.0):g} / SL −{_g('frenzy_willy_stop_pct', 4.0):g} / "
+                    f"{_g('frenzy_willy_max_hold_minutes', 90):g} min · late +{_g('frenzy_willy_late_tp_pct', 0.25):g} after {_g('frenzy_willy_late_tp_minutes', 30.0):g} min")
+        if es == "FLATBASE_SHORT":
+            return f" · TP +{_g('flatbase_tp_pct', 5.0):g} / SL −{_g('flatbase_stop_pct', 10.0):g} / {_g('flatbase_max_hold_hours', 72.0):g} h"
+        return ""
     lite_c_rows = []   # 🎯 (DECISION_LOG 301) LITE C tally (zone vs outside vs pre-301) — filled below, never raises
-    frenzy_breaks_rows = await _frenzy_break_rows(db)
     try:
         def _fz_stats(g):
             _n = len(g)
@@ -9066,14 +9069,16 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                     "avg_pct": round(sum(o.pnl_percentage or 0 for o in g) / _n, 3), "total_usd": round(sum(o.pnl or 0 for o in g), 2),
                     "avg_peak": round(sum(_pks) / len(_pks), 3) if _pks else None,
                     "episodes": len({(o.pair, getattr(o, 'entry_frenzy_spike_at', None)) for o in g})}
-        for _fz_es, _fz_lbl in (("FRENZY_LONG", "FRENZY_LONG (flagged pair, long setup ON, ATR gate · stop / fixed TP or trail)"),
-                                ("FRENZY_WIDE", "FRENZY_WIDE (FRENZY's ATR / green-candle refusals · same exit)"),
-                                ("FRENZY_LITE", "FRENZY_LITE (held above, volume < FRENZY's, ≤ ~17 h · no ATR cap · same exit)"),
-                                ("FRENZY_LITE_RETRY", "FRENZY_LITE_RETRY (LITE green refusal → first red / flat READY bar ≤ 15 min · LITE exit · 4× · no slot limit · declared override)"),
-                                ("FRENZY_WILLY", "FRENZY_WILLY (new flag + ON not taken · red-candle entry · turnover < 1× mcap · TP +1 / no SL / 120 min · global hold · declared exception)"),
-                                ("FRENZY_WILLY_HT", "FRENZY_WILLY_HT (¼ size · WILLY setups refused ONLY by turnover ≥ 1× mcap · WILLY's exit · own slot · alert-only gates)"),
-                                ("FLATBASE_SHORT", "🩳 FLATBASE_SHORT (FLAT 14-d base · S4 4-h close < spike VWAP ≥ 4 h · turnover > 1 · −8 % TP / +15 % stop / 72 h · no slot · discipline override)")):
+        for _fz_es, _fz_lbl in (("FRENZY_LONG", "FRENZY_LONG (flagged pair, long setup ON, ATR gate"),
+                                ("FRENZY_WIDE", "FRENZY_WIDE (FRENZY's ATR / green-candle refusals"),
+                                ("FRENZY_LITE", "FRENZY_LITE (held above, volume < FRENZY's, ≤ ~17 h · no ATR cap"),
+                                ("FRENZY_LITE_RETRY", "FRENZY_LITE_RETRY (LITE green refusal → first red / flat READY bar ≤ 15 min · 4× · no slot limit · declared override"),
+                                ("FRENZY_WILLY", "FRENZY_WILLY (new flag + ON not taken · red-candle entry · turnover < 1× mcap · declared exception"),
+                                ("FRENZY_WILLY_HT", "FRENZY_WILLY_HT (¼ size · WILLY setups refused ONLY by turnover ≥ 1× mcap · own slot · alert-only gates"),
+                                ("FLATBASE_SHORT", "🩳 FLATBASE_SHORT (FLAT 14-d base · S4 4-h close < spike VWAP ≥ 4 h · turnover > 1 · no slot · discipline override")):
             _fz_all = [o for o in orders if (o.entry_strategy or '') == _fz_es and o.pnl_percentage is not None]
+            if _fz_es == "FRENZY_WIDE" and not _fz_all:   # OFF since DL 291: a row only if a fill is in view
+                continue
             _fz_life = [float(p) for (p,) in (await db.execute(select(Order.pnl_percentage).where(and_(
                 Order.entry_strategy == _fz_es, Order.status == 'CLOSED', Order.is_paper == trading_engine.is_paper_mode,
                 Order.pnl_percentage.isnot(None))).order_by(Order.closed_at.asc()))).all()]
@@ -9147,7 +9152,13 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 if _wwb:
                     _fz_gate += f" · avg wait {sum(_wwb) / len(_wwb):.1f} bars to the red candle"
                 _fz_gate += " · same stop in paper and live (frenzy_willy_stop_pct)"
-            frenzy_rows.append({"row": _fz_lbl, **_fz_stats(_fz_all), "gate": _fz_gate})
+            frenzy_rows.append({"row": _fz_lbl + _fz_exit_label(_fz_es) + ")", **_fz_stats(_fz_all), "gate": _fz_gate})
+            if _fz_es == "FLATBASE_SHORT" and _fz_all:   # (DECISION_LOG 419) one line per exit: the totals above mix +8 / −15 with today's exit (DL 408)
+                _fb_new = [o for o in _fz_all if o.opened_at and o.opened_at >= FLATBASE_EXIT_408_AT]
+                _fb_old = [o for o in _fz_all if o.closed_at and o.closed_at < FLATBASE_EXIT_408_AT]
+                frenzy_rows.append({"row": f"  today's exit (opened ≥ {FLATBASE_EXIT_408_AT:%m-%d %H:%M} UTC)", **_fz_stats(_fb_new), "gate": ""})
+                frenzy_rows.append({"row": "  older exit (+8 / −15, closed before the change)", **_fz_stats(_fb_old), "gate": ""})
+                frenzy_rows.append({"row": "  open across the change (mixed)", **_fz_stats([o for o in _fz_all if o not in _fb_new and o not in _fb_old]), "gate": ""})
             if _fz_es == "FLATBASE_SHORT":   # 🩳 (348) the observe-only cohort (turnover ≤ 1 → no order): count + setups, priced by the scout from klines
                 try:
                     _sh = (await db.execute(select(FlatbaseEpisode).where(and_(FlatbaseEpisode.is_paper == trading_engine.is_paper_mode,
@@ -9159,7 +9170,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                                                  if _sh else "none yet")})
                 except Exception as _she:
                     logger.debug(f"[PERF] flatbase shadow rows skipped: {_she}")
-            if _fz_es == "FRENZY_WILLY" and _fz_all:   # 🎲 (251) entry A (new flag) vs B (ON not taken) — entry_frenzy_willy_trigger
+            if _fz_es == "FRENZY_WILLY" and any(getattr(o, 'entry_frenzy_willy_trigger', None) == "B" for o in _fz_all):   # 🎲 (251) entry A (new flag) vs B (ON not taken): only when B has fills
                 for _wt, _wl in (("A", "  A · new flag"), ("B", "  B · fresh ON bar FRENZY / WIDE / LITE did not take")):
                     frenzy_rows.append({"row": _wl, **_fz_stats([o for o in _fz_all if getattr(o, 'entry_frenzy_willy_trigger', None) == _wt]), "gate": ""})
             if _fz_es == "FRENZY_WILLY":   # 🔒 (251) the global hold's refusals (willy_hold_blocks) — priced by the scout ("cost of the hold")
@@ -9169,7 +9180,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                     _hs = {}
                     for _sl, _rp, _wid, _ in _hb:
                         _hs.setdefault(_sl or '?', [0, 0]); _hs[_sl or '?'][0] += 1; _hs[_sl or '?'][1] += int(_rp or 1)
-                    frenzy_rows.append({"row": "  🔒 WILLY hold (lifetime) — automated setups refused while a WILLY was open", "n": len(_hb), "wr": None,
+                    if _hb: frenzy_rows.append({"row": "  🔒 WILLY hold (lifetime) — automated setups refused while a WILLY was open", "n": len(_hb), "wr": None,
                                         "avg_pct": None, "total_usd": 0.0, "avg_peak": None, "episodes": len({w for _, _, w, _ in _hb}),
                                         "gate": ((" · ".join(f"{k} {v[0]} ({v[1]} tries)" for k, v in sorted(_hs.items(), key=lambda kv: -kv[1][0]))
                                                   + f" · {len({f.date() for _, _, _, f in _hb if f})} days · Epis = WILLY holds · $ priced by the scout (cost of the hold)")
@@ -9180,11 +9191,12 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 _fz_strong = lambda o: ((getattr(o, 'entry_frenzy_adx_delta', None) or 0) > 0 and (getattr(o, 'entry_frenzy_di_spread', None) or 0) > 0)
                 _fs = [o for o in _fz_all if _fz_strong(o)]; _fn = [o for o in _fz_all if not _fz_strong(o)]
                 _s10 = sorted(_fs, key=lambda o: o.opened_at)[:10]
-                _gate197 = (f"⏳ {len(_s10)}/10 sized-up closed" if len(_s10) < 10 else
+                _sz_on = float(getattr(config.trading_config.thresholds, 'frenzy_long_lev_mult_strong', 0) or 0) > 0   # strong bump off since DL 280
+                _gate197 = ("" if not _sz_on else f"⏳ {len(_s10)}/10 sized-up closed" if len(_s10) < 10 else
                             f"📋 REVERT CHECK — first 10 sized-up avg {sum(o.pnl_percentage or 0 for o in _s10) / 10:+.3f}% vs normal "
                             f"{(sum(o.pnl_percentage or 0 for o in _fn) / len(_fn)) if _fn else 0:+.3f}% (revert if below normal or below 0)")
-                frenzy_rows.append({"row": "  💪 sized-up: ADX rising ∧ +DI above −DI (lev ×frenzy_long_lev_mult_strong)", **_fz_stats(_fs), "gate": _gate197})
-                frenzy_rows.append({"row": "  normal size", **_fz_stats(_fn), "gate": ""})
+                frenzy_rows.append({"row": "  💪 strong signal: ADX rising ∧ +DI above −DI" + (" (lev ×frenzy_long_lev_mult_strong)" if _sz_on else " (same size)"), **_fz_stats(_fs), "gate": _gate197})
+                frenzy_rows.append({"row": "  normal size" if _sz_on else "  other", **_fz_stats(_fn), "gate": ""})
             for _tl in (3, 2):   # 🛑👁 (317) observe-only touch snapshots: touched −N → recovered to the TP vs went deeper (both exports via frenzy_rows)
                 _tg = [o for o in _fz_all if getattr(o, f'touch{_tl}_at', None) is not None]
                 if _tg:
@@ -9209,7 +9221,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                     _k = getattr(o, 'entry_frenzy_spike_at', None)
                     _by_e.setdefault((o.pair, _k.strftime('%m-%d %H:%M') if _k else '?'), []).append(o)
                 for _e in sorted(_by_e, key=lambda k: k[1], reverse=True)[:12]:
-                    frenzy_rows.append({"row": f"  {_e[0]} · spike {_e[1]} UTC", **_fz_stats(_by_e[_e]), "gate": ""})
+                    frenzy_rows.append({"row": f"  {_e[0]} · spike {_e[1]} UTC", **_fz_stats(_by_e[_e]), "gate": "", "coin": _fz_es})   # coin: collapsed on the dashboard, printed in the text reports
         # 🎯 (DECISION_LOG 301) LITE C tally: closed FRENZY_LITE fills split by Order.lite_c_zone (stamped at entry) — zone (normal LITE TP) ·
         # outside (LITE C TP, missing readings included) · no stamp (pre-301). N · WR · Σ P&L % · avg P&L % · $ · the stored TP(s) used.
         # The view follows the dashboard filter like the FRENZY rows; the "lifetime" note reads every closed LITE fill of this mode.
@@ -9258,7 +9270,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             _cu20 = _cu_life[:20]; _k3 = [float(p) for p, b in _cu20 if b is not None and b >= 3]
             _cu_gate = (f"📋 REVIEW DUE — first 20: all {sum(float(p) for p, _ in _cu20) / 20:+.3f}% · bars ≥ 3 "
                         f"{(sum(_k3) / len(_k3)) if _k3 else 0:+.3f}% (N {len(_k3)}) — bars≥3 avg ≤ 0 → max bars 2 · all avg < 0 → 0")
-        frenzy_rows.append({"row": "⏪ recuperados (catch-up) — fills on an ON bar no pass judged (pause / restart)", **_fz_stats(_cu_rows),
+        if _cu_rows or _cu_life: frenzy_rows.append({"row": "⏪ recuperados (catch-up) — fills on an ON bar no pass judged (pause / restart)", **_fz_stats(_cu_rows),
                             "gate": (f"avg bars late {_cu_b:.1f} · avg move {_cu_m:+.2f}% vs the ON close · " if _cu_rows and _cu_b is not None and _cu_m is not None else "") + _cu_gate})
     except Exception as _fz_tbl_err:
         logger.debug(f"[PERF] frenzy table skipped: {_fz_tbl_err}")
@@ -10130,6 +10142,11 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
     except Exception as e:
         logger.error(f"[PERF] Error computing Never Positive deep dive: {e}\n{traceback.format_exc()}")
 
+    # 🧭 Post-Exit Regret Deep Dive (DECISION_LOG 419, restored)
+    from services.post_exit_regret import post_exit_regret_rows, post_exit_untracked
+    post_exit_regret_deep_dive = post_exit_regret_rows(orders)
+    post_exit_untracked_rows = post_exit_untracked(orders)
+
     # Hold-Time Expectancy
     hold_time_expectancy = []
     try:
@@ -10318,6 +10335,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "by_close_reason": by_close_reason,
         "stop_loss_deep_dive": stop_loss_deep_dive,
         "winning_trades_drawdown": winning_trades_drawdown,
+        "post_exit_regret_deep_dive": post_exit_regret_deep_dive,
+        "post_exit_untracked": post_exit_untracked_rows,
         "trough_recovery": trough_recovery,
         "rsi_adx_crosstab": rsi_adx_crosstab,
         "never_positive_deep_dive": never_positive_deep_dive,
@@ -10344,7 +10363,6 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "frenzy_rows": frenzy_rows,
         "lite_c_rows": lite_c_rows,   # 🎯 (DECISION_LOG 301) LITE C tally — UI + both text exports
         "frenzy_flags": _frenzy_flag_rows(),
-        "frenzy_breaks": frenzy_breaks_rows,
         "frenzy_monitor": _frenzy_monitor_payload(),
         "entry_conditions_by_strategy_outcome": entry_conditions_by_strategy_outcome,
         "period_performance": _compute_period_performance(_all_orders),

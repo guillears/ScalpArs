@@ -647,7 +647,7 @@ def test_config_defaults_json_ui_and_exports():
     # both text exports: the config line (shared _buildConfigLines, called by both) + the FRENZY monitor line + the FRENZY Fills rows
     assert html.count("..._buildConfigLines(cfg, changelog, hr, hr2, status)") == 2 and "🩳 FLATBASE_SHORT (DECISION_LOG 348, discipline override)" in html
     assert html.count("...frenzyReportLines(perf, hr2)") == 2 and "+ flatbaseMonitorStr(m);" in html
-    assert html.count("FRENZY Fills (FRENZY_LONG · FRENZY_WIDE · FRENZY_LITE · FRENZY_WILLY) · 🔁 FRENZY_LITE_RETRY") == 2   # UI + the shared export block
+    assert html.count("FRENZY Fills (FRENZY_LONG · FRENZY_LITE · FRENZY_LITE_RETRY · FRENZY_WILLY · FRENZY_WILLY_HT · FLATBASE_SHORT)") == 2   # UI + the shared export block
     main = open(os.path.join(ROOT, "main.py"), encoding="utf-8").read()
     assert '("FLATBASE_SHORT", "🩳 FLATBASE_SHORT (' in main and 'if _fz_es == "FLATBASE_SHORT":' in main      # FRENZY Fills row + gate
     assert "_fb_cfg_errors(new_config.thresholds, _sb_lev)" in main and "'FLATBASE_SHORT': ('flatbase_short_enabled',)" in main

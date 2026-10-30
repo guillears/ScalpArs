@@ -300,5 +300,4 @@ def test_engine_source_pins():
     for gone in ("_willy_v2_arm_note", "willy_armed", "frenzy_willy_floor", "'warm'", " warm=", "willy_floor_armed_at", "floor ARMED", "floor exit"):
         assert gone not in eng, gone
     assert "wtp=getattr(row, 'frenzy_willy_tp_target_pct', None))" in eng                                     # realtime gate: row TP only
-    assert '_reason_base.startswith("WILLY_FLOOR")' in eng                                                     # historical post-exit rows
     assert "_rtp_tp = frenzy_willy_row_tp(_rtp_th, order) if _rtp_es in WILLY_EXIT_CLASS" in eng

@@ -10446,3 +10446,11 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
 - **Note:** the DL 317 re-size read (4 of 20 fills) is about a month away at B25's pace, not 11-02.
 - **Reviews (DL 418):** caveman — no findings beyond the deep pass · deep — pin frenzy_lock_arm_pct 0 too (above 0 removes the fixed TP) · docstring DL number · a damaged record gets its own message · tests for damaged and corrupt state.
 - **Tests:** tests/test_scout_long_adx35_watch.py.
+
+- (419) 2026-10-30 🧭 **Post-Exit Regret Deep Dive restored · Frenzy Fills clean-up · Short Observations removed (operator: "it was one of the most important tables"; "make sure all exit names are considered").**
+- **Regret table:** back exactly as before DL 211 (same 44 columns, compute in services/post_exit_regret.py byte-identical), below Winning Trades Drawdown on the dashboard and both text exports. Only additions: subtitle says "every exit", and a "Closed with no post-exit data yet" line so no exit is left out silently. Why it went: DL 211's list came from my audit labelling #77 "SHADOW"; that label was misleading.
+- **Every exit tracked:** the whitelists in _register_post_exit_tracking and recovery are gone (MAX_HOLD_TIME, MANUAL*, EXTERNAL_CLOSE were dropped); the reconciler now registers once a row is fully booked and CLOSE_FALLBACK registers too.
+- **Frenzy Fills:** exit labels read the live config (Flatbase and WILLY said old exits, LITE "same exit"); heading names every sleeve; Flatbase split into today's exit / older / open across the change (3 / 12 / 1 on B25); per-coin rows collapsed on the dashboard, still in both reports; WIDE, WILLY A/B, WILLY hold and catch-up rows appear only with data; "sized-up" reads "strong signal (same size)" while the bump is off.
+- **Short Observations:** table, exports and payload removed (nothing read it; FRENZY_SWING_SHORT 10-20 rejected). Recording stays (frenzy_breaks).
+- **Reviews (DL 419):** caveman — no findings beyond the deep pass · deep — the exit-price guard would have dropped BACKSTOP_STOP tracking (registration moved after booking) · reconciler + CLOSE_FALLBACK never registered · Flatbase mixed row (XAN) · untracked line in exports with no rows · stale label docstring, dead recovery strip block.
+- **Tests:** tests/test_post_exit_regret.py.

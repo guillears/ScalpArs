@@ -95,7 +95,8 @@ def test_sparkline_removed_and_total_card_centred():
 INTENTIONALLY_REMOVED = {"config-fz-willy-floor", "config-fz-willy-floor-arm",   # 🎲²ᵇ DECISION_LOG 358: the WILLY V2 floor removed
                          "portfolio-spark-wrap", "portfolio-spark-box", "portfolio-spark", "portfolio-spark-hi", "portfolio-spark-lo",
                          "portfolio-spark-tip", "portfolio-spark-empty", "portfolio-spark-periods", "portfolio-spark-meta",
-                         "portfolio-spark-guide", "psk-up", "psk-dn"}   # 🎨 DL 387: sparkline removed
+                         "portfolio-spark-guide", "psk-up", "psk-dn",   # 🎨 DL 387: sparkline removed
+                         "frenzy-breaks-body"}   # DL 419: Short Observations table removed (the data is still recorded)
 
 
 def test_no_existing_id_removed():

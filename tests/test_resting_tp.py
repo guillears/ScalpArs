@@ -639,8 +639,6 @@ def test_every_exit_path_cancels_first_source_pins():
     # 🎯 (310) + the operator-TP branch (MANUAL FIXED / override) of each path: the same gate, monitor awaits, realtime in the background
     assert eng.count("await self._rtp_gate(order.id, current_price)") == 2 and eng.count("await self._rtp_gate(order_id, current_price, background=True)") == 2
     assert "await self.resting_tp_sweep()" in eng
-    # WILLY_LATE_TP whitelisted wherever FRENZY_TP is
-    assert eng.count('startswith("FRENZY_TP") or _reason_base.startswith("WILLY_LATE_TP")') == 2
     assert "FRENZY_LATE_TP" not in eng and "FRENZY_LATE_TP" not in main                     # deep E: renamed WILLY_LATE_TP everywhere
     assert "self.rtp_clear_all()" in inspect.getsource(T.TradingEngine._set_paper_mode_locked) and main.count("trading_engine.rtp_clear_all()") == 2   # #7
     assert "await trading_engine.resting_tp_legacy_clear()" in main                         # deep G at startup

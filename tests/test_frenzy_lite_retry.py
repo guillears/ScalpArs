@@ -443,7 +443,7 @@ def test_reports_d12():
     assert "FRENZY_LITE_RETRY" in body and "lite_retry_last" in body                                         # the shared export block
     assert html.count("lines.push(...frenzyReportLines(perf, hr2));") == 2                                    # clipboard + saved file
     assert html.count("lines.push(...liteCReportLines(perf, hr2));") == 2
-    assert html.count("FRENZY Fills (FRENZY_LONG · FRENZY_WIDE · FRENZY_LITE · FRENZY_WILLY) · 🔁 FRENZY_LITE_RETRY") == 2   # UI + export
+    assert html.count("FRENZY Fills (FRENZY_LONG · FRENZY_LITE · FRENZY_LITE_RETRY · FRENZY_WILLY · FRENZY_WILLY_HT · FLATBASE_SHORT)") == 2   # UI + export
     assert "LITE RETRY ${m.lite_retry_enabled ? 'ON' : 'OFF'}" in html and "LITE RETRY ${_bt.frenzy_lite_retry_enabled === true ? 'ON' : 'OFF'}" in html
     assert "LITE RETRY ${_bt.resting_tp_lite_retry_enabled !== false ? 'ON' : 'OFF'}" in html
     assert '<option value="FRENZY_LITE_RETRY">' in html and "strat === 'FRENZY_LITE_RETRY'" in html

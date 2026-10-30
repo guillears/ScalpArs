@@ -116,8 +116,8 @@ def test_pnl_helper_matches_the_exit_arithmetic(monkeypatch):
 
 def test_wiring_cannot_drift():
     src = open(os.path.join(ROOT, "services", "trading_engine.py")).read()
-    assert src.count("not _reason_base.startswith(RH_STOP_CLASS) and not (_reason_base.startswith(\"BREAKEVEN_EXIT\")") == 2   # live + restart whitelists
-    assert src.count("_reason_base = _rh_strip(") == 4                                                                         # before and after the FLIP_/FL_/BR_ strips, both whitelists
+    assert "not _reason_base.startswith(RH_STOP_CLASS) and not (" not in src                                                     # DL 419: post-exit tracking has no whitelist
+    assert src.count("_reason_base = _rh_strip(") == 2                                                                         # before and after the FLIP_/FL_/BR_ strips, the live registration
     assert src.count("reason.startswith(RH_STOP_CLASS) or any(_rh_strip(reason).startswith(p) for p in (") == 2              # live + paper urgent lists
     assert "reason = _rh_prefixed(reason, getattr(order, 'rh_triggered_at', None) is not None)" in src                         # the close funnel
     assert src.count("rh_trigger_ok(") == 2 and src.count("rh_exit(") == 2                                                    # monitor + realtime, same rules

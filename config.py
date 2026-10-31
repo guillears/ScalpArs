@@ -1536,7 +1536,7 @@ class SignalThresholds(BaseModel):
     # B −0.244 %/trade with no stop, −0.325 [−0.59, −0.07] with the live ≈ −2.2 % backstop (it buys exactly the setups the FRENZY filters reject);
     # A +0.135 / +0.004. Code default unchanged (the json value wins).
     frenzy_willy_invest_mult: float = 1.0         # absolute-assign (never the strong bump)
-    frenzy_willy_lev_mult: float = 0.5            # DL 280: 10× at the 20× base (was 1.0 = 20×); default = live so a missing key never re-arms 20×
+    frenzy_willy_lev_mult: float = 0.25           # DL 425: 5× at the 20× base (operator, bridge while WILLY win vs loss is open; DL 280 was 0.5 = 10×); default = live so a missing key never re-arms more. HT follows it. Gate: scripts/scout_willy_5x_watch.py
     frenzy_willy_tp_pct: float = 1.25             # DL 281: +1.25 (was 1.0); fixed take profit, net % (≤ 0 / blank → 1.0 used by frenzy_willy_levels)
     frenzy_willy_stop_pct: float = 4.0            # stop, % (DECISION_LOG 271: −4, same in paper and live) — must be > 0: 0 / blank is refused on save and reset to 4.0 on load (DECISION_LOG 292 ⑤)
     # 🛡 2026-10-12 (DECISION_LOG 271, operator): trading_config.json 0 → 4.0. Paper "no stop" was a hidden −2.2 % stop live; the B19

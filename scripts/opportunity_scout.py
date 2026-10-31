@@ -1480,6 +1480,14 @@ def run():
     except Exception as _lcr_e:
         log(f"LITE_C_REVERT line failed: {_lcr_e}")
         _rg_sec += ["## 👁 LITE_C_REVERT", "", f"Unavailable this run ({str(_lcr_e)[:120]}).", ""]
+    try:                                               # 👁 Oct-31 WILLY_5X — back to 10× or review, frozen at the first 15 fills at 5× (DECISION_LOG 425; forward)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_willy_5x_watch as _w5x
+        _rg_sec += _w5x.run(now_ms)
+    except Exception as _w5x_e:
+        log(f"WILLY_5X line failed: {_w5x_e}")
+        _rg_sec += ["## 👁 WILLY_5X", "", f"Unavailable this run ({str(_w5x_e)[:120]}).", ""]
     try:                                               # 👁 Oct-30 LONG_ADX35 — FRENZY_LONG with coin ADX > 35, frozen expectancy bar (DECISION_LOG 418; forward)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

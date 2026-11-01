@@ -144,4 +144,5 @@ def test_calendar_bot_view_equals_the_book_without_manual_trades():
     allv = _cal(True, None, 3110.0 + man_pnl)
     assert allv["portfolio_now"] == allv["portfolio_real"] == round(3110.0 + man_pnl, 2) and allv["origin"] == "ALL"
     assert sum(e["trades"] for e in allv["days"].values()) == len(BOT) + len(MAN)
-    assert allv["eom_now"] != bot["eom_now"]
+    if clean["eom_now"] is not None:                                                              # the first days of a month have no projection yet
+        assert allv["eom_now"] != bot["eom_now"]

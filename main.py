@@ -2474,7 +2474,7 @@ async def get_pnl_calendar(tz_offset_min: int = 0, origin: str = None, db: Async
                     _m_active += 1
             # same >=4-active-days noise floor as the MTD row, applied per month
             if _m_active >= 4:
-                _elapsed = (_d - _m_first).days + 1
+                _elapsed = (_d - max(_m_first, _first_day)).days + 1   # from the batch start: days before it never ran (a mid-month start read a diluted rate, operator 11-01)
                 # (386) the month's rate from the chained flow-stripped day growth — identical to (_cur / _m_bal0) on a month with
                 # no flows; with a deposit / paper top-up the old ratio read the new capital as compound return (deep review: a
                 # 2,900 → 10,000 top-up showed 4.72 %/day)

@@ -1018,6 +1018,28 @@
             </div>
         </section>
 
+        <!-- 📆 Monthly P&L (DECISION_LOG 426) — the daily calendar's own days, grouped by month; follows All · Bot · Manual; minimized by default -->
+        <section class="mb-8">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-lg font-semibold text-gray-300 cursor-pointer select-none" onclick="togglePnlMonthly()">
+                    📆 Monthly P&L <span id="pnl-mon-chevron" class="text-xs text-gray-500">▶</span>
+                </h2>
+                <div class="flex items-center gap-3 text-sm">
+                    <button type="button" onclick="pnlMonNav(-1)" class="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10">‹</button>
+                    <span id="pnl-mon-year-label" class="text-gray-200 font-semibold w-16 text-center"></span>
+                    <button type="button" onclick="pnlMonNav(1)" class="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10">›</button>
+                </div>
+            </div>
+            <div id="pnl-monthly-card" class="glass rounded-xl p-6" style="display: none;">
+                <div class="flex items-center justify-between flex-wrap gap-2 mb-3 text-sm">
+                    <span id="pnl-mon-year-total" class="font-bold"></span>
+                    <span id="pnl-mon-year-counts" class="text-xs text-gray-400"></span>
+                </div>
+                <div id="pnl-monthly-grid" class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-1"></div>
+                <div class="mt-3 text-xs text-gray-600">Click a month to open it in the daily calendar · %/day = daily compound rate over the days run that month · partial = the month did not run in full · resets with paper reset</div>
+            </div>
+        </section>
+
         <!-- Performance Metrics -->
         <section>
             <h2 class="text-lg font-semibold text-gray-300 mb-4">Closed Orders Performance <span id="origin-view-tag" class="hidden ml-2 text-xs font-normal px-2 py-0.5 rounded bg-sky-500/15 text-sky-300 cursor-pointer" onclick="document.getElementById('origin-switch').scrollIntoView({behavior: 'smooth', block: 'center'})" title="View set by the All · Bot · Manual switch above the calendar — click to go there"></span></h2>
@@ -8646,17 +8668,20 @@
 
         // ===== Daily P&L Calendar (Jun 11, 2026) =====
         let pnlCalData = null;           // {days: {'YYYY-MM-DD': {pnl, trades, wins, wr, day_return_pct}}}
+        let pnlCalDataView = 'ALL';      // the All · Bot · Manual view pnlCalData was fetched for
         let pnlCalYear = null, pnlCalMonth = null;  // displayed month (1-12), local
         let pnlCalCurIdx = null;         // last-known CURRENT month as (year*12+month) — auto-rollover anchor
 
         function loadPnlCalendar() {
             const tzOffsetMin = -new Date().getTimezoneOffset(); // e.g. UTC-3 -> -180
+            const _calView = _originView();   // (426) the view this answer belongs to: an export after a failed or pending fetch names the data it prints
             const _calGen = (window._pnlCalGen = (window._pnlCalGen || 0) + 1);   // (323) a fast view toggle never paints the older answer
             fetch(`${API_BASE}/api/pnl-calendar?tz_offset_min=${tzOffsetMin}${_originParam('&')}`)
                 .then(r => r.json())
                 .then(d => {
                     if (_calGen !== window._pnlCalGen) return;
                     pnlCalData = d;
+                    pnlCalDataView = _calView;
                     const now = new Date();
                     const curIdx = now.getFullYear() * 12 + (now.getMonth() + 1);
                     if (pnlCalYear === null) {
@@ -8845,6 +8870,146 @@
             document.getElementById('pnl-cal-streak-best').textContent = `${best} day${best === 1 ? '' : 's'}`;
 
             _renderEomPanel();
+            renderPnlMonthly();
+        }
+
+        // ===== 📆 Monthly P&L (DECISION_LOG 426): same days, same conventions as the daily calendar's header =====
+        let pnlMonYear = null;           // null = follow the current year; an arrow click pins the year shown
+
+        function pnlMonthlySummary(days, todayKey) {   // PURE → the batch's months in order, first traded month → this month (a month with no trades stays in)
+            const keys = Object.keys(days || {}).sort();
+            if (!keys.length) return [];
+            const expStart = keys[0];
+            const lastKey = keys[keys.length - 1] > todayKey ? keys[keys.length - 1] : todayKey;
+            const out = [];
+            let y = +expStart.slice(0, 4), m = +expStart.slice(5, 7);
+            const endIdx = +lastKey.slice(0, 4) * 12 + +lastKey.slice(5, 7);
+            while (y * 12 + m <= endIdx) {
+                const mk = `${y}-${String(m).padStart(2, '0')}`;
+                const r = { key: mk, y, m, pnl: 0, trades: 0, wins: 0, wr: null, greenDays: 0, redDays: 0, activeDays: 0, elapsed: 0, compoundPct: null, dcrPct: null, best: null, worst: null, partial: false };
+                let comp = 1, hasPct = false;
+                const dim = new Date(y, m, 0).getDate();
+                for (let d = 1; d <= dim; d++) {
+                    const k = `${mk}-${String(d).padStart(2, '0')}`;
+                    const e = days[k];
+                    if (k >= expStart && (k < todayKey || (k === todayKey && e))) r.elapsed++;
+                    if (!e) continue;
+                    r.pnl += e.pnl; r.trades += e.trades; r.wins += (e.wins || 0);
+                    if (e.pnl > 0) r.greenDays++; else if (e.pnl < 0) r.redDays++;
+                    if (r.best === null || e.pnl > r.best.pnl) r.best = { day: k, pnl: e.pnl };
+                    if (r.worst === null || e.pnl < r.worst.pnl) r.worst = { day: k, pnl: e.pnl };
+                    if (e.day_return_pct !== null && e.day_return_pct !== undefined) { comp *= (1 + e.day_return_pct / 100); hasPct = true; }
+                }
+                r.activeDays = r.greenDays + r.redDays;   // the daily header's "(N active)"
+                r.wr = r.trades ? 100 * r.wins / r.trades : null;
+                if (hasPct) {
+                    r.compoundPct = (comp - 1) * 100;
+                    if (r.elapsed > 0 && comp > 0) r.dcrPct = (Math.pow(comp, 1 / r.elapsed) - 1) * 100;
+                }
+                const lastOfMonth = `${mk}-${String(dim).padStart(2, '0')}`;
+                r.partial = expStart > `${mk}-01` || todayKey <= lastOfMonth;
+                out.push(r);
+                m++; if (m > 12) { m = 1; y++; }
+            }
+            return out;
+        }
+
+        function pnlMonthlyTotal(months) {   // PURE → the same fields over the months given (compounding chains the months)
+            const t = { pnl: 0, trades: 0, wins: 0, wr: null, greenMonths: 0, redMonths: 0, elapsed: 0, activeDays: 0, greenDays: 0, redDays: 0, compoundPct: null, dcrPct: null };
+            let comp = 1, hasPct = false;
+            for (const r of months) {
+                t.pnl += r.pnl; t.trades += r.trades; t.wins += r.wins; t.elapsed += r.elapsed; t.activeDays += r.activeDays; t.greenDays += r.greenDays; t.redDays += r.redDays;
+                if (r.pnl > 0) t.greenMonths++; else if (r.pnl < 0) t.redMonths++;
+                if (r.compoundPct !== null) { comp *= (1 + r.compoundPct / 100); hasPct = true; }
+            }
+            t.wr = t.trades ? 100 * t.wins / t.trades : null;
+            if (hasPct) {
+                t.compoundPct = (comp - 1) * 100;
+                if (t.elapsed > 0 && comp > 0) t.dcrPct = (Math.pow(comp, 1 / t.elapsed) - 1) * 100;
+            }
+            return t;
+        }
+
+        function _pnlSignedPct(v, digits) { return v === null || v === undefined ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(digits)}%`; }
+
+        function _pnlLocalTodayKey() {
+            const t = new Date();
+            return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+        }
+
+        function togglePnlMonthly() {
+            const card = document.getElementById('pnl-monthly-card');
+            const chev = document.getElementById('pnl-mon-chevron');
+            if (!card) return;
+            const hidden = card.style.display === 'none';
+            card.style.display = hidden ? '' : 'none';
+            if (chev) chev.textContent = hidden ? '▼' : '▶';
+        }
+
+        function pnlMonNav(delta) {
+            pnlMonYear = (pnlMonYear === null ? new Date().getFullYear() : pnlMonYear) + delta;
+            renderPnlMonthly();
+        }
+
+        function pnlMonOpen(y, m) {   // a month's cell → that month in the daily calendar
+            pnlCalYear = y; pnlCalMonth = m;
+            const card = document.getElementById('pnl-calendar-card');
+            if (card && card.style.display === 'none') togglePnlCalendar();
+            renderPnlCalendar();
+            if (card) card.closest('section').scrollIntoView({ behavior: 'smooth', block: 'start' });   // the top, with the month label: a phone's card is taller than the screen
+        }
+
+        function renderPnlMonthly() {
+            const grid = document.getElementById('pnl-monthly-grid');
+            if (!grid || !pnlCalData) return;
+            const y = pnlMonYear === null ? new Date().getFullYear() : pnlMonYear;
+            const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+            const todayKey = _pnlLocalTodayKey();
+            const months = pnlMonthlySummary(pnlCalData.days || {}, todayKey).filter(r => r.y === y);
+            document.getElementById('pnl-mon-year-label').textContent = String(y);
+            const byM = {};
+            let maxAbs = 0;
+            for (const r of months) { byM[r.m] = r; maxAbs = Math.max(maxAbs, Math.abs(r.pnl)); }
+            let html = '';
+            for (let m = 1; m <= 12; m++) {
+                const r = byM[m];
+                const isNow = todayKey.slice(0, 7) === `${y}-${String(m).padStart(2, '0')}`;
+                const cls = `rounded-lg px-2 py-2 min-h-[92px] border text-center min-w-0 overflow-hidden ${isNow ? 'border-amber-400/60' : 'border-white/5'}`;
+                const head = `<div class="text-[10px] text-gray-500 text-left">${monthNames[m - 1]}${r && r.partial ? ' <span class="text-gray-600">· partial</span>' : ''}</div>`;
+                if (!r) { html += `<div class="${cls} bg-white/[0.02]">${head}</div>`; continue; }
+                const click = `onclick="pnlMonOpen(${y},${m})"`;
+                if (!r.trades) { html += `<div class="${cls} bg-white/[0.02] cursor-pointer" ${click}>${head}<div class="text-[10px] text-gray-600 mt-2">no trades</div></div>`; continue; }
+                const alpha = (0.08 + 0.30 * (maxAbs > 0 ? Math.min(1, Math.abs(r.pnl) / maxAbs) : 0)).toFixed(2);
+                const bg = r.pnl >= 0 ? `background: rgba(52, 211, 153, ${alpha});` : `background: rgba(248, 113, 113, ${alpha});`;
+                const txt = r.pnl >= 0 ? 'text-emerald-300' : 'text-red-300';
+                const title = `${monthNames[m - 1]} ${y} — ${r.activeDays} active of ${r.elapsed} day${r.elapsed === 1 ? '' : 's'} · profitable ${r.greenDays} / loss ${r.redDays} · best ${r.best.day} ${_pnlCalFmt$(r.best.pnl)} · worst ${r.worst.day} ${_pnlCalFmt$(r.worst.pnl)}`;
+                html += `<div class="${cls} cursor-pointer hover:brightness-125" style="${bg}" title="${title}" ${click}>${head}` +
+                    `<div class="text-xs font-bold ${txt} mt-1">${_pnlCalFmt$(r.pnl)}</div>` +
+                    `<div class="text-[10px] ${txt} opacity-80">${_pnlSignedPct(r.compoundPct, 2)}</div>` +
+                    `<div class="text-[10px] ${txt} opacity-80">≈${_pnlSignedPct(r.dcrPct, 2)}/day</div>` +
+                    `<div class="text-[9px] text-gray-400 opacity-80">${r.trades} trade${r.trades === 1 ? '' : 's'} · ${r.wr.toFixed(0)}% WR</div></div>`;
+            }
+            grid.innerHTML = html;
+            const totEl = document.getElementById('pnl-mon-year-total');
+            const cntEl = document.getElementById('pnl-mon-year-counts');
+            const t = pnlMonthlyTotal(months);
+            if (!t.trades) { totEl.textContent = `No trades in ${y}`; totEl.className = 'font-bold text-gray-500'; cntEl.innerHTML = ''; return; }
+            totEl.textContent = `${_pnlCalFmt$(t.pnl)} in ${y} (${_pnlSignedPct(t.compoundPct, 2)} compounded) · ≈${_pnlSignedPct(t.dcrPct, 2)}/day over ${t.elapsed} day${t.elapsed === 1 ? '' : 's'}`;
+            totEl.className = 'font-bold ' + (t.pnl >= 0 ? 'text-emerald-400' : 'text-red-400');
+            cntEl.innerHTML = `<span class="text-gray-500">Profitable:</span> <span class="text-emerald-400">${t.greenMonths} month${t.greenMonths === 1 ? '' : 's'}</span> <span class="text-gray-600">·</span> <span class="text-gray-500">Loss:</span> <span class="text-red-400">${t.redMonths} month${t.redMonths === 1 ? '' : 's'}</span>`;
+        }
+
+        function monthlyPnlReportLines(hr2) {   // 📆 (DECISION_LOG 426) Monthly P&L — called by BOTH text exports (clipboard + saved file)
+            const out = [`\n${hr2}`, `## 📆 Monthly P&L (DECISION_LOG 426 — the daily calendar's days grouped by month; paper: this batch, live: lifetime; View: ${ORIGIN_LABELS[pnlCalDataView] || 'All trades'})\n`];
+            if (!pnlCalData || !pnlCalData.days) { out.push('  Not loaded yet — the calendar data had not arrived when this report was built.'); return out; }
+            const months = pnlMonthlySummary(pnlCalData.days || {}, _pnlLocalTodayKey());
+            if (!months.length) { out.push('  No closed trades yet.'); return out; }
+            const row = (lab, r, note) => `  ${lab.padEnd(9)} ${(_pnlCalFmt$(r.pnl)).padStart(10)} ${_pnlSignedPct(r.compoundPct, 2).padStart(10)} ${_pnlSignedPct(r.dcrPct, 2).padStart(9)} ${`${r.activeDays}/${r.elapsed}`.padStart(9)} ${String(r.trades).padStart(6)} ${(r.wr === null ? '—' : r.wr.toFixed(0) + '%').padStart(5)} ${`${r.greenDays}/${r.redDays}`.padStart(9)}  ${note}`;
+            out.push(`  ${'Month'.padEnd(9)} ${'P&L $'.padStart(10)} ${'Compound'.padStart(10)} ${'%/day'.padStart(9)} ${'Act/Days'.padStart(9)} ${'Trades'.padStart(6)} ${'WR'.padStart(5)} ${'Win/Loss'.padStart(9)}  Best · Worst day`);
+            for (const r of months) out.push(row(r.key, r, (r.best ? `${r.best.day} ${_pnlCalFmt$(r.best.pnl)} · ${r.worst.day} ${_pnlCalFmt$(r.worst.pnl)}` : 'no trades') + (r.partial ? ' · partial' : '')));
+            const t = pnlMonthlyTotal(months);
+            out.push(row('Total', t, `${t.greenMonths} profitable · ${t.redMonths} loss month${t.redMonths === 1 ? '' : 's'}`));
+            return out;
         }
 
         // ── EOM Projection Revisions panel (Aug-4, operator design) ─────────────────
@@ -11131,6 +11296,7 @@
             lines.push(...frenzyReportLines(perf, hr2));   // 🔥 FRENZY Sleeve · Flagged Pairs · Fills
             lines.push(...liteCReportLines(perf, hr2));   // 🎯 (DECISION_LOG 301) LITE C Tally
             lines.push(...manualBlockReportLines(perf, hr2));   // ⛔ (DECISION_LOG 343) Manual block state
+            lines.push(...monthlyPnlReportLines(hr2));   // 📆 (DECISION_LOG 426) Monthly P&L
 
             if ((perf.surge_rows && perf.surge_rows.length > 0) || perf.surge_monitor) {
                 lines.push(`\n${hr2}`);
@@ -13333,6 +13499,7 @@
             lines.push(...frenzyReportLines(perf, hr2));   // 🔥 FRENZY Sleeve · Flagged Pairs · Fills
             lines.push(...liteCReportLines(perf, hr2));   // 🎯 (DECISION_LOG 301) LITE C Tally
             lines.push(...manualBlockReportLines(perf, hr2));   // ⛔ (DECISION_LOG 343) Manual block state
+            lines.push(...monthlyPnlReportLines(hr2));   // 📆 (DECISION_LOG 426) Monthly P&L
 
             if ((perf.surge_rows && perf.surge_rows.length > 0) || perf.surge_monitor) {
                 lines.push(`\n${hr2}`);

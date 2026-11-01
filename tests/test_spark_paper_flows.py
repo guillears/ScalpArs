@@ -129,3 +129,19 @@ def test_flow_day_return_is_exact_time_weighted():
     start = 2950.0
     exact = (start - 300) / start * (1 + 100 / (start - 300 + 7000)) - 1
     assert out["days"]["2026-09-03"]["day_return_pct"] == round(exact * 100, 2)          # −9.13 %, not the diluted Dietz −3 %
+
+
+def test_month_rate_starts_at_the_batch_start():
+    """A batch starting on the 23rd: the rate counts its own days, never the 22 before it; the next month counts from the 1st."""
+    late = [(dt.datetime(2026, 9, d, 15, 0), -1.0) for d in range(23, 27)] + [(dt.datetime(2026, 10, d, 15, 0), -1.0) for d in (1, 3, 5, 7)]
+    out = _cal_fixed(late, [], realized_equity=2200.0)
+    sep = out["revisions_by_month"]["2026-09"][0]
+    g = 1.0
+    for k in ("2026-09-23", "2026-09-24", "2026-09-25", "2026-09-26"):
+        g *= 1 + out["days"][k]["day_return_pct"] / 100
+    assert sep["date"] == "2026-09-26" and abs(sep["dcr"] - (g ** (1 / 4) - 1) * 100) < 0.01      # 4 days, not 26
+    oct_ = out["revisions_by_month"]["2026-10"][0]
+    g = 1.0
+    for k in ("2026-10-01", "2026-10-03", "2026-10-05", "2026-10-07"):
+        g *= 1 + out["days"][k]["day_return_pct"] / 100
+    assert oct_["date"] == "2026-10-07" and abs(oct_["dcr"] - (g ** (1 / 7) - 1) * 100) < 0.01    # a later month: from its 1st, idle days count

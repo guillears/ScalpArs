@@ -97,6 +97,8 @@ BOOKED = {   # booked P&L — `era` = drops fills by WILLY exit era (registered 
     "scout_lite_c_revert_watch.py": {"frenzy_lite_c_enabled": False, "frenzy_lite_tp_pct": 3.0, "frenzy_stop_pct": 3.0, "frenzy_max_hold_minutes": 720, "frenzy_lock_arm_pct": 0.0},
     # (418) LONG_ADX35 judges booked WR against the frozen +1.5 / −4 breakeven (72.7 %) → pinned to that exit
     "scout_long_adx35_watch.py": {"frenzy_tp_pct": 1.5, "frenzy_long_stop_pct": 4.0, "frenzy_max_hold_minutes": 720, "frenzy_lock_arm_pct": 0.0},
+    # (427) SURGE_WL judges booked WR against SURGE_LONG's frozen breakeven (31.5 %) → pinned to its exit keys
+    "scout_surge_wl_watch.py": {"surge_long_exit_no_lock": True, "surge_max_hold_minutes": 240, "sl_atr_multiplier": 1.5, "sl_atr_widen_floor_pct": -1.2, "bullrun_base_sl_pct": -0.7, "bullrun_be_arm_pct": 1.0, "surge_long_trail_atr_mult": 1.0},
     # (414) WILLY_GAP judges booked WR against the same frozen V2b breakeven (69.0 %) → the same pins
     "scout_willy_gap_watch.py": {"frenzy_willy_high_target_enabled": True, "frenzy_willy_stop_pct": 4.0, "frenzy_willy_high_k_pct": 1.0,
                                  "frenzy_willy_high_tp_max_pct": 8.0, "frenzy_willy_max_hold_minutes": 90,

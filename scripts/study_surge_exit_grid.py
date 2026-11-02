@@ -170,6 +170,39 @@ AGG_REAL = os.path.join(SR.CACHE, "agg_surge_real")
 PER_SECOND = "--per-second" in sys.argv   # real fills: every print (default; 4 / 5 reproduce the booked exit) · --per-second = last trade per second (3 / 5)
 
 
+PATH_SRC, SKIPPED = {}, []   # (pair, t0) → the path source when a day fell back to 1m · fills the report must list as not priced
+
+
+def fetch_k1m_public(pair, a, b):
+    """Binance PUBLIC futures 1m klines on [a, b] as a price path: open, low / high in the bar's likely order, close, one price a second; paced, stops on 418 / 429. None on a network error."""
+    out, s = [], a // MIN * MIN
+    while s <= b:
+        wait = 1.0 - (time.time() - _LAST[0])
+        if wait > 0:
+            time.sleep(wait)
+        url = f"https://fapi.binance.com/fapi/v1/klines?symbol={pair}&interval=1m&startTime={s}&endTime={b}&limit=1000"
+        try:
+            with urllib.request.urlopen(url, timeout=20) as r:
+                data = json.loads(r.read())
+        except urllib.error.HTTPError as ex:
+            if ex.code in (418, 429):
+                sys.exit(f"Binance {ex.code} — STOP (request budget)")
+            return None
+        except Exception:
+            return None
+        _LAST[0] = time.time()
+        if not data:
+            break
+        for k in data:
+            t, o, h, l, c = int(k[0]), float(k[1]), float(k[2]), float(k[3]), float(k[4])
+            legs = (o, l, h, c) if c >= o else (o, h, l, c)
+            for j in range(3):   # one price a second along each leg: a jump between points would book a stop at the bar's low, not at its line (HAEDAL −2.72 vs −1.21 live)
+                out += [(t + j * 20_000 + i * 1000, legs[j] + (legs[j + 1] - legs[j]) * i / 20) for i in range(20)]
+            out.append((t + 59_999, c))
+        s = int(data[-1][0]) + MIN
+    return out
+
+
 def fetch_agg_public(pair, t0, t1):
     """Binance PUBLIC futures aggTrades on [t0 − 60 s, t1] (weight 20 / call, ≤ 1 h windows, paginated by fromId), paced ≥ 0.6 s,
     sleeps when the used weight passes 900, stops on 418 / 429. Cached as reports/backtest_cache/agg_surge_real/<pair>_<t0>.csv."""
@@ -180,8 +213,9 @@ def fetch_agg_public(pair, t0, t1):
         d = pd.read_csv(f)
         return d.T_ms.to_numpy(np.int64), d.p.to_numpy(float)
     if int(time.time() * 1000) - t0 > 40 * 3_600_000:   # the API serves only the last 2 days → Binance's public daily archive
-        rows = []
-        for day in sorted({pd.to_datetime(x, unit="ms").strftime("%Y-%m-%d") for x in (t0 - 60_000, t1)}):
+        rows, fell = [], set()
+        days = sorted({pd.to_datetime(x, unit="ms").strftime("%Y-%m-%d") for x in (t0 - 60_000, t1)})
+        for day in days:
             z = os.path.join(AGG_REAL, f"{pair}-aggTrades-{day}.zip")
             if not os.path.exists(z):
                 url = f"https://data.binance.vision/data/futures/um/daily/aggTrades/{pair}/{pair}-aggTrades-{day}.zip"
@@ -189,9 +223,15 @@ def fetch_agg_public(pair, t0, t1):
                     with urllib.request.urlopen(url, timeout=120) as r, open(z + ".part", "wb") as fh:
                         fh.write(r.read())
                     os.replace(z + ".part", z)
-                except Exception as ex:   # not published yet (404) / network → this fill is skipped and listed, never the whole section
-                    print(f"archive {pair} {day} unavailable ({str(ex)[:60]}) — fill skipped")
-                    return None
+                except Exception as ex:   # a day Binance did not publish (2026-10-28 is missing for every pair) → 1m bars for that day; never cached, so a later archive wins
+                    print(f"archive {pair} {day} unavailable ({str(ex)[:60]}) — 1m bars for this day")
+                    day0 = int(pd.Timestamp(day).value // 1_000_000)
+                    k = fetch_k1m_public(pair, max(t0 - 60_000, day0), min(t1, day0 + 86_400_000 - 1))
+                    if k is None:
+                        return None
+                    rows += k
+                    fell.add(day)
+                    continue
             d = pd.read_csv(z, header=None, low_memory=False)
             if not str(d.iloc[0, 0]).isdigit():
                 d = d.iloc[1:]
@@ -199,7 +239,9 @@ def fetch_agg_public(pair, t0, t1):
             d = d[(d.iloc[:, 0] >= t0 - 60_000) & (d.iloc[:, 0] <= t1)]
             rows += list(zip(d.iloc[:, 0].astype(np.int64), d.iloc[:, 1]))
         d = pd.DataFrame(rows, columns=["T_ms", "p"]).sort_values("T_ms", kind="stable")
-        if full:
+        if fell:
+            PATH_SRC[(pair, t0)] = "1m" if len(fell) == len(days) else "aggTrades+1m"
+        elif full:
             d.to_csv(f, index=False)
         return d.T_ms.to_numpy(np.int64), d.p.to_numpy(float)
     rows, s = [], t0 - 60_000
@@ -328,18 +370,21 @@ def real_fills():
         # every real fill on Binance's OWN aggTrades (operator 10-27: real fills only — the cached tick / 1m paths missed AGT / BTW)
         ag = fetch_agg_public(r.pair, t0, min(t1, int(time.time() * 1000)))
         if ag is None:
+            SKIPPED.append(f"{r.pair} {r.kk[5:16]} (no price path)")
             continue
         at, ap = ag
         m = at > t0
-        ts, px, src = at[m], ap[m], "aggTrades"
+        ts, px, src = at[m], ap[m], PATH_SRC.get((r.pair, t0), "aggTrades")
         if PER_SECOND:   # the live exit reads ~1 price / second (AGT 10-18: a 2-s wick to +5.0 the bot never saw; it booked +7.53 at 94.1 s)
             sec = ts // 1000
             last = np.r_[sec[1:] != sec[:-1], True]
-            ts, px, src = sec[last] * 1000 + 999, px[last], "aggTrades/1s"
+            ts, px, src = sec[last] * 1000 + 999, px[last], src + "/1s"
         if not len(ts):
+            SKIPPED.append(f"{r.pair} {r.kk[5:16]} (empty price path)")
             continue
         rec = price_all(ts, px, e, t0, atr)
         if rec is None:
+            SKIPPED.append(f"{r.pair} {r.kk[5:16]} (could not be walked)")
             continue
         booked = float(r.pnl_percentage)
         rec.update(src=src, pair=r.pair, opened_at=r.kk, atr=atr, booked_pct=booked, booked_reason=r.close_reason,
@@ -415,16 +460,21 @@ def report(W, par, R):
         L += ["", f"1m-fallback sensitivity ({len(M)} fills, not in the gate): " + " · ".join(f"{c} {M[c].mean():+.3f}" for c in ("TODAY", "LOCK_ONLY", "ARM05_BE", "TP2_SL1.2", "TP3_SL1.2"))]
     # real
     L += ["", "## ② Real SURGE_LONG fills (paper + live, cohort floor 09-30 15:30)", ""]
+    if SKIPPED:
+        L += [f"⚠ {len(SKIPPED)} fills could NOT be priced and are NOT in the table or its mean: " + " · ".join(SKIPPED), ""]
     if R is None or not len(R):
         L.append("No closed real fill.")
     else:
         L.append(f"{len(R)} closed fills · TODAY walk reproduces the booked pct (±0.15) on {int(R.parity.sum())} / {len(R)} (path: "
-                 + ", ".join(f"{k} {v}" for k, v in R.src.value_counts().items()) + ").")
+                 + ", ".join(f"{k} {v}" for k, v in R.src.value_counts().items()) + "; a path with 1m bars is a sensitivity read, its stop or target order inside a bar is approximate).")
         L += ["", "| Fill | ATR | Booked | " + " | ".join(CELL_NAMES) + " |", "|" + "---|" * (len(CELL_NAMES) + 3)]
         for r in R.sort_values("opened_at").itertuples():
             L.append(f"| {r.pair.replace('USDT', '')} {r.opened_at[5:16].replace('T', ' ')}{'' if r.parity else ' ⚠'} | {r.atr:.2f} | {r.booked_pct:+.2f} | "
                      + " | ".join(f"{R.loc[r.Index, c]:+.2f}" for c in CELL_NAMES) + " |")
         L.append("| **mean** | | " + f"{R.booked_pct.mean():+.2f} | " + " | ".join(f"**{R[c].mean():+.2f}**" for c in CELL_NAMES) + " |")
+        A = R[R.src.astype(str).str.fullmatch(r"aggTrades(/1s)?")]
+        if len(A) < len(R) and len(A):
+            L.append(f"| **mean, real trades only ({len(A)})** | | " + f"{A.booked_pct.mean():+.2f} | " + " | ".join(f"**{A[c].mean():+.2f}**" for c in CELL_NAMES) + " |")
         L.append("| avg hold | | | " + " | ".join(hhmm(R[c + '_min'].mean()) for c in CELL_NAMES) + " |")
     open(OUT_MD, "w").write("\n".join(L) + "\n")
     print("\n".join(L))

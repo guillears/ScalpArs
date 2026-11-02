@@ -15,11 +15,13 @@ import scout_exit_shadows as X  # noqa: E402
 
 MIN = 60_000
 TE = 1_761_000_008_000
+FAR = {"TP2_SL3": int(pd.Timestamp("2030-01-01").value // 10**6)}   # TP2_SL3's own floor, far ahead: hermetic (never reads git)
 
 
 def test_frozen_constants_sleeve_and_stops():
     assert (X.DL, X.N_MIN, X.DAYS_MIN, X.MIN_GAIN, X.ALPHA, X.SHARE_MAX, X.PARITY_MIN) == (411, 20, 8, 0.10, 0.10, 0.50, 0.90)
-    assert X.SLEEVES == {"FLIP": (("FLIP:", None), ("TP1.5", "TP2", "TP3"))}   # operator 10-29: flips only, +1.5 / +2 / +3
+    assert X.SLEEVES == {"FLIP": (("FLIP:", None), ("TP1.5", "TP2", "TP3", "TP2_SL3"))}   # operator 10-29 + DL 431 (TP +2 / stop −3)
+    assert X.EXIT_M == {"TP1.5": 3, "TP2": 3, "TP3": 3, "TP2_SL3": 16} and X.EXIT_WORST == {"TP2_SL3": -5.0}
     assert X.sleeve_of("FLIP:FAN_RATIO_GATE", "SHORT") == "FLIP" and X.sleeve_of("FLIP:FAN_RATIO_GATE", "LONG") == "FLIP"
     for es, d in (("SPIKE_FADE", "SHORT"), ("MOMENTUM", "LONG"), ("MOMENTUM", "SHORT"), ("FRENZY_LITE", "LONG")):
         assert X.sleeve_of(es, d) is None
@@ -56,7 +58,12 @@ def test_fixed_walk_and_exits_on():
     slow = X.to_net(_gross([(m, 0.4, -0.1, 0.1) for m in range(1, 800)]), "LONG")
     r = type("R", (), dict(sleeve="FLIP", sl=1.2, pct=0.3, tc=TE + 120 * MIN))()
     out = X.exits_on(slow, r)
-    assert set(out) == {"TP1.5", "TP2", "TP3"} and abs(out["TP2"] - slow["cl"][718]) < 1e-9   # never +2 → the 12 h cap
+    assert set(out) == {"TP1.5", "TP2", "TP3", "TP2_SL3"} and abs(out["TP2"] - slow["cl"][718]) < 1e-9   # never +2 → the 12 h cap
+    dip = X.to_net(_gross([(5, 0.1, -2.0, -1.8), (30, 2.4, -1.0, 2.2)] + [(m, 2.0, 1.9, 2.0) for m in range(31, 760)]), "LONG")
+    o2 = X.exits_on(dip, r)
+    assert abs(o2["TP2"] - (-1.2)) < 1e-9 and abs(o2["TP2_SL3"] - 2.0) < 1e-9   # −2 dip: the live −1.2 stops, −3 survives to +2
+    r_wide = type("R", (), dict(sleeve="FLIP", sl=3.5, pct=0.3, tc=TE + 120 * MIN))()
+    assert abs(X.exits_on(X.to_net(_gross([(5, 0.1, -3.6, -3.4)] + [(m, 0, 0, 0) for m in range(6, 760)]), "LONG"), r_wide)["TP2_SL3"] + 3.5) < 1e-9   # never tighter than the fill's own stop
     assert np.isnan(X.walk_fixed(X.to_net(_gross([(5, 0, 0, 0)]), "LONG"), 2.0, 1.2))       # path too short → undecided
 
 
@@ -87,6 +94,11 @@ def test_verdict_candidate_keep_share_parity_and_crossing():
     r = _rows([0.4] * 20); r.at[0, "exits"] = {"TP2": np.nan}
     assert "N 19" in X.verdict(r, ("TP2",))[0]["TP2"][1]                                        # an unpriced exit is out of its N
     assert X.crossing(_rows([0.1] * 25)) == 20 and X.crossing(_rows([0.1] * 25, days=3)) is None
+    sl3 = _rows([0.4] * 20); sl3["exits"] = [{"TP2_SL3": e["TP2"]} for e in sl3.exits]
+    assert X.verdict(sl3, ("TP2_SL3",))[0]["TP2_SL3"][0].startswith("CANDIDATE") and "(bar 0.994)" in X.verdict(sl3, ("TP2_SL3",))[0]["TP2_SL3"][1]
+    sl3.at[0, "exits"] = {"TP2_SL3": -7.5}; sl3.at[0, "pct"] = -8.0                              # a gap through the −3 stop
+    v3 = X.verdict(sl3, ("TP2_SL3",))[0]["TP2_SL3"]
+    assert v3[0].startswith("KEEP") and "1 below -5.0" in v3[1]                                   # the gap check vetoes it
 
 
 def _export(tmp_path, n, start="2026-11-01", stamp="2026-12-01_00-00-00"):
@@ -117,19 +129,19 @@ def test_run_freezes_once_caches_and_waits_for_a_late_export(tmp_path, monkeypat
     monkeypatch.setattr(X, "raw_path", lambda r, *a, **k: (calls.append(r.pair) or _good(r), "ok"))
     st = tmp_path / "x.json"
     early = _export(tmp_path, 20, stamp="2026-11-08_12-00-00")              # the newest export is < the prefix end + 1200 min → wait
-    out0 = "\n".join(X.run(now, early, str(st), since, fetch=True))
+    out0 = "\n".join(X.run(now, early, str(st), since, fetch=True, exit_since_ms=FAR))
     assert "newest export < the prefix end + 1200 min" in out0 and "Verdict (prefix" not in out0
     assert json.load(open(st))["_fills"]                                    # results cached even while the freeze waits
     n_calls = len(calls)
     paths = _export(tmp_path, 20)
-    out = "\n".join(X.run(now, paths, str(st), since, fetch=True))
+    out = "\n".join(X.run(now, paths, str(st), since, fetch=True, exit_since_ms=FAR))
     assert len(calls) == n_calls                                            # cached → never re-walked
     assert "FLIP — counted" in out and "PROBEUSDT" not in out and "MOMUSDT" not in out and "Verdict (prefix" in out
     assert json.load(open(st))["FLIP"]["exits"]["TP2"][0].startswith("CANDIDATE")
     monkeypatch.setattr(X, "raw_path", lambda *a, **k: (None, "empty"))
-    assert "Frozen verdict" in "\n".join(X.run(now, paths, str(st), since, fetch=True))   # never re-decided
+    assert "Frozen verdict" in "\n".join(X.run(now, paths, str(st), since, fetch=True, exit_since_ms=FAR))   # never re-decided
     monkeypatch.setattr(X, "raw_path", lambda r, *a, **k: (_good(r), "ok"))
-    dry = "\n".join(X.run(now, paths, None, since, fetch=False))
+    dry = "\n".join(X.run(now, paths, None, since, fetch=False, exit_since_ms=FAR))
     assert "NOT FROZEN" in dry and "Frozen verdict" not in dry              # a run without state never claims a frozen verdict
 
 
@@ -139,27 +151,27 @@ def test_signature_rewalk_gap_retry_and_misses(tmp_path, monkeypatch):
     calls = []
     monkeypatch.setattr(X, "raw_path", lambda r, *a, **k: (calls.append(r.pair) or _good(r), "ok"))
     paths, st = _export(tmp_path, 3), str(tmp_path / "s.json")
-    X.run(now, paths, st, since, fetch=True); X.run(now, paths, st, since, fetch=True)
+    X.run(now, paths, st, since, fetch=True, exit_since_ms=FAR); X.run(now, paths, st, since, fetch=True, exit_since_ms=FAR)
     assert len(calls) == 3                                                  # cached
     monkeypatch.setattr(X, "FIX_CAP", 600)                                  # an exit constant changes → every fill re-walked
-    X.run(now, paths, st, since, fetch=True)
+    X.run(now, paths, st, since, fetch=True, exit_since_ms=FAR)
     assert len(calls) == 6
     p2 = _export(tmp_path, 3, stamp="2026-12-02_00-00-00")
     df = pd.read_csv(p2[0]); df.loc[0, "pnl_percentage"] = 0.2; df.to_csv(p2[0], index=False)   # a corrected booked % → that fill only
-    X.run(now, paths + p2, st, since, fetch=True)
+    X.run(now, paths + p2, st, since, fetch=True, exit_since_ms=FAR)
     assert len(calls) == 7
     monkeypatch.setattr(X, "raw_path", lambda r, *a, **k: (_good(r), "gap"))
     st2 = str(tmp_path / "g.json")
-    assert "priced 0 · pending 3" in "\n".join(X.run(now, paths, st2, since, fetch=True))       # a short page: retry another day first
-    assert "priced 3 · pending 0" in "\n".join(X.run(now + 86_400_000, paths, st2, since, fetch=True))
+    assert "priced 0 · pending 3" in "\n".join(X.run(now, paths, st2, since, fetch=True, exit_since_ms=FAR))       # a short page: retry another day first
+    assert "priced 3 · pending 0" in "\n".join(X.run(now + 86_400_000, paths, st2, since, fetch=True, exit_since_ms=FAR))
     monkeypatch.setattr(X, "raw_path", lambda *a, **k: (None, "empty"))
     st3 = str(tmp_path / "m.json")
     for day in ("2026-12-01", "2026-12-01", "2026-12-02"):
-        out = "\n".join(X.run(int(pd.Timestamp(day).value // 10**6), paths, st3, since, fetch=True))
+        out = "\n".join(X.run(int(pd.Timestamp(day).value // 10**6), paths, st3, since, fetch=True, exit_since_ms=FAR))
     assert "unpriceable 0" in out                                           # 2 distinct days so far → still pending
-    out = "\n".join(X.run(int(pd.Timestamp("2026-12-03").value // 10**6), paths, st3, since, fetch=True))
+    out = "\n".join(X.run(int(pd.Timestamp("2026-12-03").value // 10**6), paths, st3, since, fetch=True, exit_since_ms=FAR))
     assert "unpriceable 3" in out                                           # the 3rd distinct day → UNPRICEABLE
-    assert "priced 0 · pending 3" in "\n".join(X.run(since + 60 * MIN, paths, None, since, fetch=False))   # window open → pending
+    assert "priced 0 · pending 3" in "\n".join(X.run(since + 60 * MIN, paths, None, since, fetch=False, exit_since_ms=FAR))   # window open → pending
 
 
 def test_not_evaluable_hook_and_registry(monkeypatch):
@@ -187,3 +199,21 @@ def test_load_entry_fee_and_a_short_flip_walk(tmp_path):
     P = X.to_net(g, "SHORT", 0.018)
     r = type("R", (), dict(sleeve="FLIP", sl=1.2, pct=0.3, tc=TE + 30 * MIN))()
     assert X.exits_on(P, r)["TP2"] == 2.0 and abs(X.exits_on(P, r)["TP1.5"] - 1.5) < 1e-9
+
+
+def test_tp2_sl3_counts_only_from_its_own_registration(tmp_path, monkeypatch):
+    """(DL 431 deep review M1) the grid was chosen on a pre-registration fill (ARB 10-30): TP2_SL3 has its own floor and frozen read;
+    the original three exits keep theirs (state key FLIP, TP2_SL3 never in it)."""
+    since = int(pd.Timestamp("2026-11-01").value // 10**6)
+    now = int(pd.Timestamp("2026-12-01").value // 10**6)
+    monkeypatch.setattr(X, "raw_path", lambda r, *a, **k: (_good(r), "ok"))
+    st = tmp_path / "x.json"
+    paths = _export(tmp_path, 20)                                            # 20 fills 11-01 … 11-08
+    mid = int(pd.Timestamp("2026-11-03").value // 10**6)
+    out = "\n".join(X.run(now, paths, str(st), since, fetch=True, exit_since_ms={"TP2_SL3": mid}))
+    s_ = json.load(open(st))
+    assert "TP2_SL3" not in s_["FLIP"]["exits"] and set(s_["FLIP"]["exits"]) == {"TP1.5", "TP2", "TP3"}
+    assert "FLIP|TP2_SL3" not in s_ and "COLLECTING TP2_SL3 (counted from 2026-11-03 00:00 UTC, DL 431)" in out
+    assert "m per exit: TP1.5 3, TP2 3, TP3 3, TP2_SL3 16" in out and "TP2_SL3 counted from the DL 431 commit" in out
+    monkeypatch.setattr(X._GK, "dl_deploy_ms", lambda *a, **k: None)
+    assert "TP2_SL3: ⚠ NOT EVALUABLE" in "\n".join(X.run(now, paths, None, since, fetch=False))

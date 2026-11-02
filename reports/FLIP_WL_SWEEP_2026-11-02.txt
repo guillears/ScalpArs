@@ -1,0 +1,123 @@
+FAN flip winners vs losers — full separator sweep (DECISION_LOG 431, operator 2026-11-02). Pool: master today's stack (MASTER_POOL_stacked stack_keep, 35) + B25 (6) = 41 real fills. Family-wise luck test (scout_sweep_all, shuffled labels): NOT above luck at any level for any label — path 1D p 0.344 / 2D p 0.532 · reach 1D p 0.715 / 2D p 0.632 · pnl 1D p 0.616 / 2D p 0.318 (bar p ≤ 0.017 per level). Screen only; no entry-filter candidate.
+
+################ --label path
+FLIP:FAN_RATIO_GATE: 41 REAL fills (master on today's stack 35 · current batch 6) · era split 2026-08-12T14:16:24 · ENTRY LABEL (path, DL 406): WORKED 27 · NEVER 14 · not counted 0 (flat / ambig / pending bars) → Δ = WORKED-rate difference (0.10 = 10 points)
+coverage: 39 numeric + 15 level (flag / category) entry_* columns tested · BLIND SPOTS (< 80 % of fills scored, NOT tested): alt_beta24 5%, alt_corr24 5%, bracket_cap_notional 29%, bracket_max_leverage 29%, btc_1d_ret_pct 34%, btc_4h_ema50_200_gap_pct 12%, btc_above72_pct 37%, btc_eff72 37%, btc_ema50_100_gap_pct 34%, btc_off24h_pct 39%, btc_off24lo_pct 39%, btc_off30d_high_pct 37%, btc_r72_pct 37%, btc_rsi_closed 29%, cmc_rank 34%, eth_5m_ret1_pct 34%, mcap_usd 34%, pair_1d_ndi 15%, pair_1h_ema20_200_gap_pct 34%, pair_age_days 10%, vol_mcap_ratio 17% · never stamped on this sleeve: 53
+SWEEP FLIP:FAN_RATIO_GATE: 45 dimensions x 91 tests | era A (<2026-08-12T14:16:24) vs B | consistent: 38
+dimension                                 gran        ΔavgA   ΔavgB strength
+entry_btc_atr_pct                         median     -0.500  -0.333    0.333
+entry_order_type                          =TAKER_FALLBAC  +0.354  +0.288    0.288
+entry_pair_ema20_ema50_gap_pct            sign       -0.312  -0.288    0.288
+entry_order_type                          =MAKER     -0.354  -0.288    0.288
+entry_ema50_slope                         tercile    -0.275  -0.397    0.275
+entry_liquidity_cap_notional              tercile    -0.275  -0.518    0.275
+entry_pair_volume_24h_usd                 tercile    -0.275  -0.518    0.275
+entry_ema50_slope                         median     -0.300  -0.225    0.225
+entry_btc_atr_pct                         tercile    -0.275  -0.225    0.225
+entry_pair_rank                           tercile    +0.165  +0.214    0.165
+entry_range_position                      tercile    +0.165  +0.333    0.165
+entry_ema_gap_5_8                         tercile    +0.165  +0.136    0.136
+entry_quality_score                       =2.0       +0.119  +0.245    0.119
+entry_btc_1h_slope                        tercile    -0.275  -0.115    0.115
+entry_btc_rsi_prev6                       median     -0.300  -0.115    0.115
+
+── 2D INTERACTION SWEEP ──
+pairs tested: ~2964 quadrant cells | consistent (|Δ|>0.10 both eras, minN 5/quadrant/era): 286
+  bull_pct<=med x gap>med                                                 -0.47  -0.52  str 0.47
+  btc_atr_pct<=med x rsi_prev>med                                         +0.38  +0.43  str 0.38
+  btc_atr_pct<=med x pair_volume_24h_usd<=med                             +0.36  +0.49  str 0.36
+  ema50_slope<=med x range_position>med                                   +0.36  +0.43  str 0.36
+  btc_rsi_prev>med x pair_volume_24h_usd<=med                             +0.36  +0.37  str 0.36
+  btc_atr_pct>med x pair_volume_ratio>med                                 -0.36  -0.49  str 0.36
+  btc_atr_pct<=med x range_position>med                                   +0.36  +0.52  str 0.36
+  btc_rsi_prev>med x liquidity_cap_notional<=med                          +0.36  +0.37  str 0.36
+  btc_atr_pct<=med x pair_rank>med                                        +0.36  +0.37  str 0.36
+  btc_atr_pct<=med x pair_ema20_ema50_gap_pct<=med                        +0.36  +0.42  str 0.36
+  btc_atr_pct<=med x liquidity_cap_notional<=med                          +0.36  +0.49  str 0.36
+  btc_atr_pct<=med x bull_pct>med                                         +0.36  +0.56  str 0.36
+
+── 3D FROM 2D (DECISION_LOG 403): the top 10 2D cells × every other variable, inside the cell ──
+tests: 370 | consistent (high vs low half of the cell, |Δ|>0.10 both eras, minN 5/half/era): 0
+
+################ --label reach
+FLIP:FAN_RATIO_GATE: 41 REAL fills (master on today's stack 35 · current batch 6) · era split 2026-08-12T14:16:24 · REACH (path, DL 406): the best move our way before the stop, % points · scored 41 · not counted 0 (ambig / pending bars) → Δ = reach difference in points
+coverage: 39 numeric + 15 level (flag / category) entry_* columns tested · BLIND SPOTS (< 80 % of fills scored, NOT tested): alt_beta24 5%, alt_corr24 5%, bracket_cap_notional 29%, bracket_max_leverage 29%, btc_1d_ret_pct 34%, btc_4h_ema50_200_gap_pct 12%, btc_above72_pct 37%, btc_eff72 37%, btc_ema50_100_gap_pct 34%, btc_off24h_pct 39%, btc_off24lo_pct 39%, btc_off30d_high_pct 37%, btc_r72_pct 37%, btc_rsi_closed 29%, cmc_rank 34%, eth_5m_ret1_pct 34%, mcap_usd 34%, pair_1d_ndi 15%, pair_1h_ema20_200_gap_pct 34%, pair_age_days 10%, vol_mcap_ratio 17% · never stamped on this sleeve: 53
+SWEEP FLIP:FAN_RATIO_GATE: 45 dimensions x 91 tests | era A (<2026-08-12T14:16:24) vs B | consistent: 40
+dimension                                 gran        ΔavgA   ΔavgB strength
+entry_bull_pct                            median     +1.821  +1.893    1.821
+entry_btc_atr_pct                         median     -3.525  -1.640    1.640
+entry_atr_pct                             tercile    -3.526  -1.574    1.574
+entry_ema50_slope                         tercile    -1.442  -1.472    1.442
+entry_btc_atr_pct                         tercile    -3.593  -1.405    1.405
+entry_range_position                      median     +1.345  +1.821    1.345
+entry_pattern_w1_match                    =True      -2.814  -1.291    1.291
+entry_pattern_w1_match                    =False     +2.814  +1.291    1.291
+entry_adx_delta                           tercile    -2.729  -1.134    1.134
+entry_btc_adx_prev                        median     +2.146  +0.953    0.953
+entry_btc_dist_from_ema13_pct             tercile    +0.938  +0.937    0.937
+entry_pair_ema20_ema50_gap_pct            tercile    -1.023  -0.793    0.793
+entry_ema50_slope                         median     -2.791  -0.793    0.793
+entry_pair_rank                           tercile    +0.772  +1.284    0.772
+entry_btc_dist_from_ema13_pct             median     +0.740  +1.222    0.740
+
+── 2D INTERACTION SWEEP ──
+pairs tested: ~2964 quadrant cells | consistent (|Δ|>0.10 both eras, minN 5/quadrant/era): 500
+  bull_pct>med x ema20_slope>med                                          +2.45  +2.45  str 2.45
+  btc_dist_from_ema13_pct>med x bull_pct>med                              +2.41  +2.45  str 2.41
+  btc_atr_pct<=med x bull_pct>med                                         +2.29  +2.91  str 2.29
+  btc_ema20_slope>med x bull_pct>med                                      +2.21  +2.20  str 2.20
+  btc_dist_from_ema13_pct>med x btc_trend_gap_pct<=med                    +3.25  +2.17  str 2.17
+  adx_delta<=med x bull_pct<=med                                          -2.56  -2.16  str 2.16
+  adx_delta<=med x btc_dist_from_ema13_pct<=med                           -2.14  -2.05  str 2.05
+  atr_pct>med x bear_pct>med                                              -2.58  -1.97  str 1.97
+  atr_pct>med x btc_dist_from_ema13_pct<=med                              -2.53  -1.97  str 1.97
+  bull_pct<=med x ema20_slope>med                                         -3.52  -1.96  str 1.96
+  bull_pct<=med x gap>med                                                 -3.86  -1.96  str 1.96
+  btc_adx_prev>med x btc_atr_pct<=med                                     +5.05  +1.94  str 1.94
+
+── 3D FROM 2D (DECISION_LOG 403): the top 10 2D cells × every other variable, inside the cell ──
+tests: 370 | consistent (high vs low half of the cell, |Δ|>0.10 both eras, minN 5/half/era): 0
+
+################ --label pnl
+FLIP:FAN_RATIO_GATE: 41 REAL fills (master on today's stack 35 · current batch 6) · era split 2026-08-12T14:16:24
+coverage: 39 numeric + 15 level (flag / category) entry_* columns tested · BLIND SPOTS (< 80 % of fills scored, NOT tested): alt_beta24 5%, alt_corr24 5%, bracket_cap_notional 29%, bracket_max_leverage 29%, btc_1d_ret_pct 34%, btc_4h_ema50_200_gap_pct 12%, btc_above72_pct 37%, btc_eff72 37%, btc_ema50_100_gap_pct 34%, btc_off24h_pct 39%, btc_off24lo_pct 39%, btc_off30d_high_pct 37%, btc_r72_pct 37%, btc_rsi_closed 29%, cmc_rank 34%, eth_5m_ret1_pct 34%, mcap_usd 34%, pair_1d_ndi 15%, pair_1h_ema20_200_gap_pct 34%, pair_age_days 10%, vol_mcap_ratio 17% · never stamped on this sleeve: 53
+SWEEP FLIP:FAN_RATIO_GATE: 45 dimensions x 91 tests | era A (<2026-08-12T14:16:24) vs B | consistent: 47
+dimension                                 gran        ΔavgA   ΔavgB strength
+entry_ema50_slope                         sign       -0.367  -0.555    0.367
+entry_pattern_w6_match                    =True      +0.340  +0.411    0.340
+entry_pattern_w6_match                    =False     -0.340  -0.411    0.340
+entry_ema50_slope                         median     -0.339  -0.429    0.339
+entry_bear_pct                            tercile    -0.305  -0.567    0.305
+entry_pair_ema20_ema50_gap_pct            sign       -0.339  -0.303    0.303
+entry_btc_adx                             tercile    +0.286  +0.462    0.286
+entry_btc_adx_prev                        tercile    +0.286  +0.456    0.286
+entry_atr_pct                             tercile    -0.276  -0.607    0.276
+entry_range_position                      median     +0.276  +0.709    0.276
+entry_range_position                      tercile    +0.259  +0.343    0.259
+entry_adx_prev                            tercile    -0.244  -0.337    0.244
+entry_adx                                 tercile    -0.244  -0.337    0.244
+entry_neg_di                              tercile    +0.405  +0.194    0.194
+entry_quality_score                       =4.0       +0.187  +0.583    0.187
+
+── 2D INTERACTION SWEEP ──
+pairs tested: ~2964 quadrant cells | consistent (|Δ|>0.10 both eras, minN 5/quadrant/era): 291
+  dist_from_ema13_pct<=med x ema_gap_8_13>med                             -0.57  -0.66  str 0.57
+  bull_pct<=med x dist_from_ema13_pct<=med                                -0.55  -0.88  str 0.55
+  dist_from_ema13_pct<=med x pair_volume_ratio>med                        -0.54  -0.54  str 0.54
+  bull_pct<=med x range_position<=med                                     -0.51  -0.71  str 0.51
+  btc_dist_from_ema13_pct<=med x dist_from_ema13_pct<=med                 -0.46  -0.54  str 0.46
+  btc_dist_from_ema13_pct<=med x ema5_stretch<=med                        -0.44  -0.54  str 0.44
+  btc_dist_from_ema13_pct<=med x price_vs_ema5_pct<=med                   -0.44  -0.54  str 0.44
+  bear_pct>med x dist_from_ema13_pct<=med                                 -0.44  -0.51  str 0.44
+  ema50_slope>med x pair_volume_ratio>med                                 -0.60  -0.43  str 0.43
+  btc_1h_slope>med x btc_dist_from_ema13_pct<=med                         -0.46  -0.42  str 0.42
+  btc_1h_slope>med x btc_rsi_prev<=med                                    -0.42  -0.42  str 0.42
+  adx_prev>med x btc_1h_slope>med                                         -0.64  -0.41  str 0.41
+
+── 3D FROM 2D (DECISION_LOG 403): the top 10 2D cells × every other variable, inside the cell ──
+tests: 370 | consistent (high vs low half of the cell, |Δ|>0.10 both eras, minN 5/half/era): 0
+
+################ family-wise luck test (scripts/scout_sweep_all.py sleeve_row + verdict, shuffled labels), 2026-11-02
+path: N 41 · consistent 1D 38 vs luck 38.2 (p 0.523) · 2D 286 vs 258.6 (p 0.358) — 1D best 0.33 pts vs luck 0.46 (p 0.344) · 2D best 0.47 pts vs luck 0.56 (p 0.532) · 3D best 0.00 pts vs luck 0.00 (p 1.000) → not above luck at any level (each at p ≤ 0.017; screen only)
+reach: N 41 · consistent 1D 40 vs luck 44.1 (p 0.735) · 2D 500 vs 476.2 (p 0.388) — 1D best 1.82 % vs luck 2.81 (p 0.715) · 2D best 2.45 % vs luck 3.65 (p 0.632) · 3D best 0.00 % vs luck 0.00 (p 1.000) → not above luck at any level (each at p ≤ 0.017; screen only)
+pnl: N 41 · consistent 1D 47 vs luck 33.6 (p 0.046) · 2D 291 vs 282.4 (p 0.418) — 1D best 0.37 % vs luck 0.53 (p 0.616) · 2D best 0.57 % vs luck 0.64 (p 0.318) · 3D best 0.00 % vs luck 0.00 (p 1.000) → not above luck at any level (each at p ≤ 0.017; screen only)

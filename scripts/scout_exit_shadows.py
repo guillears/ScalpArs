@@ -15,7 +15,9 @@ COHORT  FLIP:* fills (their own direction), FULL-SIZE only (*_PROBE out), operat
         widened to sl_atr_multiplier 1.5 × entry_atr_pct, capped at sl_atr_widen_floor_pct −1.2 (B25 live flip stops −1.20; master 17 / 17
         flip stop closes on the line). Not modelled: the STRONG_BUY tier's signal_active_sl −1.0 (never fired on a flip so far — parity
         is the guard).
-EXITS   TP1.5 (FRENZY_LONG) · TP2 / TP3 (LITE C) — fixed take profit, the fill's live stop, 12 h.
+EXITS   TP1.5 (FRENZY_LONG) · TP2 / TP3 (LITE C) — fixed take profit, the fill's live stop, 12 h. ➕ TP2_SL3 (DECISION_LOG 431): TP +2 with
+        the stop widened to max(3, the fill's live stop); luck correction m = 16 (its grid), KEEP if any priced fill books below −5 % (a
+        gap), counted ONLY from the DL 431 commit + 10 min with its OWN 20-fill / 8-day frozen read (state key "FLIP|TP2_SL3").
 PRICING   net % of notional on the fill's own path from its entry price (the fill's REAL entry fee — maker 0.018 on about half
           the flips, from entry_fee / notional — + the taker 0.045 × exit/entry out: the bot's paper accounting), full-day ticks from the shared caches only (never an archive download), then public fapi 1m pages
           (scout_long_stop4.fapi_klines — budgeted, cached, cooldown-aware). A 1m bar touching both lines = the stop (adverse first).
@@ -32,7 +34,7 @@ PARITY    a live STOP close shows the fill's stop line touched by the close; a l
 🔒 FROZEN VERDICT (per sleeve, decided ONCE, never re-fit): at the first prefix (by open time) of ≥ 20 counted fills on ≥ 8 UTC days,
    every prefix fill priced and the newest export downloaded ≥ the prefix end + the 1200-min max hold (the exports carry CLOSED rows
    only — a fill still open would be missing), per exit: Δ = exit − booked → CANDIDATE (operator decides an engine change) iff mean Δ ≥
-   +0.10 %/fill ∧ day-clustered bootstrap P(mean Δ > 0) ≥ 1 − 0.10 / m (m = the sleeve's exits — the luck correction) ∧ no single fill
+   +0.10 %/fill ∧ day-clustered bootstrap P(mean Δ > 0) ≥ 1 − 0.10 / m (m = EXIT_M per exit — the luck correction) ∧ no single fill
    ≥ 50 % of the positive Σ Δ ∧ parity ≥ 90 %; else KEEP (today's exit).
 COUNTED   fills opened ≥ the DECISION_LOG 411 commit + 10 min. Context (NEVER counted): the latest 100 earlier fills per sleeve, cache
           only (results cached in their own state bucket).
@@ -63,7 +65,15 @@ TAKER, SLIP = 0.045, 0.0   # (deep review M3) no slip on either side: the paper 
 MIN, DAY = 60_000, 86_400_000
 FIX_CAP, MAX_HOLD = 720, 1200
 SL_BASE, SL_ATR_MULT, SL_CAP = 0.7, 1.5, 1.2   # the engine's base stop (STRONG / VERY_STRONG tiers) and its ATR widening
-FLIP_EXITS = ("TP1.5", "TP2", "TP3")
+FLIP_EXITS = ("TP1.5", "TP2", "TP3", "TP2_SL3")
+# ➕ (DECISION_LOG 431, operator 11-02 "do all three") TP2_SL3 = TP +2 with the stop widened to −3 (never tighter than the fill's own):
+# the best of a 16-combination TP × stop grid on 41 flips (B25 6 + master today's stack 35) — beats today's exit in every slice except
+# the Jun–Jul screened set, worst fill −7.5 % (a gap through the stop). Its bar carries the grid's luck correction (m = 16, never the 3
+# of the original exits — their frozen bar does not move) and a gap check: any priced fill below EXIT_WORST → KEEP. It is counted only
+# from its OWN registration (EXIT_SINCE_DL: the DL 431 commit + 10 min) with its own frozen read — the grid was chosen on ARB 10-30.
+EXIT_M = {"TP1.5": 3, "TP2": 3, "TP3": 3, "TP2_SL3": 16}
+EXIT_WORST = {"TP2_SL3": -5.0}
+EXIT_SINCE_DL = {"TP2_SL3": 431}
 SLEEVES = {   # name → ((entry_strategy match, direction or None), exits) — FLIP only (operator 10-29; the others answered by history)
     "FLIP": (("FLIP:", None), FLIP_EXITS),
 }
@@ -244,7 +254,8 @@ def exits_on(P, r):
     out = {}
     for x in exits:
         if x.startswith("TP"):
-            out[x] = walk_fixed(P, float(x[2:]), r.sl)
+            tp, _, st = x[2:].partition("_SL")
+            out[x] = walk_fixed(P, float(tp), max(float(st), float(r.sl)) if st else r.sl)
     return out
 
 
@@ -325,8 +336,9 @@ def verdict(rows, exits):
     """rows = priced counted fills (pct, day, exits dict, parity) of ONE sleeve → ({exit: (state, text)}, parity share). PURE."""
     par = [p for p in rows.parity if p is not None]
     pshare = (sum(par) / len(par)) if par else None
-    out, m = {}, len(exits)
+    out = {}
     for x in exits:
+        m = EXIT_M.get(x, len(exits))   # each exit's own luck correction (TP2_SL3 came from a 16-combination grid)
         v = np.array([e.get(x, np.nan) for e in rows.exits], float)
         okm = ~np.isnan(v)
         v, d, days = v[okm], v[okm] - rows.pct.values[okm], rows.day.values[okm]
@@ -339,8 +351,12 @@ def verdict(rows, exits):
         txt = (f"N {len(d)} · {len(set(days))} d · WR {(v > 0).mean():.0%} · avg {v.mean():+.3f} vs today {rows.pct.values[okm].mean():+.3f}"
                f" · Δ {d.mean():+.3f} %/fill · P(Δ>0) {(pp if pp is not None else float('nan')):.2f} (bar {1 - ALPHA / m:.3f}) · top fill "
                f"{share:.0%} of the gain")
+        worst = EXIT_WORST.get(x)
+        gap = int((v < worst).sum()) if worst is not None else 0
+        if worst is not None:
+            txt += f" · worst fill {v.min():+.2f} (gap check: {gap} below {worst:+.1f})"
         ok = (d.mean() >= MIN_GAIN and pp is not None and pp >= 1 - ALPHA / m and share < SHARE_MAX
-              and pshare is not None and pshare >= PARITY_MIN)
+              and pshare is not None and pshare >= PARITY_MIN and gap == 0)
         out[x] = ("CANDIDATE (operator decides)" if ok else "KEEP today's exit", txt)
     return out, pshare
 
@@ -373,10 +389,38 @@ def _table(rows, exits):
     return L
 
 
-def run(now_ms=None, paths=None, state_path=STATE, since_ms=None, fetch=True, max_req=MAX_REQ_RUN):
+def _freeze_block(cand, exits, newest, key, st, ok, state_path, label):
+    """one frozen read (crossing → deferral → verdict → freeze once) for `exits` on `cand` under state key `key`. → (lines, dirty)."""
+    L, dirty = [], False
+    frozen = st.get(key) if ok else None
+    if frozen:
+        return [f"**Frozen verdict{label} (prefix to {frozen['at']}, parity {frozen['parity']}):** "
+                + " · ".join(f"{x} {v[0]}" for x, v in frozen["exits"].items())], False
+    k = crossing(cand)
+    if k is None:
+        return [f"⏳ COLLECTING{label} — {len(cand)}/{N_MIN} fills on {cand.day.nunique()}/{DAYS_MIN} days."], False
+    pre = cand.iloc[:k]
+    wait = newest is None or newest < pre.o.max() + pd.Timedelta(minutes=MAX_HOLD)
+    if (pre.status == "PENDING").any() or wait:
+        pend = pre[pre.status == "PENDING"]
+        return ["⏸ freezing deferred" + label + " — " + ("; ".join(f"{p.pair} {p.o:%m-%d %H:%M} ({p.err})" for p in pend.head(5).itertuples())
+                                                    if len(pend) else "")
+                + (f"{'; ' if len(pend) else ''}newest export < the prefix end + {MAX_HOLD} min (a fill could still be open)"
+                   if wait else "") + " — re-checked next run."], False
+    v, ps = verdict(pre, exits)
+    rec = dict(at=f"{pre.o.max():%Y-%m-%d %H:%M} UTC", parity=(f"{ps:.0%}" if ps is not None else "n/a"), exits={x: list(t) for x, t in v.items()})
+    if ok and state_path:
+        st[key] = rec
+        dirty = True
+    L.append(f"**Verdict{label} (prefix to {rec['at']}, parity {rec['parity']})" + ("" if (ok and state_path) else " — NOT FROZEN (no state / state corrupt)") + ":**")
+    L += [f"- {x}: {t[0]} — {t[1]}" for x, t in v.items()]
+    return L, dirty
+
+
+def run(now_ms=None, paths=None, state_path=STATE, since_ms=None, fetch=True, max_req=MAX_REQ_RUN, exit_since_ms=None):
     now_ms = int(time.time() * 1000) if now_ms is None else int(now_ms)
     L = [f"## 🚪 EXIT_SHADOWS — today's exit vs the exits other sleeves run (pre-registered 2026-10-29, DECISION_LOG {DL}, OBSERVE only)", "",
-         "FLIP fills only: fixed TP +1.5 / +2 / +3 (12 h, the fill's live stop −0.7 … −1.2 by ATR) vs today's flip exit. Δ = exit − the "
+         "FLIP fills only: fixed TP +1.5 / +2 / +3 (12 h, the fill's live stop −0.7 … −1.2 by ATR) + TP2_SL3 (TP +2, stop −3; DL 431) vs today's flip exit. Δ = exit − the "
          "BOOKED result, per fill, same path. Full-size only. Fades / momentum longs / momentum shorts answered by the 10-29 historical "
          "exercise (DL 411) — today's exits kept, not tracked.", ""]
     if since_ms is None:
@@ -408,34 +452,23 @@ def run(now_ms=None, paths=None, state_path=STATE, since_ms=None, fetch=True, ma
         un = [f"{p.pair} {p.o:%m-%d %H:%M} ({(cache.get(fill_key(p)) or {}).get('why', '?')})" for p in fw[fw.status == "UNPRICEABLE"].head(5).itertuples()]
         if un:
             L.append("Unpriceable (out of the read): " + "; ".join(un))
-        frozen = st.get(name) if ok else None
         cand = fw[fw.status != "UNPRICEABLE"]
-        if frozen:
-            L.append(f"**Frozen verdict (prefix to {frozen['at']}, parity {frozen['parity']}):** "
-                     + " · ".join(f"{x} {v[0]}" for x, v in frozen["exits"].items()))
-        else:
-            k = crossing(cand)
-            if k is None:
-                L.append(f"⏳ COLLECTING — {len(cand)}/{N_MIN} fills on {cand.day.nunique()}/{DAYS_MIN} days.")
-            else:
-                pre = cand.iloc[:k]
-                wait = newest is None or newest < pre.o.max() + pd.Timedelta(minutes=MAX_HOLD)
-                if (pre.status == "PENDING").any() or wait:
-                    pend = pre[pre.status == "PENDING"]
-                    L.append("⏸ freezing deferred — " + ("; ".join(f"{p.pair} {p.o:%m-%d %H:%M} ({p.err})" for p in pend.head(5).itertuples())
-                                                      if len(pend) else "")
-                             + (f"{'; ' if len(pend) else ''}newest export < the prefix end + {MAX_HOLD} min (a fill could still be open)"
-                                if wait else "") + " — re-checked next run.")
-                else:
-                    v, ps = verdict(pre, exits)
-                    rec = dict(at=f"{pre.o.max():%Y-%m-%d %H:%M} UTC", parity=(f"{ps:.0%}" if ps is not None else "n/a"),
-                               exits={x: list(t) for x, t in v.items()})
-                    if ok and state_path:
-                        st[name] = rec
-                        dirty = True
-                    L.append(f"**Verdict (prefix to {rec['at']}, parity {rec['parity']})"
-                             + ("" if (ok and state_path) else " — NOT FROZEN (no state / state corrupt)") + ":**")
-                    L += [f"- {x}: {t[0]} — {t[1]}" for x, t in v.items()]
+        main = tuple(x for x in exits if x not in EXIT_SINCE_DL)
+        blk, dt = _freeze_block(cand, main, newest, name, st, ok, state_path, "")
+        L += blk; dirty |= dt
+        for x, dl in EXIT_SINCE_DL.items():   # ➕ a later exit: its own registration floor and its own frozen read
+            if x not in exits:
+                continue
+            fx = (exit_since_ms or {}).get(x)
+            if fx is None:
+                fx = _GK.dl_deploy_ms(dl, lag_min=10, label=f"EXIT_SHADOWS {x}")
+            if fx is None:
+                L.append(f"{x}: ⚠ NOT EVALUABLE — the DECISION_LOG {dl} commit is not in git yet; nothing is counted for it.")
+                continue
+            fl = pd.Timestamp(int(fx), unit="ms")
+            blk, dt = _freeze_block(cand[cand.o >= fl], (x,), newest, f"{name}|{x}", st, ok, state_path,
+                                    f" {x} (counted from {fl:%Y-%m-%d %H:%M} UTC, DL {dl})")
+            L += blk; dirty |= dt
         if len(cx):
             ctx = st.setdefault("_context", {}) if ok else {}
             cres = [price_fill(r, bud, now_ms, ctx, fetch=False) for r in cx.itertuples()]
@@ -450,7 +483,9 @@ def run(now_ms=None, paths=None, state_path=STATE, since_ms=None, fetch=True, ma
              + (f" ({bud.why})" if bud.why else "") + ".")
     L.append(f"🔒 Bar (DL {DL}, frozen): at ≥ {N_MIN} fills on ≥ {DAYS_MIN} days, once — CANDIDATE iff mean Δ ≥ +{MIN_GAIN:.2f} "
              f"%/fill ∧ day-bootstrap P(Δ > 0) ≥ 1 − {ALPHA:.2f}/m ∧ no fill ≥ {SHARE_MAX:.0%} of the gain ∧ path parity ≥ {PARITY_MIN:.0%}; else KEEP. "
-             f"m = {len(FLIP_EXITS)} exits. A CANDIDATE is a proposal for a reviewed study (haircut, before → after per batch with the daily "
+             "m per exit: " + ", ".join(f"{x} {m}" for x, m in EXIT_M.items())
+             + "".join(f" · {x} KEEP if any fill books below {w:+.1f} % (a gap)" for x, w in EXIT_WORST.items())
+             + "".join(f" · {x} counted from the DL {d} commit with its own read" for x, d in EXIT_SINCE_DL.items()) + ". A CANDIDATE is a proposal for a reviewed study (haircut, before → after per batch with the daily "
              "compound return, revert gate), never a ship.")
     if not ok:
         L.append("⚠ frozen state corrupt — operator restore needed; freezing skipped this run.")

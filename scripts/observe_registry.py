@@ -51,7 +51,7 @@ EXIT = {
     # 🚪 (411) exit shadows on FLIPS only (fades / momentum answered by history, operator 10-29) — the walks use each fill's LIVE stop
     # (−0.7 widened to 1.5 × entry ATR, capped −1.2) and Δ reads the BOOKED flip exit (FAN flips' short runner trail, flip_fan_runner_strpk):
     # a change to any of these keys makes the line STALE (the −0.7 base is a confidence-tier stop_loss outside `thresholds` — not pinned)
-    "scout_exit_shadows.py": dict(dl="411", sleeves="FLIP", walks={
+    "scout_exit_shadows.py": dict(dl="411 · 431", sleeves="FLIP", walks={
                                   "sl_atr_multiplier": 1.5, "sl_atr_widen_floor_pct": -1.2, "flip_fan_runner_strpk": True,
                                   "runner_trail_short_enabled": True, "runner_trail_short_arm_peak": 0.4, "runner_trail_short_k": 0.5,
                                   "runner_trail_short_use_atr": True, "runner_trail_short_atr_mult": 0.5,

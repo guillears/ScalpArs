@@ -25,7 +25,7 @@ from sqlalchemy import select, and_, or_, func, desc, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import init_db, get_db, AsyncSessionLocal, locked_commit, locked_execute_commit
-from models import Order, Transaction, BotState, PairData, ConfigChangeLog, BnbSwapLog, Investor, InvestorLedger, PhantomFlip, NavSnapshot, MonitorPeriod, BearMonitorPeriod, SurgeTrigger, OrderbookSnap, WillyHoldBlock, FlatbaseEpisode, MatchedLongRefusal
+from models import Order, Transaction, BotState, PairData, ConfigChangeLog, BnbSwapLog, Investor, InvestorLedger, PhantomFlip, NavSnapshot, MonitorPeriod, BearMonitorPeriod, SurgeTrigger, OrderbookSnap, WillyHoldBlock, FlatbaseEpisode, MatchedLongRefusal, ExchangeDay, BackupRun
 import config
 from config import (
     trading_config, save_trading_config, load_trading_config,
@@ -447,6 +447,11 @@ async def start_background_tasks():
     # (the task idles in paper / switched off); runs while the bot is stopped too — the operator's app trades happen then as well
     from services.app_trades import app_trade_loop as _app_trade_loop
     _app_trade_task = asyncio.create_task(_app_trade_loop(lambda: should_stop))
+    # 🗄 (DECISION_LOG 436) track record: daily DB backup (S3) + the daily Binance record — own task, own sessions, never the trading loops
+    global _track_task
+    from services.track_record import track_record_loop as _track_record_loop, code_version as _code_version_boot
+    logger.info(f"[TRACK_RECORD] code version {_code_version_boot()}")   # fixed at boot: each process records the code it started with
+    _track_task = asyncio.create_task(_track_record_loop(lambda: should_stop))
     logger.info("[STARTUP] Monitor, scan, BNB swap, NAV snapshot and FRENZY loops started independently")
 
 
@@ -459,6 +464,13 @@ async def stop_background_tasks():
     await websocket_tracker.stop()
     logger.info("[SHUTDOWN] WebSocket price tracker stopped")
 
+    _tt = globals().get('_track_task')   # 🗄 (DECISION_LOG 436) the track-record loop: cancelled and awaited (a backup already in its
+    if _tt is not None and not _tt.done():   # worker thread finishes on its own; the next pass re-runs anything left undone)
+        _tt.cancel()
+        try:
+            await _tt
+        except (asyncio.CancelledError, Exception):
+            pass
     for task in (_monitor_task, _scan_task, _bnb_swap_task, _nav_task, _frenzy_task, _orderbook_task):
         if task:
             task.cancel()
@@ -716,6 +728,9 @@ class ConfigUpdate(BaseModel):
     mcap_refresh_minutes: Optional[float] = None
     entry_zone_stamps_enabled: Optional[bool] = None   # 🧭 Sep-29 zone stamps kill switch
     app_trade_record_enabled: Optional[bool] = None    # 🧾 (DECISION_LOG 329) Binance-app trade recorder kill switch
+    backup_enabled: Optional[bool] = None              # 🗄 (DECISION_LOG 436) daily DB backup
+    backup_s3_bucket: Optional[str] = None
+    exchange_record_enabled: Optional[bool] = None     # 🏦 (DECISION_LOG 436) daily Binance record
     bnb_swap_enabled: Optional[bool] = None
     bnb_check_interval_hours: Optional[int] = None
     bnb_runway_hours: Optional[int] = None
@@ -2272,6 +2287,18 @@ async def _external_flow_rows(db: AsyncSession, start_ms: int, max_age_s=None):
     return out
 
 
+@app.get("/api/track-record")
+async def get_track_record(db: AsyncSession = Depends(get_db)):
+    """🗄 (DECISION_LOG 436) the track-record status: code version, the last backups, the last daily Binance records (Settings panel + both
+    text exports)."""
+    from services.track_record import status as _tr_status
+    try:
+        return await _tr_status(db)
+    except Exception as e:
+        logger.warning(f"[TRACK_RECORD] status failed: {e}")
+        return {"error": str(e)[:200]}
+
+
 @app.get("/api/pnl-calendar")
 async def get_pnl_calendar(tz_offset_min: int = 0, origin: str = None, db: AsyncSession = Depends(get_db)):
     """Daily P&L Calendar (Jun 11, 2026 — Option A: computed live from CLOSED orders;
@@ -2697,6 +2724,12 @@ async def export_orders_csv(db: AsyncSession = Depends(get_db)):
 # 🧷 (DECISION_LOG 383) the ML_MATCHED rows of the Decisions CSV (one per ml_matched_refusals row): t = the refusal (ms), price / conf in the shared
 # columns, everything else in mr_* columns (mr_entry_fields = the JSON entry_* snapshot). Read by scripts/scout_ml_matched_refusals.py.
 ML_MATCHED_EXPORT_DAYS = 30
+# 🏦 (DECISION_LOG 436) EXCHANGE_DAY rows (xd_ + the ExchangeDay column name) and BACKUP rows (bk_*) in the decisions export
+TRACK_RECORD_EXPORT_COLS = ["xd_day", "xd_snap_at_ms", "xd_wallet_usdt", "xd_margin_balance_usdt", "xd_unrealized_usdt", "xd_bnb_total",
+                            "xd_inc_realized", "xd_inc_commission", "xd_inc_funding", "xd_inc_transfer", "xd_inc_other", "xd_inc_rows",
+                            "xd_inc_est_rows", "xd_bot_gross", "xd_bot_fees", "xd_bot_funding", "xd_bot_closed", "xd_bot_opened",
+                            "xd_diff_realized", "xd_diff_fees", "xd_wallet_check_diff", "xd_tolerance", "xd_code_version",
+                            "bk_day", "bk_bytes", "bk_s3_key", "bk_code_version"]
 ML_MATCHED_EXPORT_COLS = ["mr_bar_at", "mr_labels", "mr_family", "mr_c_any", "mr_w_any", "mr_btc_regime", "mr_open_count", "mr_max_positions",
                           "mr_room", "mr_post_gate", "mr_btc_off30d_pct", "mr_alt_corr24", "mr_alt_beta24", "mr_is_paper", "mr_entry_fields"]
 
@@ -2813,7 +2846,19 @@ async def export_decisions_csv(days: Optional[int] = None, db: AsyncSession = De
             rows.append(ml_matched_export_row(b, _fmt_mr))
     except Exception as _e:
         logger.warning(f"[DECISIONS_EXPORT] ML_MATCHED rows skipped: {_e}")
-    _cols = list(_dj.EXPORT_COLS) + _ob_cols + _wh_cols + _fb_cols + _mr_cols
+    # 🏦 (DECISION_LOG 436) the daily Binance record rides this file as EXCHANGE_DAY rows (every recorded day, both modes — it is the
+    # live ACCOUNT's record) and every backup attempt as BACKUP rows: the CSV carries the track record like the dashboard does (D12)
+    _xd_cols = TRACK_RECORD_EXPORT_COLS
+    try:
+        for _x in (await db.execute(select(ExchangeDay).order_by(ExchangeDay.day))).scalars().all():
+            rows.append(dict(t=_x.day + "T23:59:59", e="EXCHANGE_DAY", gate=_x.status, reason=_x.note,
+                             **{c: getattr(_x, c[3:], None) for c in _xd_cols if c.startswith("xd_")}))
+        for _b in (await db.execute(select(BackupRun).order_by(BackupRun.id))).scalars().all():
+            rows.append(dict(t=_b.started_at.strftime('%Y-%m-%dT%H:%M:%S') if _b.started_at else None, e="BACKUP", gate=_b.status,
+                             reason=_b.error, bk_day=_b.day, bk_bytes=_b.bytes, bk_s3_key=_b.s3_key, bk_code_version=_b.code_version))
+    except Exception as _e:
+        logger.warning(f"[DECISIONS_EXPORT] track-record rows skipped: {_e}")
+    _cols = list(_dj.EXPORT_COLS) + _ob_cols + _wh_cols + _fb_cols + _mr_cols + _xd_cols
 
     def _write_csv():   # off the event loop: up to ~50k BOOK rows (deep review)
         buf = io.StringIO()

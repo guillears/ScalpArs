@@ -3170,6 +3170,13 @@ class TradingConfig(BaseModel):
     # Evidence: the operator's app trades (BTW, IOST ×6+, COMP on Oct-20) sat in the balance but in no table / calendar / win rate.
     # Record-keeping only — no trading rule reads these rows (every systematic table excludes MANUAL). False = the job does nothing.
     app_trade_record_enabled: bool = True
+    # 🗄 (DECISION_LOG 436, operator 2026-11-02 "build 1, 2 and 3") TRACK RECORD — services/track_record.py, daily after 00:10 UTC:
+    # backup_enabled → a consistent SQLite snapshot (gzip) to s3://backup_s3_bucket/scalpars/… (SSE, the instance role; empty bucket =
+    # snapshot kept on the server only, LOCAL_ONLY) · exchange_record_enabled → Binance's balance + every raw income row + the daily
+    # bot-vs-Binance check (live account; needs the API keys). Observe / record only — no trading rule reads them.
+    backup_enabled: bool = True
+    backup_s3_bucket: str = ""
+    exchange_record_enabled: bool = True
     pair_blacklist: str = ""  # Comma-separated pairs to exclude ENTIRELY (removed from the top-pair/volume universe). JSON 2026-09-15: 龙虾USDT added — 2 stops in 30h (fade −$381 Sep-14, momentum long −$359 Sep-15) vs one +$33 win; 1m bars with +7.6%/−8.8% wicks minutes after the stop; non-ASCII symbol breaks the aggTrades archive fetch (per-pair concentration rule, DECISION_LOG 61)
     # Jun 3: comma-separated pairs to TRACK but NOT TRADE — they stay in the top-pair/volume
     # list (subscribed, scanned, displayed) but entries are blocked. Use for a pair you want

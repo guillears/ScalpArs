@@ -172,6 +172,8 @@ async def init_db():
             inspector = sa_inspect(connection)
             if 'orders' in inspector.get_table_names():
                 columns = [c['name'] for c in inspector.get_columns('orders')]
+                if 'code_version' not in columns:   # 🗄 (DECISION_LOG 436) the code fingerprint at insert
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN code_version VARCHAR(16)"))
                 if 'entry_gap' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_gap FLOAT"))
                 if 'entry_br_door_age_min' not in columns:

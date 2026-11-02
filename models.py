@@ -8,6 +8,12 @@ from datetime import datetime
 from enum import Enum
 
 
+def _code_version():
+    """🗄 (DECISION_LOG 436) lazy: services.track_record imports nothing from models at module level."""
+    from services.track_record import code_version
+    return code_version()
+
+
 class OrderDirection(str, Enum):
     LONG = "LONG"
     SHORT = "SHORT"
@@ -281,6 +287,7 @@ class Order(Base):
     entry_br_door_age_min = Column(Float, nullable=True)  # Sep 21 (57l): minutes the door had been open at entry — the sleeve's own clock, previously invisible to every analysis (it took AWS log archaeology to recover)
     adx_surge_open = Column(Boolean, default=False, nullable=True)  # ⚡ Sep-28 (DECISION_LOG 123): LONG admitted through the BTC ADX-surge waiver (ADX floor / RSI 50-60 bands lifted on an ADX jump + positive slope) — the cohort's identity (CALM3D doors keep their cell tag)
     entry_vol_mcap_ratio = Column(Float, nullable=True)   # 🔄 Oct-8 (251): 24 h quote volume / market cap at entry (every sleeve; NULL when either is unknown) — the FRENZY_WILLY turnover filter's R
+    code_version = Column(String(16), nullable=True, default=lambda: _code_version())   # 🗄 (DECISION_LOG 436) the running code's fingerprint at insert (every path: bot, manual, import) — scripts/code_version.py maps it to a git commit
     entry_mcap_usd = Column(Float, nullable=True)   # 💰 Sep-28 (DECISION_LOG 124): pair market cap (USD, circulating; CMC via Binance Info) at entry — cache ≤3× refresh old, NULL if unknown
     entry_cmc_rank = Column(Integer, nullable=True)  # 💰 Sep-28: CoinMarketCap rank at entry (NULL if unknown)
     # ⚡ Sep-30 SURGE sleeves (DECISION_LOG 146–148): the trigger that opened the fill — BTC's 30-min move on the trigger bar, the
@@ -1616,3 +1623,74 @@ class NavSnapshot(Base):
     total_shares = Column(Float, nullable=False)
     nav_per_share = Column(Float, nullable=False)
     updated_at = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
+
+
+class BackupRun(Base):
+    """🗄 (DECISION_LOG 436) one row per daily backup ATTEMPT (services/track_record.py): status OK (uploaded to S3) / LOCAL_ONLY (no bucket
+    set — snapshot kept on the server) / ERROR (retried after 60 min)."""
+    __tablename__ = "backup_runs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    day = Column(String(10), nullable=False, index=True)              # UTC day YYYY-MM-DD
+    started_at = Column(DateTime, nullable=False)
+    ok = Column(Boolean, nullable=False, default=False)
+    status = Column(String(12), nullable=True)
+    bytes = Column(BigInteger, nullable=True)                           # compressed snapshot size
+    s3_key = Column(String(200), nullable=True)
+    seconds = Column(Float, nullable=True)
+    error = Column(String(300), nullable=True)
+    code_version = Column(String(16), nullable=True, default=lambda: _code_version())
+
+
+class ExchangeDay(Base):
+    """🏦 (DECISION_LOG 436) Binance's own numbers for one UTC day of the LIVE account vs the bot's booked live rows (services/track_record.py):
+    the balance snapshot (taken after the day ended, the day just closed only), Σ income per type (USDT; BNB fees at the 1m close), the bot
+    side (realized gross = pnl + booked fees of rows closed that day; fees by fill day; funding of rows closed that day), the differences and
+    the WALLET CHECK (USDT wallet move between two snapshots − Σ USDT income between them). status OK / CHECK / NO_SNAPSHOT / NO_ACTIVITY."""
+    __tablename__ = "exchange_days"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    day = Column(String(10), nullable=False, unique=True, index=True)
+    recorded_at = Column(DateTime, nullable=False)
+    snap_at_ms = Column(BigInteger, nullable=True)
+    wallet_usdt = Column(Float, nullable=True)
+    margin_balance_usdt = Column(Float, nullable=True)
+    unrealized_usdt = Column(Float, nullable=True)
+    bnb_total = Column(Float, nullable=True)
+    inc_realized = Column(Float, nullable=True)
+    inc_commission = Column(Float, nullable=True)                       # negative = paid
+    inc_funding = Column(Float, nullable=True)
+    inc_transfer = Column(Float, nullable=True)
+    inc_other = Column(Float, nullable=True)
+    inc_rows = Column(Integer, nullable=True)
+    inc_est_rows = Column(Integer, nullable=True)                       # converted at an estimated price
+    bot_gross = Column(Float, nullable=True)
+    bot_fees = Column(Float, nullable=True)
+    bot_funding = Column(Float, nullable=True)
+    bot_closed = Column(Integer, nullable=True)
+    bot_opened = Column(Integer, nullable=True)
+    diff_realized = Column(Float, nullable=True)
+    diff_fees = Column(Float, nullable=True)
+    wallet_check_diff = Column(Float, nullable=True)
+    tolerance = Column(Float, nullable=True)
+    status = Column(String(12), nullable=True)
+    note = Column(String(300), nullable=True)
+    code_version = Column(String(16), nullable=True, default=lambda: _code_version())
+
+
+class ExchangeIncome(Base):
+    """🏦 (DECISION_LOG 436) every raw /fapi/v1/income row of the live account, kept for good (Binance serves ~3 months) — key =
+    (incomeType, tranId, symbol, asset)."""
+    __tablename__ = "exchange_income"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    key = Column(String(120), nullable=False, unique=True, index=True)
+    time_ms = Column(BigInteger, nullable=False, index=True)
+    income_type = Column(String(32), nullable=False)
+    asset = Column(String(12), nullable=True)
+    income = Column(Float, nullable=False)
+    symbol = Column(String(30), nullable=True)
+    tran_id = Column(String(40), nullable=True)
+    trade_id = Column(String(40), nullable=True)
+    info = Column(String(120), nullable=True)
+

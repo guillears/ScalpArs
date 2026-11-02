@@ -6028,6 +6028,20 @@
                                 <span class="text-xs text-gray-500">(crowded entry → sized down to these; ratio 0 = off; ship 0.90 / 1.0 / 1.0; sub-1× allowed — the PVR≥0.93 read may earn it; ≤0 coerced to 1.0)</span>
                             </div>
                         </div>
+                            <!-- 🗄 TRACK RECORD (DECISION_LOG 436) -->
+                            <div class="md:col-span-2 border border-indigo-500/30 rounded-lg py-2 px-3 bg-indigo-500/5">
+                                <span class="text-sm font-semibold text-indigo-300">🗄 Track record (DECISION_LOG 436)</span>
+                                <p class="text-xs text-gray-500 mb-1">Daily after 00:10 UTC: a copy of the bot's database goes to your S3 bucket (empty = kept on the server only), and Binance's own numbers for the day before (balance + every income line) are saved and checked against the bot. Every trade also records the code version it ran. Record only — no trading rule reads these.</p>
+                                <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
+                                    <label class="flex items-center gap-1 text-xs text-indigo-300" title="🗄 Daily database backup: a consistent snapshot (compressed, encrypted) uploaded to the S3 bucket below with the server's own AWS role; the 1st of each month also goes to a monthly folder. Off = no backup."><span>🗄 Daily backup</span>
+                                        <input type="checkbox" id="config-backup-enabled" class="accent-indigo-500"></label>
+                                    <label class="flex items-center gap-1 text-xs text-gray-400" title="The S3 bucket name only (no s3://). Empty = the snapshot is kept on the server only (LOCAL_ONLY) — not a real backup.">S3 bucket
+                                        <input type="text" id="config-backup-s3-bucket" class="w-56 bg-white/5 border border-indigo-500/40 rounded px-2 py-1 text-indigo-200" placeholder="my-scalpars-backups"></label>
+                                    <label class="flex items-center gap-1 text-xs text-indigo-300" title="🏦 Daily Binance record: Binance's balance and every income line (P&amp;L, fees, funding, transfers) of the live account, kept for good, and a daily check against the bot's booked live trades (needs the API keys)."><span>🏦 Daily Binance record</span>
+                                        <input type="checkbox" id="config-exchange-record-enabled" class="accent-indigo-500"></label>
+                                </div>
+                                <div id="track-record-status" class="text-xs text-gray-400 mt-1 font-mono whitespace-pre-wrap">loading…</div>
+                            </div>
                             <!-- 🎓 PROMOTION PACKAGE (Jul 27 PM, 2026 — operator-directed probe graduations) -->
                             <div class="md:col-span-2 border border-teal-500/30 rounded-lg py-2 px-3 bg-teal-500/5">
                                 <span class="text-sm font-semibold text-teal-300">🎓 Probe Graduations (Jul 27 PM)</span>
@@ -9000,6 +9014,35 @@
             cntEl.innerHTML = `<span class="text-gray-500">Profitable:</span> <span class="text-emerald-400">${t.greenMonths} month${t.greenMonths === 1 ? '' : 's'}</span> <span class="text-gray-600">·</span> <span class="text-gray-500">Loss:</span> <span class="text-red-400">${t.redMonths} month${t.redMonths === 1 ? '' : 's'}</span>`;
         }
 
+        // 🗄 (DECISION_LOG 436) TRACK RECORD — /api/track-record: code version, backups, the daily Binance record vs the bot
+        let trackRecordData = null;
+        async function loadTrackRecord() {
+            try {
+                const r = await fetch(`${API_BASE}/api/track-record`);
+                trackRecordData = await r.json();
+            } catch (e) { trackRecordData = { error: String(e) }; }
+            const el = document.getElementById('track-record-status');
+            if (el) el.textContent = trackRecordLines().join('\n');
+        }
+        function trackRecordLines() {
+            const d = trackRecordData;
+            if (!d) return ['Not loaded yet.'];
+            if (d.error) return [`Unavailable: ${d.error}`];
+            const $ = v => (v == null ? '–' : (v >= 0 ? '+' : '−') + '$' + Math.abs(v).toFixed(2));
+            const out = [`Code version ${d.code_version} · backup ${d.backup_enabled ? 'ON' : 'OFF'} → ${d.backup_bucket ? 's3://' + d.backup_bucket : 'server only (no bucket set)'} · Binance record ${d.exchange_record_enabled ? 'ON' : 'OFF'}${d.keys_configured ? '' : ' (no API keys)'}`];
+            const b = (d.backups || [])[0];
+            out.push(b ? `Last backup ${b.day} (${b.started_at} UTC): ${b.status}${b.mb != null ? ' · ' + b.mb + ' MB' : ''}${b.key ? ' · ' + b.key : ''}${b.error ? ' · ' + b.error : ''}` : 'Last backup: none yet (first run after 00:10 UTC).');
+            const days = d.days || [];
+            if (!days.length) { out.push('Binance record: no day recorded yet.'); return out; }
+            out.push(`${'Day'.padEnd(10)} ${'Status'.padEnd(11)} ${'Equity'.padStart(10)} ${'Bin. P&L'.padStart(10)} ${'Bot P&L'.padStart(10)} ${'Bin. fees'.padStart(9)} ${'Bot fees'.padStart(9)} ${'Wallet chk'.padStart(10)}`);
+            for (const x of days) out.push(`${x.day.padEnd(10)} ${(x.status || '').padEnd(11)} ${(x.equity != null ? '$' + x.equity.toFixed(2) : '–').padStart(10)} ${$(x.realized).padStart(10)} ${$(x.bot_gross).padStart(10)} ${(x.commission != null ? '$' + (-x.commission).toFixed(2) : '–').padStart(9)} ${(x.bot_fees != null ? '$' + x.bot_fees.toFixed(2) : '–').padStart(9)} ${$(x.wallet_check).padStart(10)}${x.note ? '  ' + x.note : ''}`);
+            return out;
+        }
+        function trackRecordReportLines(hr2) {   // 🗄 (DECISION_LOG 436) — called by BOTH text exports (clipboard + saved file)
+            return [`\n${hr2}`, `## 🗄 Track record (DECISION_LOG 436 — backups + the daily Binance record vs the bot; P&L = realized gross, fees by fill day, wallet check = wallet move − Σ USDT income)\n`,
+                    ...trackRecordLines().map(l => '  ' + l)];
+        }
+
         function monthlyPnlReportLines(hr2) {   // 📆 (DECISION_LOG 426) Monthly P&L — called by BOTH text exports (clipboard + saved file)
             const out = [`\n${hr2}`, `## 📆 Monthly P&L (DECISION_LOG 426 — the daily calendar's days grouped by month; paper: this batch, live: lifetime; View: ${ORIGIN_LABELS[pnlCalDataView] || 'All trades'})\n`];
             if (!pnlCalData || !pnlCalData.days) { out.push('  Not loaded yet — the calendar data had not arrived when this report was built.'); return out; }
@@ -11298,6 +11341,7 @@
             lines.push(...liteCReportLines(perf, hr2));   // 🎯 (DECISION_LOG 301) LITE C Tally
             lines.push(...manualBlockReportLines(perf, hr2));   // ⛔ (DECISION_LOG 343) Manual block state
             lines.push(...monthlyPnlReportLines(hr2));   // 📆 (DECISION_LOG 426) Monthly P&L
+            lines.push(...trackRecordReportLines(hr2));   // 🗄 (DECISION_LOG 436) Track record
 
             if ((perf.surge_rows && perf.surge_rows.length > 0) || perf.surge_monitor) {
                 lines.push(`\n${hr2}`);
@@ -13501,6 +13545,7 @@
             lines.push(...liteCReportLines(perf, hr2));   // 🎯 (DECISION_LOG 301) LITE C Tally
             lines.push(...manualBlockReportLines(perf, hr2));   // ⛔ (DECISION_LOG 343) Manual block state
             lines.push(...monthlyPnlReportLines(hr2));   // 📆 (DECISION_LOG 426) Monthly P&L
+            lines.push(...trackRecordReportLines(hr2));   // 🗄 (DECISION_LOG 436) Track record
 
             if ((perf.surge_rows && perf.surge_rows.length > 0) || perf.surge_monitor) {
                 lines.push(`\n${hr2}`);
@@ -22358,6 +22403,10 @@
                 { const _e = document.getElementById('config-mcap-refresh-minutes'); if (_e && config.mcap_refresh_minutes !== undefined) _e.value = config.mcap_refresh_minutes; }
                 { const _e = document.getElementById('config-entry-zone-stamps-enabled'); if (_e) _e.checked = config.entry_zone_stamps_enabled !== false; }
                 { const _e = document.getElementById('config-app-trade-record-enabled'); if (_e) _e.checked = config.app_trade_record_enabled !== false; }   // 🧾 (329)
+                { const _e = document.getElementById('config-backup-enabled'); if (_e) _e.checked = config.backup_enabled !== false; }   // 🗄 (436)
+                { const _e = document.getElementById('config-backup-s3-bucket'); if (_e) _e.value = config.backup_s3_bucket || ''; }
+                { const _e = document.getElementById('config-exchange-record-enabled'); if (_e) _e.checked = config.exchange_record_enabled !== false; }
+                loadTrackRecord();   // 🗄 (436) the status panel + the text exports' block
                 
                 updateInvestmentUnit();
                 updateReserveUnit();
@@ -23984,6 +24033,9 @@
                 mcap_refresh_minutes: (() => { const _v = parseFloat(document.getElementById('config-mcap-refresh-minutes')?.value); return (isFinite(_v) && _v >= 5) ? _v : 30; })(),
                 entry_zone_stamps_enabled: (document.getElementById('config-entry-zone-stamps-enabled')?.checked ?? true),
                 app_trade_record_enabled: (document.getElementById('config-app-trade-record-enabled')?.checked ?? true),   // 🧾 (DECISION_LOG 329)
+                backup_enabled: (document.getElementById('config-backup-enabled')?.checked ?? true),   // 🗄 (DECISION_LOG 436)
+                backup_s3_bucket: (document.getElementById('config-backup-s3-bucket')?.value || '').trim().replace(/^s3:\/\//, '').replace(/\/.*$/, ''),
+                exchange_record_enabled: (document.getElementById('config-exchange-record-enabled')?.checked ?? true),
                 bnb_swap_enabled: document.getElementById('config-bnb-swap-enabled').value === 'true',
                 paper_bnb_initial_usd: safeFloat(document.getElementById('config-paper-bnb-initial').value),
                 bnb_check_interval_hours: parseInt(document.getElementById('config-bnb-check-interval').value) || 12,

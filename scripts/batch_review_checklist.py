@@ -110,7 +110,8 @@ def plan_items(txt=None):
     txt = _read(PLAN) if txt is None else txt
     if txt is None:
         return []
-    return [(m.group(1), _clean(m.group(2), 150)) for m in re.finditer(r"^([①-⑳]\w?)\s+\*\*(.+?)\*\*", txt, re.M)]
+    # ②r2 / ②z2 (DL 432 review): up to two characters after the number — a one-character pattern silently dropped them
+    return [(m.group(1), _clean(m.group(2), 150)) for m in re.finditer(r"^([①-⑳]\w{0,2})\s+\*\*(.+?)\*\*", txt, re.M)]
 
 
 def plan_sections(txt=None):

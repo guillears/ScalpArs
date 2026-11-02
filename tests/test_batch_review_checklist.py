@@ -149,3 +149,12 @@ def test_review3_closed_heads_bold_items_joined_headings_and_bare_script_names()
     assert not any("priority block" in t or "§0" in t for _, _, t, _ in ps)
     names = {s for s, _, _ in B.referenced_scripts()}
     assert {"study_willy_sl_cap_grid.py", "study_willy_late_tp_grid.py"} & names or not os.path.exists(os.path.join(ROOT, "scripts", "study_willy_sl_cap_grid.py"))
+
+
+def test_plan_items_with_a_two_character_suffix():
+    """DL 432 review: ②r2 (WILLY_5X) and ②z2 (go-live) were silently dropped by a one-character pattern."""
+    import batch_review_checklist as B
+    got = B.plan_items("②z **A**\n②z2 **B**\n②r2 **C**\n③ **D**\n")
+    assert [k for k, _ in got] == ["②z", "②z2", "②r2", "③"]
+    keys = [k for k, _ in B.plan_items()]
+    assert "②z2" in keys and "②r2" in keys and "②z" in keys     # the real plan

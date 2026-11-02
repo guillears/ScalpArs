@@ -22,6 +22,13 @@ FROZEN BAR (operator's aim: well above breakeven, same style as DL 416), read pe
            else KEEP. 3 stops among the first 8 decide early (no later fill can undo them). Deferred until the newest export is ≥ the 8th fill +
            72 h (an earlier-opened fill could still be open). Side line (no verdict): every SKIPPED episode (decisions export, e=FLATBASE
            SKIPPED) priced as if entered at its S4 close (next 5m open, +5 / −10, 72 h) = what the confirm gave up.
+🏦 BANK-TYPE (DECISION_LOG 429, operator 2026-11-02: "keep any close below and track BANK-type trades"): every confirmed fill split by DEPTH =
+           how far its confirm close sits below the S4 close, % (the ledger's OPENED price = the confirm close since DL 428; S4 close = the order's
+           entry_frenzy_vwap × (1 + entry_frenzy_vs_vwap_pct / 100); joined on pair + spike). SHALLOW = depth < 1 % (BANK 10-26: 0.81 %, −10.09 —
+           the registration, never counted). 🔒 frozen read, once, at the first 10 shallow fills: shallow avg < 0 ∧ shallow avg < the deep side's
+           avg (deep N ≥ 5; fewer → the read waits) → 1 % MARGIN CANDIDATE (operator decides; never automatic) · else KEEP "any close below".
+           Scored only when the ledger's OPENED reason names FB_CONFIRM and depth > 0.001 % (an S4-priced row — a revert to 0, a recovered
+           order — is "not a confirm entry"); no ledger row → unscored.
 📈 RE-SIZE  (operator 2026-11-02: "if FB_CONFIRM performs well, the re-sizing is next") a frozen KEEP opens the DL 363 ladder step
            0.2 → 0.5 invest for the operator (confirmed fills only, real-path DCR before → after, flatbase_max_open re-decided).
 STATE      reports/SCOUT_FB_CONFIRM.json (gitignored; the revert verdict under key FLATBASE_SHORT_REVERT).
@@ -46,6 +53,8 @@ DL_SHIP = 428                       # ✅ FB_CONFIRM shipped (engine flatbase_co
 SLEEVE = "FLATBASE_SHORT"
 REVERT_KEY, REVERT_N, REVERT_STOPS = "FLATBASE_SHORT_REVERT", 8, 3
 RESIZE_FROM, RESIZE_TO = 0.2, 0.5   # 📈 a KEEP opens the DL 363 ladder step (operator 2026-11-02) — never automatic
+BANK_KEY, BANK_DEPTH, BANK_N, BANK_DEEP_MIN = "FLATBASE_SHORT_BANK1", 1.0, 10, 5   # 🏦 (DECISION_LOG 429) shallow = confirm close < 1 % below S4
+BANK_EPS = 1e-3                     # depth ≤ this = an S4-priced ledger row (a revert to 0, a recovered order) — never a confirm entry
 STOP_REASONS = ("STOP_LOSS", "BACKSTOP_STOP", "BACKSTOP")
 CONFIRM_H, MAX_H = 24, 72
 STOP_GROSS, TP_GROSS = 10.0, 5.0
@@ -60,7 +69,8 @@ _ROOT = os.path.dirname(_D)
 STATE = os.path.join(_ROOT, "reports", "SCOUT_FB_CONFIRM.json")
 CACHE = os.path.join(_ROOT, "reports", "backtest_cache", "scout_fb_confirm")
 EXPORT_GLOB = os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")
-COLS = ("opened_at", "closed_at", "pair", "direction", "entry_strategy", "status", "entry_price", "pnl_percentage", "pnl", "close_reason")
+COLS = ("opened_at", "closed_at", "pair", "direction", "entry_strategy", "status", "entry_price", "pnl_percentage", "pnl", "close_reason",
+        "entry_frenzy_spike_at", "entry_frenzy_vwap", "entry_frenzy_vs_vwap_pct")   # 🏦 (429) the S4 close = vwap × (1 + vs_vwap %)
 CANDIDATE = "ENTRY CANDIDATE (operator decides; never automatic)"
 REGISTRATION = ("in-sample at registration (NEVER counted): B25 16 signals at +5 / −10 · −0.62 % → 12 finished · 92 % · +3.75 %, removes 5 of 6 stops; 2026 backtest +1.25 → +1.30 %/trade, total +670 → +601, holds longer")
 
@@ -264,9 +274,85 @@ def run(now_ms=None, paths=None, state_path=STATE, since_ms=None, bars_fn=None, 
           f"FROZEN bar (DL {DL}, per signal, skip = 0): at N ≥ {N_MIN} priced signals on ≥ {DAYS_MIN} UTC days, decided ONCE — mean Δ ≤ 0 → RETIRED; {CANDIDATE} iff mean Δ ≥ {D_MIN:+.2f} ∧ shadow mean > 0 ∧ P(Δ > 0) ≥ {P_MIN:.2f} ({BOOT_N:,}, seed {BOOT_SEED}) ∧ "
           f"no signal ≥ {SHARE_MAX:.0%} of + Σ Δ; else KEEP OBSERVING.", ""]
     if ship is not None:
-        L += revert_lines(allc[allc.o >= ship] if len(allc) else allc, newest, now_ms, st if ok else None, state_path if ok else None)
-        L += skipped_lines(ship, now_ms, dec_paths, bars_fn)
+        post = allc[allc.o >= ship] if len(allc) else allc
+        for nm, fn in (("revert gate", lambda: revert_lines(post, newest, now_ms, st if ok else None, state_path if ok else None)),
+                       ("skipped side line", lambda: skipped_lines(ship, now_ms, dec_paths, bars_fn)),
+                       ("BANK-TYPE", lambda: bank_lines(post, now_ms, st if ok else None, state_path if ok else None, dec_paths, newest))):
+            try:   # one section's failure never hides the others (the revert gate above all)
+                L += fn()
+            except Exception as e:
+                L += [f"⚠ {nm} unavailable this run ({str(e)[:80]})", ""]
     return L
+
+
+def bank_depth(fills, led):
+    """→ fills + depth (% the confirm close sits below the S4 close; NaN = unscored). led = the FLATBASE ledger (OPENED rows: price = the
+    confirm close). Join on pair + spike (± 1 s). PURE."""
+    f = fills.copy()
+    s4 = pd.to_numeric(f.get("entry_frenzy_vwap"), errors="coerce") * (1 + pd.to_numeric(f.get("entry_frenzy_vs_vwap_pct"), errors="coerce") / 100)
+    sp = pd.to_datetime(f.get("entry_frenzy_spike_at"), format="mixed", errors="coerce")
+    f["spike_s"] = (sp.values.astype("datetime64[s]").astype("int64")) if len(f) else []
+    f.loc[sp.isna(), "spike_s"] = -1
+    op = led[led.fb_status.astype(str) == "OPENED"] if len(led) else led
+    px = {}
+    for r in op.itertuples():   # only an OPENED row decided at the confirm bar carries the confirm close (DL 428)
+        if r.spike_ms == r.spike_ms and r.px is not None and r.px == r.px and "FB_CONFIRM" in str(getattr(r, "fb_reason", "") or ""):
+            px[(r.pair, int(round(r.spike_ms / 1000)))] = float(r.px)
+    cc = [px.get((p, int(s))) or px.get((p, int(s) - 1)) or px.get((p, int(s) + 1)) for p, s in zip(f.pair, f.spike_s)]
+    cc = pd.to_numeric(pd.Series(cc, index=f.index, dtype=object), errors="coerce")
+    d = (1 - cc / s4) * 100
+    f["depth"] = d.where(d > BANK_EPS)   # ≤ 0.001 % (S4-priced) or below 0 → never a confirm entry → unscored
+    return f
+
+
+def bank_lines(c, now_ms, st, state_path, dec_paths=None, newest=None):
+    """🏦 (429) the BANK-type tracker on the confirmed fills (opened ≥ the ship)."""
+    L = [f"### 🏦 BANK-TYPE — confirm close < {BANK_DEPTH:g} % below the S4 close (DECISION_LOG 429; registration BANK 10-26 0.81 % · −10.09, never counted)", ""]
+    keep, _ = _GK.split_operator_closed(c) if len(c) else (c, c)
+    if not len(keep):
+        return L + ["  no confirmed fills yet.", ""]
+    try:
+        import scout_flatbase_short as FS
+        led = FS.load_ledger(FS.read_decisions(dec_paths))
+    except Exception as e:
+        return L + [f"  ledger unreadable ({str(e)[:80]})", ""]
+    try:
+        f = bank_depth(keep.sort_values(["o", "pair"]), led)
+    except Exception as e:   # never takes the revert gate down with it
+        return L + [f"  depth unreadable ({str(e)[:80]})", ""]
+    sh, dp, un = f[f.depth < BANK_DEPTH], f[f.depth >= BANK_DEPTH], f[f.depth.isna()]
+
+    def _s(g):
+        return f"N {len(g)} · WR {(g.pct > 0).mean():.0%} · avg {g.pct.mean():+.3f} %" if len(g) else "N 0"
+    L += [f"  shallow (< {BANK_DEPTH:g} %): {_s(sh)}", f"  deep (≥ {BANK_DEPTH:g} %): {_s(dp)}",
+          f"  unscored (not a confirm entry / no OPENED ledger row / stamp): N {len(un)}"]
+    for r in sh.itertuples():
+        L.append(f"    · {r.pair} {r.o:%m-%d %H:%M} depth {r.depth:.2f} % · {r.pct:+.2f} %")
+    rec = (st or {}).get(BANK_KEY)
+    if rec is not None and not (isinstance(rec, dict) and {"state", "detail", "at", "run_at"} <= set(rec)):
+        return L + [f"⚠ frozen BANK record damaged — operator restore needed ({BANK_KEY}); not re-decided.", ""]
+    wait = None
+    if rec is None and st is not None and len(sh) >= BANK_N and (newest is None or newest < sh.iloc[:BANK_N].o.max() + pd.Timedelta(minutes=WAIT_MIN)):
+        wait = f"⏸ freezing deferred: newest export < the {BANK_N}th shallow fill + {WAIT_MIN} min."
+    if rec is None and st is not None and len(sh) >= BANK_N and wait is None and len(dp[dp.o <= sh.iloc[:BANK_N].o.max()]) < BANK_DEEP_MIN:
+        wait = f"⏸ freezing deferred: fewer than {BANK_DEEP_MIN} deep fills by the {BANK_N}th shallow one — no comparison yet."
+    if rec is None and st is not None and len(sh) >= BANK_N and wait is None:
+        pre = sh.iloc[:BANK_N]
+        d_before = dp[dp.o <= pre.o.max()]
+        cand = pre.pct.mean() < 0 and pre.pct.mean() < d_before.pct.mean()
+        rec = dict(state=("1 % MARGIN CANDIDATE (operator decides; never automatic)" if cand else 'KEEP "any close below"'),
+                   detail=f"shallow {_s(pre)} vs deep {_s(d_before)}", at=f"{pre.o.max():%Y-%m-%d %H:%M} UTC",
+                   run_at=pd.Timestamp(now_ms, unit="ms").strftime("%Y-%m-%d %H:%M UTC"))
+        if state_path:
+            st[BANK_KEY] = rec
+            NF.du_save_state(st, state_path)
+    if wait:
+        L.append(wait)
+    if rec:
+        L.append(f"**Frozen verdict ({rec['at']}, frozen {rec['run_at']}): {rec['state']}** ({rec['detail']})")
+    else:
+        L.append(f"Now: ⏳ COLLECTING ({len(sh)}/{BANK_N} shallow fills) — at {BANK_N}: shallow avg < 0 ∧ below the deep side (deep N ≥ 5) → 1 % MARGIN CANDIDATE, else KEEP.")
+    return L + [""]
 
 
 def revert_verdict(g):
@@ -289,6 +375,8 @@ def revert_lines(c, newest, now_ms, st, state_path):
     keep, ox = _GK.split_operator_closed(c) if len(c) else (c, c)
     g = keep.sort_values(["o", "pair"]).iloc[:REVERT_N] if len(keep) else keep
     rec = (st or {}).get(REVERT_KEY)
+    if rec is not None and not (isinstance(rec, dict) and {"state", "detail", "at", "run_at"} <= set(rec)):
+        return L + [f"⚠ frozen REVERT record damaged — operator restore needed ({REVERT_KEY}); not re-decided.", ""]
     if rec is None and st is not None and len(g):
         state, det = revert_verdict(g)
         if state != "COLLECTING":

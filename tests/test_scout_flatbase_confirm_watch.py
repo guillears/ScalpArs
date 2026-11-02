@@ -254,3 +254,68 @@ def test_skipped_side_line_prices_the_s4_entry(tmp_path):
 def test_registry_pins_the_confirm_hours():
     import observe_registry as OR
     assert OR.EXIT["scout_flatbase_confirm_watch.py"]["walks"]["flatbase_confirm_hours"] == 24.0
+
+
+# ── 🏦 DECISION_LOG 429: BANK-type tracker (shallow confirms, < 1 % below the S4 close) ─────────────────────────────────────────────
+
+def _bank_case(tmp_path, depths, pcts, stamp="2027-06-01_00-00-00"):
+    """confirmed fills with S4 close 100 (vwap 100, vs 0 %) and ledger OPENED rows at the confirm close 100 × (1 − depth %)."""
+    rows, led = [], []
+    for i, (dpt, pct) in enumerate(zip(depths, pcts)):
+        o = T0 + pd.Timedelta(days=2 + i * 0.3, seconds=10)
+        sp = o - pd.Timedelta(hours=30)
+        rows.append(dict(opened_at=o.strftime("%Y-%m-%dT%H:%M:%S"), closed_at=(o + pd.Timedelta(hours=3)).strftime("%Y-%m-%dT%H:%M:%S"), pair=f"B{i}USDT",
+                         direction="SHORT", entry_strategy="FLATBASE_SHORT", status="CLOSED", entry_price=(100.0 * (1 - dpt / 100) if dpt == dpt else 99.0), pnl_percentage=pct,
+                         pnl=pct, close_reason="FRENZY_TP" if pct > 0 else "STOP_LOSS", entry_frenzy_spike_at=sp.strftime("%Y-%m-%dT%H:%M:%S"),
+                         entry_frenzy_vwap=100.0, entry_frenzy_vs_vwap_pct=0.0))
+        if dpt == dpt:
+            led.append(dict(t=o.strftime("%Y-%m-%dT%H:%M:%S"), e="FLATBASE", pair=f"B{i}USDT", dir="SHORT", price=100.0 * (1 - dpt / 100), fb_status="OPENED",
+                            fb_reason=f"opened #{i} after the FB_CONFIRM 4-h close",
+                            fb_spike_at=sp.strftime("%Y-%m-%dT%H:%M:%S"), fb_first_seen_at=None, fb_entry_bar_at=o.strftime("%Y-%m-%dT%H:%M:%S")))
+    dp = tmp_path / f"scalpars_decisions_paper_{stamp}.csv"
+    pd.DataFrame(led).to_csv(dp, index=False)
+    return _write(tmp_path, pd.DataFrame(rows), stamp), [str(dp)]
+
+
+def test_bank_depth_split_and_unscored(tmp_path):
+    p, d = _bank_case(tmp_path, [0.5, 3.0, float("nan")], [-10.09, 4.94, 4.94])
+    out = "\n".join(W.run(NOW, p, None, SINCE, _bars_fn, ship_ms=SHIP, dec_paths=d))
+    assert "shallow (< 1 %): N 1 · WR 0% · avg -10.090 %" in out and "deep (≥ 1 %): N 1" in out and "unscored (not a confirm entry / no OPENED ledger row / stamp): N 1" in out
+    assert "B0USDT" in out and "depth 0.50 %" in out and "COLLECTING (1/10 shallow fills)" in out
+
+
+def test_bank_frozen_read(tmp_path):
+    st = tmp_path / "w.json"
+    p, d = _bank_case(tmp_path, [3.0] * 5 + [0.5] * 10, [4.94] * 5 + [-10.09] * 4 + [4.94] * 6)   # deep first; shallow avg −1.07 < 0 < deep
+    W.run(NOW, p, str(st), SINCE, _bars_fn, ship_ms=SHIP, dec_paths=d)
+    assert json.load(open(st))[W.BANK_KEY]["state"].startswith("1 % MARGIN CANDIDATE")
+    st2 = tmp_path / "w2.json"
+    p, d = _bank_case(tmp_path, [3.0] * 5 + [0.5] * 10, [4.94] * 15, stamp="2027-06-02_00-00-00")
+    W.run(NOW, p, str(st2), SINCE, _bars_fn, ship_ms=SHIP, dec_paths=d)
+    assert json.load(open(st2))[W.BANK_KEY]["state"] == 'KEEP "any close below"'
+    st3 = tmp_path / "w3.json"
+    p, d = _bank_case(tmp_path, [0.5] * 10, [-10.09] * 10, stamp="2026-11-05_00-00-00")                # young export → deferred
+    out = "\n".join(W.run(NOW, p, str(st3), SINCE, _bars_fn, ship_ms=SHIP, dec_paths=d))
+    assert "the 10th shallow fill" in out and W.BANK_KEY not in (json.load(open(st3)) if st3.exists() else {})
+
+
+def test_bank_s4_priced_rows_never_score_and_deep_min_defers(tmp_path):
+    p, d = _bank_case(tmp_path, [0.0, -2.9, 0.5], [-10.09, -10.09, 4.94])                  # a revert (depth 0) and a negative depth
+    out = "\n".join(W.run(NOW, p, None, SINCE, _bars_fn, ship_ms=SHIP, dec_paths=d))
+    assert "shallow (< 1 %): N 1 · WR 100%" in out and "stamp): N 2" in out
+    st = tmp_path / "w.json"
+    p, d = _bank_case(tmp_path, [0.5] * 10 + [3.0] * 5, [-10.09] * 10 + [4.94] * 5, stamp="2027-06-03_00-00-00")   # deep only after the 10th shallow
+    out = "\n".join(W.run(NOW, p, str(st), SINCE, _bars_fn, ship_ms=SHIP, dec_paths=d))
+    assert "fewer than 5 deep fills" in out and W.BANK_KEY not in json.load(open(st))
+
+
+def test_damaged_records_never_hide_the_revert_gate(tmp_path):
+    p, d = _bank_case(tmp_path, [0.5], [4.94])
+    st = tmp_path / "w.json"
+    st.write_text(json.dumps({W.BANK_KEY: {"state": "x"}}))
+    out = "\n".join(W.run(NOW, p, str(st), SINCE, _bars_fn, ship_ms=SHIP, dec_paths=d))
+    assert "frozen BANK record damaged" in out and "FB_CONFIRM revert gate" in out
+    st.write_text(json.dumps({W.REVERT_KEY: "x"}))
+    out = "\n".join(W.run(NOW, p, str(st), SINCE, _bars_fn, ship_ms=SHIP, dec_paths=d))
+    assert "frozen REVERT record damaged" in out and "BANK-TYPE" in out
+    assert (W.BANK_KEY, W.BANK_DEPTH, W.BANK_N, W.BANK_DEEP_MIN) == ("FLATBASE_SHORT_BANK1", 1.0, 10, 5)

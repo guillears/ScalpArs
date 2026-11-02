@@ -39,18 +39,24 @@ FLAT_MAX_ATTEMPTS = 3                   # an unreadable history is retried on �
 ENTRY_MAX_LATE_S = 300                  # the order must reach open_position inside the SAME 5m bar (a missed boundary is never caught up)
 
 # 🔁 (DECISION_LOG 408) tp / stop = the LIVE exit +5 / −10 (DL 348 shipped +8 / −15): a bad config value falls back to the exit that runs
+# ✅ (DECISION_LOG 428) confirm_h = FB_CONFIRM: after the S4 signal, wait ≤ this many hours for a 4-h close below the S4 close; 0 = enter at S4
 DEFAULTS = dict(flat_max=0.444, min_vol=20e6, turnover_min=1.0, tp=5.0, stop=10.0, max_hold_h=72.0, min_h=4.0, max_h=96.0,
-                invest=0.2, lev=0.25, max_open=0.0)
+                invest=0.2, lev=0.25, max_open=0.0, confirm_h=24.0)
 FIELDS = dict(flat_max='flatbase_flat_max', min_vol='flatbase_min_vol_usd', turnover_min='flatbase_turnover_min', tp='flatbase_tp_pct',
               stop='flatbase_stop_pct', max_hold_h='flatbase_max_hold_hours', min_h='flatbase_min_hours_after_spike',
-              max_h='flatbase_max_hours_after_spike', invest='flatbase_invest_mult', lev='flatbase_lev_mult', max_open='flatbase_max_open')
+              max_h='flatbase_max_hours_after_spike', invest='flatbase_invest_mult', lev='flatbase_lev_mult', max_open='flatbase_max_open',
+              confirm_h='flatbase_confirm_hours')
+CONFIRM_H_MAX = 72.0                    # the confirm wait is ≤ 72 h (the 5m window holds ~125 h; FB_CONFIRM studied 24 h)
 MAX_H_CAP = 100.0                       # the 1,499-bar window must hold the spike bar AND 24 h of volume before every candidate bar
 
 # decisions (the episode ledger's status) — one per episode
 ST_TRACKING, ST_OPENED, ST_SHADOW, ST_MISSED, ST_EXPIRED = "TRACKING", "OPENED", "SHADOW", "MISSED", "EXPIRED"
 ST_NOT_FLAT, ST_UNREADABLE, ST_REFUSED = "NOT_FLAT", "UNREADABLE", "REFUSED"
-ST_FINAL = (ST_OPENED, ST_SHADOW, ST_MISSED, ST_EXPIRED, ST_NOT_FLAT, ST_UNREADABLE, ST_REFUSED)
+ST_SKIPPED = "SKIPPED"                  # ✅ (428) no 4-h close below the S4 close inside the confirm wait → no trade
+ST_FINAL = (ST_OPENED, ST_SHADOW, ST_MISSED, ST_EXPIRED, ST_NOT_FLAT, ST_UNREADABLE, ST_REFUSED, ST_SKIPPED)
+CONFIRM_TAG = "CONFIRM_WAIT"            # the TRACKING row's reason prefix while the confirm wait runs (restart-safe)
 ACT_WAIT, ACT_ENTER, ACT_MISSED, ACT_EXPIRED, ACT_NO_DATA = "WAIT", "ENTER", "MISSED", "EXPIRED", "NO_DATA"
+ACT_SKIP = "SKIP"
 ROUTE_TRADE, ROUTE_SHADOW = "TRADE", "SHADOW"
 
 
@@ -78,7 +84,7 @@ def flatbase_params(th) -> Dict[str, float]:
             'tp': lambda x: 0 < x < 100, 'stop': lambda x: 0 < x < 100, 'max_hold_h': lambda x: 0 < x <= 240,
             'min_h': lambda x: 0 <= x < MAX_H_CAP, 'max_h': lambda x: 0 < x <= MAX_H_CAP,
             'invest': lambda x: 0 < x <= 1.0, 'lev': lambda x: 0 < x <= 1.0,
-            'max_open': lambda x: x >= 0 and x == int(x)}[k](v)
+            'max_open': lambda x: x >= 0 and x == int(x), 'confirm_h': lambda x: 0 <= x <= CONFIRM_H_MAX}[k](v)
         out[k] = v if ok else d
     if out['max_h'] <= out['min_h']:
         out['min_h'], out['max_h'] = DEFAULTS['min_h'], DEFAULTS['max_h']
@@ -99,7 +105,8 @@ def flatbase_config_errors(th, base_leverage=20.0) -> list:
                min_h=(f"a number ≥ 0 and < {MAX_H_CAP:g} (hours)", lambda x: 0 <= x < MAX_H_CAP),
                max_h=(f"a number > 0 and ≤ {MAX_H_CAP:g} (hours — the 5m window must hold the spike bar)", lambda x: 0 < x <= MAX_H_CAP),
                invest=("a number > 0 and ≤ 1", lambda x: 0 < x <= 1.0), lev=("a number > 0 and ≤ 1", lambda x: 0 < x <= 1.0),
-               max_open=("a whole number ≥ 0 (0 = no cap)", lambda x: x >= 0 and x == int(x)))
+               max_open=("a whole number ≥ 0 (0 = no cap)", lambda x: x >= 0 and x == int(x)),
+               confirm_h=(f"a number ≥ 0 and ≤ {CONFIRM_H_MAX:g} (hours; 0 = enter at the S4 bar)", lambda x: 0 <= x <= CONFIRM_H_MAX))
     vals = {}
     for k, (txt, ok) in rng.items():
         v = _fin(getattr(th, FIELDS[k], DEFAULTS[k]))
@@ -259,6 +266,31 @@ def s4_scan(bars, spike_ts, th, first_seen_open_ms=None) -> Dict:
         out['status'] = ACT_EXPIRED if (n - 1) >= on + max_b else ACT_WAIT
         return out
     except (TypeError, ValueError, IndexError, ZeroDivisionError):
+        return dict(status=ACT_NO_DATA, idx=None)
+
+
+def confirm_scan(bars, signal_px, signal_close_ms, hours) -> Dict:
+    """✅ (DECISION_LOG 428) FB_CONFIRM on CLOSED 5m rows [open_ms, o, h, l, c, …] (oldest first): after the S4 signal (its close
+    signal_px, closing at signal_close_ms) the short opens on the FIRST 5m close on a UTC 4-h boundary that closes below signal_px, inside
+    (signal_close_ms, signal_close_ms + hours]. → dict(status, idx, close, bar_open):
+      ENTER   that boundary IS the last row (the bar that just closed) → enter now
+      MISSED  it is an EARLIER row (an outage / restart skipped it) → done, never caught up (the S4 rule's own discipline)
+      SKIP    the last row closes at / past the wait's end and no boundary qualified → no trade
+      WAIT    still inside the wait
+      NO_DATA bad rows / price. PURE, never raises. (scripts/scout_flatbase_confirm_watch.py priced the same rule against the fill price.)"""
+    out = dict(status=ACT_NO_DATA, idx=None)
+    try:
+        px, t0, end = float(signal_px), int(signal_close_ms), int(signal_close_ms) + int(round(float(hours) * HOUR_MS))
+        if not bars or not (px > 0):
+            return out
+        for k, r in enumerate(bars):
+            close_ms = int(r[0]) + BAR_MS
+            if close_ms <= t0 or close_ms > end or close_ms % BOUNDARY_MS != 0:
+                continue
+            if float(r[4]) < px:
+                return dict(status=(ACT_ENTER if k == len(bars) - 1 else ACT_MISSED), idx=k, close=float(r[4]), bar_open=int(r[0]))
+        return dict(status=(ACT_SKIP if int(bars[-1][0]) + BAR_MS >= end else ACT_WAIT), idx=None)
+    except (TypeError, ValueError, IndexError):
         return dict(status=ACT_NO_DATA, idx=None)
 
 

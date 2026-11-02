@@ -150,17 +150,17 @@ def test_freeze_once_deferrals_and_damaged_state(tmp_path):
     last = pd.to_datetime(d.opened_at).max()
     st = tmp_path / "w.json"
     early = _write(tmp_path, d, (last + pd.Timedelta(hours=1)).strftime("%Y-%m-%d_%H-%M-%S"))
-    assert "newest export < the crossing signal + 4320 min" in "\n".join(W.run(NOW, early, str(st), SINCE, _bars_fn)) and not st.exists()
+    assert "newest export < the crossing signal + 4320 min" in "\n".join(W.run(NOW, early, str(st), SINCE, _bars_fn, ship_ms=False)) and not st.exists()
     late = _write(tmp_path, d, (last + pd.Timedelta(hours=73)).strftime("%Y-%m-%d_%H-%M-%S"))
-    out = "\n".join(W.run(NOW, late, str(st), SINCE, lambda *a: None))
+    out = "\n".join(W.run(NOW, late, str(st), SINCE, lambda *a: None, ship_ms=False))
     assert "kline fetch stopped" in out and not st.exists()
-    out = "\n".join(W.run(NOW, late, str(st), SINCE, _bars_fn))
+    out = "\n".join(W.run(NOW, late, str(st), SINCE, _bars_fn, ship_ms=False))
     assert "Frozen verdict" in out and "Before → after at the crossing: booked" in out and json.load(open(st))[W.SLEEVE]["state"] == W.CANDIDATE
-    W.run(NOW, _write(tmp_path, _fills([(i % 8, f"W{i}USDT", 4.94) for i in range(20)]), "2027-02-01_00-00-00"), str(st), SINCE, _bars_fn)
+    W.run(NOW, _write(tmp_path, _fills([(i % 8, f"W{i}USDT", 4.94) for i in range(20)]), "2027-02-01_00-00-00"), str(st), SINCE, _bars_fn, ship_ms=False)
     assert json.load(open(st))[W.SLEEVE]["state"] == W.CANDIDATE                     # never re-decided
     for bad in ('{"FLATBASE_SHORT": "x"}', '{"FLATBASE_SHORT": {"state": "x"}}'):
         st.write_text(bad)
-        o = "\n".join(W.run(NOW, late, str(st), SINCE, _bars_fn))
+        o = "\n".join(W.run(NOW, late, str(st), SINCE, _bars_fn, ship_ms=False))
         assert "frozen record damaged" in o and "Frozen verdict" not in o and st.read_text() == bad
 
 
@@ -170,7 +170,7 @@ def test_pending_signal_inside_the_prefix_holds_the_freeze(tmp_path):
     st = tmp_path / "w.json"
     p = _write(tmp_path, d, (last + pd.Timedelta(hours=73)).strftime("%Y-%m-%d_%H-%M-%S"))
     fn = lambda pair, te, now: [] if pair == "W0USDT" else _bars_fn(pair, te, now)
-    out = "\n".join(W.run(NOW, p, str(st), SINCE, fn))
+    out = "\n".join(W.run(NOW, p, str(st), SINCE, fn, ship_ms=False))
     assert "a signal inside the prefix is not priced yet" in out and not st.exists()
 
 
@@ -178,9 +178,9 @@ def test_cohort_floor_operator_closed_other_sleeves_and_empty(tmp_path):
     a = _fills([(0, "AUSDT", 4.94), (0, "MUSDT", 4.94), (-5, "OUSDT", 4.94), (0, "LUSDT", 4.94)])
     a.loc[1, "close_reason"] = "MANUAL"
     a.loc[3, "entry_strategy"] = "SPIKE_FADE"
-    out = "\n".join(W.run(NOW, _write(tmp_path, a), None, SINCE, _bars_fn))
+    out = "\n".join(W.run(NOW, _write(tmp_path, a), None, SINCE, _bars_fn, ship_ms=False))
     assert "priced 1 ·" in out
-    assert "priced 0 ·" in "\n".join(W.run(NOW, [], None, SINCE, _bars_fn))
+    assert "priced 0 ·" in "\n".join(W.run(NOW, [], None, SINCE, _bars_fn, ship_ms=False))
 
 
 def test_not_evaluable_hook_and_registry(monkeypatch):
@@ -192,3 +192,65 @@ def test_not_evaluable_hook_and_registry(monkeypatch):
     import observe_registry as OR
     era = OR.EXIT["scout_flatbase_confirm_watch.py"]["walks"]
     assert era["flatbase_tp_pct"] == 5.0 and era["flatbase_stop_pct"] == 10.0 and era["flatbase_max_hold_hours"] == 72.0
+
+
+# ── ✅ DECISION_LOG 428: FB_CONFIRM shipped — the observe line closes at the ship, the revert gate counts the confirmed fills ──────────
+
+SHIP = int((T0 + pd.Timedelta(days=2)).value // 10**6)
+
+
+def _rv(pcts, reasons=None):
+    return pd.DataFrame(dict(pct=pcts, close_reason=reasons or ["FRENZY_TP" if x > 0 else "STOP_LOSS" for x in pcts]))
+
+
+def test_revert_verdict_bar():
+    assert (W.DL_SHIP, W.REVERT_N, W.REVERT_STOPS) == (428, 8, 3)
+    assert W.revert_verdict(_rv([4.94] * 7))[0] == "COLLECTING"
+    assert W.revert_verdict(_rv([-10.09] * 3))[0] == "REVERT"                         # 3 stops decide early
+    assert W.revert_verdict(_rv([4.94] * 6 + [-10.09] * 2))[0] == "KEEP"              # 2 stops, avg +1.18
+    assert W.revert_verdict(_rv([0.5] * 6 + [-10.09] * 2))[0] == "REVERT"             # avg < 0
+    assert W.revert_verdict(_rv([4.94] * 7 + [-10.09], ["FRENZY_TP"] * 7 + ["BACKSTOP_STOP"]))[0] == "KEEP"
+    assert W.revert_verdict(_rv([-1.0] * 3, ["MAX_HOLD_TIME"] * 3))[0] == "COLLECTING"   # time exits are not stops
+
+
+def test_ship_closes_the_observe_line_and_opens_the_revert_gate(tmp_path):
+    pre = _fills([(0, "AUSDT", -10.09)])                                              # before the ship: the observe line
+    post = _fills([(2 + i * 0.1, f"C{i}USDT", -10.09 if i < 3 else 4.94) for i in range(8)])   # confirmed fills
+    st = tmp_path / "w.json"
+    p = _write(tmp_path, pd.concat([pre, post]), "2027-01-01_00-00-00")
+    out = "\n".join(W.run(NOW, p, str(st), SINCE, _bars_fn, ship_ms=SHIP, dec_paths=[]))
+    assert "✅ SHIPPED" in out and "priced 1 ·" in out                                 # only the pre-ship fill is shadow-priced
+    assert "Frozen verdict" in out and json.load(open(st))[W.REVERT_KEY]["state"] == "REVERT" and W.SLEEVE not in json.load(open(st))
+    assert "what the skips gave up" in out and "none yet." in out
+
+
+def test_revert_gate_defers_on_a_young_export_and_freezes_once(tmp_path):
+    post = _fills([(2 + i * 0.1, f"C{i}USDT", 4.94) for i in range(8)])
+    last = pd.to_datetime(post.opened_at).max()
+    st = tmp_path / "w.json"
+    young = _write(tmp_path, post, (last + pd.Timedelta(hours=1)).strftime("%Y-%m-%d_%H-%M-%S"))
+    assert "freezing deferred" in "\n".join(W.run(NOW, young, str(st), SINCE, _bars_fn, ship_ms=SHIP, dec_paths=[])) and not st.exists()
+    late = _write(tmp_path, post, (last + pd.Timedelta(hours=73)).strftime("%Y-%m-%d_%H-%M-%S"))
+    W.run(NOW, late, str(st), SINCE, _bars_fn, ship_ms=SHIP, dec_paths=[])
+    assert json.load(open(st))[W.REVERT_KEY]["state"] == "KEEP"
+    assert "📈 RE-SIZE NEXT" in "\n".join(W.run(NOW, late, str(st), SINCE, _bars_fn, ship_ms=SHIP, dec_paths=[]))   # operator 11-02
+    worse = _fills([(2 + i * 0.01, f"D{i}USDT", -10.09) for i in range(8)])            # opened earlier: would change the first 8 — never re-decided
+    W.run(NOW, _write(tmp_path, pd.concat([post, worse]), "2027-03-01_00-00-00"), str(st), SINCE, _bars_fn, ship_ms=SHIP, dec_paths=[])
+    assert json.load(open(st))[W.REVERT_KEY]["state"] == "KEEP"
+
+
+def test_skipped_side_line_prices_the_s4_entry(tmp_path):
+    s4 = int((T0 + pd.Timedelta(days=2)).value // 10**6)
+    dec = pd.DataFrame([dict(t="2027-01-01T00:00:00", e="FLATBASE", pair="SKUSDT", dir="SHORT", price=E, fb_status="SKIPPED",
+                             fb_spike_at=(T0 + pd.Timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%S"), fb_first_seen_at=None,
+                             fb_entry_bar_at=pd.Timestamp(s4, unit="ms").strftime("%Y-%m-%dT%H:%M:%S"))])
+    dp = tmp_path / "scalpars_decisions_paper_2027-01-01_00-00-00.csv"
+    dec.to_csv(dp, index=False)
+    fn = lambda pair, te, now: [[te + i * W.M5, E, E + 0.5, (90.0 if i == 3 else E - 0.5), E] for i in range(10)]
+    out = "\n".join(W.skipped_lines(pd.Timestamp(SHIP, unit="ms"), NOW, [str(dp)], fn))
+    assert "SKUSDT" in out and f"{W.TP_NET:+.2f} %" in out and "priced 1 · WR 100%" in out
+
+
+def test_registry_pins_the_confirm_hours():
+    import observe_registry as OR
+    assert OR.EXIT["scout_flatbase_confirm_watch.py"]["walks"]["flatbase_confirm_hours"] == 24.0

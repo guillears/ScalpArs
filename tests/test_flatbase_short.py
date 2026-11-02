@@ -29,7 +29,8 @@ PAIR = "FBSUSDT"
 def _th(**kw):
     d = dict(flatbase_short_enabled=True, flatbase_flat_max=0.444, flatbase_min_vol_usd=20e6, flatbase_turnover_min=1.0, flatbase_tp_pct=8.0,
              flatbase_stop_pct=15.0, flatbase_max_hold_hours=72.0, flatbase_min_hours_after_spike=4.0, flatbase_max_hours_after_spike=96.0,
-             flatbase_invest_mult=0.2, flatbase_lev_mult=0.25, resting_tp_flatbase_enabled=True, broker_backstop_pct=2.5)
+             flatbase_invest_mult=0.2, flatbase_lev_mult=0.25, resting_tp_flatbase_enabled=True, broker_backstop_pct=2.5,
+             flatbase_confirm_hours=0.0)   # ✅ (428) the S4-entry tests run the old rule; the FB_CONFIRM tests set 24
     d.update(kw)
     return NS(**d)
 
@@ -285,7 +286,7 @@ def test_track_flat_read_and_restart_resume(monkeypatch):
 
 
 def _run_bars(monkeypatch, rows, on, ks, *, flat=0.04, mcap=10e6, open_ok=True, held=False, existing_order=False, th_kw=None, fs_k=None,
-              status="TRACKING"):
+              status="TRACKING", restart_at=None, hold_from=None):
     """drives the REAL _flatbase_eval on each bar index of ks (the live window ending there) with a pre-seeded TRACKING episode; the
     exchange / mcap / funding reads and open_position are stubbed. → (engine, ledger rows, opens, blocks)."""
     import models
@@ -329,6 +330,13 @@ def _run_bars(monkeypatch, rows, on, ks, *, flat=0.04, mcap=10e6, open_ok=True, 
         e.open_position = fake_open
         async with SL() as db:
             for k in ks:
+                if restart_at is not None and k == restart_at:   # ✅ (428) a restart mid-wait: a fresh engine resumes from the ledger
+                    e = _engine(TE); e.open_position = fake_open
+                if hold_from is not None and k == hold_from:     # a position on the pair opens during the confirm wait
+                    async with SL() as s2:
+                        s2.add(models.Order(pair=PAIR, direction="LONG", status="OPEN", is_paper=True, entry_strategy="FRENZY_LONG", confidence="STRONG_BUY",
+                                            entry_price=1.0, quantity=1.0, investment=1.0, leverage=5, notional_value=5.0))
+                        await s2.commit()
                 await e._flatbase_eval(db, PAIR, ({"spike_ts": sp, "verified": True, "hours": 1.0} if status != "TRACKING" else None),
                                        _window(rows, k), {"symbol": "FBS/USDT:USDT", "price": rows[k][4]}, rows[k][0] + BAR)
                 await e._flatbase_enter_queued(db)                      # the pass judges S4 entries after its per-pair loop
@@ -615,7 +623,7 @@ def test_exit_and_protection_sites_wired():
 
 # ── ⑧ config / UI / exports parity (D11 / D12) ───────────────────────────────────────────────────────────────────────────────────────
 
-FIELDS = {"flatbase_max_open": 10, "flatbase_short_enabled": True, "flatbase_flat_max": 0.444, "flatbase_min_vol_usd": 20e6, "flatbase_turnover_min": 1.0,
+FIELDS = {"flatbase_confirm_hours": 24.0, "flatbase_max_open": 10, "flatbase_short_enabled": True, "flatbase_flat_max": 0.444, "flatbase_min_vol_usd": 20e6, "flatbase_turnover_min": 1.0,
           "flatbase_tp_pct": 5.0, "flatbase_stop_pct": 10.0, "flatbase_max_hold_hours": 72.0, "flatbase_min_hours_after_spike": 4.0,
           "flatbase_max_hours_after_spike": 96.0, "flatbase_invest_mult": 0.2, "flatbase_lev_mult": 0.25, "resting_tp_flatbase_enabled": True}
 
@@ -632,7 +640,7 @@ def test_config_defaults_json_ui_and_exports():
     html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
     ids = ["config-fbs-enabled", "config-rtp-flatbase-enabled", "config-fbs-flat-max", "config-fbs-min-vol", "config-fbs-turnover-min", "config-fbs-tp",
            "config-fbs-stop", "config-fbs-max-hold", "config-fbs-min-hours", "config-fbs-max-hours", "config-fbs-invest-mult", "config-fbs-lev-mult",
-           "config-fbs-max-open"]
+           "config-fbs-max-open", "config-fbs-confirm-hours"]
     for i in ids:
         assert html.count(f'id="{i}"') == 1, i                                               # one input each, in the FLATBASE box
     for i in ids[2:]:
@@ -1075,3 +1083,115 @@ def test_tp_shadow_parity_reads_the_exit_each_fill_ran():
     k = {"TP5_SL10": {"net_pct": -10.06, "reason": "STOP_LOSS"}, "LIVE": {"net_pct": 7.94, "reason": "FRENZY_TP"}}
     line = SF2.tp_split_line("TP5_SL10", [(NS(close_reason="STOP_LOSS"), k)], kind=lambda r, w_: SF2._live_kind(w_["LIVE"]["reason"]))
     assert "TP→cut winner 1" in line                                               # a post-switch stop is classed by the +8 rule's outcome
+
+
+# ── ✅ FB_CONFIRM (DECISION_LOG 428): the S4 signal waits ≤ 24 h for a 4-h close below the S4 close ─────────────────────────────────────
+
+def _up_after(rows, k, mult=1.01):
+    """the series with every bar after k closing ABOVE row k's close (no confirm close)."""
+    out = [list(r) for r in rows]
+    c = rows[k][4] * mult
+    for r in out[k + 1:]:
+        r[1] = r[2] = r[3] = r[4] = c
+        r[2] = c * 1.001
+    return out
+
+
+def test_confirm_scan_pure():
+    sig_open = T0 + 47 * BAR                                    # closes on a 4-h boundary
+    t0 = sig_open + BAR
+    bars = [[T0 + k * BAR, 1, 1, 1, 1.0] for k in range(48 * 10)]
+    assert FB.confirm_scan(bars[:96], 1.0, t0, 24)['status'] == FB.ACT_WAIT          # not below (equal)
+    b = [list(r) for r in bars]; b[95][4] = 0.99
+    assert FB.confirm_scan(b[:96], 1.0, t0, 24) == dict(status=FB.ACT_ENTER, idx=95, close=0.99, bar_open=b[95][0])
+    assert FB.confirm_scan(b[:100], 1.0, t0, 24)['status'] == FB.ACT_MISSED          # the qualifying close passed unjudged
+    b2 = [list(r) for r in bars]; b2[96][4] = 0.5                                       # below, but not on a boundary
+    assert FB.confirm_scan(b2[:97], 1.0, t0, 24)['status'] == FB.ACT_WAIT
+    end = 47 + 24 * 12                                                                   # the bar closing exactly 24 h after the signal
+    b3 = [list(r) for r in bars]; b3[end][4] = 0.9
+    assert (b3[end][0] + BAR) % (4 * HOUR) == 0 and FB.confirm_scan(b3[:end + 1], 1.0, t0, 24)['status'] == FB.ACT_ENTER   # 24 h inclusive
+    assert FB.confirm_scan(bars[:end + 1], 1.0, t0, 24)['status'] == FB.ACT_SKIP
+    b4 = [list(r) for r in bars]; b4[end + 48][4] = 0.9
+    assert FB.confirm_scan(b4[:end + 49], 1.0, t0, 24)['status'] == FB.ACT_SKIP     # a close after the wait never counts
+    assert FB.confirm_scan([], 1.0, t0, 24)['status'] == FB.ACT_NO_DATA and FB.confirm_scan(bars, 0, t0, 24)['status'] == FB.ACT_NO_DATA
+    assert FB.confirm_scan(bars[:47], 1.0, t0, 24)['status'] == FB.ACT_WAIT          # rows before the signal only
+
+
+def test_confirm_params_and_config_errors():
+    assert FB.flatbase_params(NS())['confirm_h'] == 24.0 and FB.flatbase_params(NS(flatbase_confirm_hours=0))['confirm_h'] == 0.0
+    assert FB.flatbase_params(NS(flatbase_confirm_hours=100))['confirm_h'] == 24.0 and FB.flatbase_params(NS(flatbase_confirm_hours=-1))['confirm_h'] == 24.0
+    import config
+    th = config.trading_config.thresholds
+    bad = NS(**dict(th.model_dump(), flatbase_confirm_hours=80))
+    assert "flatbase_confirm_hours" in " | ".join(FB.flatbase_config_errors(bad, 20.0))
+    assert "SKIPPED" in FB.ST_FINAL
+
+
+def test_engine_confirm_waits_then_opens_at_the_confirm_close(monkeypatch):
+    rows, on = _series()
+    e, led, opens, blocks = _run_bars(monkeypatch, rows, on, range(on + 1, on + 121), th_kw=dict(flatbase_confirm_hours=24.0))
+    assert len(opens) == 1 and led[0].status == "OPENED" and blocks == ["FLATBASE_CONFIRM_WAIT"]
+    o = opens[0]
+    assert rows[on + 120][4] < rows[on + 72][4]                                                # the series keeps falling: on + 120 confirms
+    assert o['current_price'] == rows[on + 120][4] and o['flatbase_bar_close_ms'] == rows[on + 120][0] + BAR
+    assert o['entry_frenzy_hours'] == pytest.approx((rows[on + 72][0] - (_spike_ms(rows, on) - BAR)) / HOUR, abs=0.01)   # the S4 features stamped
+    assert led[0].entry_bar_at == dt.datetime.utcfromtimestamp(rows[on + 120][0] / 1000) and led[0].entry_price == rows[on + 120][4]   # the confirm bar
+    assert "FB_CONFIRM 4-h close" in led[0].reason and led[0].turnover > 1
+
+
+def test_engine_confirm_wait_is_ledgered_and_survives_a_restart(monkeypatch):
+    rows, on = _series()
+    e, led, opens, blocks = _run_bars(monkeypatch, rows, on, range(on + 1, on + 100), th_kw=dict(flatbase_confirm_hours=24.0))
+    assert opens == [] and led[0].status == "TRACKING" and led[0].reason.startswith(FB.CONFIRM_TAG) and led[0].entry_price == rows[on + 72][4]
+    rec = e._fbs_state()[(PAIR, _spike_ms(rows, on))]
+    assert rec['confirm']['px'] == rows[on + 72][4] and rec['confirm']['close_ms'] == rows[on + 72][0] + BAR
+    mp = pytest.MonkeyPatch()
+    try:
+        e2, led2, opens2, _ = _run_bars(mp, rows, on, list(range(on + 1, on + 100)) + list(range(on + 100, on + 121)),
+                                        th_kw=dict(flatbase_confirm_hours=24.0), restart_at=on + 100)
+    finally:
+        mp.undo()
+    assert len(opens2) == 1 and opens2[0]['current_price'] == rows[on + 120][4] and led2[0].status == "OPENED"
+    assert opens2[0]['entry_flatbase_off_peak_pct'] == pytest.approx(led2[0].off_peak_pct)    # restored from the ledger row
+    from types import SimpleNamespace as _R
+    import services.trading_engine as TE
+    row = _R(id=1, status="TRACKING", first_seen_at=None, flat14_pct=4.0, flat_cov_pct=100.0, flat_attempts=1, entry_bar_at=dt.datetime(2026, 1, 1, 3, 55),
+             entry_price=1.0, reason="CONFIRM_WAIT: S4 close 1 — waiting ≤ 12 h for a 4-h close below it", mcap_usd=None, turnover=None, vwap=None,
+             vs_vwap_pct=None, peak=None, off_peak_pct=None, peak_age_h=None, hours=None, vol24_usd=None)
+    assert _engine(TE)._fbs_rec_from_row(row)['confirm']['hours'] == 12.0          # the wait keeps the length it started with
+
+
+def test_engine_confirm_skips_when_no_close_below(monkeypatch):
+    rows, on = _series()
+    up = _up_after(rows, on + 72)
+    e, led, opens, blocks = _run_bars(monkeypatch, up, on, range(on + 1, on + 72 + 24 * 12 + 2), th_kw=dict(flatbase_confirm_hours=24.0))
+    assert opens == [] and led[0].status == "SKIPPED" and "within 24 h" in led[0].reason
+    assert blocks == ["FLATBASE_CONFIRM_WAIT", "FLATBASE_CONFIRM_SKIP"]
+
+
+def test_engine_confirm_missed_and_pair_held(monkeypatch):
+    rows, on = _series()
+    e, led, opens, blocks = _run_bars(monkeypatch, rows, on, list(range(on + 1, on + 73)) + [on + 130], th_kw=dict(flatbase_confirm_hours=24.0))
+    assert opens == [] and led[0].status == "MISSED" and blocks[-1] == "FLATBASE_CONFIRM_MISSED"     # the on + 120 close passed unjudged
+    assert led[0].entry_price == rows[on + 120][4]                                                     # priced at the confirm bar, never S4
+    mp = pytest.MonkeyPatch()
+    try:
+        e, led, opens, blocks = _run_bars(mp, rows, on, range(on + 1, on + 121), th_kw=dict(flatbase_confirm_hours=24.0), hold_from=on + 100)
+    finally:
+        mp.undo()
+    assert opens == [] and led[0].status == "REFUSED" and "at the confirm bar" in led[0].reason and blocks[-1] == "FLATBASE_PAIR_HELD"
+
+
+def test_engine_shadow_route_never_waits(monkeypatch):
+    rows, on = _series()
+    e, led, opens, blocks = _run_bars(monkeypatch, rows, on, [on + 72], mcap=1e12, th_kw=dict(flatbase_confirm_hours=24.0))
+    assert opens == [] and led[0].status == "SHADOW" and blocks == ["FLATBASE_TURNOVER_SHADOW"]   # the observe-only cohort stays at S4
+
+
+def test_confirm_wiring_ui_monitor_exports():
+    html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
+    assert "['config-fbs-confirm-hours', 'flatbase_confirm_hours', 24.0]" in html
+    assert "FB_CONFIRM: enter at the first 4-h close below the S4 close ≤ ' + (p.confirm_h ?? 24)" in html          # monitor (UI + both exports)
+    assert "FB_CONFIRM entry: first 4-h close < the S4 close ≤ ' + (_bt.flatbase_confirm_hours ?? 24)" in html      # config line (both exports)
+    main = open(os.path.join(ROOT, "main.py"), encoding="utf-8").read()
+    assert "confirm_px=((v.get('confirm') or {}).get('px'))" in main and "_p['max_h'] + CONFIRM_H_MAX + 6" in main

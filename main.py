@@ -992,8 +992,9 @@ async def _flatbase_reset_state(db, is_paper):
     an episode decided before it be traded again: rows of episodes whose S4 window may still be open (spike ≤ max hours + 6 h ago) are KEPT
     — decided ones stay decided (OPENED / SHADOW / MISSED …, their order may be gone), TRACKING ones keep tracking; only older rows are
     deleted (the batch archive's decisions export already carries them). The engine's in-memory map is kept for the same reason."""
-    from services.flatbase import flatbase_params
-    _keep = datetime.utcnow() - timedelta(hours=flatbase_params(config.trading_config.thresholds)['max_h'] + 6)
+    from services.flatbase import flatbase_params, CONFIRM_H_MAX
+    _p = flatbase_params(config.trading_config.thresholds)
+    _keep = datetime.utcnow() - timedelta(hours=_p['max_h'] + CONFIRM_H_MAX + 6)   # ✅ (428) + the longest FB_CONFIRM wait (a 0 never drops a running one)
     await db.execute(delete(FlatbaseEpisode).where(and_(FlatbaseEpisode.is_paper == is_paper, FlatbaseEpisode.spike_at < _keep)))
 
 
@@ -4380,7 +4381,9 @@ def _frenzy_monitor_payload():
                 "flatbase_enabled": getattr(_th, 'flatbase_short_enabled', False) is True,
                 "flatbase": _fb_params(_th),
                 "flatbase_tracking": [dict(pair=k[0], spike_ms=k[1], flat_pct=(round(v['flat'] * 100, 1) if v.get('flat') is not None else None),
-                                           first_seen_ms=v.get('first_seen_ms'))
+                                           first_seen_ms=v.get('first_seen_ms'),
+                                           confirm_px=((v.get('confirm') or {}).get('px')),   # ✅ (428) in its FB_CONFIRM wait: the S4 close
+                                           confirm_end_ms=(int(v['confirm']['close_ms'] + v['confirm']['hours'] * 3_600_000) if v.get('confirm') else None))
                                       for k, v in sorted((getattr(trading_engine, '_fbs_eps', None) or {}).items()) if v.get('status') == 'TRACKING'],
                 "willy_turnover_max": float(getattr(_th, 'frenzy_willy_max_vol_mcap_ratio', 0) or 0),   # 🔄 0 = off
                 "willy_mcap_fetch": bool(getattr(config.trading_config, 'mcap_fetch_enabled', True)),   # OFF + the filter on → WILLY can't enter

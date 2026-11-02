@@ -12,7 +12,19 @@ COHORT     CLOSED FLATBASE_SHORT fills from the orders exports (export_glob: Dow
 FROZEN BAR (operator's aim: well above breakeven, same style as DL 416), read per SIGNAL, a skip counts 0 %: at the first prefix (by open time) of N ≥ 15 priced signals on ≥ 8 UTC days, decided ONCE, Δ = shadow − booked: ① mean Δ ≤ 0 → RETIRED; ② ENTRY CANDIDATE (operator decides; never
            automatic) iff mean Δ ≥ +0.50 %/signal ∧ shadow mean > 0 ∧ day-clustered bootstrap P(mean Δ > 0) ≥ 0.90 (4,000 resamples, seed 7) ∧ no single signal ≥ 50 % of the positive Σ Δ; ③ else KEEP OBSERVING. Deferred until the newest export was downloaded ≥ the prefix end + 72 h (a long-held fill
            could be missing). The read shows before → after with the daily compound return. observe_registry pins today's exit (a change → ⚠ STALE). A candidate ships only after the 30–50 % in-sample haircut, real-sizing daily compound, leave-one-out and a pre-committed revert.
-STATE      reports/SCOUT_FB_CONFIRM.json (gitignored).
+✅ SHIPPED   2026-11-02, DECISION_LOG 428 (operator: "ship FB_CONFIRM with the revert gate" — DECLARED OVERRIDE at 4 of 15 signals): the engine
+           (flatbase_confirm_hours 24) now opens every TRADE-routed S4 signal only at the first 4-h close below the S4 close within 24 h, else
+           SKIPPED. The observe line above CLOSES at the DL 428 commit + 10 min (after it the real fills are already confirmed — a shadow would
+           confirm twice); its frozen bar no longer decides. Fills from then on feed the REVERT GATE:
+🔒 REVERT   the first 8 CLOSED confirmed fills (opened ≥ the DL 428 commit + 10 min, by open time, operator-closed out), decided ONCE: avg booked
+           % < 0 OR ≥ 3 of them stopped (close_reason STOP_LOSS / BACKSTOP*) → REVERT (operator sets flatbase_confirm_hours 0 — waits already
+           running finish on their own 24 h clock; never automatic) ·
+           else KEEP. 3 stops among the first 8 decide early (no later fill can undo them). Deferred until the newest export is ≥ the 8th fill +
+           72 h (an earlier-opened fill could still be open). Side line (no verdict): every SKIPPED episode (decisions export, e=FLATBASE
+           SKIPPED) priced as if entered at its S4 close (next 5m open, +5 / −10, 72 h) = what the confirm gave up.
+📈 RE-SIZE  (operator 2026-11-02: "if FB_CONFIRM performs well, the re-sizing is next") a frozen KEEP opens the DL 363 ladder step
+           0.2 → 0.5 invest for the operator (confirmed fills only, real-path DCR before → after, flatbase_max_open re-decided).
+STATE      reports/SCOUT_FB_CONFIRM.json (gitignored; the revert verdict under key FLATBASE_SHORT_REVERT).
 Usage: venv/bin/python -I scripts/scout_flatbase_confirm_watch.py
 """
 import os
@@ -30,7 +42,11 @@ import scout_b1h_negflank as NF    # noqa: E402  (state I/O)
 import scout_long_stop4 as LS      # noqa: E402  (budgeted, cached public fapi klines)
 
 DL = 417
+DL_SHIP = 428                       # ✅ FB_CONFIRM shipped (engine flatbase_confirm_hours) — closes the observe line, opens the revert gate
 SLEEVE = "FLATBASE_SHORT"
+REVERT_KEY, REVERT_N, REVERT_STOPS = "FLATBASE_SHORT_REVERT", 8, 3
+RESIZE_FROM, RESIZE_TO = 0.2, 0.5   # 📈 a KEEP opens the DL 363 ladder step (operator 2026-11-02) — never automatic
+STOP_REASONS = ("STOP_LOSS", "BACKSTOP_STOP", "BACKSTOP")
 CONFIRM_H, MAX_H = 24, 72
 STOP_GROSS, TP_GROSS = 10.0, 5.0
 STOP_NET, TP_NET, TIME_FEE = -10.09, 4.94, 0.09
@@ -168,8 +184,10 @@ def crossing_prefix(rows):
     return None
 
 
-def run(now_ms=None, paths=None, state_path=STATE, since_ms=None, bars_fn=None):
-    """→ markdown lines. since_ms None → the DECISION_LOG 417 commit + 10 min (not in git → NOT EVALUABLE). state_path None → no write. bars_fn(pair, te, now_ms) → bars or None; None → public klines."""
+def run(now_ms=None, paths=None, state_path=STATE, since_ms=None, bars_fn=None, ship_ms=None, dec_paths=None):
+    """→ markdown lines. since_ms None → the DECISION_LOG 417 commit + 10 min (not in git → NOT EVALUABLE). state_path None → no write. bars_fn(pair, te, now_ms) → bars or None; None → public klines.
+    ship_ms None → the DECISION_LOG 428 commit + 10 min (not in git yet → the observe line still runs, no revert gate); False → not shipped.
+    dec_paths → the decisions exports for the SKIPPED side line (None → Downloads + exports_archive/)."""
     now_ms = int(time.time() * 1000) if now_ms is None else int(now_ms)
     L = [f"## 👁 FB_CONFIRM — FLATBASE_SHORT entered after a 4-hour close below the signal, vs today's entry (pre-registered 2026-10-30, DECISION_LOG {DL}, OBSERVE only)", ""]
     since_given = since_ms
@@ -178,8 +196,14 @@ def run(now_ms=None, paths=None, state_path=STATE, since_ms=None, bars_fn=None):
     if since_ms is None:
         return L + [f"⚠ NOT EVALUABLE — the DECISION_LOG {DL} commit is not in git yet; nothing is counted.", ""]
     since = pd.Timestamp(int(since_ms), unit="ms")
+    if ship_ms is None:
+        ship_ms = _GK.dl_deploy_ms(DL_SHIP, lag_min=10, label="FB_CONFIRM ship")
+    ship = pd.Timestamp(int(ship_ms), unit="ms") if (ship_ms is not None and ship_ms is not False) else None   # False = not shipped (tests)
     c, newest = load(paths)
+    allc = c
     c = c[c.o >= since] if len(c) else c
+    if ship is not None and len(c):
+        c = c[c.o < ship]   # ✅ (428) after the ship the real fills are confirmed already — the observe line is closed
     keep, ox = _GK.split_operator_closed(c) if len(c) else (c, c)
     bud = LS.Budget()
     why, sh, stopped = [], [], False
@@ -196,6 +220,8 @@ def run(now_ms=None, paths=None, state_path=STATE, since_ms=None, bars_fn=None):
     keep = keep.assign(why=why, shadow=sh) if len(keep) else keep.assign(why=pd.Series(dtype=object), shadow=pd.Series(dtype=float))
     priced = keep[keep.shadow.notna()]
     waiting = keep[keep.shadow.isna()]
+    if ship is not None:
+        L += [f"✅ SHIPPED — DECISION_LOG {DL_SHIP} (engine flatbase_confirm_hours): this observe line closed at {ship:%Y-%m-%d %H:%M} UTC; its frozen bar no longer decides — the REVERT gate below does.", ""]
     L += [f"Cohort: CLOSED {SLEEVE} fills opened ≥ {since:%Y-%m-%d %H:%M} UTC ({'DL ' + str(DL) + ' commit + 10 min' if since_given is None else 'floor given'}) · {_GK.operator_closed_line(ox)} · priced {len(priced)} · "
           f"skipped {(priced.why == 'SKIP').sum()} · pending / unpriced {len(waiting)}" + (" (" + ", ".join(f"{a} {b:%m-%d %H:%M}" for a, b in zip(waiting.pair, waiting.o)) + ")" if len(waiting) else "") + ".", "", "Before → after now: " + before_after(priced) + ".", ""]
     if stopped:
@@ -207,7 +233,7 @@ def run(now_ms=None, paths=None, state_path=STATE, since_ms=None, bars_fn=None):
     if damaged:
         L.append("⚠ frozen record damaged — operator restore needed; this line does not freeze until then.")
     hold = []
-    if not rec and ok and not damaged:
+    if not rec and ok and not damaged and ship is None:
         pre = crossing_prefix(priced) if len(priced) else None
         if pre is not None:
             last = pre.o.max()
@@ -237,7 +263,92 @@ def run(now_ms=None, paths=None, state_path=STATE, since_ms=None, bars_fn=None):
     L += ["", f"Evidence: {REGISTRATION}.",
           f"FROZEN bar (DL {DL}, per signal, skip = 0): at N ≥ {N_MIN} priced signals on ≥ {DAYS_MIN} UTC days, decided ONCE — mean Δ ≤ 0 → RETIRED; {CANDIDATE} iff mean Δ ≥ {D_MIN:+.2f} ∧ shadow mean > 0 ∧ P(Δ > 0) ≥ {P_MIN:.2f} ({BOOT_N:,}, seed {BOOT_SEED}) ∧ "
           f"no signal ≥ {SHARE_MAX:.0%} of + Σ Δ; else KEEP OBSERVING.", ""]
+    if ship is not None:
+        L += revert_lines(allc[allc.o >= ship] if len(allc) else allc, newest, now_ms, st if ok else None, state_path if ok else None)
+        L += skipped_lines(ship, now_ms, dec_paths, bars_fn)
     return L
+
+
+def revert_verdict(g):
+    """g = the confirmed fills (pct, close_reason) in open order → (state, detail). PURE. 3 stops decide early; else below N → COLLECTING."""
+    n = len(g)
+    stops = int(g.close_reason.astype(str).str.upper().str.split(" ").str[0].isin(STOP_REASONS).sum()) if n else 0
+    det = f"{n} fills · WR {(g.pct > 0).mean():.0%} · avg {g.pct.mean():+.3f} % · stops {stops}" if n else "0 fills"
+    if stops >= REVERT_STOPS:
+        return "REVERT", det + f" (≥ {REVERT_STOPS} stops)"
+    if n < REVERT_N:
+        return "COLLECTING", f"{n}/{REVERT_N} fills · stops {stops}/{REVERT_STOPS}"
+    return ("REVERT", det + " (avg < 0)") if g.pct.mean() < 0 else ("KEEP", det)
+
+
+def revert_lines(c, newest, now_ms, st, state_path):
+    """the 🔒 revert gate on the confirmed fills (opened ≥ the ship). st None = state unreadable → no freeze. An early REVERT (3 stops) freezes
+    at once: a fill opened earlier that lands in a later export could push a stop out of the first 8 — accepted, the error is toward safety."""
+    L = [f"### 🔒 FB_CONFIRM revert gate (DECISION_LOG {DL_SHIP}) — the first {REVERT_N} confirmed fills: avg < 0 or ≥ {REVERT_STOPS} stopped → REVERT "
+         "(operator sets flatbase_confirm_hours 0 — waits already running finish on their own clock; never automatic) · else KEEP", ""]
+    keep, ox = _GK.split_operator_closed(c) if len(c) else (c, c)
+    g = keep.sort_values(["o", "pair"]).iloc[:REVERT_N] if len(keep) else keep
+    rec = (st or {}).get(REVERT_KEY)
+    if rec is None and st is not None and len(g):
+        state, det = revert_verdict(g)
+        if state != "COLLECTING":
+            early = state == "REVERT" and len(g) < REVERT_N
+            last = g.o.max()
+            if not early and (newest is None or newest < last + pd.Timedelta(minutes=WAIT_MIN)):
+                L.append(f"⏸ freezing deferred: newest export < the {REVERT_N}th fill + {WAIT_MIN} min (an earlier-opened fill could still be open).")
+            else:
+                rec = dict(state=state, detail=det, at=f"{last:%Y-%m-%d %H:%M} UTC", run_at=pd.Timestamp(now_ms, unit="ms").strftime("%Y-%m-%d %H:%M UTC"))
+                if state_path:
+                    st[REVERT_KEY] = rec
+                    NF.du_save_state(st, state_path)
+    for r in g.itertuples():
+        L.append(f"  · {r.pair} {r.o:%m-%d %H:%M} · {r.pct:+.2f} % · {r.close_reason}")
+    ls, ld = revert_verdict(g)
+    L.append(f"Confirmed fills: {len(keep)} closed · {_GK.operator_closed_line(ox)}.")
+    if rec:
+        L.append(f"**Frozen verdict ({rec['at']}, frozen {rec['run_at']}): {rec['state']}** ({rec['detail']})")
+        if rec['state'] == "KEEP":
+            L.append(f"📈 RE-SIZE NEXT (operator 2026-11-02: \"if FB_CONFIRM performs well, the re-sizing is next\"): the DL 363 ladder step "
+                     f"{RESIZE_FROM:g} → {RESIZE_TO:g} invest is OPEN for the operator — read it on the confirmed fills only (the ladder line in "
+                     "scout_flatbase_short counts the whole run at this size), with real-path DCR before → after and flatbase_max_open re-decided.")
+    else:
+        L.append(f"Now: ⏳ {ls} ({ld})." + (f" A KEEP opens the re-size step {RESIZE_FROM:g} → {RESIZE_TO:g} (operator)." if ls != "REVERT" else ""))
+    return L + [""]
+
+
+def skipped_lines(ship, now_ms, dec_paths=None, bars_fn=None):
+    """side line, no verdict: SKIPPED episodes (no 4-h close below the S4 close in the wait) priced as if entered at the S4 bar."""
+    L = ["### FB_CONFIRM — what the skips gave up (no verdict): SKIPPED episodes priced as if shorted at the S4 bar (next 5m open, +5 / −10, 72 h)", ""]
+    try:
+        import scout_flatbase_short as FS
+        led = FS.load_ledger(FS.read_decisions(dec_paths))
+        sk = led[(led.fb_status.astype(str) == "SKIPPED") & led.s4_ms.notna() & (led.s4_ms >= ship.value // 10**6 - 30 * 3_600_000)]
+    except Exception as e:
+        return L + [f"  unreadable ({str(e)[:80]})", ""]
+    if not len(sk):
+        return L + ["  none yet.", ""]
+    bud, got = LS.Budget(), []
+    for r in sk.itertuples():
+        te = int(r.s4_ms) + M5                                            # the S4 bar's close = the old entry time
+        bars = bars_fn(r.pair, te, now_ms) if bars_fn else fetch_bars(r.pair, te, now_ms, bud)
+        v = np.nan
+        if bars:
+            b = [q for q in bars if int(q[0]) >= te]
+            if b:
+                Ee = float(b[0][1])
+                for q in b:
+                    if int(q[0]) >= te + MAX_H * HOUR:
+                        v = float(-(q[1] / Ee - 1) * 100 - TIME_FEE); break
+                    if q[2] >= Ee * (1 + STOP_GROSS / 100):
+                        v = STOP_NET if q[1] < Ee * (1 + STOP_GROSS / 100) else float(-(q[1] / Ee - 1) * 100 - TIME_FEE); break
+                    if q[3] < Ee * (1 - TP_GROSS / 100):
+                        v = TP_NET; break
+        got.append(v)
+        L.append(f"  · {r.pair} S4 {pd.Timestamp(int(r.s4_ms), unit='ms'):%m-%d %H:%M} at {r.px} → " + (f"{v:+.2f} %" if v == v else "pending / unpriced"))
+    x = pd.Series(got).dropna()
+    if len(x):
+        L.append(f"  priced {len(x)} · WR {(x > 0).mean():.0%} · avg {x.mean():+.2f} % (positive = the skip cost money)")
+    return L + [""]
 
 
 if __name__ == "__main__":

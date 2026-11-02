@@ -798,6 +798,7 @@
     "flatbase_max_hold_hours": 72.0,
     "flatbase_min_hours_after_spike": 4.0,
     "flatbase_max_hours_after_spike": 96.0,
+    "flatbase_confirm_hours": 24.0,
     "flatbase_invest_mult": 0.2,
     "flatbase_lev_mult": 0.25,
     "flatbase_max_open": 10,

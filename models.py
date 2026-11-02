@@ -1346,7 +1346,9 @@ class FlatbaseEpisode(Base):
     as e=FLATBASE rows (fb_* columns). Written by TradingEngine._flatbase_* only.
     status: TRACKING · OPENED (order_id) · SHADOW · MISSED (the first qualifying 4-h close passed unjudged — outage / restart) · EXPIRED
     (no qualifying bar within the window) · NOT_FLAT · UNREADABLE (14-day history unreadable / < 90 % present — fail-closed) · REFUSED
-    (the open path refused the S4 bar: pair held, manual block, balance, lateness … — reason says which)."""
+    (the open path refused the S4 bar: pair held, manual block, balance, lateness … — reason says which). ✅ (DECISION_LOG 428) FB_CONFIRM:
+    TRACKING with reason CONFIRM_WAIT = the S4 signal waits for a 4-h close below its close (entry_* = the S4 bar) · SKIPPED = no such close in
+    the wait · OPENED / REFUSED / MISSED decided at the confirm bar carry the CONFIRM bar and close in entry_bar_at / entry_price."""
     __tablename__ = "flatbase_episodes"
     __table_args__ = (UniqueConstraint("pair", "spike_at", "is_paper", name="uq_flatbase_episode"),)
 
@@ -1362,7 +1364,7 @@ class FlatbaseEpisode(Base):
     flat_attempts = Column(Integer, nullable=False, default=0)     # history reads tried (≤ services.flatbase.FLAT_MAX_ATTEMPTS)
     decided_at = Column(DateTime, nullable=True)                   # when the status left TRACKING
     entry_bar_at = Column(DateTime, nullable=True)                 # OPEN time of the S4 bar (its close = entry decision)
-    entry_price = Column(Float, nullable=True)                     # the S4 bar's close (SHADOW: the shadow entry; OPENED: the decision price)
+    entry_price = Column(Float, nullable=True)                     # the S4 bar's close (SHADOW: the shadow entry; OPENED: the decision price — the confirm close since DL 428)
     vwap = Column(Float, nullable=True)
     vs_vwap_pct = Column(Float, nullable=True)
     peak = Column(Float, nullable=True)

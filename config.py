@@ -1603,6 +1603,13 @@ class SignalThresholds(BaseModel):
     flatbase_max_hold_hours: float = 72.0         # time exit
     flatbase_min_hours_after_spike: float = 4.0   # S4: the boundary bar opens ≥ this long after the spike bar's open (48 bars)
     flatbase_max_hours_after_spike: float = 96.0  # … and ≤ this long (1,152 bars; ≤ 100 — the 5m window must hold the spike bar)
+    # ✅ FB_CONFIRM (DECISION_LOG 428, operator 2026-11-02 "ship FB_CONFIRM with the revert gate", paper — DECLARED OVERRIDE below the DL 417 bar,
+    # 4 of 15 signals): a TRADE-routed S4 signal places NO order; the short opens at the first 4-h close BELOW the S4 close within this many
+    # hours, else the episode is SKIPPED. B25 (20 fills, today's +5 / −10 re-walk; 16 of the 20 were the line's own registration signals):
+    # 60 % · −1.08 %/trade → 16 taken · 94 % · +4.00, real-path DCR −0.54 → +1.22 %/day (without ORDER +70 of +85 pts); fresh 4 signals −2.58
+    # → +3.70 (3/3 won, 1 skipped); 2026 backtest +1.25 → +1.30 %/trade (total lower, holds longer) — the caveat. 🔒 Revert gate
+    # (scripts/scout_flatbase_confirm_watch.py): first 8 confirmed fills avg < 0 OR ≥ 3 of them stopped → revert to 0. 0 = enter at the S4 bar.
+    flatbase_confirm_hours: float = 24.0
     flatbase_invest_mult: float = 0.2             # = momentum_long_invest_mult (DL 298): the margin share
     flatbase_lev_mult: float = 0.25               # = momentum_long_lev_mult: × the STRONG_BUY leverage (20 × 0.25 = 5×)
     # its OWN open cap (never the bot's slots), 0 = no cap. Operator decided 10 on 2026-10-22: the study's bursts reached 24 open

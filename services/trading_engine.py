@@ -10,6 +10,7 @@ import functools
 import json
 import logging
 import math
+import re
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
@@ -36,7 +37,8 @@ from services.flatbase import (FLATBASE_SHORT, FLATBASE_CLASS, flatbase_enabled,
                                flat14_from_bars, flat_ok, s4_scan, is_boundary_close, turnover_route, base_close_ms, max_hold_minutes as flatbase_max_hold_minutes,
                                FLAT_PAGES, FLAT_PAGE_LIMIT, FLAT_MAX_ATTEMPTS, FLAT_TF, FLAT_EXPECTED, ENTRY_MAX_LATE_S as FLATBASE_ENTRY_MAX_LATE_S,
                                ST_TRACKING, ST_OPENED, ST_SHADOW, ST_MISSED, ST_EXPIRED, ST_NOT_FLAT, ST_UNREADABLE, ST_REFUSED,
-                               ACT_ENTER, ACT_MISSED, ACT_EXPIRED, ACT_NO_DATA, ROUTE_SHADOW)
+                               ACT_ENTER, ACT_MISSED, ACT_EXPIRED, ACT_NO_DATA, ROUTE_SHADOW,
+                               ST_SKIPPED, ACT_SKIP, CONFIRM_TAG, confirm_scan, BAR_MS as FLATBASE_BAR_MS)   # ✅ (DECISION_LOG 428) FB_CONFIRM
 from services.touch_snapshot import TOUCH_LEVELS, touch_mark, touch_features, touch_snapshot, touch_outcome   # 🛑👁 (317) observe-only touch snapshots
 from services.frenzy import (FRENZY_LITE_RETRY, FRENZY_LITE_FAMILY, frenzy_lite_retry_enabled, frenzy_lite_retry_pending,  # 🔁 (DECISION_LOG 316)
                              frenzy_lite_retry_pending_clean, frenzy_lite_retry_step, LITE_RETRY_OPEN, LITE_RETRY_DROP)
@@ -9620,10 +9622,7 @@ class TradingEngine:
                 sp = self._fbs_ms(r.spike_at)
                 if sp is None:
                     continue
-                eps[(r.pair, sp)] = dict(id=r.id, status=ST_TRACKING, first_seen_ms=self._fbs_ms(r.first_seen_at),
-                                         flat=(float(r.flat14_pct) / 100.0 if r.flat14_pct is not None else None),
-                                         cov=(float(r.flat_cov_pct) / 100.0 if r.flat_cov_pct is not None else None),
-                                         attempts=int(r.flat_attempts or 0), retry_bar=None, busy=False)
+                eps[(r.pair, sp)] = self._fbs_rec_from_row(r)
             self._fbs_loaded = True
             if rows:
                 logger.info(f"[FLATBASE_SHORT] resumed {len(rows)} tracked episode(s): {', '.join(sorted({r.pair for r in rows}))}")
@@ -9638,6 +9637,25 @@ class TradingEngine:
             except Exception:
                 pass
             return False
+
+    def _fbs_rec_from_row(self, r) -> dict:
+        """the in-memory record of a ledger row. ✅ (DECISION_LOG 428) a TRACKING row whose reason starts with CONFIRM_TAG is in its FB_CONFIRM
+        wait: the S4 signal (entry_bar_at / entry_price + the S4 features the row holds) is restored, so a restart keeps waiting on the same
+        signal (run_pct is not on the ledger — that stamp is NULL on an order confirmed after a restart)."""
+        rec = dict(id=r.id, status=r.status, first_seen_ms=self._fbs_ms(r.first_seen_at),
+                   flat=(float(r.flat14_pct) / 100.0 if r.flat14_pct is not None else None),
+                   cov=(float(r.flat_cov_pct) / 100.0 if r.flat_cov_pct is not None else None),
+                   attempts=int(r.flat_attempts or 0), retry_bar=None, busy=False)
+        bo = self._fbs_ms(r.entry_bar_at) if r.entry_bar_at is not None else None
+        if r.status == ST_TRACKING and str(r.reason or '').startswith(CONFIRM_TAG) and bo is not None and r.entry_price:
+            # the wait length is the one written when the wait began ("≤ 24 h"); unreadable → today's setting, 24 if that is 0 (a revert never
+            # strands a started wait: it ends on its own clock)
+            _m = re.search(r"≤ ([0-9.]+) h", str(r.reason or ''))
+            h = float(_m.group(1)) if _m else (flatbase_params(config.trading_config.thresholds)['confirm_h'] or 24.0)
+            rec['confirm'] = dict(px=float(r.entry_price), close_ms=bo + FLATBASE_BAR_MS, hours=float(h), mcap=r.mcap_usd, turnover=r.turnover,
+                                  scan=dict(bar_open=bo, close=float(r.entry_price), vwap=r.vwap, vs_vwap_pct=r.vs_vwap_pct, peak=r.peak,
+                                            off_peak_pct=r.off_peak_pct, peak_age_h=r.peak_age_h, hours=r.hours, vol24=r.vol24_usd, run_pct=None))
+        return rec
 
     async def _flatbase_follow_seed(self, db) -> list:
         """the pairs FLATBASE is still tracking — kept in the FRENZY read after a restart (their 96 h S4 window may outlive the flag)."""
@@ -9726,10 +9744,7 @@ class TradingEngine:
                     await locked_commit(_s)
                     await _s.refresh(row)
                     logger.info(f"[FLATBASE_SHORT] {pair}: tracking the FRENZY episode (spike {_t:%m-%d %H:%M} UTC) — reading its 14-day base")
-                eps[key] = dict(id=row.id, status=row.status, first_seen_ms=self._fbs_ms(row.first_seen_at),
-                                flat=(float(row.flat14_pct) / 100.0 if row.flat14_pct is not None else None),
-                                cov=(float(row.flat_cov_pct) / 100.0 if row.flat_cov_pct is not None else None),
-                                attempts=int(row.flat_attempts or 0), retry_bar=None, busy=False)
+                eps[key] = self._fbs_rec_from_row(row)
         except Exception as e:
             logger.warning(f"[FLATBASE_SHORT] {pair}: episode ledger write failed ({str(e)[:100]}) — not tracked this bar (retried next bar)")
             return
@@ -9856,6 +9871,9 @@ class TradingEngine:
                     _tk = asyncio.create_task(self._flatbase_flat_read(pair, spike_ms, pair))
                     _ts = self.__dict__.setdefault('_fbs_tasks', set()); _ts.add(_tk); _tk.add_done_callback(_ts.discard)
                     rec['task'] = _tk
+                if rec.get('confirm') is not None:   # ✅ (428) the S4 signal is in its FB_CONFIRM wait: only the confirm rule decides now
+                    await self._flatbase_confirm_step(db, pair, spike_ms, rec, closed, info, bar_open)
+                    continue
                 past = last_open > (spike_ms - 300_000) + int(round(p['max_h'] * 12)) * 300_000
                 if not is_boundary_close(last_open) and not past:
                     continue   # S4 is only ever judged on a 4-hour close
@@ -9898,6 +9916,36 @@ class TradingEngine:
             except Exception:
                 pass
 
+    async def _flatbase_confirm_step(self, db, pair, spike_ms, rec, closed, info, bar_open) -> None:
+        """✅ (DECISION_LOG 428) FB_CONFIRM: a TRADE-routed S4 signal waits ≤ confirm_h hours for a 4-h close below the S4 close → ENTER (queued
+        with the S4 features + the confirm bar) · MISSED (an earlier qualifying close passed unjudged — never caught up) · SKIPPED (the wait
+        ended) · WAIT. The S4 refusals already ran at the signal; the pair-held / one-per-episode checks run again at the confirm bar."""
+        cf = rec['confirm']
+        cs = confirm_scan(closed, cf['px'], cf['close_ms'], cf['hours'])
+        st = cs.get('status')
+        if st == ACT_ENTER:
+            self.__dict__.setdefault('_fbs_enter_q', []).append(
+                (pair, spike_ms, rec, dict(cf['scan'], confirm=dict(close=cs['close'], bar_open=cs['bar_open'])), closed, info, bar_open))
+        elif st == ACT_MISSED:
+            if await self._flatbase_order_exists(db, pair, spike_ms):
+                await self._flatbase_finalize(pair, spike_ms, ST_OPENED, "an order for this episode is already on record")
+                return
+            self._fbs_count("FLATBASE_CONFIRM_MISSED", pair)
+            await self._flatbase_finalize(pair, spike_ms, ST_MISSED,   # the ledger's entry = the confirm bar (the scouts price a MISSED row there)
+                                          f"the confirm 4-h close ({datetime.utcfromtimestamp((int(cs['bar_open']) + 300_000) / 1000):%m-%d %H:%M} UTC, "
+                                          f"{cs['close']:g} < {cf['px']:g}) was not judged live (outage / restart) — never caught up",
+                                          entry_bar_at=datetime.utcfromtimestamp(int(cs['bar_open']) / 1000), entry_price=float(cs['close']))
+        elif st == ACT_SKIP:
+            self._fbs_count("FLATBASE_CONFIRM_SKIP", pair)
+            await self._flatbase_finalize(pair, spike_ms, ST_SKIPPED,
+                                          f"no 4-h close below the S4 close {cf['px']:g} within {cf['hours']:g} h → no trade (FB_CONFIRM)")
+        elif st == ACT_NO_DATA:
+            self._fbs_count("FLATBASE_NO_DATA", pair)
+            if int(bar_open) > int(cf['close_ms']) + int(cf['hours'] * 3_600_000):   # unreadable past the wait's end → it ends (never stuck)
+                await self._flatbase_finalize(pair, spike_ms, ST_SKIPPED, f"the confirm wait ended unread (5m window unreadable) → no trade (FB_CONFIRM)")
+                return
+            logger.warning(f"[FLATBASE_SHORT] {pair}: confirm wait — the 5m window could not be read — not judged")
+
     async def _flatbase_run_queue(self, db) -> None:
         """🩳 (348) the pairs read on this pass, judged for FLATBASE only now — AFTER every FRENZY / LITE / WILLY decision of the pass: ledger
         reads / writes, the one-per-episode checks, the market-cap request and the 14-day history reads (background, own client) never sit on
@@ -9934,9 +9982,12 @@ class TradingEngine:
         try:
             p = flatbase_params(config.trading_config.thresholds)
             for (pair, sp), rec in list(self._fbs_state().items()):
-                if rec.get('status') == ST_TRACKING and not rec.get('busy') and (seen is None or pair not in seen) \
-                        and int(bar_open) - int(sp) > int((p['max_h'] + 6) * 3_600_000):
-                    await self._flatbase_finalize(pair, sp, ST_EXPIRED, "the pair was no longer read when its S4 window ended")
+                cf = rec.get('confirm')   # ✅ (428) a confirm wait ends at its own deadline (the S4 signal + confirm_h), not the S4 window
+                over = (int(bar_open) - int(cf['close_ms']) > int((cf['hours'] + 6) * 3_600_000)) if cf \
+                    else (int(bar_open) - int(sp) > int((p['max_h'] + 6) * 3_600_000))
+                if rec.get('status') == ST_TRACKING and not rec.get('busy') and (seen is None or pair not in seen) and over:
+                    await self._flatbase_finalize(pair, sp, ST_EXPIRED, "the pair was no longer read when its "
+                                                  + ("confirm wait" if cf else "S4 window") + " ended")
         except Exception as e:
             logger.warning(f"[FLATBASE_SHORT] sweep failed ({str(e)[:100]})")
 
@@ -9944,9 +9995,13 @@ class TradingEngine:
         """the S4 bar just closed: ① one per episode (Order on record → OPENED) · ② the FLAT label (unknown → UNREADABLE, fail-closed) ·
         ③ pair held → REFUSED (FLATBASE_PAIR_HELD) · ④ turnover (24 h volume / mcap ≤ flatbase_turnover_min → SHADOW, observe only; unknown
         mcap → trade) · ⑤ the order: SHORT at market through open_position(flatbase_short=True). Any refusal ENDS the episode (S4 is the first
-        qualifying bar only)."""
+        qualifying bar only). ✅ (DECISION_LOG 428) confirm_h > 0: a TRADE-routed S4 places NO order — the record enters its FB_CONFIRM wait
+        (_flatbase_confirm_step); scan['confirm'] set = called again at the confirm bar: ① ② ③ run again, ④ keeps the S4 route, the order
+        opens at the confirm close with the S4 bar's features stamped."""
         th = config.trading_config.thresholds
         _ebar = datetime.utcfromtimestamp(int(scan['bar_open']) / 1000)
+        _cfm = scan.get('confirm')   # ✅ (DECISION_LOG 428) set = the FB_CONFIRM bar (scan keeps the S4 features); None = the S4 bar itself
+        _at = "at the confirm bar" if _cfm else "at the S4 bar"
         _ex = await self._flatbase_order_exists(db, pair, spike_ms)
         if _ex is None:
             self._fbs_count("FLATBASE_STATE_UNREAD", pair)
@@ -9977,6 +10032,8 @@ class TradingEngine:
                      off_peak_pct=(round(scan['off_peak_pct'], 4) if scan.get('off_peak_pct') is not None else None),
                      peak_age_h=(round(scan['peak_age_h'], 3) if scan.get('peak_age_h') is not None else None),   # 🩳⏱ (401)
                      hours=(round(scan['hours'], 3) if scan.get('hours') is not None else None), vol24_usd=scan.get('vol24'))
+        if _cfm:   # ✅ (428) a confirm-bar decision (OPENED / REFUSED) records the confirm bar and close as its entry; the S4 features stay
+            feats.update(entry_bar_at=datetime.utcfromtimestamp(int(_cfm['bar_open']) / 1000), entry_price=float(_cfm['close']))
         try:
             _held = (await db.execute(select(Order.entry_strategy, Order.direction).where(and_(
                 Order.pair == pair, Order.status == "OPEN", Order.is_paper == self.is_paper_mode)))).first()
@@ -9988,17 +10045,20 @@ class TradingEngine:
                 pass
         if _held is not None:
             self._fbs_count("FLATBASE_PAIR_HELD", pair)
-            await self._flatbase_finalize(pair, spike_ms, ST_REFUSED, f"pair held ({_held[0] or 'MOMENTUM'} {_held[1]} open) at the S4 bar", **feats)
+            await self._flatbase_finalize(pair, spike_ms, ST_REFUSED, f"pair held ({_held[0] or 'MOMENTUM'} {_held[1]} open) {_at}", **feats)
             return
-        _mc = None
-        try:
-            from services import mcap_service as _mcs
-            _mc = _mcs.get(pair)[0]
-            if _mc is None:   # warmed when tracking started; one bounded wait on the shared one-pair fetch if it is still missing
-                _mc = (await _mcs.fetch_pair_now(pair, timeout_s=4.0))[0]
-        except Exception:
+        if _cfm:   # the turnover route was decided at the S4 signal (TRADE) — never re-routed at the confirm bar
+            _mc, route, R = rec['confirm'].get('mcap'), "TRADE", rec['confirm'].get('turnover')
+        else:
             _mc = None
-        route, R = turnover_route(scan.get('vol24'), _mc, th)
+            try:
+                from services import mcap_service as _mcs
+                _mc = _mcs.get(pair)[0]
+                if _mc is None:   # warmed when tracking started; one bounded wait on the shared one-pair fetch if it is still missing
+                    _mc = (await _mcs.fetch_pair_now(pair, timeout_s=4.0))[0]
+            except Exception:
+                _mc = None
+            route, R = turnover_route(scan.get('vol24'), _mc, th)
         _sym = (info or {}).get('symbol') or pair.replace('USDT', '/USDT:USDT')
         try:
             _fr = await asyncio.wait_for(binance_service.fetch_funding_rate(_sym, max_age_s=300), 4.0)   # public premiumIndex (observe stamp)
@@ -10011,14 +10071,27 @@ class TradingEngine:
                                           f"turnover {R:.2f}× mcap ≤ {flatbase_params(th)['turnover_min']:g}× → observe only (no order)" if R is not None
                                           else "24 h volume unreadable with a known market cap → observe only (no order)", **feats)
             return
+        _cw = flatbase_params(th)['confirm_h']
+        if not _cfm and _cw > 0:   # ✅ (428) FB_CONFIRM: no order at the S4 bar — wait ≤ confirm_h for a 4-h close below the S4 close
+            rec['confirm'] = dict(px=float(scan['close']), close_ms=int(scan['bar_open']) + FLATBASE_BAR_MS, hours=float(_cw), mcap=_mc, turnover=R,
+                                  scan={k: scan.get(k) for k in ('bar_open', 'close', 'vwap', 'vs_vwap_pct', 'peak', 'off_peak_pct', 'peak_age_h',
+                                                                 'hours', 'vol24', 'run_pct')})
+            self._fbs_count("FLATBASE_CONFIRM_WAIT", pair)
+            if rec.get('id') is not None:
+                await self._flatbase_write(rec['id'], reason=(f"{CONFIRM_TAG}: S4 close {float(scan['close']):g} — waiting ≤ {_cw:g} h for a 4-h close "
+                                                              f"below it")[:200], **feats)
+            logger.warning(f"[FLATBASE_SHORT] {pair}: S4 signal at {float(scan['close']):g} → FB_CONFIRM wait ≤ {_cw:g} h for a 4-h close below it")
+            return
         self._frenzy_open_refusal = None
         self._journal_pair = pair
-        _p_close = float(scan['close'])
+        _p_close = float(_cfm['close']) if _cfm else float(scan['close'])
         try:
             atr = wilder_atr_pct(closed[-300:])
         except Exception:
             atr = None
-        logger.warning(f"[FLATBASE_SHORT] {pair}: S4 — 4-h close {_p_close:g} {scan.get('vs_vwap_pct') or 0:+.2f}% vs the spike VWAP, "
+        _pre = f"FB_CONFIRM 4-h close {_p_close:g} < S4 {float(scan['close']):g} · " if _cfm else ""
+        logger.warning(f"[FLATBASE_SHORT] {pair}: {_pre}"
+                       f"S4 — 4-h close {float(scan['close']):g} {scan.get('vs_vwap_pct') or 0:+.2f}% vs the spike VWAP, "
                        f"{scan.get('hours') or 0:.1f} h after the spike, base range {rec['flat'] * 100:.1f} %, turnover "
                        f"{('%.2f×' % R) if R is not None else 'unknown (mcap n/a)'} → opening SHORT")
         order = await self.open_position(
@@ -10034,12 +10107,14 @@ class TradingEngine:
             entry_flatbase_flat_cov_pct=(round(rec['cov'] * 100, 2) if rec.get('cov') is not None else None),
             entry_flatbase_off_peak_pct=feats['off_peak_pct'], entry_flatbase_peak_age_h=feats['peak_age_h'])
         if order:
-            await self._flatbase_finalize(pair, spike_ms, ST_OPENED, f"opened #{order.id}", order_id=order.id, **feats)
+            await self._flatbase_finalize(pair, spike_ms, ST_OPENED, f"opened #{order.id}" + (
+                f" after the FB_CONFIRM 4-h close {datetime.utcfromtimestamp((int(_cfm['bar_open']) + 300_000) / 1000):%m-%d %H:%M} UTC at {_p_close:g}"
+                if _cfm else ""), order_id=order.id, **feats)
             return
         _why = getattr(self, '_frenzy_open_refusal', None)
         if not _why:   # a named refusal (late / manual block …) is counted where it happened
             self._fbs_count("FLATBASE_OPEN_REFUSED", pair)
-        await self._flatbase_finalize(pair, spike_ms, ST_REFUSED, (_why or "refused by the open path (balance / cooldown / bracket / liquidity)") + " at the S4 bar",
+        await self._flatbase_finalize(pair, spike_ms, ST_REFUSED, (_why or "refused by the open path (balance / cooldown / bracket / liquidity)") + f" {_at}",
                                       **feats)
 
     async def _frenzy_persist_flags(self) -> None:

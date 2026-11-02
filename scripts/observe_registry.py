@@ -91,6 +91,8 @@ BOOKED = {   # booked P&L — `era` = drops fills by WILLY exit era (registered 
                                       "hard_tp_ladder_short": "1.0:0.25,1.5:0.30,2.0:0.40,3.0:0.60,4.0:0.80"},
     # (415) RETRY_BTC1H judges booked WR against the frozen breakeven of today's LITE exit (+3 / −3: 50.0 %, DL 420) → pinned to its keys
     "scout_retry_btc1h_watch.py": {"frenzy_lock_arm_pct": 0.0, "frenzy_stop_pct": 3.0, "frenzy_lite_tp_pct": 3.0, "frenzy_lite_c_enabled": False, "frenzy_max_hold_minutes": 720},   # re-based on +3 (DL 420)
+    # (437) LITE_BTC1H_RISING judges booked WR against the frozen breakeven of today's LITE exit (+3 / −3: 50.0 %, DL 420) → pinned to its keys
+    "scout_lite_btc1h_rising_watch.py": {"frenzy_lock_arm_pct": 0.0, "frenzy_stop_pct": 3.0, "frenzy_lite_tp_pct": 3.0, "frenzy_lite_c_enabled": False, "frenzy_max_hold_minutes": 720},
     # (425) WILLY_5X judges booked WR against the frozen V2b breakeven (69.0 %) at 5× → pinned to the leverage + the V2b exit keys
     "scout_willy_5x_watch.py": {"frenzy_willy_lev_mult": 0.25, "frenzy_willy_high_target_enabled": True, "frenzy_willy_stop_pct": 4.0, "frenzy_willy_high_k_pct": 1.0,
                                 "frenzy_willy_high_tp_max_pct": 8.0, "frenzy_willy_max_hold_minutes": 90, "frenzy_willy_late_tp_minutes": 30.0, "frenzy_willy_late_tp_pct": 0.25},

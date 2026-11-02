@@ -1527,6 +1527,14 @@ def run():
     except Exception as _rbt_e:
         log(f"RETRY_BTC1H line failed: {_rbt_e}")
         _rg_sec += ["## 👁 RETRY_BTC1H", "", f"Unavailable this run ({str(_rbt_e)[:120]}).", ""]
+    try:                                               # 👁 Nov-2 LITE_BTC1H_RISING — FRENZY_LITE with BTC 1 h slope > 0, frozen expectancy bar (DECISION_LOG 437; forward)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_lite_btc1h_rising_watch as _lbr
+        _rg_sec += _lbr.run(now_ms)
+    except Exception as _lbr_e:
+        log(f"LITE_BTC1H_RISING line failed: {_lbr_e}")
+        _rg_sec += ["## 👁 LITE_BTC1H_RISING", "", f"Unavailable this run ({str(_lbr_e)[:120]}).", ""]
     try:                                               # 👁 Oct-30 WILLY_GAP — WILLY / HT with ADX > 55 or EMA8–13 gap ≤ 0.90, frozen expectancy bar per sleeve (DECISION_LOG 414; forward)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

@@ -231,3 +231,15 @@ def test_engine_and_card_agree_on_the_larger_of_the_two(monkeypatch):
     assert abs(r2 - 249.98) < 0.01 and t2 > 9700                             # below the first line: fee reserve only, no dip at the line
     _, t3, _ = main._reserve_split(10000.0, 0.0)
     assert t3 >= t2
+
+
+def test_dl433_reserve_below_100k():
+    """DL 433 (operator 11-02 "too conservative until 100K"): reserve 2.5 / 3 / 5 / 10 % at $10k / $25k / $50k / $100k; $150k + unchanged."""
+    import json, os
+    from services.trading_engine import _reserve_schedule_target as f
+    live = json.load(open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "trading_config.json")))["investment"]["reserve_schedule"]
+    assert [round(1 - f(live, b) / b, 3) for b in (10000, 25000, 50000, 100000)] == [0.025, 0.03, 0.05, 0.1]
+    assert f(live, 150000) == 105000 and f(live, 1e6) == 500000 and f(live, 5e6) == 800000
+    assert abs((f(live, 25000) - f(live, 10000)) / 15000 - 0.9667) < 1e-3                 # the UI note: 97 % between the first two lines
+    html = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "templates", "index.html"), encoding="utf-8").read()
+    assert "(97 % between the first two lines)" in html

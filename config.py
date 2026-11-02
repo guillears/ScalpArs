@@ -2933,7 +2933,7 @@ class InvestmentConfig(BaseModel):
     # leverage_balance_schedule: "balance:tradeable_target, ..." ascending; target = a straight line between
     # the tiers (DL 424), flat above the last, on TOTAL EQUITY (free+margin — Jul-2 engine change; NOT free balance); below the first tier → no reserve. First line 9750 = 97.5 % of 10,000 meets the 2.5 % fee reserve: no dip at the line (recheck if the fee % changes). The v3
     # operating table (CURRENT_STATE capital-scaling) expressed as tiers. Empty = off.
-    reserve_schedule: str = ""  # e.g. "10000:9750, 25000:23000, ..., 2000000:800000" (the live table, DECISION_LOG 404 · 424: a straight line between tiers, the larger of this or the fee reserve)
+    reserve_schedule: str = ""  # e.g. "10000:9750, 25000:24250, ..., 2000000:800000" (the live table, DECISION_LOG 404 · 424 · 433: a straight line between tiers, the larger of this or the fee reserve; 433 = reserve 3 / 5 / 10 % at $25k / $50k / $100k, operator "too conservative until 100K")
     # 2026-10-28 (operator, DECISION_LOG 404 — "think big, design this for scaling"): trading_config.json moves to
     # "10000:9500, 25000:23000, 50000:40000, 100000:75000, 150000:105000, 250000:162500, 500000:300000, 1000000:500000"
     # (tradeable share AT EACH TIER THRESHOLD 95 / 92 / 80 / 75 / 70 / 65 / 60 / 50 % — between tiers the reserve absorbs the

@@ -40,7 +40,7 @@
     "fee_reserve_usd": 15.0,
     "reserve_percentage": 0.0,
     "working_capital_target": 0.0,
-    "reserve_schedule": "10000:9750, 25000:24250, 50000:47500, 100000:90000, 150000:105000, 250000:162500, 500000:300000, 1000000:500000, 2000000:800000",
+    "reserve_schedule": "10000:9750, 25000:24250, 50000:47500, 100000:90000, 150000:132000, 250000:162500, 500000:300000, 1000000:500000, 2000000:800000",
     "cooldown_after_loss_minutes": 5,
     "max_open_positions": 4,
     "max_holding_time_minutes": 1200,

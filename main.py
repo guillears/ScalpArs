@@ -25,7 +25,7 @@ from sqlalchemy import select, and_, or_, func, desc, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import init_db, get_db, AsyncSessionLocal, locked_commit, locked_execute_commit
-from models import Order, Transaction, BotState, PairData, ConfigChangeLog, BnbSwapLog, Investor, InvestorLedger, PhantomFlip, NavSnapshot, MonitorPeriod, BearMonitorPeriod, SurgeTrigger, OrderbookSnap, WillyHoldBlock, FlatbaseEpisode, MatchedLongRefusal, ExchangeDay, BackupRun
+from models import Order, Transaction, BotState, PairData, ConfigChangeLog, BnbSwapLog, Investor, InvestorLedger, PhantomFlip, NavSnapshot, MonitorPeriod, BearMonitorPeriod, SurgeTrigger, OrderbookSnap, WillyHoldBlock, FlatbaseEpisode, MatchedLongRefusal, ExchangeDay, BackupRun, AltCorrUniverse
 import config
 from config import (
     trading_config, save_trading_config, load_trading_config,
@@ -398,7 +398,7 @@ async def alt_corr_loop():
     🧷 ml_matched_refusals table to ML_REFUSAL_RETENTION_DAYS. Never stops on an error."""
     from services.trading_engine import alt_corr_tracker
     await asyncio.sleep(5)
-    _last_prune = 0.0
+    _last_prune = _last_uni_prune = 0.0
     _last_repair = time.time() - ALT_CORR_REPAIR_EVERY_S + ALT_CORR_REPAIR_BOOT_S   # 🩹 the first repair pass ≥ 10 min after boot
     _repair_task = None
     try:
@@ -422,6 +422,16 @@ async def alt_corr_loop():
                 raise
             except Exception as e:
                 logger.warning(f"[ML_MATCHED_REFUSAL] prune skipped: {str(e)[:120]}")
+            try:
+                if time.time() - _last_uni_prune > 3600:
+                    _last_uni_prune = time.time()
+                    async with AsyncSessionLocal() as db:   # 🔒 (DECISION_LOG 445) frozen day lists: 30 days kept (the repair reaches 48 h back)
+                        await locked_execute_commit(db, delete(AltCorrUniverse).where(
+                            AltCorrUniverse.day_ms < int((time.time() - 30 * 86400) * 1000)))
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.warning(f"[ALT_CORR] day-list prune skipped: {str(e)[:120]}")
             _now = time.time()
             await asyncio.sleep(max(1.0, (int(_now // 300) + 1) * 300 + ALT_CORR_OFFSET_S - _now))
     finally:

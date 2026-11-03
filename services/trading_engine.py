@@ -115,8 +115,32 @@ from services import decision_journal as _djournal  # Sep-18 📓 decision journ
 from services.alt_corr import AltCorrTracker   # 📈 (DECISION_LOG 383) alt-correlation regime stamp (observe-only)
 # 📈 (DECISION_LOG 383) ONE process-wide tracker: refreshed once per 5m close by main.alt_corr_loop (own task, own public client); read at every
 # Order build by alt_corr_stamp() — a pure memory read, mode-agnostic (paper = live), NULL on any error / stale value.
+async def _alt_universe_load(day_ms):
+    """🔒 (DECISION_LOG 445) the stored top-20 list of universe day `day_ms` → dict(day_ms, pairs, listed) or None."""
+    from models import AltCorrUniverse
+    async with AsyncSessionLocal() as db:
+        r = (await db.execute(select(AltCorrUniverse).where(AltCorrUniverse.day_ms == int(day_ms)))).scalar_one_or_none()
+    if r is None:
+        return None
+    return dict(day_ms=int(r.day_ms), pairs=list(json.loads(r.pairs_json)),
+                listed={k: int(v) for k, v in (json.loads(r.listed_json or "{}") or {}).items() if v})
+
+
+async def _alt_universe_save(u):
+    """🔒 (445) store a day's first list (INSERT OR IGNORE: an earlier row for the day wins) → the stored list."""
+    from sqlalchemy import insert
+    from models import AltCorrUniverse
+    pairs = list(u["pairs"])
+    listed = {p: int(v) for p, v in (u.get("listed") or {}).items() if p in pairs and v}
+    async with AsyncSessionLocal() as db:
+        await locked_execute_commit(db, insert(AltCorrUniverse).prefix_with("OR IGNORE").values(
+            day_ms=int(u["day_ms"]), pairs_json=json.dumps(pairs), listed_json=json.dumps(listed), built_at=datetime.utcnow()))
+    return await _alt_universe_load(u["day_ms"])
+
+
 alt_corr_tracker = AltCorrTracker(fetch_klines=binance_service.fetch_regime_klines, fetch_universe=binance_service.fetch_regime_universe_inputs,
-                                  is_limited=binance_service.regime_limited)
+                                  is_limited=binance_service.regime_limited,
+                                  load_universe=_alt_universe_load, save_universe=_alt_universe_save)   # 🔒 (DECISION_LOG 445) one list per day
 
 
 def alt_corr_stamp(now_ms=None) -> dict:

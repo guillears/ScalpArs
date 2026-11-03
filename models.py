@@ -1506,6 +1506,19 @@ class MatchedLongRefusal(Base):
     is_paper = Column(Boolean, nullable=False, default=True)
 
 
+class AltCorrUniverse(Base):
+    """📈🔒 (DECISION_LOG 445) the alt-correlation stamp's top-20 list, FROZEN per universe day: the first build of a day is stored and every later
+    build that day — after a restart too, and the 🩹 stamp repair — reads it back instead of rebuilding (11-03: a mid-day restart swapped POWRUSDT
+    for TRXUSDT, so fills of one day carried stamps from two lists). day_ms = the UTC day whose quote volume ranked it (universe_day_ms).
+    listed_json = the 20 pairs' onboard ms (the 7-day history check). Kept 30 days (main.alt_corr_loop prunes)."""
+    __tablename__ = "alt_corr_universes"
+
+    day_ms = Column(BigInteger, primary_key=True, autoincrement=False)
+    pairs_json = Column(Text, nullable=False)                      # JSON list, rank order
+    listed_json = Column(Text, nullable=False, default="{}")       # JSON {pair: onboard ms}
+    built_at = Column(DateTime, nullable=False, default=func.now())
+
+
 class SurgeTrigger(Base):
     """⚡ Sep 30 — SURGE TRIGGER LEDGER: one row per BTC trigger per side (the WINDOW unit every SURGE rule speaks in).
     Persisted so triggers with NO fills (all pairs refused, window missed, found late) stay on record, the 4 h spacing survives a

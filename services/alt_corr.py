@@ -16,8 +16,10 @@ HOW   AltCorrTracker.refresh() runs once per 5m close in its own task (main.alt_
       (ticker/24hr weight 40 + exchangeInfo weight 1 + ≤ 100 1d kline reads weight 1). The math is ~20 × 288 floats (< 1 ms).
       stamp() is a pure in-memory read used at the Order build — no I/O, never awaits, never raises: the value is used only when it was
       computed for a bar that closed ≤ STAMP_MAX_LAG_MS before the entry (else NULL). Paper and live read the same tracker (mode-agnostic).
-FAIL-SAFE  an empty read (timeout / error) is re-read ONCE in the same bar (operator 11-03, AAVEUSDT #173 beta NULL); any error /
-           missing data after that → NULL. Nothing in the trading path reads these values.
+FAIL-SAFE  an empty read (timeout / error) is re-read ONCE in the same bar (DL 442); still empty → NO value for that bar (DL 445: never a
+           corr from a partial set of pairs) — fills keep the previous bar's value (≤ 2 bars) or stamp NULL, and the 🩹 repair (DL 443)
+           recomputes them. The day's top-20 list is FROZEN at its first build (DL 445, table alt_corr_universes). Nothing in the trading
+           path reads these values.
 """
 import asyncio
 import logging
@@ -40,6 +42,7 @@ STAMP_MAX_LAG_MS = 2 * BAR   # a fill may use a value computed up to 2 bars befo
 UNIVERSE_CANDIDATES = 100    # 1d-volume reads per UTC day (top by rolling 24 h volume) — the top-50 of day X − 2 lies well inside
 UNIVERSE_RETRY_S = 600
 UNIVERSE_KEEP_DAYS = 6       # 🩹 (DECISION_LOG 443) lists kept in memory for the stamp repair (a restart rebuilds an older day on demand)
+CHRONIC_FAIL_BARS = 3        # 🔒 (445) an alt whose read failed this many bars in a row is UNSCORED (as missing data) instead of skipping every bar
 REPAIR_CONCURRENCY = 2       # 🩹 the repair reads trickle (2 in flight), never the live refresh's burst of 5
 REPAIR_TOL = 5e-5            # 🩹 a recomputed corr "reproduces" the stamp within this (real 11-03 check: right list + right bar 2e-6 … 5e-6 off —
                              # the live read lands 1 s after the close; the next bar 1.7e-4+; another coin list 9.6e-3)
@@ -141,9 +144,12 @@ class AltCorrTracker:
     """One value per 5m close. fetch_klines(pair_id, interval, limit) → raw rows or None; fetch_universe() → (rolling {sym: quoteVolume},
     {sym: onboard ms}) or None. Both injected (binance_service in the engine, fakes in tests)."""
 
-    def __init__(self, fetch_klines=None, fetch_universe=None, concurrency: int = 5, call_timeout_s: float = 8.0, is_limited=None):
+    def __init__(self, fetch_klines=None, fetch_universe=None, concurrency: int = 5, call_timeout_s: float = 8.0, is_limited=None,
+                 load_universe=None, save_universe=None):
         self.fetch_klines = fetch_klines
         self.fetch_universe = fetch_universe
+        self.load_universe = load_universe   # 🔒 (DECISION_LOG 445) async (day_ms) → stored universe dict or None
+        self.save_universe = save_universe   # 🔒 async (universe dict) → the dict stored for that day (an earlier row wins)
         self.is_limited = is_limited     # () → True while the client is banned / backing off (383 review): no new call is started then
         self.skipped_limited = 0         # reads NOT started because the client was limited (observability)
         self.retried = 0                 # empty reads re-tried once in their bar (observability)
@@ -155,6 +161,7 @@ class AltCorrTracker:
         self._uni_repair_fail = {}   # 🩹 day_ms → time of a failed repair rebuild (retried after UNIVERSE_RETRY_S)
         self.repair_skipped = 0      # 🩹 repair reads not started because the client was limited (own counter: refresh()'s stay exact)
         self.repair_error = None     # 🩹 the repair's last error (never overwrites the live last_error)
+        self._fail_streak = {}       # 🔒 (445) pair → consecutive bars its read failed after the retry
         self._uni_fail_at = 0.0
         self.last_error = None
 
@@ -202,10 +209,16 @@ class AltCorrTracker:
         if u and (day - u.get("day_ms", day)) > DAY:
             logger.warning(f"[ALT_CORR] universe list is stale: built for {time.strftime('%Y-%m-%d', time.gmtime(u['day_ms'] / 1000))} volume, "
                            f"{(day - u['day_ms']) // DAY} days older than needed (rebuild failing) — stamps keep using it")
+        st = await self._stored(day)          # 🔒 (445) a list already built for this day (this process or an earlier one) is the list
+        if st:
+            self.universe = st
+            self._keep_universe(st)
+            logger.info(f"[ALT_CORR] universe for {time.strftime('%Y-%m-%d', time.gmtime(day / 1000))} volume (stored): {', '.join(st['pairs'])}")
+            return st["pairs"]
         if time.time() - self._uni_fail_at < UNIVERSE_RETRY_S or self._limited():
             return u["pairs"] if u else None
         try:
-            self.universe = await self._read_universe(day, 4)
+            self.universe = await self._store(await self._read_universe(day, 4))
             self._keep_universe(self.universe)
             logger.info(f"[ALT_CORR] universe for {time.strftime('%Y-%m-%d', time.gmtime(day / 1000))} volume: {', '.join(self.universe['pairs'])}")
             return self.universe["pairs"]
@@ -216,6 +229,33 @@ class AltCorrTracker:
             self.last_error = f"universe: {str(e)[:120]}"
             logger.warning(f"[ALT_CORR] universe not rebuilt ({str(e)[:120]}) — " + ("previous list kept" if u else "no list yet → NULL stamps"))
             return u["pairs"] if u else None
+
+    async def _stored(self, day):
+        """🔒 (445) the stored list for `day`, or None (no store / no row / a read error — never raises except cancellation)."""
+        if not self.load_universe:
+            return None
+        try:
+            u = await self.load_universe(int(day))
+            return u if u and u.get("pairs") else None
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.warning(f"[ALT_CORR] stored universe unreadable ({str(e)[:120]}) — building it")
+            return None
+
+    async def _store(self, u):
+        """🔒 (445) store a freshly built list; when another build stored the day first, ITS list is returned and used. A store error keeps
+        the fresh list (this process stays consistent; a restart may rebuild)."""
+        if not self.save_universe:
+            return u
+        try:
+            got = await self.save_universe(u)
+            return got if got and got.get("pairs") else u
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.warning(f"[ALT_CORR] universe not stored ({str(e)[:120]}) — used for this process only")
+            return u
 
     def _keep_universe(self, u):
         self._uni_hist[u["day_ms"]] = u
@@ -281,6 +321,19 @@ class AltCorrTracker:
             if self._limited():               # limited mid-bar: the value would be built from a partial read → no value for this bar
                 self.last_error = "client rate-limited mid-bar — this bar skipped"
                 return None
+            still = [p for p, rows in got.items() if not rows]
+            self._fail_streak = {p: (self._fail_streak.get(p, 0) + 1 if p in still else 0) for p in got}   # pairs that left the list drop out
+            chronic = [p for p in still if p != "BTCUSDT" and self._fail_streak[p] >= CHRONIC_FAIL_BARS]
+            for p in chronic:
+                if self._fail_streak[p] == CHRONIC_FAIL_BARS:
+                    logger.warning(f"[ALT_CORR] {p} read failed {CHRONIC_FAIL_BARS} bars in a row — scored as missing data until it reads again")
+            still = [p for p in still if p not in chronic]   # a chronic failure = missing data (unscored); a fresh one still skips the bar
+            if still:                         # 🔒 (445) a read that failed twice → no value for this bar (never a partial-set corr / a NULL beta):
+                msg = f"{len(still)} read(s) failed after a retry ({', '.join(still[:4])})"
+                self.last_error = f"{msg} — this bar skipped"
+                logger.warning(f"[ALT_CORR] {time.strftime('%H:%M', time.gmtime(bar_close / 1000))} UTC bar skipped: {msg} — fills keep the "
+                               f"previous bar's value (≤ 2 bars) or stamp NULL for the 🩹 repair")
+                return None
             btc = got.pop("BTCUSDT", None)
             listed = (self.universe or {}).get("listed") or {}
             corr, beta, n = alt_corr_beta(got, btc, pairs, bar_close, {p: listed.get(p) for p in pairs})
@@ -288,7 +341,7 @@ class AltCorrTracker:
             if corr is None:
                 self.last_error = f"{n} of {len(pairs)} pairs scored (< {MIN_PAIRS}) → NULL"
             elif beta is None:
-                why = "BTCUSDT 5m read empty after a retry" if not btc else "BTCUSDT 5m window unusable (short / > 30 min stale / flat)"
+                why = "BTCUSDT 5m window unusable (short / > 30 min stale / flat)"   # an empty read never gets here (445: bar skipped)
                 self.last_error = f"{why} → beta NULL"
                 logger.warning(f"[ALT_CORR] beta NULL for the {time.strftime('%H:%M', time.gmtime(bar_close / 1000))} UTC bar: {why} — "
                                f"fills stamp corr only")
@@ -306,11 +359,15 @@ class AltCorrTracker:
         for u in (self.universe, self._uni_hist.get(day)):
             if u and u.get("day_ms") == day:
                 return u
+        st = await self._stored(day)          # 🔒 (445) the day's frozen list — the one its live stamps were computed on
+        if st:
+            self._keep_universe(st)
+            return st
         if self._limited() or time.time() - self._uni_repair_fail.get(day, 0.0) < UNIVERSE_RETRY_S:
             return None
         try:
             back = max(0, (universe_day_ms(int(time.time() * 1000)) - int(day)) // DAY)
-            u = await self._read_universe(int(day), 4 + int(back), REPAIR_CONCURRENCY)
+            u = await self._store(await self._read_universe(int(day), 4 + int(back), REPAIR_CONCURRENCY))
         except asyncio.CancelledError:
             raise
         except Exception as e:
@@ -341,7 +398,7 @@ class AltCorrTracker:
         failed = [p for p, rows in got.items() if not rows]
         if failed and not self._limited():
             got.update(dict(await asyncio.gather(*[one(p) for p in failed])))
-        if self._limited():
+        if self._limited() or any(not rows for rows in got.values()):   # 🔒 (445) never a partial-set value, live or repaired
             return None, None, 0
         btc = got.pop("BTCUSDT", None)
         return alt_corr_beta(got, btc, pairs, int(bar_close), {p: (u.get("listed") or {}).get(p) for p in pairs})

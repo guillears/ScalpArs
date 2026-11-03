@@ -174,21 +174,88 @@ def test_a_failed_btc_read_is_retried_once_so_beta_is_not_null(bad):
     assert v["corr"] is not None and v["beta"] is not None
 
 
-def test_btc_failing_twice_gives_corr_with_null_beta_and_a_warning(caplog):
+def test_a_read_failing_twice_skips_the_bar_never_a_partial_value(caplog):
+    """(DL 445) BTC or any alt still empty after the retry → no value for the bar (11-03 AAVEUSDT: a partial-set corr 0.364 vs 0.304)."""
     bars, names = _market()
     kl, uni, calls = _fake_fetchers(bars, names)
-
-    async def dead_btc(pair, interval, limit):
-        if pair == "BTCUSDT" and interval == "5m":
-            return None
-        return await kl(pair, interval, limit)
-    tr = AC.AltCorrTracker(fetch_klines=dead_btc, fetch_universe=uni)
     now = int(bars["BTCUSDT"][0][-1]) + BAR + 6_000
-    with caplog.at_level("WARNING"):
-        v = asyncio.run(tr.refresh(now))
-    assert v["corr"] is not None and v["beta"] is None and tr.retried == 1      # one retry only, never a loop
-    assert "beta NULL" in caplog.text and "empty after a retry" in tr.last_error
+    for dead in ("BTCUSDT", names[0]):
+        async def dead_one(pair, interval, limit, dead=dead):
+            if pair == dead and interval == "5m":
+                return None
+            return await kl(pair, interval, limit)
+        tr = AC.AltCorrTracker(fetch_klines=dead_one, fetch_universe=uni)
+        prev = dict(bar_close_ms=(now // BAR) * BAR - BAR, corr=0.3, beta=1.2, n=20, at=0)
+        tr.value = dict(prev)
+        with caplog.at_level("WARNING"):
+            assert asyncio.run(tr.refresh(now)) is None
+        assert tr.retried == 1 and "failed after a retry" in tr.last_error and dead in tr.last_error
+        assert tr.value == prev and tr.stamp(now) == (0.3, 1.2)                   # fills keep the previous bar's value (≤ 2 bars)
+        assert "bar skipped" in caplog.text
 
+
+def test_day_list_is_stored_once_and_reused_after_a_restart():
+    """(DL 445) the first build of a day is stored; a restarted process (whose fresh build would differ) uses the stored list."""
+    bars, names = _market()
+    kl, uni, _ = _fake_fetchers(bars, names)
+    store = {}
+
+    async def load(day):
+        return store.get(day)
+
+    async def save(u):
+        store.setdefault(u["day_ms"], dict(day_ms=u["day_ms"], pairs=list(u["pairs"]), listed=dict(u["listed"])))
+        return store[u["day_ms"]]
+    now = int(bars["BTCUSDT"][0][-1]) + BAR + 6_000
+    t1 = AC.AltCorrTracker(fetch_klines=kl, fetch_universe=uni, load_universe=load, save_universe=save)
+    v1 = asyncio.run(t1.refresh(now))
+    day = AC.universe_day_ms(now)
+    assert store[day]["pairs"] == t1.universe["pairs"]
+    other = list(reversed(store[day]["pairs"]))[:15] + ["Z1USDT", "Z2USDT", "Z3USDT", "Z4USDT", "Z5USDT"]
+
+    async def uni_other():
+        return None                                                                    # a rebuild would fail / differ — must not be needed
+    t2 = AC.AltCorrTracker(fetch_klines=kl, fetch_universe=uni_other, load_universe=load, save_universe=save)
+    v2 = asyncio.run(t2.refresh(now + 60_000 + BAR))
+    assert t2.universe["pairs"] == store[day]["pairs"] and v2["corr"] is not None
+    # a racing save: the stored (earlier) list wins over a fresh one
+    store[day] = dict(day_ms=day, pairs=other, listed={})
+    t3 = AC.AltCorrTracker(fetch_klines=kl, fetch_universe=uni, load_universe=lambda d: asyncio.sleep(0, None), save_universe=save)
+    asyncio.run(t3.refresh(now))
+    assert t3.universe["pairs"] == other
+    assert v1["corr"] is not None
+
+
+def test_store_errors_fall_back_to_a_fresh_build():
+    bars, names = _market()
+    kl, uni, _ = _fake_fetchers(bars, names)
+
+    async def boom(*a):
+        raise RuntimeError("db locked")
+    tr = AC.AltCorrTracker(fetch_klines=kl, fetch_universe=uni, load_universe=boom, save_universe=boom)
+    v = asyncio.run(tr.refresh(int(bars["BTCUSDT"][0][-1]) + BAR + 6_000))
+    assert v["corr"] is not None and len(tr.universe["pairs"]) == AC.TOP_N
+
+
+def test_engine_universe_store_roundtrip_and_first_list_wins(monkeypatch):
+    import models
+    import services.trading_engine as TE
+    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+    eng = create_async_engine("sqlite+aiosqlite://")
+    SL = async_sessionmaker(eng, expire_on_commit=False)
+
+    async def go():
+        async with eng.begin() as c:
+            await c.run_sync(models.Base.metadata.create_all)
+        monkeypatch.setattr(TE, "AsyncSessionLocal", SL)
+        assert await TE._alt_universe_load(5 * DAY) is None
+        a = await TE._alt_universe_save(dict(day_ms=5 * DAY, pairs=["AUSDT", "BUSDT"], listed={"AUSDT": 7, "BUSDT": None, "CUSDT": 9}))
+        b = await TE._alt_universe_save(dict(day_ms=5 * DAY, pairs=["XUSDT"], listed={}))
+        await eng.dispose()
+        return a, b
+    a, b = asyncio.run(go())
+    assert a == dict(day_ms=5 * DAY, pairs=["AUSDT", "BUSDT"], listed={"AUSDT": 7})       # only the list's own onboard times
+    assert b == a                                                                          # INSERT OR IGNORE: the first list stays
 
 def test_a_failed_alt_read_is_retried_too_and_a_limited_client_skips_the_retry():
     bars, names = _market()
@@ -936,3 +1003,41 @@ def test_repair_keeps_a_match_when_another_days_list_is_unreadable():
     tr.universe_for_day = flaky
     res, why = asyncio.run(tr.repair(entry_bar + 90_000, round(v["corr"], 6)))
     assert why is None and res["bar_close_ms"] == entry_bar and tr.skipped_limited == 0 and tr.last_error is None
+
+
+def test_an_alt_failing_bar_after_bar_becomes_unscored_but_btc_never_does():
+    bars, names = _market()
+    kl, uni, _ = _fake_fetchers(bars, names)
+    dead = {"p": names[0]}
+
+    async def dead_one(pair, interval, limit):
+        if pair == dead["p"] and interval == "5m":
+            return None
+        return await kl(pair, interval, limit)
+    tr = AC.AltCorrTracker(fetch_klines=dead_one, fetch_universe=uni)
+    base = int(bars["BTCUSDT"][0][-1]) + BAR + 6_000
+    out = [asyncio.run(tr.refresh(base + k * BAR)) for k in range(AC.CHRONIC_FAIL_BARS)]
+    assert out[0] is None and out[1] is None                                         # fresh failures skip the bar
+    assert out[-1] is not None and out[-1]["corr"] is not None                       # 3rd bar in a row → unscored, the stamp lives on
+    dead["p"] = "BTCUSDT"
+    tr2 = AC.AltCorrTracker(fetch_klines=dead_one, fetch_universe=uni)
+    assert all(asyncio.run(tr2.refresh(base + k * BAR)) is None for k in range(AC.CHRONIC_FAIL_BARS + 1))   # no beta without BTC → skip
+
+
+def test_a_recovered_alt_starts_fresh_and_a_fresh_failure_skips_again():
+    bars, names = _market()
+    kl, uni, _ = _fake_fetchers(bars, names)
+    st = {"dead": True}
+
+    async def flaky(pair, interval, limit):
+        if pair == names[0] and interval == "5m" and st["dead"]:
+            return None
+        return await kl(pair, interval, limit)
+    tr = AC.AltCorrTracker(fetch_klines=flaky, fetch_universe=uni)
+    base = int(bars["BTCUSDT"][0][-1]) + BAR + 6_000
+    for k in range(AC.CHRONIC_FAIL_BARS):
+        asyncio.run(tr.refresh(base + k * BAR))
+    st["dead"] = False
+    assert asyncio.run(tr.refresh(base + 3 * BAR)) is not None and tr._fail_streak[names[0]] == 0    # reads again → scored, streak reset
+    st["dead"] = True
+    assert asyncio.run(tr.refresh(base + 4 * BAR)) is None                                            # a fresh failure skips the bar again

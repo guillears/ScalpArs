@@ -9587,11 +9587,37 @@
                     if (_sa) {
                         if (_sg.length) {
                             const _n = (typeof data.stamp_gap_count === 'number') ? data.stamp_gap_count : _sg.length;
-                            _sa.textContent = `🚨 MISSING ENTRY DATA on ${_n} bot trade${_n > 1 ? 's' : ''} (last 48 h): `
-                                + _sg.slice(0, 5).map(g => `${g.pair} ${g.sleeve} #${g.id} (${String(g.opened_at || '').slice(5, 16).replace('T', ' ')} UTC) — ${g.n_missing} empty: ${(g.missing || []).slice(0, 8).join(', ')}${(g.missing || []).length > 8 ? ', …' : ''}`).join(' · ')
-                                + `${_n > 5 ? ` · +${_n - 5} more` : ''} — win/loss reads are blind on these columns. Tell Claude (DECISION_LOG 405).`;
+                            const _sig = JSON.stringify(_sg.slice(0, 5).map(g => [g.id, g.opened_at, g.missing])) + '|' + _n;
+                            if (_sa.dataset.sig !== _sig) {   // rebuilt only when the list changes (an open confirm / click is never torn down)
+                                _sa.dataset.sig = _sig;
+                                _sa.replaceChildren(document.createTextNode(`🚨 MISSING ENTRY DATA on ${_n} bot trade${_n > 1 ? 's' : ''} (last 48 h): `));
+                                _sg.slice(0, 5).forEach((g, i) => {
+                                    if (i) _sa.appendChild(document.createTextNode(' · '));
+                                    const _miss = (g.missing || []);
+                                    _sa.appendChild(document.createTextNode(`${g.pair} ${g.sleeve} #${g.id} (${String(g.opened_at || '').slice(5, 16).replace('T', ' ')} UTC) — ${g.n_missing} empty: ${_miss.slice(0, 8).join(', ')}${_miss.length > 8 ? ', …' : ''} `));
+                                    // ✅ (DECISION_LOG 446) "known gap, accepted": hides this fill from the banner; the server log keeps listing it
+                                    const _b = document.createElement('button');
+                                    _b.type = 'button';
+                                    _b.className = 'underline font-normal text-red-100 hover:text-white';
+                                    _b.textContent = '[accept]';
+                                    _b.title = 'Mark as a known gap, accepted: hidden from this banner, still listed in the server log';
+                                    _b.addEventListener('click', async () => {
+                                        if (!confirm(`Accept the known gap on ${g.pair} #${g.id} (${_miss.join(', ')})?\n\nIt is hidden from this banner; the server log keeps listing it. A column that goes missing later brings it back.`)) return;
+                                        _b.disabled = true;
+                                        try {
+                                            const r = await fetch(`${API_BASE}/api/stamp-gaps/accept?order_id=${encodeURIComponent(g.id)}`, { method: 'POST' });
+                                            if (!r.ok) { const e = await r.json().catch(() => ({})); alert(`Not accepted: ${e.detail || r.status}`); _b.disabled = false; return; }
+                                            _sa.dataset.sig = '';
+                                            if (typeof loadStatus === 'function') loadStatus();
+                                        } catch (err) { alert(`Not accepted: ${err}`); _b.disabled = false; }
+                                    });
+                                    _sa.appendChild(_b);
+                                });
+                                _sa.appendChild(document.createTextNode(`${_n > 5 ? ` · +${_n - 5} more` : ''} — win/loss reads are blind on these columns. Tell Claude (DECISION_LOG 405).`));
+                            }
                             _sa.classList.remove('hidden');
                         } else {
+                            _sa.dataset.sig = '';
                             _sa.classList.add('hidden');
                         }
                     }

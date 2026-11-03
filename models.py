@@ -1506,6 +1506,20 @@ class MatchedLongRefusal(Base):
     is_paper = Column(Boolean, nullable=False, default=True)
 
 
+class StampGapAck(Base):
+    """🚨✅ (DECISION_LOG 446) the operator's "known gap, accepted" marks for the stamp-gap banner (DECISION_LOG 405): a fill whose missing
+    columns are ALL accepted leaves the banner; the server log keeps listing it as accepted. Keyed (order_id, opened_at) — ids reset on a paper
+    reset. A column that goes missing later and was not accepted brings the fill back."""
+    __tablename__ = "stamp_gap_acks"
+    __table_args__ = (UniqueConstraint("order_id", "opened_at", name="uq_stamp_gap_ack"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    order_id = Column(Integer, nullable=False)
+    opened_at = Column(DateTime, nullable=False)
+    columns_json = Column(Text, nullable=False)                    # JSON list of the accepted short names, e.g. ["alt_beta24"]
+    accepted_at = Column(DateTime, nullable=False, default=func.now())
+
+
 class AltCorrUniverse(Base):
     """📈🔒 (DECISION_LOG 445) the alt-correlation stamp's top-20 list, FROZEN per universe day: the first build of a day is stored and every later
     build that day — after a restart too, and the 🩹 stamp repair — reads it back instead of rebuilding (11-03: a mid-day restart swapped POWRUSDT

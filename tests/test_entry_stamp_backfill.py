@@ -487,3 +487,100 @@ def test_schedule_stamp_gap_refresh_one_in_flight():
         assert e.schedule_stamp_gap_refresh() is True         # done → the next one runs
         await e._stamp_gap_task
     asyncio.run(go())
+
+
+# ── ✅ DECISION_LOG 446: "known gap, accepted" (operator 11-03, the AAVEUSDT #173 alt_beta24 gap the repair cannot fill) ─────────────
+
+def test_split_acked_gaps_needs_every_missing_column_accepted_for_that_exact_fill():
+    import services.trading_engine as TE
+    g1 = {"id": 173, "opened_at": "2026-11-03T12:47:01", "missing": ["alt_beta24"]}
+    g2 = {"id": 174, "opened_at": "2026-11-03T13:00:00", "missing": ["rsi", "adx"]}
+    g3 = {"id": 173, "opened_at": "2026-11-09T09:00:00", "missing": ["alt_beta24"]}            # the same id after a paper reset
+    acks = {(173, "2026-11-03T12:47:01"): {"alt_beta24"}, (174, "2026-11-03T13:00:00"): {"rsi"}}
+    shown, acc = TE.TradingEngine.split_acked_gaps([g1, g2, g3], acks)
+    assert acc == [g1] and shown == [g2, g3]
+    assert TE.TradingEngine.split_acked_gaps([], acks) == ([], []) and TE.TradingEngine.split_acked_gaps(None, {}) == ([], [])
+
+
+def test_accept_hides_the_fill_logs_it_and_a_new_missing_column_brings_it_back(monkeypatch, caplog):
+    import models
+    import main as M
+    import services.trading_engine as TE
+    from sqlalchemy import update as sa_update
+    from fastapi import HTTPException
+    monkeypatch.setattr(TE.TradingEngine, "STAMP_GAP_SINCE", dt.datetime(2020, 1, 1))
+    now = dt.datetime.utcnow().replace(microsecond=0)
+    full = {c: 1.0 for c in TE.TradingEngine.STAMP_UNIVERSAL if c not in ("entry_btc_regime", "entry_pattern_c1_match")}
+    full.update(entry_btc_regime="NEUTRAL", **{c: True for c in TE.TradingEngine.STAMP_UNIVERSAL if c.startswith("entry_pattern_")})
+    rows = [_fb_row(pair="AAVEUSDT", status="CLOSED", opened_at=now - dt.timedelta(minutes=90), **dict(full, entry_alt_beta24=None)),
+            _fb_row(pair="OTHERUSDT", status="CLOSED", opened_at=now - dt.timedelta(minutes=60), **dict(full, entry_rsi=None))]
+    e = _engine()
+    e.is_paper_mode = True
+    monkeypatch.setattr(M, "trading_engine", e)
+
+    async def fn(ids):
+        monkeypatch.setattr(M, "AsyncSessionLocal", TE.AsyncSessionLocal)
+        g0 = await e.refresh_stamp_gaps()
+        aave = next(g for g in g0 if g["pair"] == "AAVEUSDT")
+        try:
+            await M.accept_stamp_gap(order_id=99999)                                       # not on the banner → refused
+            refused = False
+        except HTTPException as x:
+            refused = x.status_code == 404
+        r = await M.accept_stamp_gap(order_id=aave["id"])
+        immediately = [g["pair"] for g in e._stamp_gaps]                                   # gone at once, before the next sweep
+        with caplog.at_level("INFO"):
+            g1 = await e.refresh_stamp_gaps()
+        acc = list(e._stamp_gaps_accepted)
+        async with TE.AsyncSessionLocal() as s:                                             # a NEW column goes missing on the accepted fill
+            await s.execute(sa_update(models.Order).where(models.Order.id == aave["id"]).values(entry_rsi=None))
+            await s.commit()
+        g2 = await e.refresh_stamp_gaps()
+        return g0, refused, r, immediately, g1, acc, g2
+    (g0, refused, r, immediately, g1, acc, g2), _ = asyncio.run(_with_db(monkeypatch, rows)(fn))
+    assert sorted(g["pair"] for g in g0) == ["AAVEUSDT", "OTHERUSDT"] and refused
+    assert r["ok"] and r["accepted"] == ["alt_beta24"] and immediately == ["OTHERUSDT"]
+    assert [g["pair"] for g in g1] == ["OTHERUSDT"] and [g["pair"] for g in acc] == ["AAVEUSDT"]
+    assert "known gap ACCEPTED" in caplog.text and "AAVEUSDT" in caplog.text                # the log keeps listing it
+    aave2 = next(g for g in g2 if g["pair"] == "AAVEUSDT")                                  # back on the banner with the new column
+    assert set(aave2["missing"]) == {"alt_beta24", "rsi"}
+    assert e._stamp_gaps_accepted == [] and len(e._stamp_gaps) == 2
+    assert '"stamp_gaps_accepted": len(' in open(os.path.join(ROOT, "services", "trading_engine.py")).read()   # the status payload count
+
+
+def test_accept_is_wired_to_the_banner():
+    h = open(os.path.join(ROOT, "templates", "index.html")).read()
+    assert "/api/stamp-gaps/accept?order_id=" in h and "'[accept]'" in h and "_sa.replaceChildren(" in h
+    assert "_sa.innerHTML" not in h                                                         # pair / sleeve text never parsed as HTML
+    m = open(os.path.join(ROOT, "main.py")).read()
+    assert '@app.post("/api/stamp-gaps/accept")' in m
+
+
+def test_accept_twice_merges_into_one_row_with_microsecond_open_times(monkeypatch):
+    import json
+    import models
+    import main as M
+    import services.trading_engine as TE
+    from sqlalchemy import select
+    monkeypatch.setattr(TE.TradingEngine, "STAMP_GAP_SINCE", dt.datetime(2020, 1, 1))
+    now = dt.datetime.utcnow().replace(microsecond=654321)
+    full = {c: 1.0 for c in TE.TradingEngine.STAMP_UNIVERSAL if c not in ("entry_btc_regime", "entry_pattern_c1_match")}
+    full.update(entry_btc_regime="NEUTRAL", **{c: True for c in TE.TradingEngine.STAMP_UNIVERSAL if c.startswith("entry_pattern_")})
+    rows = [_fb_row(pair="AAVEUSDT", status="CLOSED", opened_at=now - dt.timedelta(minutes=90), **dict(full, entry_alt_beta24=None))]
+    e = _engine()
+    e.is_paper_mode = True
+    monkeypatch.setattr(M, "trading_engine", e)
+
+    async def fn(ids):
+        monkeypatch.setattr(M, "AsyncSessionLocal", TE.AsyncSessionLocal)
+        g = (await e.refresh_stamp_gaps())[0]
+        await M.accept_stamp_gap(order_id=g["id"])
+        e._stamp_gaps = [dict(g, missing=["alt_beta24", "rsi"])]                          # the same fill, a second column missing since
+        await M.accept_stamp_gap(order_id=g["id"])
+        async with TE.AsyncSessionLocal() as s:
+            acks = (await s.execute(select(models.StampGapAck))).scalars().all()
+        shown = await e.refresh_stamp_gaps()
+        return acks, shown
+    (acks, shown), _ = asyncio.run(_with_db(monkeypatch, rows)(fn))
+    assert len(acks) == 1 and json.loads(acks[0].columns_json) == ["alt_beta24", "rsi"]
+    assert shown == []                                                                       # hidden: both missing columns accepted

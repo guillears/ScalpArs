@@ -2,6 +2,7 @@
 SCALPARS Trading Platform - Main Application
 """
 import asyncio
+import json
 import functools
 import math
 import time
@@ -1050,6 +1051,37 @@ async def start_bot(db: AsyncSession = Depends(get_db)):
     if ban["banned"]:
         result["ban_warning"] = f"Binance IP ban active, {ban['remaining_seconds']}s remaining. Bot will wait before scanning."
     return result
+
+
+@app.post("/api/stamp-gaps/accept")
+async def accept_stamp_gap(order_id: int):
+    """🚨✅ (DECISION_LOG 446) the operator marks a fill on the stamp-gap banner as a KNOWN gap, accepted: its CURRENTLY missing columns are
+    stored for that exact fill (id + opened_at) and the banner hides it from the next sweep; the server log keeps listing it. Only a fill the
+    banner shows right now can be accepted. Alert-only surface — trading unaffected."""
+    from models import StampGapAck
+    g = next((x for x in (trading_engine.__dict__.get('_stamp_gaps') or []) if x.get("id") == order_id), None)
+    if g is None:
+        raise HTTPException(status_code=404, detail=f"#{order_id} is not on the missing-data banner")
+    from sqlalchemy.exc import IntegrityError
+    opened = datetime.fromisoformat(str(g["opened_at"])[:19])
+    for attempt in (1, 2):   # (review) two accepts racing on the same fill: the loser re-reads the winner's row and merges into it
+        try:
+            async with AsyncSessionLocal() as db:
+                old = (await db.execute(select(StampGapAck).where(and_(StampGapAck.order_id == order_id,
+                                                                        StampGapAck.opened_at == opened)))).scalar_one_or_none()
+                cols = sorted(set(json.loads(old.columns_json) if old else []) | set(g.get("missing") or []))
+                if old:
+                    old.columns_json, old.accepted_at = json.dumps(cols), datetime.utcnow()
+                else:
+                    db.add(StampGapAck(order_id=order_id, opened_at=opened, columns_json=json.dumps(cols), accepted_at=datetime.utcnow()))
+                await locked_commit(db)
+            break
+        except IntegrityError:
+            if attempt == 2:
+                raise
+    logger.info(f"[STAMP_GAP] {g.get('pair')} #{order_id}: operator accepted the known gap ({', '.join(cols)}) — hidden from the banner")
+    trading_engine.__dict__['_stamp_gaps'] = [x for x in (trading_engine.__dict__.get('_stamp_gaps') or []) if x.get("id") != order_id]
+    return {"ok": True, "order_id": order_id, "accepted": cols}
 
 
 @app.post("/api/pause")

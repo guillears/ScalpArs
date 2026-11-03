@@ -5352,6 +5352,30 @@ class TradingEngine:
         out.sort(key=lambda g: g["opened_at"] or "", reverse=True)
         return out
 
+    @staticmethod
+    def split_acked_gaps(gaps, acks) -> tuple:
+        """✅ (DECISION_LOG 446) gaps → (shown, accepted). acks = {(order_id, opened_at iso[:19]): set(short column names)}; a gap is
+        accepted only when EVERY missing column was accepted for that exact fill. Pure."""
+        shown, accepted = [], []
+        for g in gaps or ():
+            k = (g.get("id"), str(g.get("opened_at") or "")[:19])
+            (accepted if set(g.get("missing") or ()) <= acks.get(k, set()) else shown).append(g)
+        return shown, accepted
+
+    async def _stamp_gap_acks(self, gaps) -> dict:
+        """✅ (446) the stored accept marks of these gaps' fills → {(order_id, opened_at iso[:19]): set(columns)}; {} on any error."""
+        try:
+            from models import StampGapAck
+            ids = [g["id"] for g in gaps if g.get("id") is not None]
+            if not ids:
+                return {}
+            async with AsyncSessionLocal() as _as:
+                rows = (await _as.execute(select(StampGapAck).where(StampGapAck.order_id.in_(ids)))).scalars().all()
+            return {(r.order_id, r.opened_at.isoformat()[:19]): set(json.loads(r.columns_json or "[]")) for r in rows}
+        except Exception as e:
+            logger.warning(f"[STAMP_GAP] accept marks unreadable (every gap shown): {str(e)[:120]}")
+            return {}
+
     async def refresh_stamp_gaps(self) -> list:
         """(405) the periodic sweep behind the banner (monitor loop, own session). Alert only. Never raises; a failed read keeps the last list."""
         try:
@@ -5369,6 +5393,7 @@ class TradingEngine:
                         Order.opened_at >= lo, Order.opened_at <= hi)).order_by(desc(Order.opened_at)).limit(self.STAMP_GAP_MAX_ROWS))
                     gaps = self.stamp_gaps_from_rows([dict(zip(cols, r)) for r in res.all()],
                                                      self.stamp_gap_exempt(config.trading_config.investment))
+            gaps, acked = self.split_acked_gaps(gaps, await self._stamp_gap_acks(gaps))   # ✅ (446) accepted known gaps leave the banner
             if bool(self.is_paper_mode) != mode:   # (405 review) paper ⇄ live switched mid-sweep: never paint the old mode's fills
                 return list(self.__dict__.get('_stamp_gaps') or [])
             _prev = {g["id"] for g in (self.__dict__.get('_stamp_gaps') or [])}
@@ -5376,6 +5401,12 @@ class TradingEngine:
                 if g["id"] not in _prev:
                     logger.warning(f"[STAMP_GAP] {g['pair']} {g['sleeve']} #{g['id']}: {g['n_missing']} required entry columns NULL — "
                                    f"dashboard alert raised: {', '.join(g['missing'][:40])}")
+            _prev_acc = {g["id"] for g in (self.__dict__.get('_stamp_gaps_accepted') or [])}
+            for g in acked:                     # the log keeps listing them (once per process, when first seen accepted)
+                if g["id"] not in _prev_acc:
+                    logger.info(f"[STAMP_GAP] {g['pair']} {g['sleeve']} #{g['id']}: known gap ACCEPTED by the operator (hidden from the banner) — "
+                                f"still NULL: {', '.join(g['missing'][:40])}")
+            self.__dict__['_stamp_gaps_accepted'] = acked
             self.__dict__['_stamp_gaps'] = gaps
             self.__dict__['_stamp_gaps_at'] = now
             return gaps
@@ -5441,6 +5472,7 @@ class TradingEngine:
             # 🚨 (DECISION_LOG 405) bot fills with a required entry column still NULL — dashboard banner (alert only)
             "stamp_gaps": list(self.__dict__.get('_stamp_gaps') or [])[:20],
             "stamp_gap_count": len(self.__dict__.get('_stamp_gaps') or []),
+            "stamp_gaps_accepted": len(self.__dict__.get('_stamp_gaps_accepted') or []),   # ✅ (446) hidden, still in the log
         }
 
     def _record_filter_block(self, filter_name: str, direction: str, had_room: bool = True) -> None:

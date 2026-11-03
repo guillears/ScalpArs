@@ -105,3 +105,7 @@ reports/.scout_sweep_cache.json.*.tmp
 
 # 🗄 permanent dashboard-export archive (DECISION_LOG 409) — local data, never commit
 exports_archive/
+
+# 📊 best-case view (DL 440): intermediate outputs, rebuilt each run — only BEST_CASE_<stamp>.md is kept
+reports/best_case/*.csv
+reports/best_case/*_out.txt

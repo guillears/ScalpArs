@@ -1,0 +1,104 @@
+#!/usr/bin/env python3
+"""📊 BEST-CASE VIEW (operator 2026-11-03: "how do we name them … to ask again this quick view").
+
+Two tables, in-sample upper bound — every current watch line switched on from the batch start:
+  ① each sleeve with its best line ("helps both": never worse on the current batch NOR on master), daily compound before → best
+  ② total, all sleeves, with the re-size ideas on top (DECISION_LOG 430), with and without the FAN flip TP +2 exit
+     (TP +2's only master gain is the late-June crash window — the "no flip TP+2" columns are the corrected view).
+
+Pipeline (outputs in reports/best_case/): fb_combo.py (FB_CONFIRM per Flatbase fill) → flip_exits.py (each flip on its own
+1m path under TP 1.5 / 2 / 3) → best_dcr.py (with flip exits) → best_dcr_noflip.py. Writes reports/best_case/BEST_CASE_<export stamp>.md.
+⚠ Batch constants are hard-coded — update ALL of them for a new batch, or the cohort is silently wrong: best_dcr*.py (B0 = batch start,
+  FLOWS = top-ups, START = 2,900, the 2,900 → 10,000 equity step date) · fb_combo.py (the previous batch's BASELINE archive file and the
+  batch cutoff date) · flip_exits.py (the batch start date).
+
+Usage: venv/bin/python -I scripts/best_case/run_best_case.py ~/Downloads/scalpars_orders_paper_<stamp>.csv
+"""
+import os
+import re
+import subprocess
+import sys
+
+import pandas as pd
+
+D = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(os.path.dirname(D))
+OUT = os.path.join(ROOT, "reports", "best_case")
+PY = os.path.join(ROOT, "venv", "bin", "python")
+NAMES = {"FRENZY_WILLY": "WILLY", "SPIKE_FADE": "Spike Fade", "FLATBASE_SHORT": "Flatbase", "FLIP:FAN_RATIO_GATE": "FAN flips",
+         "FRENZY_LITE_RETRY": "LITE RETRY", "FRENZY_WILLY_HT": "WILLY_HT", "SURGE_LONG": "SURGE Long", "MOMENTUM_LONG": "Momentum Long",
+         "FRENZY_LONG": "FRENZY_LONG", "FRENZY_LITE": "LITE", "MOMENTUM_SHORT": "Momentum Short"}
+LABELS = {"EXIT TP1.5": "Exit TP +1.5", "EXIT TP2": "Exit TP +2", "EXIT TP3": "Exit TP +3", "SURGE_BTC_HOT": "BTC RSI ≥ 78",
+          "MKT_HOT": "Market-hot", "FB_CONFIRM": "FB_CONFIRM (live)"}
+NUM = r"([-+]?(?:\d+\.?\d*|nan|inf))"
+SCEN = [("TOTAL B", "Watch lines only"), ("C1", "+ WILLY at 8×"), ("C2", "+ WILLY at 10×"),
+        ("C3", "+ WILLY 10×, FRENZY_LONG ×5, Flatbase 0.5"), ("C4", "+ WILLY 8×, FRENZY_LONG ×5, Flatbase 0.5")]
+
+
+def step(script, exp):
+    r = subprocess.run([PY, "-I", "-W", "ignore", os.path.join(D, script), exp], capture_output=True, text=True, cwd=ROOT)
+    if r.returncode:
+        sys.exit(f"{script} failed:\n{r.stdout[-2000:]}\n{r.stderr[-2000:]}")
+    return r.stdout
+
+
+def totals(txt):
+    m = re.search(rf"TOTAL B: B25 real path {NUM} → {NUM} %/day · master intended size {NUM} → {NUM}", txt)
+    if not m:
+        sys.exit("best_dcr output changed: the 'TOTAL B:' line was not found — update run_best_case.totals()")
+    t = {"today": (float(m[1]), float(m[3])), "TOTAL B": (float(m[2]), float(m[4]))}
+    for k in ("C1", "C2", "C3", "C4"):
+        c = re.search(rf"^{k} .*?B25 total {NUM} %/day.*master total {NUM}", txt, re.M)
+        if not c:
+            sys.exit(f"best_dcr output changed: the '{k}' re-size line was not found — update run_best_case.totals()")
+        t[k] = (float(c[1]), float(c[2]))
+    return t
+
+
+def f(x):
+    return "–" if x != x else f"{x:+.2f}".replace("-", "−")
+
+
+def main(exp):
+    os.makedirs(OUT, exist_ok=True)
+    step("fb_combo.py", exp)
+    step("flip_exits.py", exp)
+    a, b = step("best_dcr.py", exp), step("best_dcr_noflip.py", exp)
+    open(os.path.join(OUT, "best_dcr_out.txt"), "w").write(a)
+    open(os.path.join(OUT, "best_dcr_noflip_out.txt"), "w").write(b)
+    t = pd.read_csv(os.path.join(OUT, "best_dcr.csv"))
+    t = t[t.scen == "B"].copy()
+    t["gain"] = t.b25_best - t.b25_before
+    stamp = re.search(r"(\d{4}-\d{2}-\d{2}_\d{2}-\d{2})", os.path.basename(exp))
+    stamp = stamp[1] if stamp else "latest"
+    L = [f"# 📊 Best-case view — export {stamp}", "",
+         "In-sample upper bound: every current watch line switched on from the batch start. Daily compound return, %/day.", "",
+         "## ① Each sleeve with its best watch line", "",
+         "| Sleeve | Line switched on | Current batch, before → best | Master, before → best |", "|---|---|---|---|"]
+    for r in t.sort_values("gain", ascending=False).itertuples():
+        nm = NAMES.get(r.sleeve, r.sleeve)
+        ln = r.lines if isinstance(r.lines, str) and r.lines else "no line helps"
+        ln = " + ".join(LABELS.get(x, x) for x in ln.split(" + "))
+        cur = f"{f(r.b25_before)} → **{f(r.b25_best)}**" if ln != "no line helps" else f(r.b25_before)
+        mas = "no master trades" if r.m_before != r.m_before else (f"{f(r.m_before)} → {f(r.m_best)}" if ln != "no line helps" else f(r.m_before))
+        L.append(f"| {nm} | {ln} | {cur} | {mas} |")
+    ta, tb = totals(a), totals(b)
+    L += ["", "## ② Total, all sleeves, with re-sizing on top", "",
+          "The last two columns leave out the FAN flips TP +2 exit (corrected view: its only master gain is the late-June crash).", "",
+          "| Scenario | Current batch | Master | Current batch, no FAN flips TP +2 | Master, no FAN flips TP +2 |", "|---|---|---|---|---|",
+          f"| Today | {f(ta['today'][0])} | {f(ta['today'][1])} | {f(tb['today'][0])} | {f(tb['today'][1])} |"]
+    for k, lab in SCEN:
+        L.append(f"| {lab} | {f(ta[k][0])} | {f(ta[k][1])} | {f(tb[k][0])} | {f(tb[k][1])} |")
+    L += ["", "FAN flips row: its best line is the TP +2 exit; table ② shows the totals with and without it."]
+    L += ["", "Caveats: in-sample (30–50 % haircut minimum) · each re-size waits for its line's frozen read (WILLY_GAP 15 fills, "
+          "Flatbase revert gate, FRENZY_LONG DL 317) · master uses today's intended sizes, not the sizes traded.", ""]
+    p = os.path.join(OUT, f"BEST_CASE_{stamp}.md")
+    open(p, "w").write("\n".join(L))
+    print("\n".join(L))
+    print(f"saved → {os.path.relpath(p, ROOT)}")
+
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        sys.exit(__doc__)
+    main(os.path.expanduser(sys.argv[1]))

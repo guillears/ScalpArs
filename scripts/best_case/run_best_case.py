@@ -93,7 +93,9 @@ def main(exp):
     L += ["", "## ③ How much to trust each line", "",
           "Built on = the trades the line was found on (master + current batch before it was frozen: in-sample). Clean = current-batch "
           "trades since it was frozen. The 30–50 % cut applies until the checkpoint; after it, the clean result stands with its 95 % range. "
-          "N for 95 % = trades for an 80 % chance of showing the line's effect at 95 % confidence (from the built-on spread, never below the "
+          "Two trade counts (80 % chance of showing it at 95 % confidence): 'adds money' = the blocked trades really lose (or the change really gains); "
+          "'blocked < kept' = the blocked trades really do worse than the ones kept, per side. "
+          "N to prove it adds money (from the built-on spread, never below the "
           "checkpoint; still optimistic, because in-sample averages are inflated). 95 % range shown from 3 clean days. "
           "Flatbase's built-on = the current batch before the freeze (its history is short). Backtest = a cross-check, never a veto.", "", conf.strip()]
     L += ["", "FAN flips row: its best line is the TP +2 exit; table ② shows the totals with and without it."]

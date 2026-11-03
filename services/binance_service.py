@@ -991,15 +991,17 @@ class BinanceService:
             self.regime_limited_until = max(float(self.regime_limited_until or 0.0), time.time() + max(ra, self.REGIME_LIMIT_BACKOFF_S))
             logger.warning(f"[BINANCE] regime reads backing off {max(ra, self.REGIME_LIMIT_BACKOFF_S):.0f}s after a rate-limit answer: {txt[:100]}")
 
-    async def fetch_regime_klines(self, pair_id: str, interval: str = '5m', limit: int = 290) -> Optional[List]:
+    async def fetch_regime_klines(self, pair_id: str, interval: str = '5m', limit: int = 290, end_ms: Optional[int] = None) -> Optional[List]:
         """📈 (DECISION_LOG 383) RAW public /fapi/v1/klines rows (open ms, o, h, l, c, v, close ms, quote volume, …) for pair_id ('ABCUSDT'),
-        newest `limit` bars incl. the forming one. Weight 2 at limit 100–499. None on any error, during a ban or the regime back-off
-        (never raises, never sleeps)."""
+        newest `limit` bars incl. the forming one — or, with end_ms (🩹 DECISION_LOG 443 stamp repair), the `limit` bars opened ≤ end_ms.
+        Weight 2 at limit 100–499. None on any error, during a ban or the regime back-off (never raises, never sleeps)."""
         if self.regime_limited():
             return None
         try:
-            raw = await self._regime_client().fapiPublicGetKlines({
-                'symbol': str(pair_id).replace('/USDT:USDT', 'USDT').replace('/', ''), 'interval': interval, 'limit': max(1, min(int(limit), 499))})
+            params = {'symbol': str(pair_id).replace('/USDT:USDT', 'USDT').replace('/', ''), 'interval': interval, 'limit': max(1, min(int(limit), 499))}
+            if end_ms is not None:
+                params['endTime'] = int(end_ms)
+            raw = await self._regime_client().fapiPublicGetKlines(params)
             self._regime_after_ok()
             return list(raw or [])
         except Exception as e:

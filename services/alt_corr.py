@@ -39,6 +39,10 @@ KLINE_LIMIT = WIN + 2        # 289 closes for 288 returns + the forming bar
 STAMP_MAX_LAG_MS = 2 * BAR   # a fill may use a value computed up to 2 bars before its own last closed bar (study tolerates 30 min)
 UNIVERSE_CANDIDATES = 100    # 1d-volume reads per UTC day (top by rolling 24 h volume) — the top-50 of day X − 2 lies well inside
 UNIVERSE_RETRY_S = 600
+UNIVERSE_KEEP_DAYS = 6       # 🩹 (DECISION_LOG 443) lists kept in memory for the stamp repair (a restart rebuilds an older day on demand)
+REPAIR_CONCURRENCY = 2       # 🩹 the repair reads trickle (2 in flight), never the live refresh's burst of 5
+REPAIR_TOL = 5e-5            # 🩹 a recomputed corr "reproduces" the stamp within this (real 11-03 check: right list + right bar 2e-6 … 5e-6 off —
+                             # the live read lands 1 s after the close; the next bar 1.7e-4+; another coin list 9.6e-3)
 STABLE = {"USDCUSDT", "FDUSDUSDT", "TUSDUSDT", "BUSDUSDT", "USDPUSDT", "DAIUSDT", "USDEUSDT", "XUSDUSDT", "BTCDOMUSDT"}
 _SYM_RX = re.compile(r"^[A-Z0-9]+USDT$")
 
@@ -147,6 +151,10 @@ class AltCorrTracker:
         self.call_timeout_s = call_timeout_s
         self.value = None            # dict(bar_close_ms, corr, beta, n, at)
         self.universe = None         # dict(day_ms, pairs, listed)
+        self._uni_hist = {}          # 🩹 day_ms → universe dict (the stamp repair's lists for past days)
+        self._uni_repair_fail = {}   # 🩹 day_ms → time of a failed repair rebuild (retried after UNIVERSE_RETRY_S)
+        self.repair_skipped = 0      # 🩹 repair reads not started because the client was limited (own counter: refresh()'s stay exact)
+        self.repair_error = None     # 🩹 the repair's last error (never overwrites the live last_error)
         self._uni_fail_at = 0.0
         self.last_error = None
 
@@ -197,35 +205,10 @@ class AltCorrTracker:
         if time.time() - self._uni_fail_at < UNIVERSE_RETRY_S or self._limited():
             return u["pairs"] if u else None
         try:
-            got = await asyncio.wait_for(self.fetch_universe(), 20.0) if self.fetch_universe else None
-            if not got:
-                raise RuntimeError("universe inputs unreadable")
-            rolling, listed = got
-            cands = [s for _, s in sorted(((float(v or 0), s) for s, v in (rolling or {}).items() if str(s).endswith("USDT")),
-                                          reverse=True)[:UNIVERSE_CANDIDATES]]
-            sem = asyncio.Semaphore(self.concurrency)
-
-            async def one(s):
-                async with sem:
-                    rows = await self._klines(s, "1d", 4)
-                for r in rows or []:
-                    try:
-                        if int(r[0]) == day:
-                            return s, float(r[7])
-                    except (TypeError, ValueError, IndexError):
-                        return s, None
-                return s, None
-            vols = {s: v for s, v in await asyncio.gather(*[one(s) for s in cands]) if v is not None}
-            if self._limited():
-                raise RuntimeError("client rate-limited during the rebuild — retried later")
-            if len(vols) < CUT_N:
-                raise RuntimeError(f"only {len(vols)} day volumes read")
-            pairs = universe_top20(vols)
-            if len(pairs) < TOP_N:
-                raise RuntimeError(f"top list has {len(pairs)} pairs")
-            self.universe = dict(day_ms=day, pairs=pairs, listed={k: v for k, v in (listed or {}).items() if v})
-            logger.info(f"[ALT_CORR] universe for {time.strftime('%Y-%m-%d', time.gmtime(day / 1000))} volume: {', '.join(pairs)}")
-            return pairs
+            self.universe = await self._read_universe(day, 4)
+            self._keep_universe(self.universe)
+            logger.info(f"[ALT_CORR] universe for {time.strftime('%Y-%m-%d', time.gmtime(day / 1000))} volume: {', '.join(self.universe['pairs'])}")
+            return self.universe["pairs"]
         except asyncio.CancelledError:
             raise
         except Exception as e:
@@ -233,6 +216,41 @@ class AltCorrTracker:
             self.last_error = f"universe: {str(e)[:120]}"
             logger.warning(f"[ALT_CORR] universe not rebuilt ({str(e)[:120]}) — " + ("previous list kept" if u else "no list yet → NULL stamps"))
             return u["pairs"] if u else None
+
+    def _keep_universe(self, u):
+        self._uni_hist[u["day_ms"]] = u
+        for d in sorted(self._uni_hist)[:-UNIVERSE_KEEP_DAYS]:
+            self._uni_hist.pop(d, None)
+
+    async def _read_universe(self, day, daily_bars, concurrency=None):
+        """→ dict(day_ms, pairs, listed) for the list ranked on `day`'s quote volume; raises on any shortfall."""
+        got = await asyncio.wait_for(self.fetch_universe(), 20.0) if self.fetch_universe else None
+        if not got:
+            raise RuntimeError("universe inputs unreadable")
+        rolling, listed = got
+        cands = [s for _, s in sorted(((float(v or 0), s) for s, v in (rolling or {}).items() if str(s).endswith("USDT")),
+                                      reverse=True)[:UNIVERSE_CANDIDATES]]
+        sem = asyncio.Semaphore(concurrency or self.concurrency)
+
+        async def one(s):
+            async with sem:
+                rows = await self._klines(s, "1d", daily_bars)
+            for r in rows or []:
+                try:
+                    if int(r[0]) == day:
+                        return s, float(r[7])
+                except (TypeError, ValueError, IndexError):
+                    return s, None
+            return s, None
+        vols = {s: v for s, v in await asyncio.gather(*[one(s) for s in cands]) if v is not None}
+        if self._limited():
+            raise RuntimeError("client rate-limited during the rebuild — retried later")
+        if len(vols) < CUT_N:
+            raise RuntimeError(f"only {len(vols)} day volumes read")
+        pairs = universe_top20(vols)
+        if len(pairs) < TOP_N:
+            raise RuntimeError(f"top list has {len(pairs)} pairs")
+        return dict(day_ms=day, pairs=pairs, listed={k: v for k, v in (listed or {}).items() if v})
 
     async def refresh(self, now_ms=None):
         """compute the value for the last 5m close (idempotent per bar). Never raises (except its own cancellation)."""
@@ -281,4 +299,82 @@ class AltCorrTracker:
             self.last_error = str(e)[:120]
             logger.warning(f"[ALT_CORR] refresh failed ({str(e)[:120]}) — fills stamp NULL until the next bar")
             return None
+
+    # ── 🩹 stamp repair (DECISION_LOG 443, operator 11-03: "build the self-repair") ──
+    async def universe_for_day(self, day):
+        """the universe dict ranked on `day`'s volume: the live one, a kept one, else rebuilt from the daily klines. None on failure."""
+        for u in (self.universe, self._uni_hist.get(day)):
+            if u and u.get("day_ms") == day:
+                return u
+        if self._limited() or time.time() - self._uni_repair_fail.get(day, 0.0) < UNIVERSE_RETRY_S:
+            return None
+        try:
+            back = max(0, (universe_day_ms(int(time.time() * 1000)) - int(day)) // DAY)
+            u = await self._read_universe(int(day), 4 + int(back), REPAIR_CONCURRENCY)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            self._uni_repair_fail[day] = time.time()
+            self.repair_error = f"repair universe: {str(e)[:120]}"
+            return None
+        self._keep_universe(u)
+        return u
+
+    async def value_at(self, bar_close, u):
+        """(corr, beta, n) for the bar closing at bar_close, from the 5m klines opened before it (endTime) — the same reads and math as
+        refresh(), one retry of an empty read. (None, None, 0) when limited / unreadable. Never raises (except cancellation)."""
+        pairs = list(u["pairs"])
+        sem = asyncio.Semaphore(REPAIR_CONCURRENCY)
+
+        async def one(p):
+            async with sem:
+                if self._limited():
+                    self.repair_skipped += 1
+                    return p, None
+                try:
+                    return p, await asyncio.wait_for(self.fetch_klines(p, "5m", KLINE_LIMIT, end_ms=int(bar_close) - 1), self.call_timeout_s)
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    return p, None
+        got = dict(await asyncio.gather(*[one(p) for p in pairs + ["BTCUSDT"]]))
+        failed = [p for p, rows in got.items() if not rows]
+        if failed and not self._limited():
+            got.update(dict(await asyncio.gather(*[one(p) for p in failed])))
+        if self._limited():
+            return None, None, 0
+        btc = got.pop("BTCUSDT", None)
+        return alt_corr_beta(got, btc, pairs, int(bar_close), {p: (u.get("listed") or {}).get(p) for p in pairs})
+
+    async def repair(self, opened_ms, stamped_corr=None):
+        """→ (dict(corr, beta, bar_close_ms), None) or (None, why). With a stamped corr, the bars the stamp could have come from (the
+        entry's last close and up to STAMP_MAX_LAG_MS before it) are recomputed and only the one that REPRODUCES the stamped corr is used
+        (proves the same universe + data); without one, the entry's last close is used, as the study builds it."""
+        try:
+            last = (int(opened_ms) // BAR) * BAR
+            bars = [last - k * BAR for k in range(STAMP_MAX_LAG_MS // BAR + 1)] if stamped_corr is not None else [last]
+            seen, best = [], None
+            for b in bars:
+                u = await self.universe_for_day(universe_day_ms(b))
+                if not u:                                           # (review) one day's list unreadable never discards a match found on another bar
+                    seen.append("no list")
+                    continue
+                c, be, n = await self.value_at(b, u)
+                if c is None:
+                    seen.append("NULL")
+                    continue
+                res = dict(corr=round(c, 6), beta=(round(be, 6) if be is not None else None), bar_close_ms=b)
+                if stamped_corr is None:
+                    return res, None
+                seen.append(f"{c:.6f}")
+                d = abs(c - float(stamped_corr))
+                if d <= REPAIR_TOL and (best is None or d < best[0]):
+                    best = (d, res)                                 # the CLOSEST bar within the tolerance, never just the first
+            if best is not None:
+                return best[1], None
+            return None, f"no bar reproduces the stamped corr {stamped_corr} (recomputed {', '.join(seen)}) — another coin list or bar"
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            return None, f"error: {str(e)[:120]}"
 

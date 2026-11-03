@@ -724,3 +724,215 @@ def test_scout_cooldown_never_shortens_an_existing_one(tmp_path):
     assert S.arm_cooldown(15 * 60_000, path=str(f), now_ms=now) == now + 3_600_000           # the longer existing one wins
     f.write_text(str(now - 1))
     assert S.arm_cooldown(15 * 60_000, path=str(f), now_ms=now) == now + 15 * 60_000
+
+
+# ─────────────────────────────── 🩹 stamp repair (DECISION_LOG 443) ───────────────────────────────
+def _hist_fetchers(bars, names):
+    """the fake fetchers + an endTime-aware 5m read (rows opened ≤ end_ms), like /fapi/v1/klines?endTime=."""
+    kl, uni, calls = _fake_fetchers(bars, names)
+
+    async def klh(pair, interval, limit, end_ms=None):
+        if end_ms is None or interval != "5m":
+            return await kl(pair, interval, limit)
+        t, c = bars[pair]
+        m = t <= end_ms
+        return _rows(t[m], c[m])[-limit:]
+    return klh, uni, calls
+
+
+def _live_at(klh, now):
+    """Binance as seen at `now` (the live refresh's view of a past bar): only the bars opened ≤ now, incl. the forming one."""
+    async def kl(pair, interval, limit):
+        return await klh(pair, interval, limit, end_ms=now if interval == "5m" else None)
+    return kl
+
+
+def test_repair_recomputes_a_past_bar_exactly_like_its_live_refresh():
+    bars, names = _market()
+    klh, uni, _ = _hist_fetchers(bars, names)
+    last = int(bars["BTCUSDT"][0][-1])
+    live = {}
+    for k in (6, 5, 4):                                                              # three past bars, computed live at their time
+        bar = last - k * BAR + BAR
+        tr = AC.AltCorrTracker(fetch_klines=_live_at(klh, bar + 6_000), fetch_universe=uni)
+        live[bar] = asyncio.run(tr.refresh(bar + 6_000))
+        assert live[bar]["corr"] is not None and live[bar]["beta"] is not None
+    rep = AC.AltCorrTracker(fetch_klines=klh, fetch_universe=uni)                     # a fresh process (after a restart), no universe yet
+    for bar, v in live.items():
+        c, b, n = asyncio.run(rep.value_at(bar, asyncio.run(rep.universe_for_day(AC.universe_day_ms(bar)))))
+        assert (c, b, n) == (v["corr"], v["beta"], v["n"])
+
+
+def test_repair_finds_the_bar_whose_corr_was_stamped_and_returns_its_beta():
+    bars, names = _market()
+    klh, uni, _ = _hist_fetchers(bars, names)
+    last = int(bars["BTCUSDT"][0][-1])
+    entry_bar = last - 10 * BAR
+    prev = asyncio.run(AC.AltCorrTracker(fetch_klines=_live_at(klh, entry_bar - BAR + 6_000), fetch_universe=uni).refresh(entry_bar - BAR + 6_000))   # the stamp came from 1 bar earlier
+    tr = AC.AltCorrTracker(fetch_klines=klh, fetch_universe=uni)
+    res, why = asyncio.run(tr.repair(entry_bar + 90_000, round(prev["corr"], 6)))
+    assert why is None and res["bar_close_ms"] == entry_bar - BAR
+    assert res["corr"] == round(prev["corr"], 6) and res["beta"] == round(prev["beta"], 6)
+
+
+def test_repair_tolerates_the_live_read_noise_but_picks_the_closest_bar():
+    bars, names = _market()
+    klh, uni, _ = _hist_fetchers(bars, names)
+    entry_bar = int(bars["BTCUSDT"][0][-1]) - 10 * BAR
+    v = asyncio.run(AC.AltCorrTracker(fetch_klines=_live_at(klh, entry_bar + 6_000), fetch_universe=uni).refresh(entry_bar + 6_000))
+    res, why = asyncio.run(AC.AltCorrTracker(fetch_klines=klh, fetch_universe=uni).repair(entry_bar + 90_000, round(v["corr"], 6) + 3e-6))
+    assert why is None and res["bar_close_ms"] == entry_bar                       # 3e-6 off (the 11-03 live noise) → still that bar
+    res, why = asyncio.run(AC.AltCorrTracker(fetch_klines=klh, fetch_universe=uni).repair(entry_bar + 90_000, round(v["corr"], 6) + 2e-4))
+    assert res is None and "no bar reproduces" in why                               # 2e-4 off (a neighbour bar's distance) → refused
+
+
+def test_repair_refuses_when_no_bar_reproduces_the_stamped_corr():
+    bars, names = _market()
+    klh, uni, _ = _hist_fetchers(bars, names)
+    tr = AC.AltCorrTracker(fetch_klines=klh, fetch_universe=uni)
+    res, why = asyncio.run(tr.repair(int(bars["BTCUSDT"][0][-1]) - 10 * BAR + 90_000, 0.123456))
+    assert res is None and "no bar reproduces" in why
+
+
+def test_repair_without_a_stamp_uses_the_entry_bar_and_never_raises():
+    bars, names = _market()
+    klh, uni, _ = _hist_fetchers(bars, names)
+    entry_bar = int(bars["BTCUSDT"][0][-1]) - 10 * BAR
+    want = asyncio.run(AC.AltCorrTracker(fetch_klines=_live_at(klh, entry_bar + 6_000), fetch_universe=uni).refresh(entry_bar + 6_000))
+    res, why = asyncio.run(AC.AltCorrTracker(fetch_klines=klh, fetch_universe=uni).repair(entry_bar + 90_000, None))
+    assert why is None and res["bar_close_ms"] == entry_bar and res["corr"] == round(want["corr"], 6)
+
+    async def boom(*a, **k):
+        raise RuntimeError("down")
+    res, why = asyncio.run(AC.AltCorrTracker(fetch_klines=boom, fetch_universe=uni).repair(entry_bar + 90_000, None))
+    assert res is None and why                                                       # unreadable → a reason, no raise
+    assert asyncio.run(AC.AltCorrTracker(fetch_klines=klh, fetch_universe=uni, is_limited=lambda: True).repair(entry_bar, None))[0] is None
+
+
+def test_repair_pass_fills_only_the_null_column_of_recent_bot_fills(monkeypatch):
+    import models
+    import main as M
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+    eng = create_async_engine("sqlite+aiosqlite://")
+    SL = async_sessionmaker(eng, expire_on_commit=False)
+    now = dt.datetime(2026, 11, 3, 14, 0)
+
+    class FakeTracker:
+        def __init__(self):
+            self.calls = []
+
+        async def repair(self, opened_ms, stamped):
+            self.calls.append((opened_ms, stamped))
+            return dict(corr=0.31 if stamped is None else stamped, beta=1.4, bar_close_ms=(opened_ms // BAR) * BAR), None
+
+    def o(pid, minutes_ago, corr, beta):
+        t = now - dt.timedelta(minutes=minutes_ago)
+        return models.Order(id=pid, pair=f"P{pid}USDT", direction="LONG", status="CLOSED", is_paper=True, entry_strategy="MOMENTUM", confidence="STRONG_BUY",
+                            entry_price=1.0, quantity=1.0, investment=1.0, leverage=1, notional_value=1.0, opened_at=t,
+                            entry_alt_corr24=corr, entry_alt_beta24=beta)
+
+    async def go():
+        async with eng.begin() as c:
+            await c.run_sync(models.Base.metadata.create_all)
+        async with SL() as s:
+            man = o(6, 90, 0.5, None)
+            man.entry_strategy = "MANUAL"                 # the operator's own row → never repaired (banner origin rule)
+            opn = o(7, 95, 0.5, None)
+            opn.status = "PENDING"                         # not an OPEN / CLOSED fill → skipped
+            s.add_all([o(1, 80, 0.42, None),            # AAVEUSDT case: corr stamped, beta NULL → beta only
+                       o(2, 120, None, None),           # both NULL → both
+                       o(3, 60, 0.5, 1.1),              # complete → untouched
+                       o(4, 5, 0.5, None),              # too fresh (grace) → next pass
+                       o(5, 49 * 60, 0.5, None),        # older than the 48 h window → left alone
+                       man, opn])
+            await s.commit()
+        monkeypatch.setattr(M, "AsyncSessionLocal", SL)
+        monkeypatch.setattr(M, "_alt_repair_room", lambda t: True)
+        M._alt_repair_tries.clear()
+        tr = FakeTracker()
+        n = await M.alt_corr_repair_pass(tr, now)
+        async with SL() as s:
+            got = {r.id: (r.entry_alt_corr24, r.entry_alt_beta24) for r in (await s.execute(select(models.Order))).scalars()}
+        await eng.dispose()
+        return n, got, tr.calls
+    n, got, calls = asyncio.run(go())
+    assert n == 2 and len(calls) == 2
+    assert got[1] == (0.42, 1.4) and got[2] == (0.31, 1.4) and got[3] == (0.5, 1.1)
+    assert got[4] == (0.5, None) and got[5] == (0.5, None) and got[6] == (0.5, None) and got[7] == (0.5, None)
+    assert calls[0][1] is None and calls[1][1] == 0.42                               # oldest first; the stamped corr goes to the check
+
+
+def test_repair_pass_gives_up_after_its_tries_and_never_raises(monkeypatch):
+    import models
+    import main as M
+    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+    eng = create_async_engine("sqlite+aiosqlite://")
+    SL = async_sessionmaker(eng, expire_on_commit=False)
+    now = dt.datetime(2026, 11, 3, 14, 0)
+
+    class NoTracker:
+        n = 0
+
+        async def repair(self, opened_ms, stamped):
+            NoTracker.n += 1
+            return None, "no bar reproduces"
+
+    async def go():
+        async with eng.begin() as c:
+            await c.run_sync(models.Base.metadata.create_all)
+        async with SL() as s:
+            s.add(models.Order(id=9, pair="XUSDT", direction="LONG", status="CLOSED", is_paper=True, entry_strategy="MOMENTUM", confidence="STRONG_BUY", entry_price=1.0,
+                               quantity=1.0, investment=1.0, leverage=1, notional_value=1.0, opened_at=now - dt.timedelta(hours=1),
+                               entry_alt_corr24=0.4, entry_alt_beta24=None))
+            await s.commit()
+        monkeypatch.setattr(M, "AsyncSessionLocal", SL)
+        M._alt_repair_tries.clear()
+        monkeypatch.setattr(M, "_alt_repair_room", lambda t: False)                  # no room (weight / close near / limited)
+        assert await M.alt_corr_repair_pass(NoTracker(), now) == 0 and NoTracker.n == 0 and not M._alt_repair_tries   # paused: no try spent
+        monkeypatch.setattr(M, "_alt_repair_room", lambda t: True)
+        for _ in range(M.ALT_CORR_REPAIR_TRIES + 2):
+            assert await M.alt_corr_repair_pass(NoTracker(), now) == 0
+        monkeypatch.setattr(M, "AsyncSessionLocal", lambda: (_ for _ in ()).throw(RuntimeError("db down")))
+        assert await M.alt_corr_repair_pass(NoTracker(), now) == 0                    # a DB failure → 0, no raise
+        await eng.dispose()
+    asyncio.run(go())
+    assert NoTracker.n == M.ALT_CORR_REPAIR_TRIES
+
+
+def test_repair_room_respects_weight_close_and_limit(monkeypatch):
+    import main as M
+
+    class T:
+        lim = False
+
+        def _limited(self):
+            return T.lim
+    monkeypatch.setattr(M.binance_service, "regime_used_weight", 100, raising=False)
+    monkeypatch.setattr(M.time, "time", lambda: 1_000_000 * 300 + 100.0)            # 200 s to the next close
+    assert M._alt_repair_room(T()) is True
+    monkeypatch.setattr(M.binance_service, "regime_used_weight", M.ALT_CORR_REPAIR_MAX_WEIGHT + 1, raising=False)
+    assert M._alt_repair_room(T()) is False                                          # the IP is busy
+    monkeypatch.setattr(M.binance_service, "regime_used_weight", None, raising=False)
+    monkeypatch.setattr(M.time, "time", lambda: 1_000_000 * 300 + 270.0)            # 30 s to the close
+    assert M._alt_repair_room(T()) is False
+    monkeypatch.setattr(M.time, "time", lambda: 1_000_000 * 300 + 100.0)
+    T.lim = True
+    assert M._alt_repair_room(T()) is False                                          # backing off
+
+
+def test_repair_keeps_a_match_when_another_days_list_is_unreadable():
+    bars, names = _market()
+    klh, uni, _ = _hist_fetchers(bars, names)
+    entry_bar = int(bars["BTCUSDT"][0][-1]) - 10 * BAR
+    v = asyncio.run(AC.AltCorrTracker(fetch_klines=_live_at(klh, entry_bar + 6_000), fetch_universe=uni).refresh(entry_bar + 6_000))
+    tr = AC.AltCorrTracker(fetch_klines=klh, fetch_universe=uni)
+    real = tr.universe_for_day
+    calls = {"n": 0}
+
+    async def flaky(day):
+        calls["n"] += 1
+        return None if calls["n"] > 1 else await real(day)                          # bar 0's list reads, bars −1 / −2 do not
+    tr.universe_for_day = flaky
+    res, why = asyncio.run(tr.repair(entry_bar + 90_000, round(v["corr"], 6)))
+    assert why is None and res["bar_close_ms"] == entry_bar and tr.skipped_limited == 0 and tr.last_error is None

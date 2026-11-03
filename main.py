@@ -304,6 +304,88 @@ async def orderbook_loop():
 
 
 ALT_CORR_OFFSET_S = 1.0          # 📈 (383 review) the refresh starts 1 s after the 5m close (the closed bar is final on the REST klines by then)
+
+ALT_CORR_REPAIR_EVERY_S = 3600   # 🩹 (DECISION_LOG 443) stamp repair: hourly (and once at boot) — fills of the last 48 h with a NULL alt stamp
+ALT_CORR_REPAIR_WINDOW_H = 48    # the stamp-gap banner's window (DECISION_LOG 405)
+ALT_CORR_REPAIR_GRACE_MIN = 10   # a fill this fresh may still be inside its own bar's refresh race — left for the next pass
+ALT_CORR_REPAIR_MAX = 5          # fills per pass (≤ 5 × 3 bars × 21 reads × weight 2 = 630 weight, only when something is NULL)
+ALT_CORR_REPAIR_TRIES = 3        # passes per fill before it is left NULL for good (a fill whose stamp no bar reproduces)
+ALT_CORR_REPAIR_BOOT_S = 600     # (review) the first pass ≥ 10 min after boot — never during the boot's heaviest reads
+ALT_CORR_REPAIR_DELAY_S = 120    # (review) a pass starts mid-bar (close + ≈ 2 min), away from the refresh / FRENZY / scan burst
+ALT_CORR_REPAIR_MAX_WEIGHT = 800 # (review) a pass stops while the IP's used weight (last regime read) is above this …
+ALT_CORR_REPAIR_CLOSE_GAP_S = 60 # … or when the next 5m close is this close (the live refresh keeps the room)
+_alt_repair_tries: Dict[tuple, int] = {}   # (order id, opened_at) → tries (ids reset on a paper reset)
+
+
+def _alt_repair_room(tracker) -> bool:
+    lim = getattr(tracker, "_limited", None)
+    if lim is not None and lim():
+        return False
+    w = getattr(binance_service, "regime_used_weight", None)
+    if w is not None and int(w) > ALT_CORR_REPAIR_MAX_WEIGHT:
+        return False
+    return 300 - (time.time() % 300) > ALT_CORR_REPAIR_CLOSE_GAP_S
+
+
+async def alt_corr_repair_pass(tracker=None, now=None, delay_s=0.0) -> int:
+    """🩹 (DECISION_LOG 443, operator 11-03: "build the self-repair") recompute the alt-correlation stamp of recent bot fills that
+    carry a NULL entry_alt_corr24 / entry_alt_beta24 (a failed price read at entry) from the historical 5m klines, the study's own
+    way, and fill ONLY the NULL column(s). A stamped corr must be reproduced exactly first (tracker.repair). Observe-only columns —
+    no trading path reads them. → the number of fills repaired. Never raises (except cancellation)."""
+    from services.trading_engine import alt_corr_tracker
+    from services.origin_view import order_origin
+    tracker = tracker or alt_corr_tracker
+    fixed = 0
+    try:
+        if delay_s:
+            await asyncio.sleep(delay_s)
+        now = now or datetime.utcnow()
+        async with AsyncSessionLocal() as db:
+            rows = (await db.execute(select(Order.id, Order.pair, Order.opened_at, Order.entry_strategy, Order.confidence,
+                                            Order.entry_alt_corr24, Order.entry_alt_beta24).where(and_(
+                Order.status.in_(("OPEN", "CLOSED")),
+                Order.opened_at >= now - timedelta(hours=ALT_CORR_REPAIR_WINDOW_H),
+                Order.opened_at <= now - timedelta(minutes=ALT_CORR_REPAIR_GRACE_MIN),
+                or_(Order.entry_alt_corr24.is_(None), Order.entry_alt_beta24.is_(None)))).order_by(Order.opened_at))).all()
+        # (review) bot fills only — the banner's origin rule: MANUAL / imported / RECOVERED rows are the operator's, never repaired
+        rows = [r for r in rows if order_origin(str(r.entry_strategy or ""), r.confidence) == "BOT"]
+        todo = [r for r in rows if _alt_repair_tries.get((r.id, r.opened_at), 0) < ALT_CORR_REPAIR_TRIES][:ALT_CORR_REPAIR_MAX]
+        for r in todo:
+            if not _alt_repair_room(tracker):   # limited / heavy IP weight / a close is near → stop, no try is spent
+                logger.info(f"[ALT_CORR_REPAIR] pass paused before {r.pair} #{r.id} (limited, weight or the next close) — next pass")
+                break
+            key = (r.id, r.opened_at)
+            opened_ms = int(r.opened_at.replace(tzinfo=timezone.utc).timestamp() * 1000)
+            res, why = await tracker.repair(opened_ms, r.entry_alt_corr24)
+            if res is None:
+                lim = getattr(tracker, "_limited", None)
+                if lim is not None and lim():   # a back-off mid-repair is not the fill's fault → the try is not spent
+                    break
+                _alt_repair_tries[key] = _alt_repair_tries.get(key, 0) + 1
+                logger.info(f"[ALT_CORR_REPAIR] {r.pair} #{r.id}: not repaired (try {_alt_repair_tries[key]}/{ALT_CORR_REPAIR_TRIES}) — {why}")
+                continue
+            _alt_repair_tries[key] = _alt_repair_tries.get(key, 0) + 1
+            vals = {}
+            if r.entry_alt_corr24 is None and res["corr"] is not None:
+                vals["entry_alt_corr24"] = res["corr"]
+            if r.entry_alt_beta24 is None and res["beta"] is not None:
+                vals["entry_alt_beta24"] = res["beta"]
+            if not vals:
+                logger.info(f"[ALT_CORR_REPAIR] {r.pair} #{r.id}: recomputed, but the NULL value is NULL again (try {_alt_repair_tries[key]})")
+                continue
+            async with AsyncSessionLocal() as db:   # only a column that is still NULL is written (a concurrent stamp is never overwritten)
+                for col, v in vals.items():
+                    await locked_execute_commit(db, update(Order).where(and_(Order.id == r.id, getattr(Order, col).is_(None))).values({col: v}))
+            fixed += 1
+            logger.info(f"[ALT_CORR_REPAIR] {r.pair} #{r.id}: filled {', '.join(f'{k[6:]}={v}' for k, v in vals.items())} "
+                        f"(bar {time.strftime('%H:%M', time.gmtime(res['bar_close_ms'] / 1000))} UTC)")
+        for k in [k for k in _alt_repair_tries if k[1] is None or k[1] < now - timedelta(hours=ALT_CORR_REPAIR_WINDOW_H)]:
+            _alt_repair_tries.pop(k, None)      # outside the window: never selected again
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        logger.warning(f"[ALT_CORR_REPAIR] pass failed (observe-only, trading unaffected): {str(e)[:160]}")
+    return fixed
 ML_REFUSAL_RETENTION_DAYS = 90   # 🧷 (DECISION_LOG 383) ml_matched_refusals kept 90 days (≤ 1 row / pair / 5 min; live ≈ 10–50 / day)
 
 
@@ -311,30 +393,40 @@ async def alt_corr_loop():
     """📈 (DECISION_LOG 383) OBSERVE-ONLY: ~1 s after every 5-minute close (383 review: done ≈ close + 3–4 s, before FRENZY's close + 4 s pass
     in the normal case — a fill before it finishes carries the previous bar's value), the alt-correlation regime stamp (services.alt_corr; OBS-R1 / R1b) is
     recomputed for the bar that just closed — its own task and its own public client, so the scan / FRENZY / order paths never wait on it.
-    Runs whether the bot is running or stopped and in both modes (the stamp is mode-agnostic: paper = live). Hourly it also prunes the
+    Runs whether the bot is running or stopped and in both modes (the stamp is mode-agnostic: paper = live). Hourly (first ≥ 10 min after boot) it
+    starts the 🩹 stamp repair (DECISION_LOG 443) as its own task, mid-bar. Hourly it also prunes the
     🧷 ml_matched_refusals table to ML_REFUSAL_RETENTION_DAYS. Never stops on an error."""
     from services.trading_engine import alt_corr_tracker
     await asyncio.sleep(5)
     _last_prune = 0.0
-    while not should_stop:
-        try:
-            await alt_corr_tracker.refresh()
-        except asyncio.CancelledError:
-            raise
-        except Exception as e:
-            logger.warning(f"[ALT_CORR] loop error: {str(e)[:120]}")
-        try:
-            if time.time() - _last_prune > 3600:
-                _last_prune = time.time()
-                async with AsyncSessionLocal() as db:   # lock FIRST, then the delete (locked_execute_commit)
-                    await locked_execute_commit(db, delete(MatchedLongRefusal).where(
-                        MatchedLongRefusal.at < datetime.utcnow() - timedelta(days=ML_REFUSAL_RETENTION_DAYS)))
-        except asyncio.CancelledError:
-            raise
-        except Exception as e:
-            logger.warning(f"[ML_MATCHED_REFUSAL] prune skipped: {str(e)[:120]}")
-        _now = time.time()
-        await asyncio.sleep(max(1.0, (int(_now // 300) + 1) * 300 + ALT_CORR_OFFSET_S - _now))
+    _last_repair = time.time() - ALT_CORR_REPAIR_EVERY_S + ALT_CORR_REPAIR_BOOT_S   # 🩹 the first repair pass ≥ 10 min after boot
+    _repair_task = None
+    try:
+        while not should_stop:
+            try:
+                await alt_corr_tracker.refresh()
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.warning(f"[ALT_CORR] loop error: {str(e)[:120]}")
+            if time.time() - _last_repair > ALT_CORR_REPAIR_EVERY_S and (_repair_task is None or _repair_task.done()):
+                _last_repair = time.time()   # 🩹 (DECISION_LOG 443) its own task, starting mid-bar: never delays or crowds the next bar
+                _repair_task = asyncio.create_task(alt_corr_repair_pass(alt_corr_tracker, delay_s=ALT_CORR_REPAIR_DELAY_S))
+            try:
+                if time.time() - _last_prune > 3600:
+                    _last_prune = time.time()
+                    async with AsyncSessionLocal() as db:   # lock FIRST, then the delete (locked_execute_commit)
+                        await locked_execute_commit(db, delete(MatchedLongRefusal).where(
+                            MatchedLongRefusal.at < datetime.utcnow() - timedelta(days=ML_REFUSAL_RETENTION_DAYS)))
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.warning(f"[ML_MATCHED_REFUSAL] prune skipped: {str(e)[:120]}")
+            _now = time.time()
+            await asyncio.sleep(max(1.0, (int(_now // 300) + 1) * 300 + ALT_CORR_OFFSET_S - _now))
+    finally:
+        if _repair_task is not None and not _repair_task.done():   # (review) shutdown: the pass stops with its parent loop
+            _repair_task.cancel()
 
 
 async def bnb_swap_loop():

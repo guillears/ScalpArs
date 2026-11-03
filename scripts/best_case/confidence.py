@@ -8,7 +8,9 @@ Per best line (from best_dcr_noflip.csv, plus the FAN flips TP +2 exit):
   measure   block line → the BLOCKED fills' booked P&L % (the line claims they lose) · exit / entry-timing line → Δ = after − booked per fill.
   N for 95 %  trades for an 80 % chance of showing the effect at 95 % confidence: n = ((1.645 + 0.84) × sd ÷ |mean|)², sd and mean from
             BUILT ON, floored at the checkpoint N — still optimistic (in-sample means are inflated, fills cluster by day);
-            "never" = BUILT ON does not even point the line's way. FB_CONFIRM's BUILT ON is the current batch before the freeze + 1 B24 fill.
+            "never" = BUILT ON does not even point the line's way. A block line also shows N per side to prove the blocked fills do
+            WORSE than the kept ones (two-sample) — a line whose blocked fills average ≈ 0 can be clearly worse than the rest (it lifts the
+            average trade and frees slots) yet never provably ADD money (ML_MKT_HOT; operator 11-03 caught the 3,300). FB_CONFIRM's BUILT ON is the current batch before the freeze + 1 B24 fill.
   clean 95 % range  day-clustered bootstrap of the clean mean (4,000 resamples, seed 7); "–" below 3 clean fills.
   backtest  what the backtest said at registration (its scout docstring) — a cross-check, never a veto (MASTER OVER BACKTEST).
 Reads reports/best_case/{zones,best_dcr_noflip,flip_exits,fb_combo}.csv (written by the other steps). Prints a markdown table.
@@ -60,6 +62,18 @@ def n95(x, sign):
     return f"{int(np.ceil(((1.645 + 0.84) * x.std() / abs(m)) ** 2))}"
 
 
+def n95_vs_rest(z, r):
+    """trades needed PER SIDE to show the blocked fills do worse than the kept ones (two-sample, 80 % power, one-sided 95 %)."""
+    z, r = pd.Series(z, dtype=float).dropna(), pd.Series(r, dtype=float).dropna()
+    if len(z) < 3 or len(r) < 3:
+        return "–"
+    gap = r.mean() - z.mean()
+    if gap <= 0:
+        return "never"
+    sd = np.sqrt((z.var() + r.var()) / 2)
+    return f"{int(np.ceil(2 * ((1.645 + 0.84) * sd / gap) ** 2))}"
+
+
 def boot(x, days, seed=7, n=4000):
     x, days = np.asarray(x, float), np.asarray(days)
     u = np.unique(days)
@@ -76,7 +90,7 @@ def fmt(x):
     return f"{x:+.2f}".replace("-", "−")
 
 
-def row(sleeve, line, built, clean, cdays, sign, fz):
+def row(sleeve, line, built, clean, cdays, sign, fz, rest=None):
     spec, n_min, d_min, bt = LINES[line]
     b = pd.Series(built, dtype=float).dropna()
     c = pd.Series(clean, dtype=float)
@@ -89,9 +103,10 @@ def row(sleeve, line, built, clean, cdays, sign, fz):
     if nd not in ("–", "never"):
         nd = str(max(int(nd), n_min))                       # never below the line's own checkpoint (tiny in-sample spread ≠ proof)
     gap = "–" if nd in ("–", "never") else f"{max(0, int(nd) - len(c))} more"
+    nr = n95_vs_rest(b, rest) if rest is not None else "n/a"
     fzs = "not in git" if fz is None else f"{fz:%m-%d}"
     return (f"| {SHOW.get(sleeve, sleeve)} | {LABEL.get(line, line)} | {measure} | {fzs} | {bs} | {cs} | {len(c)}/{n_min} trades, "
-            f"{len(set(cdays))}/{d_min} days | {boot(c.values, cdays.values)} | {nd} ({gap}) | {bt} |")
+            f"{len(set(cdays))}/{d_min} days | {boot(c.values, cdays.values)} | {nd} ({gap}) | {nr} | {bt} |")
 
 
 def main():
@@ -100,14 +115,14 @@ def main():
     best = pd.read_csv(os.path.join(SC, "best_dcr_noflip.csv"))
     best = best[(best.scen == "B") & best.lines.notna() & (best.lines.astype(str) != "")]
     out = ["| Sleeve | Line | Measured on | Frozen | Built on: N · avg % | Clean since frozen: N · avg % | Checkpoint progress | Clean 95 % range "
-           "| N for 95 % (still needed) | Backtest |", "|---|---|---|---|---|---|---|---|---|---|"]
+           "| N to prove it adds money (still needed) | N to prove blocked < kept (per side) | Backtest |", "|---|---|---|---|---|---|---|---|---|---|---|"]
     rows = []
     for r in best.itertuples():
         for line in str(r.lines).split(" + "):
             if line == "FB_CONFIRM":
                 continue                                    # entry-timing line, read below from fb_combo
             if line not in LINES:
-                rows.append((0, f"| {SHOW.get(r.sleeve, r.sleeve)} | {line} | – | – | – | – | no freeze registered | – | – | – |"))
+                rows.append((0, f"| {SHOW.get(r.sleeve, r.sleeve)} | {line} | – | – | – | – | no freeze registered | – | – | – | – |"))
                 continue
             fz = freeze_ts(LINES[line][0])
             g = Z[(Z.sl == r.sleeve) & Z[line].fillna(False).astype(bool)]
@@ -115,7 +130,10 @@ def main():
                 pre, cl = g, g.iloc[0:0]
             else:
                 pre, cl = g[(g.src == "MASTER") | (g.o < fz)], g[(g.src == "B25") & (g.o >= fz)]
-            rows.append((r.b25_best - r.b25_before, row(r.sleeve, line, pre.pct, cl.pct, cl.o.dt.strftime("%Y-%m-%d"), -1, fz)))
+            g_all = Z[Z.sl == r.sleeve]
+            keep = g_all[~g_all[line].fillna(False).astype(bool)]
+            keep = keep if fz is None else keep[(keep.src == "MASTER") | (keep.o < fz)]
+            rows.append((r.b25_best - r.b25_before, row(r.sleeve, line, pre.pct, cl.pct, cl.o.dt.strftime("%Y-%m-%d"), -1, fz, keep.pct)))
     # FB_CONFIRM: Δ = confirm-entry result − booked, per signal (a skip books 0)
     fb = pd.read_csv(os.path.join(SC, "fb_combo.csv"))
     fz = freeze_ts(LINES["FB_CONFIRM"][0])

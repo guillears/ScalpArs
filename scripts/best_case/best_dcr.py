@@ -4,6 +4,7 @@ import numpy as np, pandas as pd
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))); SC = os.path.join(ROOT, "reports", "best_case")
 sys.path.insert(0, os.path.join(ROOT, "scripts")); sys.path.insert(0, ROOT)
 import review_math as RM, scout_fade_late_weak as LW, scout_ml_mkt_hot_watch as MH
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import master_exits as MX
 EXP = sys.argv[1]; NOW = int(time.time() * 1000)
 B0, FLOWS = pd.Timestamp("2026-10-23 18:30"), [("2026-10-26T13:50:00", 7100.0)]
 num = lambda d, c: pd.to_numeric(d[c], errors="coerce") if c in d else pd.Series(np.nan, index=d.index)
@@ -14,18 +15,31 @@ A = A[(A.status == "CLOSED") & (pd.to_datetime(A.opened_at, format="mixed") >= B
 A["o"] = pd.to_datetime(A.opened_at, format="mixed", utc=True).dt.tz_convert(None)
 A["pct"] = num(A, "pnl_percentage"); A["u"] = num(A, "pnl"); A["sl"] = sleeve(A); A["src"] = "B25"; A["era"] = "B25"
 A["kk"] = A.opened_at.astype(str).str.replace(" ", "T").str[:19] + A.pair
+A, _b25_moved = MX.reprice_b25_exits(A, os.path.join(SC, "fb_combo.csv"))   # LITE C +2 closes → +3 · Flatbase → +5 / −10 (exits retired mid-batch)
 M = pd.read_csv(os.path.join(ROOT, "reports/MASTER_POOL_stacked.csv"), low_memory=False)
 span = M.assign(o=pd.to_datetime(M.opened_at, format="mixed", utc=True).dt.tz_convert(None),
                 c=pd.to_datetime(M.closed_at, format="mixed", utc=True).dt.tz_convert(None)).groupby("era").agg(a=("o", "min"), b=("c", "max"))
 M = M[(M.stack_keep == True) & (M.is_probe != True)].copy()
 M["o"] = pd.to_datetime(M.opened_at, format="mixed", utc=True).dt.tz_convert(None)
 M["pct"] = num(M, "stack_pct"); M["sl"] = sleeve(M); M["src"] = "MASTER"
+M, _n_long4 = MX.reprice_long_stop4(M)   # FRENZY_LONG master on the live −4 stop (master stack keeps the traded −3)
 SLEEVES = sorted(A.sl.unique())
 M = M[M.sl.isin(SLEEVES)]
 # ── zone inputs
 k1d, _ = LW.load_btc_1d(NOW, fetch=True)
 need = pd.concat([A[A.sl.isin(["MOMENTUM_LONG", "FRENZY_WILLY", "FRENZY_WILLY_HT"])].o, M[M.sl.isin(["MOMENTUM_LONG", "FRENZY_WILLY", "FRENZY_WILLY_HT"])].o])
-closes, complete = MH.fetch_closes(int(need.min().value // 10**6), NOW)
+for _try in range(6):   # the earlier pipeline steps can leave the shared per-minute Binance weight high: wait it out, never read a partial set
+    _now = int(time.time() * 1000)   # fresh each try: a fixed NOW never lets a cooldown expire (deep review DL 448)
+    closes, complete = MH.fetch_closes(int(need.min().value // 10**6), _now)
+    if complete:
+        break
+    _cool = MH.LS._cooling(_now + 5 * 60_000)   # a 429 / 418 ban longer than 5 min: stop now, never wait it out here
+    if _cool:
+        sys.exit("Binance cooldown active (429 / 418) — re-run once it has expired")
+    print(f"market breadth incomplete (try {_try + 1} / 6) — waiting 65 s for the Binance per-minute weight", file=sys.stderr)
+    time.sleep(65)
+if not complete:   # a partial coin set scores market-hot zones differently run to run — never flatter / move a line on a broken read
+    sys.exit("market breadth read incomplete (Binance error or rate-limit cooldown) — re-run in a few minutes")
 br = MH.breadth_series(closes) if len(closes) else pd.Series(dtype=float)
 def add_flags(d):
     d = d.copy()

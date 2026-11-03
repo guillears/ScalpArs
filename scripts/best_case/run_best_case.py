@@ -8,6 +8,8 @@ Two tables, in-sample upper bound — every current watch line switched on from 
 
 Pipeline (outputs in reports/best_case/): fb_combo.py (FB_CONFIRM per Flatbase fill) → flip_exits.py (each flip on its own
 1m path under TP 1.5 / 2 / 3) → best_dcr.py (with flip exits) → best_dcr_noflip.py → confidence.py (③ how much to trust each line). Writes reports/best_case/BEST_CASE_<export stamp>.md.
+Every fill is priced on TODAY's exit (master_exits.py, DECISION_LOG 448): master FRENZY_LONG at −4, current-batch LITE C +2 closes at +3,
+current-batch Flatbase at +5 / −10. A run STOPS on an unpriced fill or an incomplete market-breadth read (Binance per-minute weight: re-run).
 ⚠ Batch constants are hard-coded — update ALL of them for a new batch, or the cohort is silently wrong: best_dcr*.py (B0 = batch start,
   FLOWS = top-ups, START = 2,900, the 2,900 → 10,000 equity step date) · fb_combo.py (the previous batch's BASELINE archive file and the
   batch cutoff date) · flip_exits.py (the batch start date).

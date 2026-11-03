@@ -5,7 +5,8 @@ results? with high confidence level?").
 Per best line (from best_dcr_noflip.csv, plus the FAN flips TP +2 exit):
   BUILT ON  the trades the line was found on — every master fill + current-batch fills opened before the line was frozen (in-sample).
   CLEAN     current-batch fills opened ≥ the freeze (the DL commit + 10 min, as its scout counts them): never used to pick the line.
-  measure   block line → the BLOCKED fills' booked P&L % (the line claims they lose) · exit / entry-timing line → Δ = after − booked per fill.
+  measure   block line → the BLOCKED fills' booked P&L % (the line claims they lose) · exit / entry-timing line → Δ = after − today's exit per
+            fill (FAN flips: − booked, their exit never changed; FB_CONFIRM: − the +5 / −10 walk, DECISION_LOG 448).
   N for 95 %  trades for an 80 % chance of showing the effect at 95 % confidence: n = ((1.645 + 0.84) × sd ÷ |mean|)², sd and mean from
             BUILT ON, floored at the checkpoint N — still optimistic (in-sample means are inflated, fills cluster by day);
             "never" = BUILT ON does not even point the line's way. A block line also shows N per side to prove the blocked fills do
@@ -134,11 +135,11 @@ def main():
             keep = g_all[~g_all[line].fillna(False).astype(bool)]
             keep = keep if fz is None else keep[(keep.src == "MASTER") | (keep.o < fz)]
             rows.append((r.b25_best - r.b25_before, row(r.sleeve, line, pre.pct, cl.pct, cl.o.dt.strftime("%Y-%m-%d"), -1, fz, keep.pct)))
-    # FB_CONFIRM: Δ = confirm-entry result − booked, per signal (a skip books 0)
+    # FB_CONFIRM: Δ = confirm-entry result − today's-exit result, per signal (a skip books 0)
     fb = pd.read_csv(os.path.join(SC, "fb_combo.csv"))
     fz = freeze_ts(LINES["FB_CONFIRM"][0])
     fb["o"] = pd.to_datetime(fb.k, format="mixed")
-    fb["d"] = fb.cf510 - fb.booked
+    fb["d"] = fb.cf510 - fb.now510                                 # vs TODAY's exit (+5 / −10), not the +8 / −15 some fills booked
     pre, cl = (fb, fb.iloc[0:0]) if fz is None else (fb[fb.o < fz], fb[fb.o >= fz])
     rows.append((9, row("FLATBASE_SHORT", "FB_CONFIRM", pre.d, cl.d, cl.o.dt.strftime("%Y-%m-%d"), +1, fz)))
     # FAN flips TP +2: Δ = TP2 − booked (current batch) / − stack (master)

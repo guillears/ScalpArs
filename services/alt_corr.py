@@ -16,7 +16,8 @@ HOW   AltCorrTracker.refresh() runs once per 5m close in its own task (main.alt_
       (ticker/24hr weight 40 + exchangeInfo weight 1 + ≤ 100 1d kline reads weight 1). The math is ~20 × 288 floats (< 1 ms).
       stamp() is a pure in-memory read used at the Order build — no I/O, never awaits, never raises: the value is used only when it was
       computed for a bar that closed ≤ STAMP_MAX_LAG_MS before the entry (else NULL). Paper and live read the same tracker (mode-agnostic).
-FAIL-SAFE  any error / missing data → NULL. Nothing in the trading path reads these values.
+FAIL-SAFE  an empty read (timeout / error) is re-read ONCE in the same bar (operator 11-03, AAVEUSDT #173 beta NULL); any error /
+           missing data after that → NULL. Nothing in the trading path reads these values.
 """
 import asyncio
 import logging
@@ -141,6 +142,7 @@ class AltCorrTracker:
         self.fetch_universe = fetch_universe
         self.is_limited = is_limited     # () → True while the client is banned / backing off (383 review): no new call is started then
         self.skipped_limited = 0         # reads NOT started because the client was limited (observability)
+        self.retried = 0                 # empty reads re-tried once in their bar (observability)
         self.concurrency = concurrency
         self.call_timeout_s = call_timeout_s
         self.value = None            # dict(bar_close_ms, corr, beta, n, at)
@@ -251,6 +253,13 @@ class AltCorrTracker:
                 async with sem:
                     return p, await self._klines(p, "5m", KLINE_LIMIT)
             got = dict(await asyncio.gather(*[one(p) for p in list(pairs) + ["BTCUSDT"]]))
+            # one retry of every read that came back empty (timeout / error) — operator 11-03: AAVEUSDT #173 stamped corr with a NULL beta
+            # because the single BTCUSDT read failed; the same pair is re-read, never back-filled by #21 (study parity)
+            failed = [p for p, rows in got.items() if not rows]
+            if failed and not self._limited():
+                s0 = self.skipped_limited
+                got.update(dict(await asyncio.gather(*[one(p) for p in failed])))
+                self.retried += len(failed) - (self.skipped_limited - s0)   # reads actually re-sent (a limited client skips them)
             if self._limited():               # limited mid-bar: the value would be built from a partial read → no value for this bar
                 self.last_error = "client rate-limited mid-bar — this bar skipped"
                 return None
@@ -260,6 +269,11 @@ class AltCorrTracker:
             self.value = dict(bar_close_ms=bar_close, corr=corr, beta=beta, n=n, at=time.time())
             if corr is None:
                 self.last_error = f"{n} of {len(pairs)} pairs scored (< {MIN_PAIRS}) → NULL"
+            elif beta is None:
+                why = "BTCUSDT 5m read empty after a retry" if not btc else "BTCUSDT 5m window unusable (short / > 30 min stale / flat)"
+                self.last_error = f"{why} → beta NULL"
+                logger.warning(f"[ALT_CORR] beta NULL for the {time.strftime('%H:%M', time.gmtime(bar_close / 1000))} UTC bar: {why} — "
+                               f"fills stamp corr only")
             return self.value
         except asyncio.CancelledError:
             raise

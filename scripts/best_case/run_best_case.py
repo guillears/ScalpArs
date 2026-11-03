@@ -7,7 +7,7 @@ Two tables, in-sample upper bound — every current watch line switched on from 
      (TP +2's only master gain is the late-June crash window — the "no flip TP+2" columns are the corrected view).
 
 Pipeline (outputs in reports/best_case/): fb_combo.py (FB_CONFIRM per Flatbase fill) → flip_exits.py (each flip on its own
-1m path under TP 1.5 / 2 / 3) → best_dcr.py (with flip exits) → best_dcr_noflip.py. Writes reports/best_case/BEST_CASE_<export stamp>.md.
+1m path under TP 1.5 / 2 / 3) → best_dcr.py (with flip exits) → best_dcr_noflip.py → confidence.py (③ how much to trust each line). Writes reports/best_case/BEST_CASE_<export stamp>.md.
 ⚠ Batch constants are hard-coded — update ALL of them for a new batch, or the cohort is silently wrong: best_dcr*.py (B0 = batch start,
   FLOWS = top-ups, START = 2,900, the 2,900 → 10,000 equity step date) · fb_combo.py (the previous batch's BASELINE archive file and the
   batch cutoff date) · flip_exits.py (the batch start date).
@@ -64,6 +64,7 @@ def main(exp):
     step("fb_combo.py", exp)
     step("flip_exits.py", exp)
     a, b = step("best_dcr.py", exp), step("best_dcr_noflip.py", exp)
+    conf = step("confidence.py", exp)
     open(os.path.join(OUT, "best_dcr_out.txt"), "w").write(a)
     open(os.path.join(OUT, "best_dcr_noflip_out.txt"), "w").write(b)
     t = pd.read_csv(os.path.join(OUT, "best_dcr.csv"))
@@ -89,6 +90,12 @@ def main(exp):
           f"| Today | {f(ta['today'][0])} | {f(ta['today'][1])} | {f(tb['today'][0])} | {f(tb['today'][1])} |"]
     for k, lab in SCEN:
         L.append(f"| {lab} | {f(ta[k][0])} | {f(ta[k][1])} | {f(tb[k][0])} | {f(tb[k][1])} |")
+    L += ["", "## ③ How much to trust each line", "",
+          "Built on = the trades the line was found on (master + current batch before it was frozen: in-sample). Clean = current-batch "
+          "trades since it was frozen. The 30–50 % cut applies until the checkpoint; after it, the clean result stands with its 95 % range. "
+          "N for 95 % = trades for an 80 % chance of showing the line's effect at 95 % confidence (from the built-on spread, never below the "
+          "checkpoint; still optimistic, because in-sample averages are inflated). 95 % range shown from 3 clean days. "
+          "Flatbase's built-on = the current batch before the freeze (its history is short). Backtest = a cross-check, never a veto.", "", conf.strip()]
     L += ["", "FAN flips row: its best line is the TP +2 exit; table ② shows the totals with and without it."]
     L += ["", "Caveats: in-sample (30–50 % haircut minimum) · each re-size waits for its line's frozen read (WILLY_GAP 15 fills, "
           "Flatbase revert gate, FRENZY_LONG DL 317) · master uses today's intended sizes, not the sizes traded.", ""]

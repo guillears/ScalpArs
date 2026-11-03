@@ -152,6 +152,79 @@ def test_tracker_failures_give_null_and_never_raise(fail):
     assert tr.stamp(now) == (None, None)
 
 
+@pytest.mark.parametrize("bad", ["raise", "empty"])
+def test_a_failed_btc_read_is_retried_once_so_beta_is_not_null(bad):
+    """operator 11-03 (AAVEUSDT #173: corr stamped, beta NULL): one failed BTCUSDT 5m read → re-read once in the same bar."""
+    bars, names = _market()
+    kl, uni, _ = _fake_fetchers(bars, names)
+    n = {"btc": 0}
+
+    async def flaky(pair, interval, limit):
+        if pair == "BTCUSDT" and interval == "5m":
+            n["btc"] += 1
+            if n["btc"] == 1:
+                if bad == "raise":
+                    raise asyncio.TimeoutError()
+                return []
+        return await kl(pair, interval, limit)
+    tr = AC.AltCorrTracker(fetch_klines=flaky, fetch_universe=uni)
+    now = int(bars["BTCUSDT"][0][-1]) + BAR + 6_000
+    v = asyncio.run(tr.refresh(now))
+    assert n["btc"] == 2 and tr.retried == 1
+    assert v["corr"] is not None and v["beta"] is not None
+
+
+def test_btc_failing_twice_gives_corr_with_null_beta_and_a_warning(caplog):
+    bars, names = _market()
+    kl, uni, calls = _fake_fetchers(bars, names)
+
+    async def dead_btc(pair, interval, limit):
+        if pair == "BTCUSDT" and interval == "5m":
+            return None
+        return await kl(pair, interval, limit)
+    tr = AC.AltCorrTracker(fetch_klines=dead_btc, fetch_universe=uni)
+    now = int(bars["BTCUSDT"][0][-1]) + BAR + 6_000
+    with caplog.at_level("WARNING"):
+        v = asyncio.run(tr.refresh(now))
+    assert v["corr"] is not None and v["beta"] is None and tr.retried == 1      # one retry only, never a loop
+    assert "beta NULL" in caplog.text and "empty after a retry" in tr.last_error
+
+
+def test_a_failed_alt_read_is_retried_too_and_a_limited_client_skips_the_retry():
+    bars, names = _market()
+    kl, uni, _ = _fake_fetchers(bars, names)
+    seen = {"n": 0}
+
+    async def flaky_alt(pair, interval, limit):
+        if pair == names[0] and interval == "5m":
+            seen["n"] += 1
+            if seen["n"] == 1:
+                return None
+        return await kl(pair, interval, limit)
+    now = int(bars["BTCUSDT"][0][-1]) + BAR + 6_000
+    tr = AC.AltCorrTracker(fetch_klines=flaky_alt, fetch_universe=uni)
+    v = asyncio.run(tr.refresh(now))
+    ok = asyncio.run(AC.AltCorrTracker(fetch_klines=kl, fetch_universe=uni).refresh(now))
+    assert seen["n"] == 2 and tr.retried == 1 and v["n"] == ok["n"] and v["corr"] == ok["corr"]   # re-read → same value as a clean bar
+    st = {"lim": False}
+
+    async def limit_after_first_pass(pair, interval, limit):
+        if pair == "BTCUSDT" and interval == "5m":
+            st["lim"] = True                                                          # the client becomes limited on this read
+            return None
+        return await kl(pair, interval, limit)
+    tr2 = AC.AltCorrTracker(fetch_klines=limit_after_first_pass, fetch_universe=uni, concurrency=30, is_limited=lambda: st["lim"])
+    assert asyncio.run(tr2.refresh(now)) is None and tr2.retried == 0                # no retry while limited, the bar is skipped
+
+
+def test_no_retry_when_every_read_succeeds():
+    bars, names = _market()
+    kl, uni, _ = _fake_fetchers(bars, names)
+    tr = AC.AltCorrTracker(fetch_klines=kl, fetch_universe=uni)
+    asyncio.run(tr.refresh(int(bars["BTCUSDT"][0][-1]) + BAR + 6_000))
+    assert tr.retried == 0
+
+
 def test_too_few_scored_pairs_is_null():
     bars, names = _market()
     rows = {p: _rows(*bars[p]) for p in names[:7]}

@@ -61,6 +61,17 @@ def L(d):   # every current block line → boolean zone (unscored = False, never
      "SURGE_LONG": {"SURGE_BTC_HOT": num(d, "entry_btc_rsi") >= 78, "SURGE_THIN": num(d, "entry_pair_volume_24h_usd") < 150e6},
     }
 LA, LM = L(A), L(M)
+# per-fill zone flags for confidence.py (every line, both pools; unscored → False, as in the best case)
+_z = []
+for _src, _d, _LL in (("B25", A, LA), ("MASTER", M, LM)):
+    for _sl, _lines in _LL.items():
+        _g = _d[_d.sl == _sl]
+        if len(_g):
+            _f = pd.DataFrame({"src": _src, "sl": _sl, "o": _g.o, "pair": _g.pair, "pct": _g.pct})
+            for _ln, _m in _lines.items():
+                _f[_ln] = pd.Series(_m, index=_d.index).reindex(_g.index).fillna(False).astype(bool)
+            _z.append(_f)
+pd.concat(_z, ignore_index=True).to_csv(os.path.join(SC, "zones.csv"), index=False)
 # FB_CONFIRM per fill (fb_combo.csv: cf510 = confirm entry at +5/−10, 0 = skipped)
 FB = pd.read_csv(os.path.join(SC, "fb_combo.csv")); FB["kk"] = FB.k + FB.pair
 fbmap = dict(zip(FB.kk, FB.cf510))

@@ -905,13 +905,13 @@
                                 <th class="px-4 py-3 font-medium text-center">Exit Type</th>
                                 <th class="px-4 py-3 font-medium text-right">Investment</th>
                                 <th class="px-4 py-3 font-medium text-right">Leverage</th>
+                                <th class="px-4 py-3 font-medium text-right" title="Investment × leverage — the position size on the exchange">Notional</th>
                                 <th class="px-4 py-3 font-medium text-right">Entry</th>
                                 <th class="px-4 py-3 font-medium text-right">Exit</th>
                                 <th class="px-4 py-3 font-medium text-right">Total Fee</th>
                                 <th class="px-4 py-3 font-medium text-right">P&L</th>
                                 <th class="px-4 py-3 font-medium text-right">Peak P&L %</th>
                                 <th class="px-4 py-3 font-medium text-right" title="The lowest net P&L % this trade reached since entry">Worst P&L %</th>
-                                <th class="px-4 py-3 font-medium text-center">BE Level</th>
                                 <th class="px-4 py-3 font-medium text-right">Duration</th>
                                 <th class="px-4 py-3 font-medium">Reason</th>
                                 <th class="px-4 py-3 font-medium text-center" title="Entry Quality Score (0-6)">Q</th>
@@ -19823,23 +19823,6 @@
                     const pnlClass = o.pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
                     const confClass = getConfidenceClass(o.confidence);
                     
-                    const beLvl = o.be_level || 0;
-                    const beStop = o.be_stop || 0;
-                    let beBadge;
-                    if (beLvl === 0) {
-                        beBadge = '<span class="text-gray-500">--</span>';
-                    } else if (beLvl === 1) {
-                        beBadge = `<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-500/20 text-yellow-400">L1 (${beStop.toFixed(2)}%)</span>`;
-                    } else if (beLvl === 2) {
-                        beBadge = `<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-emerald-500/20 text-emerald-400">L2 (${beStop.toFixed(2)}%)</span>`;
-                    } else if (beLvl === 3) {
-                        beBadge = `<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-sky-500/20 text-sky-400">L3 (${beStop.toFixed(2)}%)</span>`;
-                    } else if (beLvl === 4) {
-                        beBadge = `<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-purple-500/20 text-purple-400">L4 (${beStop.toFixed(2)}%)</span>`;
-                    } else {
-                        beBadge = `<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-pink-500/20 text-pink-400">L5 (${beStop.toFixed(2)}%)</span>`;
-                    }
-
                     const eot = o.entry_order_type || 'TAKER';
                     const eotBadge = eot === 'MAKER'
                         ? '<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-emerald-500/20 text-emerald-400">MAKER</span>'
@@ -19894,13 +19877,13 @@
                                 return parts.join(' · ');
                             })()}">${formatUSD(o.investment)}</td>
                             <td class="px-4 py-3 text-right">${o.leverage}x</td>
+                            <td class="px-4 py-3 text-right">${Number(o.notional_value) > 0 ? formatUSD(o.notional_value) : (Number(o.investment) > 0 && Number(o.leverage) > 0) ? formatUSD(Number(o.investment) * Number(o.leverage)) : '—'}</td>
                             <td class="px-4 py-3 text-right font-mono">${formatPrice(o.entry_price)}</td>
                             <td class="px-4 py-3 text-right font-mono">${formatPrice(o.exit_price)}</td>
                             <td class="px-4 py-3 text-right text-yellow-400">${formatUSD(o.total_fee)}</td>
                             <td class="px-4 py-3 text-right ${pnlClass} font-medium">${formatUSD(o.pnl)} (${o.pnl_percentage.toFixed(2)}%)</td>
                             <td class="px-4 py-3 text-right ${(o.peak_pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${(o.peak_pnl || 0) >= 0 ? '+' : ''}${(o.peak_pnl || 0).toFixed(2)}%</td>
                             <td class="px-4 py-3 text-right ${(o.trough_pnl ?? 0) < 0 ? 'text-red-400' : 'text-gray-400'} font-medium">${o.trough_pnl == null ? '—' : (o.trough_pnl >= 0 ? '+' : '') + o.trough_pnl.toFixed(2) + '%'}</td>
-                            <td class="px-4 py-3 text-center">${beBadge}</td>
                             <td class="px-4 py-3 text-right font-mono">${o.duration}</td>
                             <td class="px-4 py-3 text-xs">${(() => {
                                 const peakMin = o.post_exit_peak_minutes;

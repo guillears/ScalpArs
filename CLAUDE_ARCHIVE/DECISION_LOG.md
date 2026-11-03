@@ -10587,3 +10587,7 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   - **Prior work it must beat:** reports/LITE_TIMECAP_2026-10-20.md (every LITE / RETRY hard cap 1–8 h ≤ the 12 h cap on every block) and the WILLY time-cap lines (scout_willy_timecap; V2b runs a 90-min cap + late TP +0.25 @30).
   - **Registration glance (B25, NOT analysed, never evidence):** median minutes winners / losers — LITE 27 / 20 · RETRY 19 / 20 · LONG 17 / 27 · WILLY 3 / 17 · WILLY_HT 22 / 46.
   - **Files:** CURRENT_STATE (one line) · NEXT_BATCH_REVIEW_PLAN ②z3. No code / config.
+- (439) 2026-11-03 🖥 **Closed Orders table: BE Level column removed, Notional column added after Leverage (operator)**
+  - **Operator:** "remove the BE LEVEL column, and instead, after the leverage column add the notional investment total … call it Notional".
+  - **Why:** the BE badge was recomputed at read time from the trade's peak vs TODAY's confidence-level BE config (main.py `_compute_be_level`) — never stored, so it could be wrong for old trades; the level actually reached already rides in the Reason (`… L<n>`). Notional (investment × leverage) is the real exchange exposure, the number behind "one stop as % of the account".
+  - **How:** shows the server's `notional_value` (same field as the Open Orders cell), falling back to investment × leverage. Display only — no engine / config / CSV change (`notional_value` is already an orders-CSV column). Open Orders keeps its BE badge.

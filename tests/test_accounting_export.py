@@ -357,8 +357,16 @@ def test_build_paper_marked_and_binance_free():
 
 def test_dashboard_controls():
     html = open(os.path.join(ROOT, "templates", "index.html")).read()
-    assert 'id="acct-mode"' in html and '<option value="paper">Paper (check)</option>' in html
-    assert "onclick=\"_acctDownload(this)\"" in html and "q.push('mode=' + encodeURIComponent(m));" in html
+    assert 'id="acct-mode"' not in html and "Paper (check)" not in html and "q.push('mode=" not in html   # the bot's mode decides (DL 458)
+    assert "onclick=\"_acctDownload(this)\"" in html and "isPaperMode ? 'Accounting (paper)' : 'Accounting'" in html
+    assert html.count("try { _acctLabel(); } catch (e) {}") == 3                            # poll + mode switch + after an export
     assert "fetch(_acctUrl('/api/accounting/prepare'), {method: 'POST'})" in html          # prepare → poll → save
     assert 'id="acct-statements"' in html and 'id="auto-acct-toggle"' in html
     assert "if (last === null) {" in html and "for (const x of ready.filter(x => x.month > last))" in html   # first visit remembers; each new month once
+
+
+def test_prepare_follows_bot_mode():
+    import inspect
+    import main
+    src = inspect.getsource(main.accounting_prepare)
+    assert "mode: Optional[str] = None" in src and "bool(trading_engine.is_paper_mode)" in src and 'mode must be live or paper' in src

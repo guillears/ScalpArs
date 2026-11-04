@@ -2923,10 +2923,14 @@ def _accounting_job_gc():
 
 
 @app.post("/api/accounting/prepare")
-async def accounting_prepare(start: Optional[str] = None, end: Optional[str] = None, mode: str = "live", db: AsyncSession = Depends(get_db)):
-    """→ {job}: poll /api/accounting/job/{job}, then download /api/accounting/job/{job}/file."""
+async def accounting_prepare(start: Optional[str] = None, end: Optional[str] = None, mode: Optional[str] = None, db: AsyncSession = Depends(get_db)):
+    """→ {job}: poll /api/accounting/job/{job}, then download /api/accounting/job/{job}/file. mode omitted = the bot's current mode
+    (DECISION_LOG 458, operator: "in live we should download live and in paper paper"); ?mode=live|paper still forces one (scripts)."""
     from services import accounting_export as _AE
-    paper = (mode or "live").strip().lower() == "paper"
+    _m = (mode or "").strip().lower()
+    if _m not in ("", "live", "paper"):
+        raise HTTPException(status_code=400, detail="mode must be live or paper")
+    paper = (_m == "paper") if _m else bool(trading_engine.is_paper_mode)
     lo_ms, hi_ms = await _accounting_period(db, start, end, paper)
     _accounting_job_gc()
     job = _secrets.token_hex(8)

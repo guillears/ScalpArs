@@ -1130,15 +1130,11 @@
                         <span id="auto-decisions-status" class="text-gray-500"></span>
                     </label>
                     <!-- 📒 (DECISION_LOG 455 / 456) accountant export: Live (real account) or Paper (check only), USDT, UTC; empty dates = from the first trade of the chosen mode to now -->
-                    <span class="flex items-center gap-1 text-xs text-gray-400 whitespace-nowrap" title="📒 For your accountant: Live = your real account (from Binance's own records); Paper = a check only (marked NOT for accounting). USDT, Argentina time (UTC-3). One Excel file: futures trades · monthly summary checked against Binance's own records · transfers · spot trades, holdings and sold lots. Empty dates: Live = every whole month Binance still holds (about 3 months), Paper = since the first paper trade (to = inclusive).">
+                    <span class="flex items-center gap-1 text-xs text-gray-400 whitespace-nowrap" title="📒 For your accountant: Follows the bot's mode: LIVE = your real account (from Binance's own records); PAPER = a check only (marked NOT for accounting). USDT, Argentina time (UTC-3). One Excel file: futures trades · monthly summary checked against Binance's own records · transfers · spot trades, holdings and sold lots. Empty dates: LIVE = every whole month Binance still holds (about 3 months), PAPER = since the first paper trade (to = inclusive).">
                         📒 From <input type="date" id="acct-from" class="bg-gray-800 border border-white/10 rounded px-1 py-0.5 text-xs text-gray-200">
                         to <input type="date" id="acct-to" class="bg-gray-800 border border-white/10 rounded px-1 py-0.5 text-xs text-gray-200">
                     </span>
-                    <select id="acct-mode" class="bg-gray-800 border border-white/10 rounded px-1 py-0.5 text-xs text-gray-200" title="Live = your real Binance account (for the accountant) · Paper = the simulated trades, a check only (marked NOT for accounting)">
-                        <option value="live">Live</option>
-                        <option value="paper">Paper (check)</option>
-                    </select>
-                    <button id="download-accounting-xlsx-btn" type="button" class="px-3 py-1.5 bg-amber-700 hover:bg-amber-600 text-white text-sm font-medium rounded transition-colors" title="📒 Accountant Excel for the dates chosen (Argentina days, UTC-3). Live: built from Binance's own fills, fees and funding — futures trades · monthly summary · transfers · spot (read-only; can take a minute). Paper: trades + monthly totals, marked NOT for accounting." onclick="_acctDownload(this)">Accounting</button>
+                    <button id="download-accounting-xlsx-btn" type="button" class="px-3 py-1.5 bg-amber-700 hover:bg-amber-600 text-white text-sm font-medium rounded transition-colors" title="📒 Accountant Excel for the dates chosen (Argentina days, UTC-3), in the bot's current mode. Live: built from Binance's own fills, fees and funding — futures trades · monthly summary · transfers · spot (read-only; can take a minute). Paper: trades + monthly totals, marked NOT for accounting." onclick="_acctDownload(this)">Accounting</button>
                     <!-- 📒 (DECISION_LOG 457) the stored monthly statements (built on day 2 of the next month, Argentina time) + auto-download -->
                     <select id="acct-statements" class="bg-gray-800 border border-white/10 rounded px-1 py-0.5 text-xs text-gray-200" title="📒 Monthly statements: one Excel per month (Argentina time, UTC-3), built automatically on day 2 of the next month from Binance's own records and kept on the server for good. Pick a month to download it." onchange="_acctStatementPick(this)">
                         <option value="">Monthly statements…</option>
@@ -9583,6 +9579,7 @@
                     runtimeSeconds = data.runtime_seconds;
                 }
                 isPaperMode = data.is_paper_mode;
+                try { _acctLabel(); } catch (e) {}   // 📒 (DECISION_LOG 458) the Accounting button follows the bot's mode
                 {   // 🛡 (DECISION_LOG 292 ②) Binance positions the bot has no open row for — entries on them are blocked
                     const _ua = document.getElementById('untracked-alert');
                     const _ul = Array.isArray(data.untracked_positions) ? data.untracked_positions : [];
@@ -10108,6 +10105,7 @@
                     }
                 }
                 isPaperMode = enabled;
+                try { _acctLabel(); } catch (e) {}
                 e.target.checked = !enabled;   // 🛡 (293) checked = LIVE — a poll may have redrawn the old side mid-switch
                 loadBalance();
                 loadOpenOrders();
@@ -25069,10 +25067,8 @@
         // 📒 (DECISION_LOG 455) accountant export URL: optional from / to (UTC days, to inclusive) + a cache-buster
         function _acctUrl(base){
             const q = [], f = (document.getElementById('acct-from') || {}).value, t = (document.getElementById('acct-to') || {}).value;
-            const m = (document.getElementById('acct-mode') || {}).value || 'live';
             if (f) q.push('start=' + encodeURIComponent(f));
             if (t) q.push('end=' + encodeURIComponent(t));
-            q.push('mode=' + encodeURIComponent(m));
             q.push('t=' + Date.now());
             return base + '?' + q.join('&');
         }
@@ -25087,6 +25083,11 @@
             let msg = `Export failed (${r.status})`;
             try { const j = await r.json(); if (j && j.detail) msg = (typeof j.detail === 'string') ? j.detail : JSON.stringify(j.detail); } catch (e) {}
             return msg;
+        }
+        // 📒 (DECISION_LOG 458, operator) no Live / Paper selector: the server exports the bot's current mode; the label says which
+        function _acctLabel(){
+            const b = document.getElementById('download-accounting-xlsx-btn');
+            if (b && !b.disabled) b.textContent = isPaperMode ? 'Accounting (paper)' : 'Accounting';
         }
         async function _acctDownload(btn){
             const label = btn.textContent;
@@ -25108,6 +25109,7 @@
                 alert('📒 Export failed: ' + (e && e.message ? e.message : e));
             } finally {
                 btn.disabled = false; btn.textContent = label;
+                try { _acctLabel(); } catch (e) {}   // a mode switch during the export: the label follows the mode now
             }
         }
         // 📒 monthly statements list + auto-download (each new READY month once, per browser; on by default)

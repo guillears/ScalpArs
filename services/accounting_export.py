@@ -45,6 +45,7 @@ TRADE_COLS = ["Close date (UTC-3)", "Open date (UTC-3)", "Symbol", "Side", "Quan
 MONTH_COLS = ["Month", "Trades", "Wins", "Losses", "Gross P&L (USDT)", "Trading fees (USDT)", "Funding (USDT)", "Net P&L (USDT)",
               "Binance net P&L (check)", "Difference", "Deposits (USDT)", "Withdrawals (USDT)", "Net transfers into futures (USDT)",
               "End-of-month futures balance (USDT)"]
+TRADE_COLS_LIVE = TRADE_COLS + ["Open order ID", "Close order ID"]   # 🧾 (DECISION_LOG 460) Binance orders — the same kind of reference on every row
 TRANSFER_COLS = ["Date (UTC-3)", "Type", "Asset", "Amount"]
 SPOT_TRADE_COLS = ["Date (UTC-3)", "Symbol", "Side", "Quantity", "Price", "Total (USDT)", "Fee (USDT)"]
 HOLDING_COLS = ["Asset", "Quantity", "Average buy price (USDT)", "Cost (USDT)", "Current price (USDT)", "Current value (USDT)",
@@ -251,6 +252,39 @@ def spot_fifo(fills: List[dict], base_of: Dict[str, str], usd: Callable[[str, in
 
 
 # ── writers (pure) ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+# 🔢 (DECISION_LOG 460, operator: "numbers … with 2 decimals") display formats only — the cell keeps the full value
+_FMT_MONEY, _FMT_PRICE, _FMT_INT = "#,##0.00", "#,##0.00######", "#,##0"
+STYLE = {None: (0, 1), "money": (3, 4), "price": (5, 6), "int": (7, 8)}   # (plain, bold TOTAL) cellXfs index per column kind
+_PRICE_WORDS = ("price", "quantity", "amount")
+
+
+def col_kind(name: str) -> Optional[str]:
+    """a column header → money (USDT, 2 decimals) · price (prices / quantities / coin amounts: ≥ 2, ≤ 8 decimals) · int · None (text)."""
+    n = name.lower()
+    if any(w in n for w in _PRICE_WORDS):
+        return "price"
+    if n in ("trades", "wins", "losses"):
+        return "int"                                       # leverage stays General: a 2.5× bracket leverage never shows as 3
+    if "(usdt)" in n or n in ("binance net p&l (check)", "difference"):
+        return "money"
+    return None
+
+
+def _shown(v, kind) -> str:
+    """the text a cell displays under its format (column widths: a formatted number never shows as ####)."""
+    if v is None:
+        return ""
+    if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(float(v)):
+        if kind == "money":
+            return f"{v:,.2f}"
+        if kind == "price":
+            t = f"{v:,.8f}".rstrip("0")
+            return t + "0" * max(0, 2 - len(t.split(".")[1])) if "." in t else t
+        if kind == "int":
+            return f"{v:,.0f}"
+    return str(v)
+
+
 def _col(i: int) -> str:
     s = ""
     i += 1
@@ -274,7 +308,8 @@ def _cell(ref: str, v, style: int = 0) -> str:
 
 
 def _sheet_xml(cols: List[str], rows: List[dict], notes: List[str]) -> str:
-    widths = [max([len(c)] + [len(str(r.get(c) if r.get(c) is not None else "")) for r in rows]) for c in cols]
+    kinds = [col_kind(c) for c in cols]
+    widths = [max([len(c)] + [len(_shown(r.get(c), k)) for r in rows]) for c, k in zip(cols, kinds)]
     cx = "".join(f'<col min="{i + 1}" max="{i + 1}" width="{min(60, w + 2)}" customWidth="1"/>' for i, w in enumerate(widths))
     out, n = [], 1
     for t in notes:
@@ -287,7 +322,7 @@ def _sheet_xml(cols: List[str], rows: List[dict], notes: List[str]) -> str:
     for r in rows:
         n += 1
         bold = 1 if str(r.get(cols[0])) == "TOTAL" else 0
-        out.append(f'<row r="{n}">' + "".join(_cell(f"{_col(i)}{n}", r.get(c), bold) for i, c in enumerate(cols)) + "</row>")
+        out.append(f'<row r="{n}">' + "".join(_cell(f"{_col(i)}{n}", r.get(c), STYLE[kinds[i]][bold]) for i, c in enumerate(cols)) + "</row>")
     pane = (f'<sheetViews><sheetView workbookViewId="0"><pane ySplit="{hdr}" topLeftCell="A{hdr + 1}" activePane="bottomLeft" '
             f'state="frozen"/></sheetView></sheetViews>')
     return ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
@@ -325,11 +360,16 @@ def xlsx_bytes(sheets: List[Tuple[str, List[str], List[dict], List[str]]]) -> by
                              for i in range(len(sheets)))
                    + f'<Relationship Id="rId{len(sheets) + 1}" Type="{rel}/styles" Target="styles.xml"/></Relationships>')
         z.writestr("xl/styles.xml", f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="{ns}">'
+                   f'<numFmts count="2"><numFmt numFmtId="164" formatCode="{_FMT_MONEY}"/><numFmt numFmtId="165" formatCode="{_FMT_PRICE}"/></numFmts>'
                    '<fonts count="3"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font>'
                    '<font><i/><sz val="10"/><name val="Calibri"/></font></fonts>'
                    '<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>'
                    '<borders count="1"><border/></borders><cellStyleXfs count="1"><xf/></cellStyleXfs>'
-                   '<cellXfs count="3"><xf fontId="0"/><xf fontId="1" applyFont="1"/><xf fontId="2" applyFont="1"/></cellXfs></styleSheet>')
+                   '<cellXfs count="9"><xf fontId="0"/><xf fontId="1" applyFont="1"/><xf fontId="2" applyFont="1"/>'
+                   '<xf numFmtId="164" fontId="0" applyNumberFormat="1"/><xf numFmtId="164" fontId="1" applyNumberFormat="1" applyFont="1"/>'
+                   '<xf numFmtId="165" fontId="0" applyNumberFormat="1"/><xf numFmtId="165" fontId="1" applyNumberFormat="1" applyFont="1"/>'
+                   '<xf numFmtId="3" fontId="0" applyNumberFormat="1"/><xf numFmtId="3" fontId="1" applyNumberFormat="1" applyFont="1"/>'
+                   '</cellXfs></styleSheet>')
         for i, (_n, cols, rows, notes) in enumerate(sheets):
             z.writestr(f"xl/worksheets/sheet{i + 1}.xml", _sheet_xml(cols, rows, notes))
     return b.getvalue()
@@ -484,6 +524,8 @@ def episode_row(ep, comm_usd: float, funding: float, leverage: Optional[float]) 
             "Exit price": _r(exitp, 8), "Margin (USDT)": _r(size / lev, 2), "Leverage": _r(lev, 2), "Position size (USDT)": _r(size, 2),
             "Gross P&L (USDT)": _r(gross, 4), "Trading fees (USDT)": _r(-comm_usd, 4), "Funding (USDT)": _r(funding, 4),
             "Net P&L (USDT)": _r(net, 4), "Result": "Win" if net > 0 else "Loss",
+            "Open order ID": ", ".join(dict.fromkeys(str(l.fill.order_id) for l in ep.opens() if l.fill.order_id not in (None, "None", ""))),
+            "Close order ID": ", ".join(dict.fromkeys(str(l.fill.order_id) for l in ep.closes() if l.fill.order_id not in (None, "None", ""))),
             "_month": fmt_dt(ep.end_ms)[:7], "_gross": gross, "_fees": -comm_usd, "_funding": funding, "_net": net, "_close_ms": ep.end_ms}
 
 
@@ -579,11 +621,12 @@ async def build_live(lo_ms: int, hi_ms: int, lev_lookup=None, rec=None, bs=None)
     xfers = transfer_rows(income, flows, lo_ms, hi_ms)
     period = f"Period {fmt_dt(lo_ms)} → {fmt_dt(hi_ms)} (UTC-3) · USDT"
     sheets = [
-        ("Futures trades", TRADE_COLS, strip_private(trades, TRADE_COLS),
+        ("Futures trades", TRADE_COLS_LIVE, strip_private(trades, TRADE_COLS_LIVE),
          [period, "One row per futures position closed in the period, rebuilt from Binance's own fills: gross P&L = Binance's realized "
                   "P&L, trading fees = the commission Binance charged, funding = paid / received while open. Net = gross + fees + funding.",
           "Margin and leverage: the leverage the position was opened with when the platform recorded it, else the coin's leverage setting "
-          "at the time of this file (Binance does not keep the leverage of past trades)."]),
+          "at the time of this file (Binance does not keep the leverage of past trades). Open / Close order ID = the Binance orders that opened and "
+          "closed the position (several → comma-separated), to find each row in Binance's trade history."]),
         ("Monthly summary", MONTH_COLS, months,
          [period, "Binance net P&L (check) = Binance's income history (realized P&L + commissions + funding; BNB fees at the hourly BNB "
                   "price). Difference = this file's net P&L − Binance's (funding outside a closed position, rounding).",

@@ -376,3 +376,36 @@ def test_statements_box_hidden_until_a_month_exists():
     html = open(os.path.join(ROOT, "templates", "index.html")).read()
     assert '<span id="acct-statements-group" class="flex items-center gap-2 whitespace-nowrap" style="display:none">' in html
     assert "grp.style.display = list.length ? '' : 'none';" in html and "Monthly statements…" not in html
+
+
+def test_number_formats_per_column():
+    assert [AE.col_kind(c) for c in ("Margin (USDT)", "Entry price", "Quantity", "Leverage", "Trades", "Difference", "Symbol",
+                                      "Average buy price (USDT)", "Amount")] == ["money", "price", "price", None, "int", "money", None,
+                                                                                  "price", "price"]
+    x = AE.xlsx_bytes([("S", ["Month", "Net P&L (USDT)", "Entry price", "Trades"], [{"Month": "2026-10", "Net P&L (USDT)": 1767.19,
+                                                                                       "Entry price": 0.004863, "Trades": 3},
+                                                                                      {"Month": "TOTAL", "Net P&L (USDT)": 1767.19, "Trades": 3}], [])])
+    z = zipfile.ZipFile(io.BytesIO(x))
+    st, sh = z.read("xl/styles.xml").decode(), z.read("xl/worksheets/sheet1.xml").decode()
+    assert 'formatCode="#,##0.00"' in st and 'formatCode="#,##0.00######"' in st and 'cellXfs count="9"' in st
+    assert '<c r="B2" s="3"><v>1767.19</v></c>' in sh and '<c r="C2" s="5"><v>0.004863</v></c>' in sh and '<c r="D2" s="7"><v>3</v></c>' in sh
+    assert '<c r="B3" s="4"><v>1767.19</v></c>' in sh and '<c r="D3" s="8"><v>3</v></c>' in sh      # TOTAL row: bold, same formats
+    assert '<c r="A2" t="inlineStr"><is><t>2026-10</t></is></c>' in sh                              # text keeps the default style
+
+
+def test_live_rows_carry_binance_order_ids():
+    rec = _FakeRec()
+    lo, hi = AE.month_bounds("2026-10")
+    rows = asyncio.run(AE.futures_from_fills(rec, rec.INCOME, lo, rec.now_ms(), lo, hi, None, rec.now_ms() - AE.INCOME_HORIZON_MS))
+    r = {x["Symbol"]: x for x in rows}
+    assert (r["LINKUSDT"]["Open order ID"], r["LINKUSDT"]["Close order ID"]) == ("1001", "1002")
+    assert (r["ARBUSDT"]["Open order ID"], r["ARBUSDT"]["Close order ID"]) == ("1003", "1004")
+    assert AE.TRADE_COLS_LIVE[-2:] == ["Open order ID", "Close order ID"] and "Open order ID" not in AE.TRADE_COLS   # paper has no real orders
+    assert AE.col_kind("Open order ID") is None                                                    # an ID is text, never 1,001.00
+
+
+def test_column_width_fits_the_formatted_number():
+    assert AE._shown(12345678.0, "price") == "12,345,678.00" and AE._shown(0.004863, "price") == "0.004863"
+    assert AE._shown(1767.19, "money") == "1,767.19" and AE._shown(3, "int") == "3" and AE._shown("x", None) == "x"
+    sh = zipfile.ZipFile(io.BytesIO(AE.xlsx_bytes([("S", ["Quantity"], [{"Quantity": 12345678.0}], [])]))).read("xl/worksheets/sheet1.xml").decode()
+    assert 'width="15"' in sh                                                                     # 13 shown characters + 2

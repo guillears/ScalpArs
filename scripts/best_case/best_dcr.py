@@ -225,16 +225,44 @@ def m_sized(drop, repl, size):
     X = X0
     return r
 B = SCEN["B"]
-for nm, size in (("C1 WILLY 8×", {"FRENZY_WILLY": 8}), ("C2 WILLY 10×", {"FRENZY_WILLY": 10}),
+RESIZES = (("C1 WILLY 8×", {"FRENZY_WILLY": 8}), ("C2 WILLY 10×", {"FRENZY_WILLY": 10}),
                  ("C3 WILLY 10× + FRENZY_LONG ×5 + FLATBASE ×2.5", {"FRENZY_WILLY": 10, "FRENZY_LONG": 5, "FLATBASE_SHORT": 2.5}),
                  ("C4 WILLY 8× + FRENZY_LONG ×5 + FLATBASE ×2.5", {"FRENZY_WILLY": 8, "FRENZY_LONG": 5, "FLATBASE_SHORT": 2.5}),
                  # momentum longs (operator 11-04): today 1× notional (lev 0.25 × invest 0.2) → ×5 = invest 1.0 (5×) · ×10 = lev 0.5 + invest 1.0 (10×, the DL 289 restore)
                  ("C5 C3 + MOMENTUM_LONG ×5", {"FRENZY_WILLY": 10, "FRENZY_LONG": 5, "FLATBASE_SHORT": 2.5, "MOMENTUM_LONG": 5}),
-                 ("C6 C3 + MOMENTUM_LONG ×10", {"FRENZY_WILLY": 10, "FRENZY_LONG": 5, "FLATBASE_SHORT": 2.5, "MOMENTUM_LONG": 10})):
+                 ("C6 C3 + MOMENTUM_LONG ×10", {"FRENZY_WILLY": 10, "FRENZY_LONG": 5, "FLATBASE_SHORT": 2.5, "MOMENTUM_LONG": 10}))
+for nm, size in RESIZES:
     acc = b25_sized(B[0], size)
     per = {sl: RM.dcr_account(acc, acc.sl == sl, "ua", 2900, t0, t1, FLOWS) for sl in size}
     tot = RM.dcr_account(acc, pd.Series(True, index=acc.index), "ua", 2900, t0, t1, FLOWS)
     print(f"{nm}: B25 total {tot:+.3f} %/day · " + " · ".join(f"{k} {v:+.3f}" for k, v in per.items()) + f" | master total {m_sized(B[1], B[2], size):+.3f}")
+# ── CLEAN-ONLY (operator 11-04: "build the clean-only column"): scenario B with ONLY the lines whose CLEAN fills pass the DECISION_LOG 447
+# ladder (past checkpoint ∧ 95 % day range on the line's side → no haircut); a re-size counts only when its gating line passed (FRENZY_LONG's
+# DL 317 stop read is not in this view → never on here). Grows toward the full number as lines pass; equals today while none has.
+import confidence as CF
+RESIZE_GATE = {"FRENZY_WILLY": "WILLY_GAP", "FLATBASE_SHORT": "FB_CONFIRM", "MOMENTUM_LONG": "ML_MKT_HOT", "FRENZY_LONG": None}
+_best = [(r[1], r[6]) for r in rows if r[0] == "B" and r[6]]
+CALLS = CF.line_calls([(sl, ln) for sl, combo in _best for ln in combo.split(" + ")])
+CS = ({}, set(), {})
+for sl, combo in _best:
+    keep = [ln for ln in combo.split(" + ") if CALLS.get((sl, ln)) == "PASS"]
+    exs = [c[5:] for c in keep if c.startswith("EXIT ")]; ex = exs[0] if exs else None
+    blk = [c for c in keep if c != "FB_CONFIRM" and not c.startswith("EXIT ")]
+    CS[0].update(b25_after(sl, blk, "FB_CONFIRM" in keep, ex))
+    if ex:
+        CS[2].update({i: float(fxm[M.loc[i, "kk"]][ex]) for i in M.index[M.sl == sl]})
+    z = pd.Series(False, index=M.index)
+    for ln in blk:
+        z |= LM[sl][ln].fillna(False).astype(bool)
+    CS[1].update(set(M.index[z & (M.sl == sl)]))
+print("\nCLEAN CALLS: " + " · ".join(f"{sl}:{ln} {c}" for (sl, ln), c in CALLS.items()))
+print(f"CLEAN TOTAL B: B25 real path {tb:+.3f} → {b25_dcr(allm, CS[0]):+.3f} %/day · master intended size {mt_b:+.3f} → "
+      f"{m_dcr(SLEEVES, frozenset(CS[1]), CS[2])[0]:+.3f}")
+for nm, size in RESIZES:
+    sz = {sl: f for sl, f in size.items() if RESIZE_GATE.get(sl) and CALLS.get((sl, RESIZE_GATE[sl])) == "PASS"}
+    acc = b25_sized(CS[0], sz)
+    print(f"CLEAN {nm.split()[0]}: B25 total {RM.dcr_account(acc, pd.Series(True, index=acc.index), 'ua', 2900, t0, t1, FLOWS):+.3f} %/day"
+          f" | master total {m_sized(CS[1], CS[2], sz):+.3f} · re-sized: {', '.join(sz) or 'none'}")
 # Spike Fade size line: HEALTHY_BEAR fades at 1× (traded 2×) — alone and on top of OBS-F1
 hbA = A.sl.eq("SPIKE_FADE") & A.entry_btc_regime.astype(str).eq("HEALTHY_BEAR")
 hbM = M.sl.eq("SPIKE_FADE") & M.entry_btc_regime.astype(str).eq("HEALTHY_BEAR")

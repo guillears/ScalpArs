@@ -14,6 +14,8 @@ Per best line (from best_dcr_noflip.csv, plus the FAN flips TP +2 exit):
             average trade and frees slots) yet never provably ADD money (ML_MKT_HOT; operator 11-03 caught the 3,300). FB_CONFIRM's BUILT ON is the current batch before the freeze + 1 B24 fill.
   clean 95 % range  day-clustered bootstrap of the clean mean (4,000 resamples, seed 7); "–" below 3 clean fills.
   backtest  what the backtest said at registration (its scout docstring) — a cross-check, never a veto (MASTER OVER BACKTEST).
+  call      line_calls() — the DECISION_LOG 447 ladder on CLEAN fills (PASS / STRADDLE / AGAINST / PRE); best_dcr.py switches on only PASS
+            lines for the CLEAN-ONLY totals (operator 2026-11-04: "build the clean-only column", the number without the in-sample cut).
 Reads reports/best_case/{zones,best_dcr_noflip,flip_exits,fb_combo}.csv (written by the other steps). Prints a markdown table.
 """
 import os
@@ -75,16 +77,42 @@ def n95_vs_rest(z, r):
     return f"{int(np.ceil(2 * ((1.645 + 0.84) * sd / gap) ** 2))}"
 
 
-def boot(x, days, seed=7, n=4000):
+def boot_range(x, days, seed=7, n=4000):
+    """day-clustered bootstrap 95 % range of the mean → (lo, hi), or None below 3 fills / 3 days."""
     x, days = np.asarray(x, float), np.asarray(days)
     u = np.unique(days)
     if len(x) < 3 or len(u) < 3:                            # 1–2 days: a day bootstrap has no range to speak of
-        return "–"
+        return None
     by = [x[days == d] for d in u]
     rng = np.random.default_rng(seed)
     ms = [np.concatenate([by[i] for i in rng.integers(0, len(u), len(u))]).mean() for _ in range(n)]
     lo, hi = np.percentile(ms, [2.5, 97.5])
-    return f"{lo:+.2f} … {hi:+.2f}".replace("-", "−")
+    return float(lo), float(hi)
+
+
+def boot(x, days, seed=7, n=4000):
+    r = boot_range(x, days, seed, n)
+    return "–" if r is None else f"{r[0]:+.2f} … {r[1]:+.2f}".replace("-", "−")
+
+
+def ladder(clean, cdays, sign, n_min, d_min):
+    """DECISION_LOG 447 line call from CLEAN fills only → PASS (past checkpoint, 95 % range on the line's side: no haircut) · STRADDLE
+    (past checkpoint, range crosses 0) · AGAINST (past checkpoint, range on the wrong side) · PRE (before the checkpoint: haircut stays).
+    sign −1: the line claims the blocked fills lose · +1: claims a gain per trade."""
+    c = pd.Series(clean, dtype=float)
+    d = pd.Series(list(cdays), index=c.index)[c.notna()]
+    c = c.dropna()
+    if len(c) < n_min or d.nunique() < d_min:
+        return "PRE"
+    r = boot_range(c.values, d.values)
+    if r is None:
+        return "PRE"
+    lo, hi = r
+    if (sign < 0 and hi < 0) or (sign > 0 and lo > 0):
+        return "PASS"
+    if (sign < 0 and lo > 0) or (sign > 0 and hi < 0):
+        return "AGAINST"
+    return "STRADDLE"
 
 
 def fmt(x):
@@ -110,9 +138,51 @@ def row(sleeve, line, built, clean, cdays, sign, fz, rest=None):
             f"{len(set(cdays))}/{d_min} days | {boot(c.values, cdays.values)} | {nd} ({gap}) | {nr} | {bt} |")
 
 
-def main():
+def inputs():
+    """→ (Z per-fill zones, fb FB_CONFIRM Δ per signal, fx FAN flips TP +2 Δ per fill) from the pipeline's csv files."""
     Z = pd.read_csv(os.path.join(SC, "zones.csv"), low_memory=False)
     Z["o"] = pd.to_datetime(Z.o, format="mixed")
+    fb = pd.read_csv(os.path.join(SC, "fb_combo.csv"))
+    fb["o"] = pd.to_datetime(fb.k, format="mixed")
+    fb["d"] = fb.cf510 - fb.now510                                 # vs TODAY's exit (+5 / −10), not the +8 / −15 some fills booked
+    fx = pd.read_csv(os.path.join(SC, "flip_exits.csv"))
+    fx["o"] = pd.to_datetime(fx.k, format="mixed")
+    fx["d"] = fx["TP2"] - np.where(fx.src == "B25", fx.booked, fx["stack"])
+    return Z, fb, fx
+
+
+def clean_cohort(line, sleeve, Z, fb, fx):
+    """→ (clean values, their days, sign) — current-batch fills opened ≥ the line's freeze; nothing counts before the freeze is in git."""
+    fz = freeze_ts(LINES[line][0])
+    if line == "FB_CONFIRM":
+        g, v, sign = fb, "d", +1
+        cl = g.iloc[0:0] if fz is None else g[g.o >= fz]
+    elif line == "EXIT TP2":
+        g, v, sign = fx, "d", +1
+        cl = g.iloc[0:0] if fz is None else g[(g.src == "B25") & (g.o >= fz)]
+    else:
+        g, v, sign = Z[(Z.sl == sleeve) & Z[line].fillna(False).astype(bool)], "pct", -1
+        cl = g.iloc[0:0] if fz is None else g[(g.src == "B25") & (g.o >= fz)]
+    return cl[v], cl.o.dt.strftime("%Y-%m-%d"), sign
+
+
+def line_calls(pairs, Z=None, fb=None, fx=None):
+    """pairs = [(sleeve, line)] → {(sleeve, line): DL 447 call} (keyed per sleeve: one line name read on two sleeves is two calls);
+    a line without a registered freeze is PRE (never clean)."""
+    if Z is None:
+        Z, fb, fx = inputs()
+    out = {}
+    for sleeve, line in pairs:
+        if line not in LINES:
+            out[(sleeve, line)] = "PRE"
+            continue
+        c, d, sign = clean_cohort(line, sleeve, Z, fb, fx)
+        out[(sleeve, line)] = ladder(c, d, sign, LINES[line][1], LINES[line][2])
+    return out
+
+
+def main():
+    Z, fb, fx = inputs()
     best = pd.read_csv(os.path.join(SC, "best_dcr_noflip.csv"))
     best = best[(best.scen == "B") & best.lines.notna() & (best.lines.astype(str) != "")]
     out = ["| Sleeve | Line | Measured on | Frozen | Built on: N · avg % | Clean since frozen: N · avg % | Checkpoint progress | Clean 95 % range "
@@ -136,17 +206,11 @@ def main():
             keep = keep if fz is None else keep[(keep.src == "MASTER") | (keep.o < fz)]
             rows.append((r.b25_best - r.b25_before, row(r.sleeve, line, pre.pct, cl.pct, cl.o.dt.strftime("%Y-%m-%d"), -1, fz, keep.pct)))
     # FB_CONFIRM: Δ = confirm-entry result − today's-exit result, per signal (a skip books 0)
-    fb = pd.read_csv(os.path.join(SC, "fb_combo.csv"))
     fz = freeze_ts(LINES["FB_CONFIRM"][0])
-    fb["o"] = pd.to_datetime(fb.k, format="mixed")
-    fb["d"] = fb.cf510 - fb.now510                                 # vs TODAY's exit (+5 / −10), not the +8 / −15 some fills booked
     pre, cl = (fb, fb.iloc[0:0]) if fz is None else (fb[fb.o < fz], fb[fb.o >= fz])
     rows.append((9, row("FLATBASE_SHORT", "FB_CONFIRM", pre.d, cl.d, cl.o.dt.strftime("%Y-%m-%d"), +1, fz)))
     # FAN flips TP +2: Δ = TP2 − booked (current batch) / − stack (master)
-    fx = pd.read_csv(os.path.join(SC, "flip_exits.csv"))
     fz = freeze_ts(LINES["EXIT TP2"][0])
-    fx["o"] = pd.to_datetime(fx.k, format="mixed")
-    fx["d"] = fx["TP2"] - np.where(fx.src == "B25", fx.booked, fx["stack"])
     if fz is None:
         pre, cl = fx, fx.iloc[0:0]
     else:

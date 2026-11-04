@@ -227,7 +227,10 @@ def m_sized(drop, repl, size):
 B = SCEN["B"]
 for nm, size in (("C1 WILLY 8×", {"FRENZY_WILLY": 8}), ("C2 WILLY 10×", {"FRENZY_WILLY": 10}),
                  ("C3 WILLY 10× + FRENZY_LONG ×5 + FLATBASE ×2.5", {"FRENZY_WILLY": 10, "FRENZY_LONG": 5, "FLATBASE_SHORT": 2.5}),
-                 ("C4 WILLY 8× + FRENZY_LONG ×5 + FLATBASE ×2.5", {"FRENZY_WILLY": 8, "FRENZY_LONG": 5, "FLATBASE_SHORT": 2.5})):
+                 ("C4 WILLY 8× + FRENZY_LONG ×5 + FLATBASE ×2.5", {"FRENZY_WILLY": 8, "FRENZY_LONG": 5, "FLATBASE_SHORT": 2.5}),
+                 # momentum longs (operator 11-04): today 1× notional (lev 0.25 × invest 0.2) → ×5 = invest 1.0 (5×) · ×10 = lev 0.5 + invest 1.0 (10×, the DL 289 restore)
+                 ("C5 C3 + MOMENTUM_LONG ×5", {"FRENZY_WILLY": 10, "FRENZY_LONG": 5, "FLATBASE_SHORT": 2.5, "MOMENTUM_LONG": 5}),
+                 ("C6 C3 + MOMENTUM_LONG ×10", {"FRENZY_WILLY": 10, "FRENZY_LONG": 5, "FLATBASE_SHORT": 2.5, "MOMENTUM_LONG": 10})):
     acc = b25_sized(B[0], size)
     per = {sl: RM.dcr_account(acc, acc.sl == sl, "ua", 2900, t0, t1, FLOWS) for sl in size}
     tot = RM.dcr_account(acc, pd.Series(True, index=acc.index), "ua", 2900, t0, t1, FLOWS)

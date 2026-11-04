@@ -72,8 +72,23 @@ def _read(path, **kw):
     return _CSV[k].copy()
 
 
+_TRUE_LC = ("true", "1", "1.0")
+
+
+def _is_probe(d, sleeve=""):
+    """*_PROBE fires (test-size fills) — never in a sleeve read (full-size-only rule; operator 2026-11-04: the MOMENTUM:LONG cohort carried
+    166 master probes, 324 instead of 158 fills). Master: is_probe (the builder's rule — *_PROBE cells, BEARRUN 1× fills, every WILLY_HT
+    fill); exports: cell_multiplier_source / pattern_cell_source *_PROBE. Any flag drops the row. FRENZY_WILLY_HT is a reduced-size line
+    read as ITS OWN sleeve (DL 341): its master is_probe flag is ignored there, so its master and batch halves match."""
+    m = d["is_probe"].astype(str).str.lower().isin(_TRUE_LC) if ("is_probe" in d and sleeve != "FRENZY_WILLY_HT") else pd.Series(False, index=d.index)
+    for c in ("cell_multiplier_source", "pattern_cell_source"):
+        if c in d:
+            m = m | d[c].astype(str).str.upper().str.contains("PROBE")
+    return m
+
+
 def load_real(sleeve, master=MASTER, exports=None, batch_start=None):
-    """→ the sleeve's real closed fills: master (stack_keep, pnl_percentage := stack_pct) + current-batch exports (as traded), dedup
+    """→ the sleeve's real closed FULL-SIZE fills (*_PROBE out): master (stack_keep, pnl_percentage := stack_pct) + current-batch exports (as traded), dedup
     (opened_at, pair, direction), the newest export wins. 'MOMENTUM:LONG' / 'MOMENTUM:SHORT' = entry_strategy MOMENTUM of that direction."""
     es, dr = (sleeve.split(":", 1) if sleeve.startswith("MOMENTUM:") else (sleeve, ""))
     fr, mkeys = [], set()
@@ -107,7 +122,7 @@ def load_real(sleeve, master=MASTER, exports=None, batch_start=None):
     d = d.sort_values("_rank", kind="stable").drop_duplicates(["opened_at", "pair", "direction"], keep="last")
     d["pnl_percentage"] = pd.to_numeric(d.pnl_percentage, errors="coerce")
     d["pnl_traded"] = pd.to_numeric(d["pnl_traded"], errors="coerce").fillna(d.pnl_percentage) if "pnl_traded" in d else d.pnl_percentage
-    d = d[(d.status.astype(str) == "CLOSED") & d.pnl_percentage.notna()]
+    d = d[(d.status.astype(str) == "CLOSED") & d.pnl_percentage.notna() & ~_is_probe(d, es)]   # FULL-SIZE only (DECISION_LOG 452)
     if dr:
         d = d[d.direction.astype(str) == dr]
     d = d.reset_index(drop=True)

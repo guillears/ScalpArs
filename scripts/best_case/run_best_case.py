@@ -34,7 +34,8 @@ LABELS = {"EXIT TP1.5": "Exit TP +1.5", "EXIT TP2": "Exit TP +2", "EXIT TP3": "E
           "MKT_HOT": "Market-hot", "FB_CONFIRM": "FB_CONFIRM (live)"}
 NUM = r"([-+]?(?:\d+\.?\d*|nan|inf))"
 SCEN = [("TOTAL B", "Watch lines only"), ("C1", "+ WILLY at 8×"), ("C2", "+ WILLY at 10×"),
-        ("C3", "+ WILLY 10×, FRENZY_LONG ×5, Flatbase 0.5"), ("C4", "+ WILLY 8×, FRENZY_LONG ×5, Flatbase 0.5")]
+        ("C3", "+ WILLY 10×, FRENZY_LONG ×5, Flatbase 0.5"), ("C4", "+ WILLY 8×, FRENZY_LONG ×5, Flatbase 0.5"),
+        ("C5", "+ WILLY 10×, FRENZY_LONG ×5, Flatbase 0.5, Momentum Long ×5"), ("C6", "+ WILLY 10×, FRENZY_LONG ×5, Flatbase 0.5, Momentum Long ×10")]
 
 
 def step(script, exp):
@@ -49,7 +50,7 @@ def totals(txt):
     if not m:
         sys.exit("best_dcr output changed: the 'TOTAL B:' line was not found — update run_best_case.totals()")
     t = {"today": (float(m[1]), float(m[3])), "TOTAL B": (float(m[2]), float(m[4]))}
-    for k in ("C1", "C2", "C3", "C4"):
+    for k in [k for k, _ in SCEN if k != "TOTAL B"]:
         c = re.search(rf"^{k} .*?B25 total {NUM} %/day.*master total {NUM}", txt, re.M)
         if not c:
             sys.exit(f"best_dcr output changed: the '{k}' re-size line was not found — update run_best_case.totals()")
@@ -102,7 +103,7 @@ def main(exp):
           "Flatbase's built-on = the current batch before the freeze (its history is short). Backtest = a cross-check, never a veto.", "", conf.strip()]
     L += ["", "FAN flips row: its best line is the TP +2 exit; table ② shows the totals with and without it."]
     L += ["", "Caveats: in-sample (30–50 % haircut minimum) · each re-size waits for its line's frozen read (WILLY_GAP 15 fills, "
-          "Flatbase revert gate, FRENZY_LONG DL 317) · master uses today's intended sizes, not the sizes traded.", ""]
+          "Flatbase revert gate, FRENZY_LONG DL 317, Momentum Long ML_MKT_HOT 15 fills on 8 days and a clean edge above 0 — DL 450) · master uses today's intended sizes, not the sizes traded.", ""]
     p = os.path.join(OUT, f"BEST_CASE_{stamp}.md")
     open(p, "w").write("\n".join(L))
     print("\n".join(L))

@@ -61,6 +61,20 @@ def test_momentum_direction_split_and_batch_start(tmp_path):
     assert len(SW.load_real("MOMENTUM:LONG", master=None, exports=[ep], batch_start="2027-01-01")) == 0   # before the batch → master's job
 
 
+def test_load_real_drops_probes(tmp_path):
+    """full-size only (operator 2026-11-04): a master is_probe row and an export *_PROBE cell never enter a sleeve read."""
+    m = _rows(6, strat="MOMENTUM").assign(is_probe=[True, False, "True", False, False, False], cell_multiplier_source="UNMATCHED")
+    mp = _master(str(tmp_path), m)
+    b = _rows(4, strat="MOMENTUM", start="2026-10-24", seed=2).assign(cell_multiplier_source=["GAP_PROBE", "UNMATCHED", "W2", "rsiadx_probe"])
+    ep = os.path.join(str(tmp_path), "e.csv"); b.to_csv(ep, index=False)
+    d = SW.load_real("MOMENTUM:LONG", master=mp, exports=[ep], batch_start="2026-01-01")
+    assert len(d) == 4 + 2                                                 # 4 full-size master + 2 full-size batch
+    assert not d.cell_multiplier_source.astype(str).str.upper().str.contains("PROBE").any()
+    ht = _rows(3, strat="FRENZY_WILLY_HT").assign(is_probe=True, cell_multiplier_source="", pattern_cell_source=["", "X_PROBE", ""])
+    h = SW.load_real("FRENZY_WILLY_HT", master=_master(str(tmp_path), ht), exports=[], batch_start="2026-01-01")
+    assert len(h) == 2                                                     # HT = its own sleeve (builder flags it is_probe); a *_PROBE pattern still out
+
+
 def test_run_finds_a_real_separator_and_lists_blind_spots(tmp_path):
     mp = _master(str(tmp_path), _rows(60))
     R = SW.run("SURGE_LONG", master=mp, exports=[])

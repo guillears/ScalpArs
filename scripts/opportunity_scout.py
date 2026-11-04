@@ -1535,6 +1535,14 @@ def run():
     except Exception as _rbt_e:
         log(f"RETRY_BTC1H line failed: {_rbt_e}")
         _rg_sec += ["## 👁 RETRY_BTC1H", "", f"Unavailable this run ({str(_rbt_e)[:120]}).", ""]
+    try:                                               # 👁 Nov-4 G51_BAND1_MOVING — momentum LONGs refused only by gate-51 band ①, split by BTC 24 h range ≥ 2.5 % (DECISION_LOG 463; decisions exports + budgeted public 1m; never breaks the run)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_g51_band1_watch as _g51b
+        _rg_sec += _g51b.run(now_ms)
+    except Exception as _g51b_e:
+        log(f"G51_BAND1_MOVING line failed: {_g51b_e}")
+        _rg_sec += ["## 👁 G51_BAND1_MOVING", "", f"Unavailable this run ({str(_g51b_e)[:120]}).", ""]
     try:                                               # 👁 Nov-2 LITE_BTC1H_RISING — FRENZY_LITE with BTC 1 h slope > 0, frozen expectancy bar (DECISION_LOG 437; forward)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

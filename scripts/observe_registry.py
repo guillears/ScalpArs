@@ -77,7 +77,8 @@ EXIT = {
     "scout_surge_obs.py": dict(dl="202 · 203", sleeves="SURGE_LONG", walks={"surge_long_exit_no_lock": True}),
     "study_surge_exit_grid.py": dict(dl="397", sleeves="SURGE_LONG", walks={"surge_long_exit_no_lock": True}),
 }
-PROXY = {"scout_bearrun_v2.py": "359", "scout_bearrun_r24.py": "369"}
+PROXY = {"scout_bearrun_v2.py": "359", "scout_bearrun_r24.py": "369",
+         "scout_g51_band1_watch.py": "463"}   # 👁 (463) refused band-① signals on the audit's +0.40 / −0.70 ruler, never the live exit
 BOOKED = {   # booked P&L — `era` = drops fills by WILLY exit era (registered on the old +1.25 exit)
     "scout_b1h_negflank.py": None, "scout_fade_late_weak.py": None, "scout_fade_watch.py": None,
     # review M5: booked WR judged against TODAY's breakeven over FRENZY fills spanning exit eras (LONG −3 → −4, LITE pre-C)

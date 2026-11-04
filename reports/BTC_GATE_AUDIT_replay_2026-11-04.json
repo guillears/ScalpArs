@@ -1,0 +1,1559 @@
+[
+ {
+  "t": "2026-11-04T01:11:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "ERAUSDT",
+  "why": "BTC ADX 40.4 >40.0 (range [18.0-40.0])",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 2
+ },
+ {
+  "t": "2026-11-04T02:05:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "QNTUSDT",
+  "why": "BTC RSI 52.1 in [50.0-55.0) requires 99.0<=ADX<=100.0, got 31.9",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 7
+ },
+ {
+  "t": "2026-11-04T02:05:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "XMRUSDT",
+  "why": "BTC RSI 52.1 in [50.0-55.0) requires 99.0<=ADX<=100.0, got 31.9",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 2
+ },
+ {
+  "t": "2026-11-04T02:06:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "ARBUSDT",
+  "why": "BTC RSI 52.1 in [50.0-55.0) requires 99.0<=ADX<=100.0, got 29.7",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 12
+ },
+ {
+  "t": "2026-11-04T02:06:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "AVAXUSDT",
+  "why": "BTC RSI 52.1 in [50.0-55.0) requires 99.0<=ADX<=100.0, got 29.7",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 19
+ },
+ {
+  "t": "2026-11-04T02:08:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "ERAUSDT",
+  "why": "BTC RSI 51.6 in [50.0-55.0) requires 99.0<=ADX<=100.0, got 29.6",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 11
+ },
+ {
+  "t": "2026-11-04T03:11:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "WLFIUSDT",
+  "why": "BTC ADX 41.6 >40.0 (range [18.0-40.0])",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 13
+ },
+ {
+  "t": "2026-11-04T03:56:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "1000PEPEUSDT",
+  "why": "BTC RSI 50.6 in [50.0-55.0) requires 99.0<=ADX<=100.0, got 30.2",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 7
+ },
+ {
+  "t": "2026-11-04T03:56:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "OPUSDT",
+  "why": "BTC RSI 50.6 in [50.0-55.0) requires 99.0<=ADX<=100.0, got 30.2",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 6
+ },
+ {
+  "t": "2026-11-04T03:56:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "QNTUSDT",
+  "why": "BTC RSI 50.6 in [50.0-55.0) requires 99.0<=ADX<=100.0, got 30.2",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 8
+ },
+ {
+  "t": "2026-11-04T03:56:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "UNIUSDT",
+  "why": "BTC RSI 50.6 in [50.0-55.0) requires 99.0<=ADX<=100.0, got 30.2",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 6
+ },
+ {
+  "t": "2026-11-04T04:02:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "AVAXUSDT",
+  "why": "BTC RSI 50.2 in [50.0-55.0) requires 99.0<=ADX<=100.0, got 28.3",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 8
+ },
+ {
+  "t": "2026-11-04T04:05:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "AAVEUSDT",
+  "why": "BTC RSI 55.0 in [55.0-60.0) requires 20.0<=ADX<=25.0, got 28.0",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 3
+ },
+ {
+  "t": "2026-11-04T04:05:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "DOTUSDT",
+  "why": "BTC RSI 55.0 in [55.0-60.0) requires 20.0<=ADX<=25.0, got 28.0",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 6
+ },
+ {
+  "t": "2026-11-04T04:05:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "TAOUSDT",
+  "why": "BTC RSI 55.0 in [55.0-60.0) requires 20.0<=ADX<=25.0, got 28.0",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 6
+ },
+ {
+  "t": "2026-11-04T04:07:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "APTUSDT",
+  "why": "BTC RSI 53.9 in [50.0-55.0) requires 99.0<=ADX<=100.0, got 28.0",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 2
+ },
+ {
+  "t": "2026-11-04T04:07:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "ARBUSDT",
+  "why": "BTC RSI 53.9 in [50.0-55.0) requires 99.0<=ADX<=100.0, got 28.0",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 2
+ },
+ {
+  "t": "2026-11-04T04:07:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "INJUSDT",
+  "why": "BTC RSI 53.9 in [50.0-55.0) requires 99.0<=ADX<=100.0, got 28.0",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 2
+ },
+ {
+  "t": "2026-11-04T04:07:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "LTCUSDT",
+  "why": "BTC RSI 53.9 in [50.0-55.0) requires 99.0<=ADX<=100.0, got 28.0",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 4
+ },
+ {
+  "t": "2026-11-04T04:07:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "PENGUUSDT",
+  "why": "BTC RSI 53.9 in [50.0-55.0) requires 99.0<=ADX<=100.0, got 28.0",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 2
+ },
+ {
+  "t": "2026-11-04T04:07:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "STRKUSDT",
+  "why": "BTC RSI 53.9 in [50.0-55.0) requires 99.0<=ADX<=100.0, got 28.0",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 3
+ },
+ {
+  "t": "2026-11-04T04:07:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "TIAUSDT",
+  "why": "BTC RSI 53.9 in [50.0-55.0) requires 99.0<=ADX<=100.0, got 28.0",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 2
+ },
+ {
+  "t": "2026-11-04T04:07:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "WLFIUSDT",
+  "why": "BTC RSI 53.9 in [50.0-55.0) requires 99.0<=ADX<=100.0, got 28.0",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 4
+ },
+ {
+  "t": "2026-11-04T04:09:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "LITUSDT",
+  "why": "BTC RSI 56.3 in [55.0-60.0) requires 20.0<=ADX<=25.0, got 28.0",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 2
+ },
+ {
+  "t": "2026-11-04T04:10:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "WLDUSDT",
+  "why": "BTC RSI 58.8 in [55.0-60.0) requires 20.0<=ADX<=25.0, got 28.7",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 1
+ },
+ {
+  "t": "2026-11-04T04:16:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "FETUSDT",
+  "why": "BTC RSI 59.9 in [55.0-60.0) requires 20.0<=ADX<=25.0, got 29.5",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 11
+ },
+ {
+  "t": "2026-11-04T04:16:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "HYPEUSDT",
+  "why": "BTC RSI 59.9 in [55.0-60.0) requires 20.0<=ADX<=25.0, got 29.5",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 28
+ },
+ {
+  "t": "2026-11-04T04:16:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "ONDOUSDT",
+  "why": "BTC RSI 59.9 in [55.0-60.0) requires 20.0<=ADX<=25.0, got 29.5",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 17
+ },
+ {
+  "t": "2026-11-04T04:21:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "BCHUSDT",
+  "why": "BTC RSI 59.4 in [55.0-60.0) requires 20.0<=ADX<=25.0, got 29.8",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 26
+ },
+ {
+  "t": "2026-11-04T04:21:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "XLMUSDT",
+  "why": "BTC RSI 59.4 in [55.0-60.0) requires 20.0<=ADX<=25.0, got 29.8",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 27
+ },
+ {
+  "t": "2026-11-04T04:23:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "ENAUSDT",
+  "why": "BTC RSI 56.0 in [55.0-60.0) requires 20.0<=ADX<=25.0, got 29.4",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 16
+ },
+ {
+  "t": "2026-11-04T04:24:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "ADAUSDT",
+  "why": "BTC RSI 53.3 in [50.0-55.0) requires 99.0<=ADX<=100.0, got 28.9",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 19
+ },
+ {
+  "t": "2026-11-04T04:24:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "LINKUSDT",
+  "why": "BTC RSI 53.3 in [50.0-55.0) requires 99.0<=ADX<=100.0, got 28.9",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 20
+ },
+ {
+  "t": "2026-11-04T04:26:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "1000SHIBUSDT",
+  "why": "BTC RSI 55.5 in [55.0-60.0) requires 20.0<=ADX<=25.0, got 28.4",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 17
+ },
+ {
+  "t": "2026-11-04T04:26:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "DOGEUSDT",
+  "why": "BTC RSI 55.5 in [55.0-60.0) requires 20.0<=ADX<=25.0, got 28.4",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 21
+ },
+ {
+  "t": "2026-11-04T04:26:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "SUIUSDT",
+  "why": "BTC RSI 55.5 in [55.0-60.0) requires 20.0<=ADX<=25.0, got 28.4",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 16
+ },
+ {
+  "t": "2026-11-04T04:30:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "BNBUSDT",
+  "why": "BTC RSI 58.4 in [55.0-60.0) requires 20.0<=ADX<=25.0, got 27.9",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 15
+ },
+ {
+  "t": "2026-11-04T04:30:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "SOLUSDT",
+  "why": "BTC RSI 58.4 in [55.0-60.0) requires 20.0<=ADX<=25.0, got 27.9",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 17
+ },
+ {
+  "t": "2026-11-04T04:40:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "XPLUSDT",
+  "why": "BTC RSI 54.4 in [50.0-55.0) requires 99.0<=ADX<=100.0, got 26.4",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 7
+ },
+ {
+  "t": "2026-11-04T04:43:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "1000PEPEUSDT",
+  "why": "BTC RSI 58.9 in [55.0-60.0) requires 20.0<=ADX<=25.0, got 26.1",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 3
+ },
+ {
+  "t": "2026-11-04T04:43:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "QNTUSDT",
+  "why": "BTC RSI 58.9 in [55.0-60.0) requires 20.0<=ADX<=25.0, got 26.1",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 4
+ },
+ {
+  "t": "2026-11-04T04:43:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "UNIUSDT",
+  "why": "BTC RSI 58.9 in [55.0-60.0) requires 20.0<=ADX<=25.0, got 26.1",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 4
+ },
+ {
+  "t": "2026-11-04T04:55:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "LTCUSDT",
+  "why": "BTC RSI 70.2 in [70.0-100.0) requires ADX>=40.0, got 28.4",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 40
+ },
+ {
+  "t": "2026-11-04T04:58:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "DOTUSDT",
+  "why": "BTC RSI 72.3 in [70.0-100.0) requires ADX>=40.0, got 30.2",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 38
+ },
+ {
+  "t": "2026-11-04T05:37:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "DOGEUSDT",
+  "why": "BTC RSI 70.2 in [70.0-100.0) requires ADX>=40.0, got 37.2",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 5
+ },
+ {
+  "t": "2026-11-04T05:37:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "SUIUSDT",
+  "why": "BTC RSI 70.2 in [70.0-100.0) requires ADX>=40.0, got 37.2",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 4
+ },
+ {
+  "t": "2026-11-04T05:37:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "UNIUSDT",
+  "why": "BTC RSI 70.2 in [70.0-100.0) requires ADX>=40.0, got 37.2",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 4
+ },
+ {
+  "t": "2026-11-04T05:37:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "XMRUSDT",
+  "why": "BTC RSI 70.2 in [70.0-100.0) requires ADX>=40.0, got 37.2",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 30
+ },
+ {
+  "t": "2026-11-04T05:37:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "ZROUSDT",
+  "why": "BTC RSI 70.2 in [70.0-100.0) requires ADX>=40.0, got 37.2",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 2
+ },
+ {
+  "t": "2026-11-04T05:51:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "WLFIUSDT",
+  "why": "BTC ADX 42.2 >40.0 (range [18.0-40.0])",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 5
+ },
+ {
+  "t": "2026-11-04T05:59:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "LITUSDT",
+  "why": "BTC ADX 43.2 >40.0 (range [18.0-40.0])",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 23
+ },
+ {
+  "t": "2026-11-04T06:06:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "SOLUSDT",
+  "why": "BTC ADX 43.6 >40.0 (range [18.0-40.0])",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 81
+ },
+ {
+  "t": "2026-11-04T06:11:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "LINKUSDT",
+  "why": "BTC ADX 44.0 >40.0 (range [18.0-40.0])",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 23
+ },
+ {
+  "t": "2026-11-04T06:19:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "DOTUSDT",
+  "why": "BTC ADX 43.4 >40.0 (range [18.0-40.0])",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 9
+ },
+ {
+  "t": "2026-11-04T06:22:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "DOGEUSDT",
+  "why": "BTC ADX 43.4 >40.0 (range [18.0-40.0])",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 65
+ },
+ {
+  "t": "2026-11-04T06:36:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "TRXUSDT",
+  "why": "BTC ADX 45.1 >40.0 (range [18.0-40.0])",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 298
+ },
+ {
+  "t": "2026-11-04T06:44:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "LITUSDT",
+  "why": "BTC ADX 45.0 >40.0 (range [18.0-40.0])",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 23
+ },
+ {
+  "t": "2026-11-04T06:47:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "HYPEUSDT",
+  "why": "BTC ADX 44.9 >40.0 (range [18.0-40.0])",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 5
+ },
+ {
+  "t": "2026-11-04T06:50:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "QNTUSDT",
+  "why": "BTC ADX 44.8 >40.0 (range [18.0-40.0])",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 39
+ },
+ {
+  "t": "2026-11-04T06:55:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "AVAXUSDT",
+  "why": "BTC ADX 45.1 >40.0 (range [18.0-40.0])",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 10
+ },
+ {
+  "t": "2026-11-04T06:56:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "LINKUSDT",
+  "why": "BTC ADX 45.3 >40.0 (range [18.0-40.0])",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 27
+ },
+ {
+  "t": "2026-11-04T06:56:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "SOLUSDT",
+  "why": "BTC ADX 45.3 >40.0 (range [18.0-40.0])",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 31
+ },
+ {
+  "t": "2026-11-04T07:06:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "XMRUSDT",
+  "why": "BTC ADX 43.6 >40.0 (range [18.0-40.0])",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 13
+ },
+ {
+  "t": "2026-11-04T07:31:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "XLMUSDT",
+  "why": "BTC ADX 45.3 >40.0 (range [18.0-40.0])",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 34
+ },
+ {
+  "t": "2026-11-04T07:32:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "1000PEPEUSDT",
+  "why": "BTC ADX 45.3 >40.0 (range [18.0-40.0])",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 17
+ },
+ {
+  "t": "2026-11-04T07:32:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "HYPEUSDT",
+  "why": "BTC ADX 45.3 >40.0 (range [18.0-40.0])",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 11
+ },
+ {
+  "t": "2026-11-04T07:34:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "ARBUSDT",
+  "why": "BTC ADX 45.3 >40.0 (range [18.0-40.0])",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 20
+ },
+ {
+  "t": "2026-11-04T07:37:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "DOTUSDT",
+  "why": "BTC ADX 45.6 >40.0 (range [18.0-40.0])",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 10
+ },
+ {
+  "t": "2026-11-04T07:42:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "DOGEUSDT",
+  "why": "BTC ADX 45.6 >40.0 (range [18.0-40.0])",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 24
+ },
+ {
+  "t": "2026-11-04T07:42:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "SOLUSDT",
+  "why": "BTC ADX 45.6 >40.0 (range [18.0-40.0])",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 25
+ },
+ {
+  "t": "2026-11-04T07:45:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "AVAXUSDT",
+  "why": "BTC ADX 45.4 >40.0 (range [18.0-40.0])",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 25
+ },
+ {
+  "t": "2026-11-04T07:53:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "STRKUSDT",
+  "why": "BTC ADX 45.1 >40.0 (range [18.0-40.0])",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 7
+ },
+ {
+  "t": "2026-11-04T08:01:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "APTUSDT",
+  "why": "BTC ADX 42.2 >40.0 (range [18.0-40.0])",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 4
+ },
+ {
+  "t": "2026-11-04T08:05:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "LITUSDT",
+  "why": "BTC ADX 42.9 >40.0 (range [18.0-40.0])",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 8
+ },
+ {
+  "t": "2026-11-04T08:21:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "ARBUSDT",
+  "why": "BTC ADX 44.4 >40.0 (range [18.0-40.0])",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 17
+ },
+ {
+  "t": "2026-11-04T08:21:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "RUNEUSDT",
+  "why": "BTC ADX 44.4 >40.0 (range [18.0-40.0])",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 10
+ },
+ {
+  "t": "2026-11-04T08:21:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "XRPUSDT",
+  "why": "BTC ADX 44.4 >40.0 (range [18.0-40.0])",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 114
+ },
+ {
+  "t": "2026-11-04T08:23:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "XLMUSDT",
+  "why": "BTC ADX 44.4 >40.0 (range [18.0-40.0])",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 131
+ },
+ {
+  "t": "2026-11-04T08:24:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "HYPEUSDT",
+  "why": "BTC ADX 44.4 >40.0 (range [18.0-40.0])",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 11
+ },
+ {
+  "t": "2026-11-04T08:26:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "WLFIUSDT",
+  "why": "BTC ADX 44.6 >40.0 (range [18.0-40.0])",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 9
+ },
+ {
+  "t": "2026-11-04T08:27:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "FETUSDT",
+  "why": "BTC ADX 44.6 >40.0 (range [18.0-40.0])",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 34
+ },
+ {
+  "t": "2026-11-04T08:27:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "SOLUSDT",
+  "why": "BTC ADX 44.6 >40.0 (range [18.0-40.0])",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 117
+ },
+ {
+  "t": "2026-11-04T08:35:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "BEAMXUSDT",
+  "why": "BTC ADX 45.0 >40.0 (range [18.0-40.0])",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 5
+ },
+ {
+  "t": "2026-11-04T08:35:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "XMRUSDT",
+  "why": "BTC ADX 45.0 >40.0 (range [18.0-40.0])",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 4
+ },
+ {
+  "t": "2026-11-04T08:38:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "STRKUSDT",
+  "why": "BTC ADX 45.7 >40.0 (range [18.0-40.0])",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 33
+ },
+ {
+  "t": "2026-11-04T08:41:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "HUMAUSDT",
+  "why": "BTC ADX 46.2 >40.0 (range [18.0-40.0])",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 1
+ },
+ {
+  "t": "2026-11-04T08:46:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "APTUSDT",
+  "why": "BTC ADX 46.0 >40.0 (range [18.0-40.0])",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 15
+ },
+ {
+  "t": "2026-11-04T09:13:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "RUNEUSDT",
+  "why": "BTC ADX 42.9 >40.0 (range [18.0-40.0])",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 33
+ },
+ {
+  "t": "2026-11-04T09:20:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "BEAMXUSDT",
+  "why": "BTC RSI 51.7 in [50.0-55.0) requires 99.0<=ADX<=100.0, got 39.9",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 6
+ },
+ {
+  "t": "2026-11-04T09:28:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "ENAUSDT",
+  "why": "BTC RSI 53.7 in [50.0-55.0) requires 99.0<=ADX<=100.0, got 37.7",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 3
+ },
+ {
+  "t": "2026-11-04T09:31:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "STRKUSDT",
+  "why": "BTC RSI 53.1 in [50.0-55.0) requires 99.0<=ADX<=100.0, got 36.2",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 8
+ },
+ {
+  "t": "2026-11-04T09:35:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "OPUSDT",
+  "why": "BTC RSI 58.1 in [55.0-60.0) requires 20.0<=ADX<=25.0, got 37.6",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 12
+ },
+ {
+  "t": "2026-11-04T09:39:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "LITUSDT",
+  "why": "BTC RSI 59.6 in [55.0-60.0) requires 20.0<=ADX<=25.0, got 37.4",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 4
+ },
+ {
+  "t": "2026-11-04T09:41:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "ARBUSDT",
+  "why": "BTC RSI 58.9 in [55.0-60.0) requires 20.0<=ADX<=25.0, got 37.1",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 6
+ },
+ {
+  "t": "2026-11-04T09:46:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "ONDOUSDT",
+  "why": "BTC RSI 58.5 in [55.0-60.0) requires 20.0<=ADX<=25.0, got 36.6",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 83
+ },
+ {
+  "t": "2026-11-04T10:01:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "XRPUSDT",
+  "why": "BTC RSI 51.7 in [50.0-55.0) requires 99.0<=ADX<=100.0, got 35.4",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 23
+ },
+ {
+  "t": "2026-11-04T10:06:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "UNIUSDT",
+  "why": "BTC RSI 54.0 in [50.0-55.0) requires 99.0<=ADX<=100.0, got 34.4",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 9
+ },
+ {
+  "t": "2026-11-04T10:06:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "ZECUSDT",
+  "why": "BTC RSI 54.0 in [50.0-55.0) requires 99.0<=ADX<=100.0, got 34.4",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 5
+ },
+ {
+  "t": "2026-11-04T10:11:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "PUMPUSDT",
+  "why": "BTC RSI 57.6 in [55.0-60.0) requires 20.0<=ADX<=25.0, got 34.5",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 4
+ },
+ {
+  "t": "2026-11-04T10:11:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "XLMUSDT",
+  "why": "BTC RSI 57.6 in [55.0-60.0) requires 20.0<=ADX<=25.0, got 34.5",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 19
+ },
+ {
+  "t": "2026-11-04T10:18:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "AAVEUSDT",
+  "why": "BTC RSI 57.0 in [55.0-60.0) requires 20.0<=ADX<=25.0, got 35.3",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 8
+ },
+ {
+  "t": "2026-11-04T10:18:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "ENAUSDT",
+  "why": "BTC RSI 57.0 in [55.0-60.0) requires 20.0<=ADX<=25.0, got 35.3",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 15
+ },
+ {
+  "t": "2026-11-04T10:18:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "FETUSDT",
+  "why": "BTC RSI 57.0 in [55.0-60.0) requires 20.0<=ADX<=25.0, got 35.3",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 6
+ },
+ {
+  "t": "2026-11-04T10:18:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "TAOUSDT",
+  "why": "BTC RSI 57.0 in [55.0-60.0) requires 20.0<=ADX<=25.0, got 35.3",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 9
+ },
+ {
+  "t": "2026-11-04T10:18:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "XPLUSDT",
+  "why": "BTC RSI 57.0 in [55.0-60.0) requires 20.0<=ADX<=25.0, got 35.3",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 51
+ },
+ {
+  "t": "2026-11-04T10:20:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "LSKUSDT",
+  "why": "BTC RSI 57.8 in [55.0-60.0) requires 20.0<=ADX<=25.0, got 35.3",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 1
+ },
+ {
+  "t": "2026-11-04T10:36:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "LINKUSDT",
+  "why": "BTC RSI 70.3 in [70.0-100.0) requires ADX>=40.0, got 38.8",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 96
+ },
+ {
+  "t": "2026-11-04T10:36:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "TIAUSDT",
+  "why": "BTC RSI 70.3 in [70.0-100.0) requires ADX>=40.0, got 38.8",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 14
+ },
+ {
+  "t": "2026-11-04T10:39:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "DOGEUSDT",
+  "why": "BTC RSI 59.2 in [55.0-60.0) requires 20.0<=ADX<=25.0, got 38.7",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 52
+ },
+ {
+  "t": "2026-11-04T10:39:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "HYPEUSDT",
+  "why": "BTC RSI 59.2 in [55.0-60.0) requires 20.0<=ADX<=25.0, got 38.7",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 55
+ },
+ {
+  "t": "2026-11-04T10:39:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "SOLUSDT",
+  "why": "BTC RSI 59.2 in [55.0-60.0) requires 20.0<=ADX<=25.0, got 38.7",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 49
+ },
+ {
+  "t": "2026-11-04T10:45:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "ADAUSDT",
+  "why": "BTC RSI 56.4 in [55.0-60.0) requires 20.0<=ADX<=25.0, got 39.2",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 25
+ },
+ {
+  "t": "2026-11-04T10:45:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "BCHUSDT",
+  "why": "BTC RSI 56.4 in [55.0-60.0) requires 20.0<=ADX<=25.0, got 39.2",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 61
+ },
+ {
+  "t": "2026-11-04T10:50:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "STRKUSDT",
+  "why": "BTC ADX 40.0 >40.0 (range [18.0-40.0])",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 41
+ },
+ {
+  "t": "2026-11-04T10:59:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "OPUSDT",
+  "why": "BTC ADX 41.7 >40.0 (range [18.0-40.0])",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 59
+ },
+ {
+  "t": "2026-11-04T10:59:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "SUIUSDT",
+  "why": "BTC ADX 41.7 >40.0 (range [18.0-40.0])",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 62
+ },
+ {
+  "t": "2026-11-04T10:59:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "XMRUSDT",
+  "why": "BTC ADX 41.7 >40.0 (range [18.0-40.0])",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 45
+ },
+ {
+  "t": "2026-11-04T11:01:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "ONDOUSDT",
+  "why": "BTC ADX 42.6 >40.0 (range [18.0-40.0])",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 15
+ },
+ {
+  "t": "2026-11-04T11:02:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "PENGUUSDT",
+  "why": "BTC ADX 42.6 >40.0 (range [18.0-40.0])",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 58
+ },
+ {
+  "t": "2026-11-04T11:02:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "WLDUSDT",
+  "why": "BTC ADX 42.6 >40.0 (range [18.0-40.0])",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 7
+ },
+ {
+  "t": "2026-11-04T11:04:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "AAVEUSDT",
+  "why": "BTC ADX 42.0 >40.0 (range [18.0-40.0])",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 8
+ },
+ {
+  "t": "2026-11-04T11:04:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "TAOUSDT",
+  "why": "BTC ADX 42.0 >40.0 (range [18.0-40.0])",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 60
+ },
+ {
+  "t": "2026-11-04T11:10:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "UNIUSDT",
+  "why": "BTC ADX 42.2 >40.0 (range [18.0-40.0])",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 46
+ },
+ {
+  "t": "2026-11-04T11:10:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "XPLUSDT",
+  "why": "BTC ADX 42.2 >40.0 (range [18.0-40.0])",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 7
+ },
+ {
+  "t": "2026-11-04T11:16:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "ENAUSDT",
+  "why": "BTC ADX 44.1 >40.0 (range [18.0-40.0])",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 6
+ },
+ {
+  "t": "2026-11-04T11:21:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "BMTUSDT",
+  "why": "BTC ADX 44.7 >40.0 (range [18.0-40.0])",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 2
+ },
+ {
+  "t": "2026-11-04T11:21:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "TIAUSDT",
+  "why": "BTC ADX 44.7 >40.0 (range [18.0-40.0])",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 48
+ },
+ {
+  "t": "2026-11-04T11:24:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "APTUSDT",
+  "why": "BTC ADX 44.5 >40.0 (range [18.0-40.0])",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 34
+ },
+ {
+  "t": "2026-11-04T11:26:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "DOGEUSDT",
+  "why": "BTC ADX 44.7 >40.0 (range [18.0-40.0])",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 43
+ },
+ {
+  "t": "2026-11-04T11:27:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "1000PEPEUSDT",
+  "why": "BTC ADX 44.7 >40.0 (range [18.0-40.0])",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 13
+ },
+ {
+  "t": "2026-11-04T11:29:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "LINKUSDT",
+  "why": "BTC ADX 44.9 >40.0 (range [18.0-40.0])",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 43
+ },
+ {
+  "t": "2026-11-04T11:32:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "ADAUSDT",
+  "why": "BTC ADX 45.5 >40.0 (range [18.0-40.0])",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 32
+ },
+ {
+  "t": "2026-11-04T11:35:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "AVAXUSDT",
+  "why": "BTC ADX 45.6 >40.0 (range [18.0-40.0])",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 29
+ },
+ {
+  "t": "2026-11-04T11:38:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "BCHUSDT",
+  "why": "BTC ADX 46.1 >40.0 (range [18.0-40.0])",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 23
+ },
+ {
+  "t": "2026-11-04T11:40:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "ZROUSDT",
+  "why": "BTC ADX 46.1 >40.0 (range [18.0-40.0])",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 20
+ },
+ {
+  "t": "2026-11-04T11:41:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "HYPEUSDT",
+  "why": "BTC ADX 45.3 >40.0 (range [18.0-40.0])",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 18
+ },
+ {
+  "t": "2026-11-04T11:44:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "XMRUSDT",
+  "why": "BTC ADX 45.3 >40.0 (range [18.0-40.0])",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 26
+ },
+ {
+  "t": "2026-11-04T11:51:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "AAVEUSDT",
+  "why": "BTC ADX 45.9 >40.0 (range [18.0-40.0])",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 16
+ },
+ {
+  "t": "2026-11-04T12:33:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "BMTUSDT",
+  "why": "BTC ADX 40.9 >40.0 (range [18.0-40.0])",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 3
+ },
+ {
+  "t": "2026-11-04T13:06:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "XMRUSDT",
+  "why": "BTC RSI 51.4 in [50.0-55.0) requires 99.0<=ADX<=100.0, got 34.2",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 6
+ },
+ {
+  "t": "2026-11-04T13:30:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "WLFIUSDT",
+  "why": "BTC RSI 55.0 in [50.0-55.0) requires 99.0<=ADX<=100.0, got 26.0",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 11
+ },
+ {
+  "t": "2026-11-04T13:41:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "INJUSDT",
+  "why": "BTC RSI 50.3 in [50.0-55.0) requires 99.0<=ADX<=100.0, got 22.1",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 20
+ },
+ {
+  "t": "2026-11-04T13:43:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "LSKUSDT",
+  "why": "BTC RSI 50.4 in [50.0-55.0) requires 99.0<=ADX<=100.0, got 22.1",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 5
+ },
+ {
+  "t": "2026-11-04T13:46:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "LINKUSDT",
+  "why": "BTC RSI 52.8 in [50.0-55.0) requires 99.0<=ADX<=100.0, got 20.6",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 27
+ },
+ {
+  "t": "2026-11-04T13:46:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "TAOUSDT",
+  "why": "BTC RSI 52.8 in [50.0-55.0) requires 99.0<=ADX<=100.0, got 20.6",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 15
+ },
+ {
+  "t": "2026-11-04T13:50:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "QNTUSDT",
+  "why": "BTC RSI 50.5 in [50.0-55.0) requires 99.0<=ADX<=100.0, got 20.9",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 6
+ },
+ {
+  "t": "2026-11-04T13:58:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "AAVEUSDT",
+  "why": "BTC RSI 52.4 in [50.0-55.0) requires 99.0<=ADX<=100.0, got 18.1",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 32
+ },
+ {
+  "t": "2026-11-04T13:58:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "PENGUUSDT",
+  "why": "BTC RSI 52.4 in [50.0-55.0) requires 99.0<=ADX<=100.0, got 18.1",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 32
+ },
+ {
+  "t": "2026-11-04T14:45:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "XMRUSDT",
+  "why": "BTC RSI 85.4 in [70.0-100.0) requires ADX>=40.0, got 20.2",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 19
+ },
+ {
+  "t": "2026-11-04T14:53:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "RUNEUSDT",
+  "why": "BTC RSI 77.0 in [70.0-100.0) requires ADX>=40.0, got 26.7",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 8
+ },
+ {
+  "t": "2026-11-04T14:54:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "ASTERUSDT",
+  "why": "BTC RSI 71.6 in [70.0-100.0) requires ADX>=40.0, got 26.7",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 8
+ },
+ {
+  "t": "2026-11-04T15:13:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "HOTUSDT",
+  "why": "BTC RSI 84.5 in [70.0-100.0) requires ADX>=40.0, got 38.8",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 1
+ },
+ {
+  "t": "2026-11-04T15:14:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "WLFIUSDT",
+  "why": "BTC RSI 85.7 in [70.0-100.0) requires ADX>=40.0, got 38.9",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 8
+ },
+ {
+  "t": "2026-11-04T15:30:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "INJUSDT",
+  "why": "BTC ADX 46.9 >40.0 (range [18.0-40.0])",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 7
+ },
+ {
+  "t": "2026-11-04T15:38:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "RUNEUSDT",
+  "why": "BTC ADX 48.2 >40.0 (range [18.0-40.0])",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 32
+ },
+ {
+  "t": "2026-11-04T16:19:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "ARBUSDT",
+  "why": "BTC ADX 43.9 >40.0 (range [18.0-40.0])",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 5
+ },
+ {
+  "t": "2026-11-04T16:21:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "ENAUSDT",
+  "why": "BTC ADX 43.8 >40.0 (range [18.0-40.0])",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 3
+ },
+ {
+  "t": "2026-11-04T16:21:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "NEARUSDT",
+  "why": "BTC ADX 43.8 >40.0 (range [18.0-40.0])",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 4
+ },
+ {
+  "t": "2026-11-04T16:21:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "WLDUSDT",
+  "why": "BTC ADX 43.8 >40.0 (range [18.0-40.0])",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 3
+ },
+ {
+  "t": "2026-11-04T16:24:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "RUNEUSDT",
+  "why": "BTC ADX 43.6 >40.0 (range [18.0-40.0])",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 6
+ },
+ {
+  "t": "2026-11-04T16:24:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "TRXUSDT",
+  "why": "BTC ADX 43.6 >40.0 (range [18.0-40.0])",
+  "res": "OPEN",
+  "pnl": 0.066,
+  "mins": null
+ },
+ {
+  "t": "2026-11-04T16:31:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "BMTUSDT",
+  "why": "BTC ADX 41.9 >40.0 (range [18.0-40.0])",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 2
+ },
+ {
+  "t": "2026-11-04T16:42:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "ZECUSDT",
+  "why": "BTC ADX 41.2 >40.0 (range [18.0-40.0])",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 10
+ },
+ {
+  "t": "2026-11-04T16:45:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "FETUSDT",
+  "why": "BTC ADX 41.2 >40.0 (range [18.0-40.0])",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 17
+ },
+ {
+  "t": "2026-11-04T16:47:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "INJUSDT",
+  "why": "BTC ADX 40.9 >40.0 (range [18.0-40.0])",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 8
+ },
+ {
+  "t": "2026-11-04T16:47:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "ONDOUSDT",
+  "why": "BTC ADX 40.9 >40.0 (range [18.0-40.0])",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 15
+ },
+ {
+  "t": "2026-11-04T16:56:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "AVAXUSDT",
+  "why": "BTC ADX 40.6 >40.0 (range [18.0-40.0])",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 6
+ },
+ {
+  "t": "2026-11-04T16:56:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "PENGUUSDT",
+  "why": "BTC ADX 40.6 >40.0 (range [18.0-40.0])",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 7
+ },
+ {
+  "t": "2026-11-04T16:58:00+00:00",
+  "gate": "BTC_ADX_GATE_HIGH",
+  "pair": "XLMUSDT",
+  "why": "BTC ADX 40.2 >40.0 (range [18.0-40.0])",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 14
+ },
+ {
+  "t": "2026-11-04T17:06:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "BEAMXUSDT",
+  "why": "BTC RSI 51.2 in [50.0-55.0) requires 99.0<=ADX<=100.0, got 36.7",
+  "res": "W",
+  "pnl": 0.4,
+  "mins": 3
+ },
+ {
+  "t": "2026-11-04T17:09:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "APTUSDT",
+  "why": "BTC RSI 56.7 in [55.0-60.0) requires 20.0<=ADX<=25.0, got 36.6",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 3
+ },
+ {
+  "t": "2026-11-04T17:22:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "LSKUSDT",
+  "why": "BTC RSI 50.6 in [50.0-55.0) requires 99.0<=ADX<=100.0, got 31.1",
+  "res": "L",
+  "pnl": -0.7,
+  "mins": 8
+ },
+ {
+  "t": "2026-11-04T17:25:00+00:00",
+  "gate": "BTC_RSI_ADX_CROSS",
+  "pair": "TRXUSDT",
+  "why": "BTC RSI 52.3 in [50.0-55.0) requires 99.0<=ADX<=100.0, got 31.1",
+  "res": "OPEN",
+  "pnl": -0.1,
+  "mins": null
+ }
+]

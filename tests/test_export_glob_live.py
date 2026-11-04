@@ -168,3 +168,55 @@ def test_sync_repairs_a_truncated_copy_throttles_and_cleans_tmp(tmp_path, monkey
     os.utime(dl / f, (2000, 2000))
     monkeypatch.setattr(EG, "SYNC_TTL_S", 3600.0); EG._LAST_SYNC.clear()
     assert EG.sync_archive(str(dl), str(ar)) == 1 and EG.sync_archive(str(dl), str(ar)) == 0   # second call throttled
+
+
+def test_tidy_moves_only_verified_old_exports_and_accounting(tmp_path):
+    """🧹 (463) after the copy pass: orders / decisions stamped > 2 days before now and every accounting file go to the Trash — only when
+    the archive holds a verified copy; recent, unverified and foreign files stay."""
+    import calendar
+    import time as _t
+    dl, ar, tr = tmp_path / "dl", tmp_path / "ar", tmp_path / "trash"
+    dl.mkdir()
+    now = calendar.timegm(_t.strptime("2026-11-04 18:00:00", "%Y-%m-%d %H:%M:%S"))
+    old_o = "scalpars_orders_paper_2026-11-01_10-00-00.csv"
+    new_d = "scalpars_decisions_paper_2026-11-03_12-00-00.csv"
+    month, rng, chk = "scalpars_accounting_2026-10.xlsx", "scalpars_accounting_2026-10-01_2026-10-31.xlsx", "scalpars_PAPER_check_2026-10-01_2026-11-04 (1).xlsx"
+    other = "notes.csv"
+    for f in (old_o, new_d, month, rng, chk, other):
+        (dl / f).write_text(f)
+        os.utime(dl / f, (now - 3 * 86400,) * 2)                                         # accounting files older than a day
+    fresh = "scalpars_accounting_2026-11.xlsx"
+    (dl / fresh).write_text(fresh); os.utime(dl / fresh, (now - 600,) * 2)              # downloaded 10 min ago → stays
+    EG.KEEP_DAYS = 2                                                                     # conftest parks it at 10 ** 6
+    assert EG.sync_archive(str(dl), str(ar), force=True, tidy=True, trash=str(tr), now=now) == 6
+    assert sorted(os.listdir(dl)) == sorted([new_d, other, fresh])                              # recent export + foreign file stay
+    assert sorted(os.listdir(tr)) == sorted([old_o, month, rng, chk])
+    assert sorted(os.listdir(ar / "accounting")) == sorted([month, rng, chk, fresh]) and (ar / old_o).read_text() == old_o
+    # an unverified copy (archive differs) is never trashed
+    stale = "scalpars_orders_paper_2026-10-20_10-00-00.csv"
+    (dl / stale).write_text("new"); (ar / stale).write_text("old!"); os.utime(ar / stale, (1, 1))
+    assert EG.tidy_downloads(str(dl), str(ar), str(tr), now) == []
+    # a name already in the Trash gets a suffix, never overwrites
+    (dl / old_o).write_text(old_o); os.utime(dl / old_o, (os.stat(ar / old_o).st_mtime,) * 2)
+    assert EG.tidy_downloads(str(dl), str(ar), str(tr), now) == [old_o] and len([x for x in os.listdir(tr) if x.startswith("scalpars_orders")]) == 2
+
+
+def test_tidy_runs_only_for_the_real_downloads(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(EG, "tidy_downloads", lambda *a, **k: calls.append(a))
+    dl, ar = tmp_path / "dl", tmp_path / "ar"; dl.mkdir()
+    EG.sync_archive(str(dl), str(ar), force=True)
+    assert calls == []                                                                   # temp dirs: copy only
+    monkeypatch.setattr(EG, "DOWNLOADS", str(dl))
+    EG.sync_archive(str(dl), str(ar), force=True)
+    assert len(calls) == 1
+
+
+def test_glob_never_lists_a_file_the_tidy_just_moved(tmp_path, monkeypatch):
+    """(463 review) the sync / tidy runs BEFORE the Downloads listing: an export it trashes is returned from the archive, never as a dead path."""
+    dl, ar, tr = tmp_path / "dl", tmp_path / "ar", tmp_path / "tr"; dl.mkdir()
+    monkeypatch.setattr(EG, "DOWNLOADS", str(dl)); monkeypatch.setattr(EG, "ARCHIVE_DIR", str(ar)); monkeypatch.setattr(EG, "TRASH", str(tr))
+    monkeypatch.setattr(EG, "SYNC_TTL_S", 0.0); monkeypatch.setattr(EG, "KEEP_DAYS", 2)
+    f = dl / "scalpars_decisions_paper_2026-01-01_00-00-00.csv"; f.write_text("t,e\n")
+    out = EG.glob_exports(str(dl / "scalpars_decisions_paper_*.csv"))
+    assert out == [str(ar / f.name)] and all(os.path.exists(p) for p in out) and not f.exists()

@@ -5597,7 +5597,11 @@ class TradingEngine:
                 if key in seen[1]:
                     return
                 seen[1].add(key)
-                _djournal.note('FAILS', src=src, dir=direction, pair=pair, gates=key[3], n_gates=len(gates))
+                # 🔭 Nov-4 (DECISION_LOG 463): a macro-vetoed set carries the scan's BTC RSI / ADX — the exact values the BTC gates read —
+                # so a reader can tell WHICH band of btc_rsi_adx_filter_long blocked it (a recomputation from klines matches only ~80 %)
+                why = (f"btc_rsi={_current_btc_rsi:.4f} btc_adx={_current_btc_adx:.4f}"   # 4 dp: never rounds across a band edge
+                       if macro and _current_btc_rsi is not None and _current_btc_adx is not None else None)
+                _djournal.note('FAILS', src=src, dir=direction, pair=pair, gates=key[3], n_gates=len(gates), reason=why)
         except Exception:
             pass
 

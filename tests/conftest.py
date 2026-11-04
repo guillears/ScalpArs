@@ -129,3 +129,6 @@ def _export_archive_isolated(tmp_path_factory, monkeypatch):
     d = tmp_path_factory.mktemp("export_archive")
     monkeypatch.setattr(_EG, "DOWNLOADS", str(d / "downloads"))
     monkeypatch.setattr(_EG, "ARCHIVE_DIR", str(d / "archive"))
+    # 🧹 (DECISION_LOG 463) no test ever moves a file into the real Trash, and the Downloads tidy stays off unless a test asks for it
+    monkeypatch.setattr(_EG, "TRASH", str(d / "trash"))
+    monkeypatch.setattr(_EG, "KEEP_DAYS", 10 ** 6)

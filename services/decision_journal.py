@@ -209,7 +209,10 @@ def export_rows(days=3, now=None, directory=None):
                                 continue
                             if ev == 'FAILS':
                                 fk = (bucket, r.get('pair') or '?', r.get('dir'), r.get('gates'), r.get('src'))
-                                fails[fk] = fails.get(fk, 0) + 1
+                                fv = fails.setdefault(fk, [0, None])
+                                fv[0] += 1
+                                if fv[1] is None:
+                                    fv[1] = r.get('reason')            # 🔭 (DL 463) a macro set's BTC RSI / ADX — the first line's
                                 continue
                             if ev == 'BEARRUN':   # 🐻 (DL 394) Bear-Run refusals: per 5 min × pair × rule, n + the first line's values
                                 bk = (bucket, r.get('pair') or 'MARKET', r.get('dir'), r.get('gate'))
@@ -233,7 +236,7 @@ def export_rows(days=3, now=None, directory=None):
         out.append(dict(t=bucket, e='BEARRUN', pair=pair, dir=dr, gate=gate, n=n, reason=why))
     for bucket, n in beats.items():
         out.append(dict(t=bucket, e='SCAN', n=n))
-    for (bucket, pair, dr, gates, src), n in fails.items():
-        out.append(dict(t=bucket, e='FAILS', pair=pair, dir=dr, gate=gates, n=n, src=src))
+    for (bucket, pair, dr, gates, src), (n, why) in fails.items():
+        out.append(dict(t=bucket, e='FAILS', pair=pair, dir=dr, gate=gates, n=n, src=src) | ({'reason': why} if why else {}))
     out.sort(key=lambda r: str(r.get('t') or ''))
     return out

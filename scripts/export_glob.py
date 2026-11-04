@@ -22,6 +22,7 @@ copies (scripts/export_archive_backfill.py) — note: those live copies are alre
 names (a no-filter reader of scalpars_orders_*.csv gets only those rows from them — the August test rows are never wanted).
 Removing an export on purpose (a bad / test file): delete it from BOTH ~/Downloads and exports_archive/ — the archive never forgets.
 """
+import calendar
 import csv
 import glob
 import os
@@ -41,25 +42,46 @@ DOWNLOADS = os.path.expanduser("~/Downloads")
 ARCHIVE_DIR = os.path.join(_ROOT, "exports_archive")
 _EXPORT_NAME = re.compile(r"^scalpars_(?:orders|decisions)_(?:paper|live)_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}.*\.csv$")
 _ACCOUNTING_NAME = re.compile(r"^scalpars_accounting_\d{4}-\d{2}\.xlsx$")   # 📒 (DECISION_LOG 457) monthly statements → exports_archive/accounting/
+# 📒 (DECISION_LOG 463) the 📒 button's From / To files — live "scalpars_accounting_<from>_<to>.xlsx" and paper "scalpars_PAPER_check_…" (a browser
+# " (n)" copy kept under its own name) — archived beside the monthly statements
+_ACCOUNTING_RANGE = re.compile(r"^scalpars_(?:accounting|PAPER_check)_\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}(?: \(\d+\))?\.xlsx$")
 ACCOUNTING_SUBDIR = "accounting"
+# 🧹 (DECISION_LOG 463, operator 2026-11-04 "leave only the last 2 days") after the copy pass on ~/Downloads: an orders / decisions export
+# whose filename stamp is older than KEEP_DAYS, and every accounting file, goes to the Trash — ONLY when its archive copy is verified
+# (same size, same whole-second mtime). The archive is the permanent store (DL 409); nothing is ever deleted outright.
+KEEP_DAYS = 2
+ACCOUNTING_MIN_AGE_S = 86400                    # an accounting file stays in Downloads for a day (time to e-mail it) before it moves
+TRASH = os.path.expanduser("~/.Trash")
+_TRASH_FAILED = set()                           # a refused move (no Full Disk Access) is reported once per process, then retried quietly
+_STAMP_ANY = re.compile(r"_(\d{4}-\d{2}-\d{2})_(\d{2})-(\d{2})-(\d{2})")
+
+
+def _is_accounting(f):
+    return bool(_ACCOUNTING_NAME.match(f) or _ACCOUNTING_RANGE.match(f))
 
 
 SYNC_TTL_S = 60.0
 _LAST_SYNC = {}
 
 
-def sync_archive(src=None, dst=None, force=False):
+def sync_archive(src=None, dst=None, force=False, tidy=None, trash=None, now=None):
     """copy every dashboard export in src (default ~/Downloads) that dst (default exports_archive/) does not hold yet — or holds with a
     different size / mtime (a truncated earlier copy is repaired) → number copied. Once per SYNC_TTL_S per (src, dst) unless force.
-    Stale *.tmp files (> 1 h, a killed copy) are removed. Never raises (a failed copy is reported on stderr and retried next call)."""
+    Stale *.tmp files (> 1 h, a killed copy) are removed. Never raises (a failed copy is reported on stderr and retried next call).
+    tidy (default: only when src is the real ~/Downloads) → then tidy_downloads(src, dst, trash, now)."""
+    if tidy is None:
+        try:
+            tidy = src is None or os.path.realpath(src) == os.path.realpath(DOWNLOADS)
+        except OSError:
+            tidy = False
     src, dst = src or DOWNLOADS, dst or ARCHIVE_DIR
-    now = time.time()
+    now = time.time() if now is None else float(now)
     if not force and now - _LAST_SYNC.get((src, dst), -1e18) < SYNC_TTL_S:
         return 0
     _LAST_SYNC[(src, dst)] = now
     n = 0
     try:
-        names = [f for f in os.listdir(src) if _EXPORT_NAME.match(f) or _ACCOUNTING_NAME.match(f)]
+        names = [f for f in os.listdir(src) if _EXPORT_NAME.match(f) or _is_accounting(f)]
     except OSError:
         return 0
     try:
@@ -74,7 +96,7 @@ def sync_archive(src=None, dst=None, force=False):
     except OSError:
         pass
     for f in names:
-        sub = os.path.join(dst, ACCOUNTING_SUBDIR) if _ACCOUNTING_NAME.match(f) else dst
+        sub = os.path.join(dst, ACCOUNTING_SUBDIR) if _is_accounting(f) else dst
         if sub != dst:
             try:
                 os.makedirs(sub, exist_ok=True)
@@ -101,20 +123,89 @@ def sync_archive(src=None, dst=None, force=False):
                 os.remove(tmp)
             except OSError:
                 pass
+    if tidy:
+        tidy_downloads(src, dst, trash, now)
     return n
+
+
+def _same(a, b):
+    """b is a verified copy of a: both exist, same size, same whole-second mtime."""
+    try:
+        sa, sb = os.stat(a), os.stat(b)
+    except OSError:
+        return False
+    return sa.st_size == sb.st_size and int(sa.st_mtime) == int(sb.st_mtime)
+
+
+def _to_trash(path, trash):
+    """move path into the trash folder (a name already there gets a ' <unix time>' suffix) → True when moved. Never raises."""
+    try:
+        os.makedirs(trash, exist_ok=True)
+        base = os.path.basename(path)
+        target = os.path.join(trash, base)
+        if os.path.exists(target):
+            stem, ext = os.path.splitext(base)
+            target = os.path.join(trash, f"{stem} {int(time.time() * 1000)}{ext}")
+        shutil.move(path, target)
+        return True
+    except OSError as e:
+        if path not in _TRASH_FAILED:
+            _TRASH_FAILED.add(path)
+            print(f"[export_glob] could not move {os.path.basename(path)} to the Trash ({e!r})", file=sys.stderr)
+        return False
+
+
+def tidy_downloads(src=None, dst=None, trash=None, now=None, keep_days=None):
+    """🧹 (DECISION_LOG 463) src (default ~/Downloads) → the Trash: orders / decisions exports stamped more than keep_days (KEEP_DAYS) before
+    now, and every accounting file older than ACCOUNTING_MIN_AGE_S (by mtime) — each ONLY when its archive copy in dst is verified (_same). An unstamped / unverified file stays.
+    → names moved. Never raises."""
+    src, dst = src or DOWNLOADS, dst or ARCHIVE_DIR
+    trash = trash or TRASH
+    now = time.time() if now is None else float(now)
+    keep = KEEP_DAYS if keep_days is None else keep_days
+    moved = []
+    try:
+        names = sorted(os.listdir(src))
+    except OSError:
+        return moved
+    for f in names:
+        if _is_accounting(f):
+            try:
+                if now - os.path.getmtime(os.path.join(src, f)) < ACCOUNTING_MIN_AGE_S:
+                    continue
+            except OSError:
+                continue
+            b = os.path.join(dst, ACCOUNTING_SUBDIR, f)
+        elif _EXPORT_NAME.match(f):
+            m = _STAMP_ANY.search(f)
+            if not m:
+                continue
+            try:
+                ts = calendar.timegm(time.strptime(f"{m[1]} {m[2]}:{m[3]}:{m[4]}", "%Y-%m-%d %H:%M:%S"))   # filename stamp = UTC
+            except (ValueError, OverflowError):
+                continue
+            if now - ts <= keep * 86400:
+                continue
+            b = os.path.join(dst, f)
+        else:
+            continue
+        a = os.path.join(src, f)
+        if _same(a, b) and _to_trash(a, trash):
+            moved.append(f)
+    return moved
 
 
 def _with_archive(pattern):
     """glob.glob(pattern) + the same file pattern in the archive when pattern is in ~/Downloads (synced first); one path per name."""
-    out = glob.glob(pattern)
     d = os.path.dirname(pattern)
     try:
         in_dl = os.path.realpath(d) == os.path.realpath(DOWNLOADS)
     except OSError:
         in_dl = False
     if not in_dl:
-        return out
-    sync_archive()
+        return glob.glob(pattern)
+    sync_archive()                                       # (463 review) BEFORE listing: the tidy may move a Downloads file to the Trash
+    out = [p for p in glob.glob(pattern) if os.path.exists(p)]
     seen = {os.path.basename(p) for p in out}
     out += [p for p in glob.glob(os.path.join(ARCHIVE_DIR, os.path.basename(pattern))) if os.path.basename(p) not in seen]
     return out

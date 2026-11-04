@@ -184,11 +184,10 @@ def test_sleeve_paint_rules():
 
 def test_label_and_export_wording():
     html = _html()
-    assert "Filter by Momentum cell:" in html and "Cell/Door" not in html
-    assert html.count('id="cell-source-filter"') == 1 and html.count('id="cell-source-filter-cells"') == 1
-    assert "`Momentum cell ${cellSourceFilter} only`" in html
-    assert "_fbits.push(`momentum cell=${_cellSrc1}`)" in html and "_fbits.push(`momentum cell=${_cellSrcSplit}`)" in html
-    assert "(not a momentum cell)" in html                                    # a vanished selection keeps its option
+    # 📈📉 (DECISION_LOG 456) the "Filter by Momentum cell" dropdown was removed (operator 11-04: the Sleeve select splits momentum
+    # Long / Short instead); the API keeps cell_source for scripts
+    assert "Filter by Momentum cell" not in html and 'id="cell-source-filter"' not in html and "Cell/Door" not in html
+    assert "momentum cell=" not in html
     # both exports print the active origin view (DL 323) — the ACTIVE FILTERS bit + the View line
     assert "if (_ov1 !== 'ALL') _fbits.push(`view=${ORIGIN_LABELS[_ov1]}`)" in html
     assert "if (_ov2 !== 'ALL') _fbits.push(`view=${ORIGIN_LABELS[_ov2]}`)" in html

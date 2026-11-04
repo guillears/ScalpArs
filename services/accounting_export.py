@@ -1,7 +1,7 @@
 """📒 Accountant export (DECISION_LOG 455, operator 2026-11-04: "an excel / csv to download for my accountant … simple, but contain all
 the necessary information. Similar to what i would download from binance").
 
-SCOPE      LIVE money only (paper rows never), USDT, UTC, from the first live trade (or the period asked). Bot trades, dashboard-opened
+SCOPE      LIVE money (mode=paper → build_paper: the paper trades + monthly totals, marked NOT for accounting — operator 11-04), USDT, UTC, from the first live trade (or the period asked). Bot trades, dashboard-opened
            trades and Binance-app trades (auto-recorded, DECISION_LOG 329) are ONE list — nothing in the file says which is which
            (operator: "dont want to disclose bot or manual").
 SHEETS     ① Futures trades — one row per closed position from the live Order rows (the dashboard's own numbers): close / open date,
@@ -468,6 +468,23 @@ async def read_spot(bs, extra_assets: Iterable[str]):
             if t and t.get("last"):
                 prices[s.split("/")[0]] = float(t["last"])
     return fills, base_of, balances, prices
+
+
+PAPER_MONTH_COLS = ["Month", "Trades", "Wins", "Losses", "Gross P&L (USDT)", "Trading fees (USDT)", "Funding (USDT)", "Net P&L (USDT)"]
+PAPER_NOTE = "PAPER TRADING — simulated, NOT for accounting (a check of the platform's own numbers only)."
+
+
+def build_paper(orders: List, lo_ms: int, hi_ms: int) -> bytes:
+    """(operator 11-04: "make it available too, as to check only") PAPER rows → the trades sheet + the monthly totals, marked as paper;
+    no Binance read (the account's transfers / spot / Binance check describe the REAL account, not the simulation)."""
+    trades = trade_rows(orders)
+    months = monthly_rows(trades, [], [], lambda a, ms: 1.0, None, False)
+    period = f"Period {fmt_dt(lo_ms)} → {fmt_dt(hi_ms)} UTC · USDT"
+    return xlsx_bytes([
+        ("Futures trades (PAPER)", TRADE_COLS, strip_private(trades, TRADE_COLS),
+         [PAPER_NOTE, period, "One row per closed futures position. Net P&L = gross P&L + trading fees + funding."]),
+        ("Monthly summary (PAPER)", PAPER_MONTH_COLS, strip_private(months, PAPER_MONTH_COLS), [PAPER_NOTE, period]),
+    ])
 
 
 async def build(orders: List, bs, lo_ms: int, hi_ms: int) -> bytes:

@@ -204,3 +204,19 @@ def test_capital_flows_windows_and_guard():
 def test_xlsx_strips_control_chars_and_nan():
     names, data = _sheets(AE.xlsx_bytes([("S", ["A", "B"], [{"A": "x\x01y", "B": float("nan")}], [])]))
     assert data[0][1] == ["xy", ""]
+
+
+def test_build_paper_marked_and_binance_free():
+    names, data = _sheets(AE.build_paper([_o("2026-10-20 10:00", "2026-10-20 11:00", 10.0)], MS("2026-10-14 00:00"), MS("2026-10-31 23:59")))
+    assert names == ["Futures trades (PAPER)", "Monthly summary (PAPER)"]
+    assert data[0][0][0].startswith("PAPER TRADING") and data[1][0][0].startswith("PAPER TRADING")
+    hdr = data[1].index(AE.PAPER_MONTH_COLS)
+    assert data[1][hdr + 1][0] == "2026-10" and float(data[1][hdr + 1][7]) == 9.5
+    assert not any("Binance" in c or "balance" in c.lower() for c in AE.PAPER_MONTH_COLS)
+
+
+def test_dashboard_mode_select_and_error_message():
+    html = open(os.path.join(ROOT, "templates", "index.html")).read()
+    assert 'id="acct-mode"' in html and '<option value="paper">Paper (check)</option>' in html
+    assert "onclick=\"_acctDownload(this)\"" in html and "q.push('mode=' + encodeURIComponent(m));" in html
+    assert "if (!r.ok)" in html                                            # an error is a message, never a downloaded .json

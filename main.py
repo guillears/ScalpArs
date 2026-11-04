@@ -2854,21 +2854,21 @@ async def export_orders_csv(db: AsyncSession = Depends(get_db)):
     )
 
 
-# 📒 (DECISION_LOG 455) accountant export — LIVE money only, USDT, UTC, from the first live trade (or ?start= / ?end= YYYY-MM-DD, UTC days,
+# 📒 (DECISION_LOG 455 / 456) accountant export — LIVE money (mode=paper: the paper trades, a check marked NOT for accounting), USDT, UTC, from the first trade of that mode (or ?start= / ?end= YYYY-MM-DD, UTC days,
 # end inclusive). .xlsx = futures trades · monthly summary (checked against Binance's income) · transfers · spot trades / holdings / sold
 # lots (one download, operator 11-04). Binance reads are read-only; a failed read returns 503 (an accountant file is never incomplete).
-async def _accounting_period(db: AsyncSession, start: Optional[str], end: Optional[str]):
-    first = (await db.execute(select(func.min(Order.opened_at)).where(and_(Order.is_paper == False, Order.status == "CLOSED")))).scalar()  # noqa: E712
+async def _accounting_period(db: AsyncSession, start: Optional[str], end: Optional[str], paper: bool = False):
+    first = (await db.execute(select(func.min(Order.opened_at)).where(and_(Order.is_paper == paper, Order.status == "CLOSED")))).scalar()
     try:
         lo = datetime.strptime(start, "%Y-%m-%d") if start else (first.replace(day=1, hour=0, minute=0, second=0, microsecond=0) if first else None)   # the month's first day: its funding deposit is in
         hi = datetime.strptime(end, "%Y-%m-%d") + timedelta(days=1) - timedelta(microseconds=1) if end else datetime.now(timezone.utc).replace(tzinfo=None)
     except ValueError:
         raise HTTPException(status_code=400, detail="start / end must be YYYY-MM-DD")
     if lo is None:
-        raise HTTPException(status_code=404, detail="no closed live trade yet")
+        raise HTTPException(status_code=404, detail=f"No closed {'paper' if paper else 'live'} trades yet — nothing to export.")
     if lo.tzinfo is not None:
         lo = lo.astimezone(timezone.utc).replace(tzinfo=None)
-    rows = (await db.execute(select(Order).where(and_(Order.is_paper == False, Order.status == "CLOSED",  # noqa: E712
+    rows = (await db.execute(select(Order).where(and_(Order.is_paper == paper, Order.status == "CLOSED",
                                                       Order.closed_at >= lo, Order.closed_at <= hi)).order_by(Order.closed_at))).scalars().all()
     to_ms = lambda d: int(d.replace(tzinfo=timezone.utc).timestamp() * 1000)   # noqa: E731
     return rows, to_ms(lo), to_ms(hi), lo, hi
@@ -2882,9 +2882,14 @@ _ACCOUNTING_LOCK = asyncio.Lock()   # one export at a time (repeated clicks neve
 
 
 @app.get("/api/accounting/export.xlsx")
-async def export_accounting_xlsx(start: Optional[str] = None, end: Optional[str] = None, db: AsyncSession = Depends(get_db)):
+async def export_accounting_xlsx(start: Optional[str] = None, end: Optional[str] = None, mode: str = "live", db: AsyncSession = Depends(get_db)):
     from services import accounting_export as _AE
-    rows, lo_ms, hi_ms, lo, hi = await _accounting_period(db, start, end)
+    paper = (mode or "live").strip().lower() == "paper"     # paper = a check only, marked NOT for accounting (operator 11-04); no Binance read
+    rows, lo_ms, hi_ms, lo, hi = await _accounting_period(db, start, end, paper)
+    if paper:
+        return StreamingResponse(iter([_AE.build_paper(rows, lo_ms, hi_ms)]),
+                                 media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                 headers=_accounting_headers(f"scalpars_PAPER_check_{lo:%Y-%m-%d}_{hi:%Y-%m-%d}.xlsx"))
     if get_ban_status().get("banned"):
         raise HTTPException(status_code=503, detail="Binance rate limit active — try again in a few minutes")
     if _ACCOUNTING_LOCK.locked():
@@ -6107,9 +6112,10 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
     if _fs and _fs != 'ALL':
         def _es(o):
             return (getattr(o, 'entry_strategy', None) or '')
+        _mom_dir = {'MOMENTUM_LONG': 'LONG', 'MOMENTUM_SHORT': 'SHORT'}.get(_fs)   # 📈📉 (DECISION_LOG 456) the Sleeve select splits momentum by side
         if _fs == 'FLIP':
             orders = [o for o in orders if _es(o).startswith('FLIP:')]
-        elif _fs == 'MOMENTUM':
+        elif _fs == 'MOMENTUM' or _mom_dir:
             # Non-flip (momentum) = PURE momentum only. Exclude flips (FLIP:*) AND the
             # build-side sleeves (BULL_LONG / BOUNCE_LONG) — they're their own strategies
             # with their own dropdown filters, not pure momentum (Jun 22).
@@ -6119,13 +6125,16 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             # labels and stay — cohort key for those = cell_multiplier_source.)
             _SLEEVES = ('BULL_LONG', 'BOUNCE_LONG', 'SPIKE_CHASE', 'SPIKE_FADE', 'SPIKE_BOUNCE', 'BULLRUN_LONG', 'BEARRUN_SHORT', 'SURGE_LONG', 'SURGE_SHORT', 'FRENZY_LONG', 'FRENZY_WIDE', 'FRENZY_LITE', 'FRENZY_LITE_RETRY', 'FRENZY_WILLY', 'MANUAL') + ('FRENZY_WILLY_HT', 'FLATBASE_SHORT')   # 🖐 Sep-29: manual fills are never pure momentum  # Sep 15 (deep review): both regime sleeves excluded from pure momentum too
             orders = [o for o in orders if not _es(o).startswith('FLIP:') and _es(o).upper() not in _SLEEVES]
+            if _mom_dir:
+                orders = [o for o in orders if (getattr(o, 'direction', None) or '').upper() == _mom_dir]
+                signal_expired_orders = [o for o in signal_expired_orders if (getattr(o, 'direction', None) or '').upper() == _mom_dir]
         else:
             # FLIP sources match FLIP:<name> (incl. ×N mult variants). Non-flip build-side
             # sleeves (BULL_LONG / BOUNCE_LONG) carry a BARE entry_strategy, so accept an
             # exact match too — lets the filter isolate those long sleeves the same way.
             orders = [o for o in orders if _flip_source_match(_es(o), _fs)]   # 🧹 (DL 346) shared with the Sleeve-select counts
         # SIGNAL_EXPIRED rows are aborted maker entries (never flips) → keep only for MOMENTUM/ALL
-        if _fs != 'MOMENTUM':
+        if _fs != 'MOMENTUM' and not _mom_dir:
             signal_expired_orders = []
 
     # Jul 30: Cell/Door filter (UI: "Filter by Momentum cell" since DL 346) (cell_multiplier_source axis — orthogonal to flip_source: a

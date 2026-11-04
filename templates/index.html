@@ -1046,7 +1046,7 @@
             <div class="glass rounded-xl p-6">
                 <p class="text-xs text-gray-500 mb-4">All metrics below are calculated from closed orders only</p>
 
-                <!-- Regime Filter & Copy Buttons -->
+                <!-- Filters (line 1) · report and export buttons (line 2, below) -->
                 <div class="mb-4 flex items-center gap-4 flex-wrap">
                     <span class="text-sm font-semibold text-gray-300">Filter by Macro Trend:</span>
                     <select id="regime-filter" class="bg-white/5 border border-white/10 rounded px-3 py-1.5 text-white text-sm" onchange="loadPerformance()">
@@ -1077,9 +1077,10 @@
                     </span>
                     <span id="window-filter-badge" class="text-xs text-gray-500"></span>
                     <span class="text-sm font-semibold text-fuchsia-300">Filter by Sleeve:</span>
-                    <select id="flip-source-filter" class="bg-white/5 border border-fuchsia-500/20 rounded px-3 py-1.5 text-white text-sm" onchange="loadPerformance()" title="Slice every table by the sleeve that opened the trade (entry_strategy axis): pure momentum / flip sources / spike species. Composes with the Momentum-cell filter (orthogonal axis). A sleeve marked (off) is switched off in the live config: still selectable while it has trades in the book, greyed out when it has none.">
+                    <select id="flip-source-filter" class="bg-white/5 border border-fuchsia-500/20 rounded px-3 py-1.5 text-white text-sm" onchange="loadPerformance()" title="Slice every table by the sleeve that opened the trade (entry_strategy axis): pure momentum / flip sources / spike species. A sleeve marked (off) is switched off in the live config: still selectable while it has trades in the book, greyed out when it has none.">
                         <option value="">All Sleeves</option>
-                        <option value="MOMENTUM">Non-flip (momentum)</option>
+                        <option value="MOMENTUM_LONG">📈 Momentum Long</option>
+                        <option value="MOMENTUM_SHORT">📉 Momentum Short</option>
                         <option value="FAN_RATIO_GATE">🔀 FAN_RATIO_GATE</option>
                         <option value="SPIKE_CHASE">🚀 SPIKE_CHASE</option>
                         <option value="SPIKE_FADE">🌊 SPIKE_FADE</option>
@@ -1100,14 +1101,6 @@
                              sleeve is re-enabled (or switch to a data-driven dropdown). -->
                     </select>
                     <span id="flip-source-filter-badge" class="text-xs text-gray-500"></span>
-                    <span class="text-sm font-semibold text-amber-300">Filter by Momentum cell:</span>
-                    <select id="cell-source-filter" class="bg-white/5 border border-amber-500/20 rounded px-3 py-1.5 text-white text-sm" onchange="loadPerformance()" title="Slice by cell_multiplier_source — the sub-groups INSIDE the momentum / flip book that the Sleeve filter cannot separate (doors, multiplier cells, UNMATCHED …; a CALM3D door trade is still MOMENTUM sleeve). Tags that only repeat a sleeve name (FRENZY_*, SPIKE_*, SURGE_*) are not listed — use the Sleeve filter for those (DL 346). Full-size only = strip every *_PROBE/FGP_* ticket (the de-noised real-money book — 0.03x-eff probe tickets otherwise pollute every $ column). Plain = no cell tag (the un-multiplied base book). Cell entries are DATA-DRIVEN from the momentum / flip rows of the closed book (new doors/cells appear automatically); per-probe options deliberately excluded — probes have their own 🪟 table with verdict machinery.">
-                        <option value="">All Cells</option>
-                        <option value="FULLSIZE">💵 Full-size only (no probes)</option>
-                        <option value="PLAIN">▫️ Plain (no cell tag)</option>
-                        <optgroup id="cell-source-filter-cells" label="— Momentum cells (doors &amp; multipliers) —"></optgroup>
-                    </select>
-                    <span id="cell-source-filter-badge" class="text-xs text-gray-500"></span>
                     <span class="text-sm font-semibold text-cyan-300">Filter by Direction:</span>
                     <select id="direction-filter" class="bg-white/5 border border-cyan-500/20 rounded px-3 py-1.5 text-white text-sm" onchange="loadPerformance()" title="Isolate LONGs or SHORTs — flip-shorts and bull-longs share BTC regimes, so per-regime tables blend both books">
                         <option value="">All Directions</option>
@@ -1123,7 +1116,10 @@
                         <button type="button" data-origin="BOT" onclick="setOriginView('BOT')">🤖 Bot</button>
                         <button type="button" data-origin="MANUAL" onclick="setOriginView('MANUAL')">🖐 Manual</button>
                     </div>
-                    <button id="copy-analytics-btn" onclick="copyAnalytics()" class="ml-auto px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded transition-colors">Analytics</button>
+                </div>
+                <!-- 📈📉 (DECISION_LOG 456, operator 11-04) two lines: filters above, report / export buttons below -->
+                <div class="mb-4 flex items-center gap-3 flex-wrap">
+                    <button id="copy-analytics-btn" onclick="copyAnalytics()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded transition-colors">Analytics</button>
                     <button id="copy-split-btn" onclick="copySplitReport()" class="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium rounded transition-colors">Split Report</button>
                     <a id="download-orders-csv-btn" href="/api/orders/export.csv" download class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium rounded transition-colors" title="Download all CLOSED + SIGNAL_EXPIRED orders for current mode (paper/live) as CSV — no row limit, every Order column included. Use for counterfactual analysis, cross-sample re-binning, custom cross-tabs." onclick="this.href='/api/orders/export.csv?t=' + Date.now()">Orders CSV</a>
                     <a id="download-decisions-csv-btn" href="/api/decisions/export.csv" download class="px-3 py-1.5 bg-sky-700 hover:bg-sky-600 text-white text-sm font-medium rounded transition-colors" title="🔭 What the bot DECIDED over the whole current paper batch (decision journal, up to 7 days; live: the last 3 days): every fill with its strategy, every refusal aggregated per 5 min × pair × gate, and the positions open right now. Read by the hourly opportunity scout (scripts/opportunity_scout.py) to tell 'no signal' from 'blocked by gate X' from 'book full'. Save it to Downloads." onclick="this.href='/api/decisions/export.csv?t=' + Date.now()">Decisions CSV</a>
@@ -1131,12 +1127,16 @@
                         <input type="checkbox" id="auto-decisions-toggle" onchange="_autoDecToggle(this.checked)" class="accent-sky-600"> Auto 2×/day
                         <span id="auto-decisions-status" class="text-gray-500"></span>
                     </label>
-                    <!-- 📒 (DECISION_LOG 455) accountant export: LIVE money only, USDT, UTC; empty dates = from the first live trade to now -->
-                    <span class="flex items-center gap-1 text-xs text-gray-400 whitespace-nowrap" title="📒 For your accountant: LIVE trades only (never paper), USDT, UTC. One Excel file: futures trades · monthly summary checked against Binance's own records · transfers · spot trades, holdings and sold lots. Leave the dates empty for everything since the first live trade (to = inclusive).">
+                    <!-- 📒 (DECISION_LOG 455 / 456) accountant export: Live (real account) or Paper (check only), USDT, UTC; empty dates = from the first trade of the chosen mode to now -->
+                    <span class="flex items-center gap-1 text-xs text-gray-400 whitespace-nowrap" title="📒 For your accountant: Live = your real account; Paper = a check only (marked NOT for accounting). USDT, UTC. One Excel file: futures trades · monthly summary checked against Binance's own records · transfers · spot trades, holdings and sold lots. Leave the dates empty for everything since the first trade of the chosen mode (to = inclusive).">
                         📒 From <input type="date" id="acct-from" class="bg-gray-800 border border-white/10 rounded px-1 py-0.5 text-xs text-gray-200">
                         to <input type="date" id="acct-to" class="bg-gray-800 border border-white/10 rounded px-1 py-0.5 text-xs text-gray-200">
                     </span>
-                    <a id="download-accounting-xlsx-btn" href="/api/accounting/export.xlsx" download class="px-3 py-1.5 bg-amber-700 hover:bg-amber-600 text-white text-sm font-medium rounded transition-colors" title="📒 Accountant Excel (6 sheets). Reads Binance (read-only) — takes a few seconds." onclick="this.href=_acctUrl('/api/accounting/export.xlsx')">Accounting</a>
+                    <select id="acct-mode" class="bg-gray-800 border border-white/10 rounded px-1 py-0.5 text-xs text-gray-200" title="Live = your real Binance account (for the accountant) · Paper = the simulated trades, a check only (marked NOT for accounting)">
+                        <option value="live">Live</option>
+                        <option value="paper">Paper (check)</option>
+                    </select>
+                    <button id="download-accounting-xlsx-btn" type="button" class="px-3 py-1.5 bg-amber-700 hover:bg-amber-600 text-white text-sm font-medium rounded transition-colors" title="📒 Accountant Excel. Live: futures trades · monthly summary checked against Binance · transfers · spot (reads Binance, read-only — a few seconds). Paper: trades + monthly totals, marked NOT for accounting." onclick="_acctDownload(this)">Accounting</button>
                 </div>
 
                 <!-- Period Performance Summary -->
@@ -12110,7 +12110,6 @@
                 const regimeFilter = document.getElementById('regime-filter').value;
                 const windowFilter = (document.getElementById('window-filter') || {}).value || '';
                 const _flipSrc1 = (document.getElementById('flip-source-filter') || {}).value || '';
-                const _cellSrc1 = (document.getElementById('cell-source-filter') || {}).value || '';
                 const _dir1 = (document.getElementById('direction-filter') || {}).value || '';
                 const _params1 = [];
                 if (regimeFilter) _params1.push(`regime=${regimeFilter}`);
@@ -12122,7 +12121,6 @@
                     if (_from && _to) { _params1.push(`from_date=${_from}`); _params1.push(`to_date=${_to}`); }
                 }
                 if (_flipSrc1) _params1.push(`flip_source=${encodeURIComponent(_flipSrc1)}`);
-                if (_cellSrc1) _params1.push(`cell_source=${encodeURIComponent(_cellSrc1)}`);
                 if (_dir1) _params1.push(`direction=${encodeURIComponent(_dir1)}`);
                 const _ov1 = _originView();
                 if (_ov1 !== 'ALL') _params1.push(`origin=${_ov1}`);   // 🤖 (323) the export reports the view on screen
@@ -12160,7 +12158,6 @@
                     if (regimeFilter) _fbits.push(`regime=${regimeFilter}`);
                     if (windowFilter) _fbits.push(`window=${windowFilter}`);
                     if (_flipSrc1) _fbits.push(`sleeve=${_flipSrc1}`);
-                    if (_cellSrc1) _fbits.push(`momentum cell=${_cellSrc1}`);
                     if (_dir1) _fbits.push(`direction=${_dir1}`);
                     if (_ov1 !== 'ALL') _fbits.push(`view=${ORIGIN_LABELS[_ov1]}`);
                     if (_fbits.length) lines.push(`⚠ ACTIVE FILTERS (this report is a SLICE, not the full book): ${_fbits.join(' · ')}`);
@@ -13816,10 +13813,9 @@
             try {
                 const windowFilter = (document.getElementById('window-filter') || {}).value || '';
                 const _flipSrcSplit = (document.getElementById('flip-source-filter') || {}).value || '';
-                const _cellSrcSplit = (document.getElementById('cell-source-filter') || {}).value || '';
                 const _dirSplit = (document.getElementById('direction-filter') || {}).value || '';
                 const _ov2 = _originView();
-                const _winSuffix = _buildWindowQuery('&') + (_flipSrcSplit ? `&flip_source=${encodeURIComponent(_flipSrcSplit)}` : '') + (_cellSrcSplit ? `&cell_source=${encodeURIComponent(_cellSrcSplit)}` : '') + (_dirSplit ? `&direction=${encodeURIComponent(_dirSplit)}` : '') + _originParam('&');
+                const _winSuffix = _buildWindowQuery('&') + (_flipSrcSplit ? `&flip_source=${encodeURIComponent(_flipSrcSplit)}` : '') + (_dirSplit ? `&direction=${encodeURIComponent(_dirSplit)}` : '') + _originParam('&');
                 const [perfBullRes, perfBearRes, cfgRes, logRes, statusRes, bnbRes, invRes] = await Promise.all([
                     fetch(`${API_BASE}/api/performance?regime=BULLISH${_winSuffix}`),
                     fetch(`${API_BASE}/api/performance?regime=BEARISH${_winSuffix}`),
@@ -13849,7 +13845,6 @@
                     const _fbits = [];
                     if (windowFilter) _fbits.push(`window=${windowFilter}`);
                     if (_flipSrcSplit) _fbits.push(`sleeve=${_flipSrcSplit}`);
-                    if (_cellSrcSplit) _fbits.push(`momentum cell=${_cellSrcSplit}`);
                     if (_dirSplit) _fbits.push(`direction=${_dirSplit}`);
                     if (_ov2 !== 'ALL') _fbits.push(`view=${ORIGIN_LABELS[_ov2]}`);
                     if (_fbits.length) lines.push(`⚠ ACTIVE FILTERS (this report is a SLICE, not the full book): ${_fbits.join(' · ')}`);
@@ -13969,7 +13964,6 @@
                 const regimeFilter = document.getElementById('regime-filter').value;
                 const windowFilter = (document.getElementById('window-filter') || {}).value || '';
                 const flipSourceFilter = (document.getElementById('flip-source-filter') || {}).value || '';
-                const cellSourceFilter = (document.getElementById('cell-source-filter') || {}).value || '';
                 const directionFilter = (document.getElementById('direction-filter') || {}).value || '';
                 const params = [];
                 if (regimeFilter) params.push(`regime=${regimeFilter}`);
@@ -13985,7 +13979,6 @@
                     }
                 }
                 if (flipSourceFilter) params.push(`flip_source=${encodeURIComponent(flipSourceFilter)}`);
-                if (cellSourceFilter) params.push(`cell_source=${encodeURIComponent(cellSourceFilter)}`);
                 if (directionFilter) params.push(`direction=${encodeURIComponent(directionFilter)}`);
                 const _ovPerf = _originView();
                 if (_ovPerf !== 'ALL') params.push(`origin=${_ovPerf}`);   // 🤖 (323)
@@ -13996,14 +13989,8 @@
                 if (dBadge) dBadge.textContent = directionFilter ? `${directionFilter}s only` : '';
                 const fsBadge = document.getElementById('flip-source-filter-badge');
                 if (fsBadge) {
-                    const fsLabel = { 'MOMENTUM':'non-flip momentum only','FLIP':'all flips only','FAN_RATIO_GATE':'FAN_RATIO_GATE flips only','LONG_UNMATCHED_ONLY':'LONG_UNMATCHED_ONLY flips only','PAIR_RSI_OB':'PAIR_RSI_OB flips only','BULL_LONG':'Bull-Long sleeve only','BOUNCE_LONG':'Bounce-Long sleeve only','SPIKE_CHASE':'SPIKE_CHASE sleeve only','SPIKE_FADE':'SPIKE_FADE sleeve only','SPIKE_BOUNCE':'SPIKE_BOUNCE sleeve only' }[flipSourceFilter];
+                    const fsLabel = { 'MOMENTUM':'non-flip momentum only','MOMENTUM_LONG':'momentum longs only','MOMENTUM_SHORT':'momentum shorts only','FLIP':'all flips only','FAN_RATIO_GATE':'FAN_RATIO_GATE flips only','LONG_UNMATCHED_ONLY':'LONG_UNMATCHED_ONLY flips only','PAIR_RSI_OB':'PAIR_RSI_OB flips only','BULL_LONG':'Bull-Long sleeve only','BOUNCE_LONG':'Bounce-Long sleeve only','SPIKE_CHASE':'SPIKE_CHASE sleeve only','SPIKE_FADE':'SPIKE_FADE sleeve only','SPIKE_BOUNCE':'SPIKE_BOUNCE sleeve only' }[flipSourceFilter];
                     fsBadge.textContent = fsLabel ? `Showing ${fsLabel}` : '';
-                }
-                const csBadge = document.getElementById('cell-source-filter-badge');
-                if (csBadge) {
-                    csBadge.textContent = cellSourceFilter === 'FULLSIZE' ? 'Full-size book (probes stripped)'
-                        : cellSourceFilter === 'PLAIN' ? 'Un-multiplied base book only'
-                        : cellSourceFilter ? `Momentum cell ${cellSourceFilter} only` : '';
                 }
                 const wBadge = document.getElementById('window-filter-badge');
                 if (wBadge) {
@@ -14025,31 +14012,6 @@
                 if (_myGen !== _perfGen) return;  // Sep-7 hygiene: a newer filter request superseded this one — drop the stale payload
                 _paintOriginTag(data.origin_touched);   // 🤖 (323)
                 if (data._error) console.warn('[Performance API error]', data._error);
-                // Jul 30 — data-driven Momentum-cell options (DL 346: distinct non-probe cell tags on momentum / flip rows of the
-                // closed book, server-computed). Rebuild the optgroup preserving the selection.
-                try {
-                    const _csSel = document.getElementById('cell-source-filter');
-                    const _csGrp = document.getElementById('cell-source-filter-cells');
-                    if (_csSel && _csGrp && Array.isArray(data.cell_source_options)) {
-                        const _keep = _csSel.value;
-                        _csGrp.innerHTML = '';
-                        // review fix: build via createElement/textContent — cell tags are
-                        // open-ended by design, never interpolate them into markup.
-                        data.cell_source_options.forEach(c => {
-                            const _o = document.createElement('option');
-                            _o.value = c; _o.textContent = c;
-                            _csGrp.appendChild(_o);
-                        });
-                        // 🧹 (DL 346) a selected tag that is no longer listed (e.g. a sleeve tag the list now hides) keeps its own
-                        // option, so the select never goes blank while the server still slices by it
-                        if (_keep && !Array.from(_csSel.options).some(o => o.value === _keep)) {
-                            const _o = document.createElement('option');
-                            _o.value = _keep; _o.textContent = `${_keep} (not a momentum cell)`;
-                            _csGrp.appendChild(_o);
-                        }
-                        if (_keep) _csSel.value = _keep;  // re-select (static options always exist)
-                    }
-                } catch (e) { console.warn('[cell filter options]', e); }
                 try { _paintSleeveFilter(data.sleeve_filter_status); } catch (e) { console.warn('[sleeve filter options]', e); }   // 🧹 (DL 346)
                 
                 // Period Performance table
@@ -25098,10 +25060,38 @@
         // 📒 (DECISION_LOG 455) accountant export URL: optional from / to (UTC days, to inclusive) + a cache-buster
         function _acctUrl(base){
             const q = [], f = (document.getElementById('acct-from') || {}).value, t = (document.getElementById('acct-to') || {}).value;
+            const m = (document.getElementById('acct-mode') || {}).value || 'live';
             if (f) q.push('start=' + encodeURIComponent(f));
             if (t) q.push('end=' + encodeURIComponent(t));
+            q.push('mode=' + encodeURIComponent(m));
             q.push('t=' + Date.now());
             return base + '?' + q.join('&');
+        }
+        // 📒 fetch → save the file; a server error (no trades yet, Binance busy) shows as a message instead of a downloaded .json
+        async function _acctDownload(btn){
+            const label = btn.textContent;
+            btn.disabled = true; btn.textContent = 'Preparing…';
+            try {
+                const r = await fetch(_acctUrl('/api/accounting/export.xlsx'));
+                if (!r.ok) {
+                    let msg = `Export failed (${r.status})`;
+                    try { const j = await r.json(); if (j && j.detail) msg = (typeof j.detail === 'string') ? j.detail : JSON.stringify(j.detail); } catch (e) {}
+                    alert('📒 ' + msg);
+                    return;
+                }
+                const blob = await r.blob();
+                const cd = r.headers.get('Content-Disposition') || '';
+                const m = cd.match(/filename="([^"]+)"/);
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = m ? m[1] : 'scalpars_accounting.xlsx';
+                document.body.appendChild(a); a.click(); a.remove();
+                setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+            } catch (e) {
+                alert('📒 Export failed: ' + (e && e.message ? e.message : e));
+            } finally {
+                btn.disabled = false; btn.textContent = label;
+            }
         }
         function _autoDecToggle(on){ _lsSet(_AUTO_DEC_ON, on ? '1' : '0'); _autoDecStatus(); if (on) _autoDecTick(); }
         async function _autoDecTick(){

@@ -555,6 +555,10 @@ async def start_background_tasks():
     from services.track_record import track_record_loop as _track_record_loop, code_version as _code_version_boot
     logger.info(f"[TRACK_RECORD] code version {_code_version_boot()}")   # fixed at boot: each process records the code it started with
     _track_task = asyncio.create_task(_track_record_loop(lambda: should_stop))
+    # 📒 (DECISION_LOG 457) monthly accounting statements: the previous Argentina month, built on day 2 from Binance, stored for good
+    global _acct_task
+    from services.accounting_export import statement_loop as _statement_loop
+    _acct_task = asyncio.create_task(_statement_loop(lambda: should_stop, _ACCOUNTING_LOCK))
     logger.info("[STARTUP] Monitor, scan, BNB swap, NAV snapshot and FRENZY loops started independently")
 
 
@@ -567,6 +571,13 @@ async def stop_background_tasks():
     await websocket_tracker.stop()
     logger.info("[SHUTDOWN] WebSocket price tracker stopped")
 
+    _at = globals().get('_acct_task')   # 📒 (DECISION_LOG 457) the monthly statement loop: cancelled (a half-built month is retried next start)
+    if _at is not None and not _at.done():
+        _at.cancel()
+        try:
+            await _at
+        except (asyncio.CancelledError, Exception):
+            pass
     _tt = globals().get('_track_task')   # 🗄 (DECISION_LOG 436) the track-record loop: cancelled and awaited (a backup already in its
     if _tt is not None and not _tt.done():   # worker thread finishes on its own; the next pass re-runs anything left undone)
         _tt.cancel()
@@ -2854,55 +2865,144 @@ async def export_orders_csv(db: AsyncSession = Depends(get_db)):
     )
 
 
-# 📒 (DECISION_LOG 455 / 456) accountant export — LIVE money (mode=paper: the paper trades, a check marked NOT for accounting), USDT, UTC, from the first trade of that mode (or ?start= / ?end= YYYY-MM-DD, UTC days,
-# end inclusive). .xlsx = futures trades · monthly summary (checked against Binance's income) · transfers · spot trades / holdings / sold
-# lots (one download, operator 11-04). Binance reads are read-only; a failed read returns 503 (an accountant file is never incomplete).
-async def _accounting_period(db: AsyncSession, start: Optional[str], end: Optional[str], paper: bool = False):
-    first = (await db.execute(select(func.min(Order.opened_at)).where(and_(Order.is_paper == paper, Order.status == "CLOSED")))).scalar()
+# 📒 (DECISION_LOG 455 / 456 / 457) accountant export — LIVE: rebuilt from Binance's own fills / fees / funding (services.accounting_export.
+# build_live, read-only, a background job: reading every fill can take longer than a request may) · PAPER: the paper rows, a check marked NOT
+# for accounting. Dates are Argentina days (UTC-3), ?start= / ?end= YYYY-MM-DD, end inclusive. + the monthly statements (built on day 2 of
+# the next month, stored for good): list + download.
+_ACCOUNTING_LOCK = asyncio.Lock()   # one Binance-reading export at a time (manual job or the monthly statement — never stacked on the IP budget)
+_ACCOUNTING_JOBS: Dict[str, dict] = {}
+_ACCOUNTING_TASKS: set = set()      # strong references: a running export task is never garbage-collected mid-run
+_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def _art_day_utc(day: str, end: bool = False) -> datetime:
+    """'YYYY-MM-DD' (Argentina day) → its first (or last) instant as naive UTC."""
+    from services.accounting_export import ART
+    d = datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=ART)
+    if end:
+        d = d + timedelta(days=1) - timedelta(microseconds=1)
+    return d.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+async def _accounting_period(db: AsyncSession, start: Optional[str], end: Optional[str], paper: bool):
+    from services.accounting_export import ART, INCOME_HORIZON_MS
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     try:
-        lo = datetime.strptime(start, "%Y-%m-%d") if start else (first.replace(day=1, hour=0, minute=0, second=0, microsecond=0) if first else None)   # the month's first day: its funding deposit is in
-        hi = datetime.strptime(end, "%Y-%m-%d") + timedelta(days=1) - timedelta(microseconds=1) if end else datetime.now(timezone.utc).replace(tzinfo=None)
+        if start:
+            lo = _art_day_utc(start)
+        elif paper:
+            first = (await db.execute(select(func.min(Order.opened_at)).where(and_(Order.is_paper == True, Order.status == "CLOSED")))).scalar()  # noqa: E712
+            if first is None:
+                raise HTTPException(status_code=404, detail="No closed paper trades yet — nothing to export.")
+            a = first.replace(tzinfo=timezone.utc).astimezone(ART)
+            lo = _art_day_utc(f"{a:%Y-%m}-01")
+        else:   # live: the first whole Argentina month Binance still holds (~3 months)
+            h = (now - timedelta(milliseconds=INCOME_HORIZON_MS)).replace(tzinfo=timezone.utc).astimezone(ART)
+            nxt = (h.replace(day=1) + timedelta(days=32)).replace(day=1)
+            lo = _art_day_utc(f"{nxt:%Y-%m-%d}")
+        hi = _art_day_utc(end, end=True) if end else now
     except ValueError:
         raise HTTPException(status_code=400, detail="start / end must be YYYY-MM-DD")
-    if lo is None:
-        raise HTTPException(status_code=404, detail=f"No closed {'paper' if paper else 'live'} trades yet — nothing to export.")
-    if lo.tzinfo is not None:
-        lo = lo.astimezone(timezone.utc).replace(tzinfo=None)
-    rows = (await db.execute(select(Order).where(and_(Order.is_paper == paper, Order.status == "CLOSED",
-                                                      Order.closed_at >= lo, Order.closed_at <= hi)).order_by(Order.closed_at))).scalars().all()
+    if not paper and lo < now - timedelta(milliseconds=INCOME_HORIZON_MS):
+        raise HTTPException(status_code=400, detail="Binance keeps about 3 months of futures history — for older months use the "
+                                                    "Monthly statements list (each month is stored when it closes).")
+    if hi < lo:
+        raise HTTPException(status_code=400, detail="the To date is before the From date")
     to_ms = lambda d: int(d.replace(tzinfo=timezone.utc).timestamp() * 1000)   # noqa: E731
-    return rows, to_ms(lo), to_ms(hi), lo, hi
+    return to_ms(lo), to_ms(hi)
 
 
 def _accounting_headers(name: str) -> dict:
     return {"Content-Disposition": f'attachment; filename="{name}"', "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"}
 
 
-_ACCOUNTING_LOCK = asyncio.Lock()   # one export at a time (repeated clicks never stack Binance reads on the live bot's IP budget)
+def _accounting_job_gc():
+    cut = time.time() - 3600
+    for k in [k for k, v in _ACCOUNTING_JOBS.items() if v["t"] < cut]:
+        _ACCOUNTING_JOBS.pop(k, None)
 
 
-@app.get("/api/accounting/export.xlsx")
-async def export_accounting_xlsx(start: Optional[str] = None, end: Optional[str] = None, mode: str = "live", db: AsyncSession = Depends(get_db)):
+@app.post("/api/accounting/prepare")
+async def accounting_prepare(start: Optional[str] = None, end: Optional[str] = None, mode: str = "live", db: AsyncSession = Depends(get_db)):
+    """→ {job}: poll /api/accounting/job/{job}, then download /api/accounting/job/{job}/file."""
     from services import accounting_export as _AE
-    paper = (mode or "live").strip().lower() == "paper"     # paper = a check only, marked NOT for accounting (operator 11-04); no Binance read
-    rows, lo_ms, hi_ms, lo, hi = await _accounting_period(db, start, end, paper)
+    paper = (mode or "live").strip().lower() == "paper"
+    lo_ms, hi_ms = await _accounting_period(db, start, end, paper)
+    _accounting_job_gc()
+    job = _secrets.token_hex(8)
+    f = lambda ms: _AE.fmt_dt(ms)[:10]   # noqa: E731
     if paper:
-        return StreamingResponse(iter([_AE.build_paper(rows, lo_ms, hi_ms)]),
-                                 media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                 headers=_accounting_headers(f"scalpars_PAPER_check_{lo:%Y-%m-%d}_{hi:%Y-%m-%d}.xlsx"))
+        lo, hi = (datetime.fromtimestamp(x / 1000, tz=timezone.utc).replace(tzinfo=None) for x in (lo_ms, hi_ms))
+        rows = (await db.execute(select(Order).where(and_(Order.is_paper == True, Order.status == "CLOSED",  # noqa: E712
+                                                          Order.closed_at >= lo, Order.closed_at <= hi)).order_by(Order.closed_at))).scalars().all()
+        _ACCOUNTING_JOBS[job] = dict(t=time.time(), state="ready", detail="", data=_AE.build_paper(rows, lo_ms, hi_ms),
+                                     name=f"scalpars_PAPER_check_{f(lo_ms)}_{f(hi_ms)}.xlsx")
+        return {"job": job}
     if get_ban_status().get("banned"):
         raise HTTPException(status_code=503, detail="Binance rate limit active — try again in a few minutes")
     if _ACCOUNTING_LOCK.locked():
-        raise HTTPException(status_code=503, detail="an accounting export is already running — try again in a minute")
-    async with _ACCOUNTING_LOCK:
-        try:
-            xlsx = await _AE.build(rows, binance_service, lo_ms, hi_ms)
-        except Exception as e:
-            binance_service._detect_ban(e)          # a 418 from these reads sets the shared ban like every other Binance error
-            logger.warning(f"[ACCOUNTING_EXPORT] failed: {e}")
-            raise HTTPException(status_code=503, detail=f"Binance read failed ({str(e)[:120]}) — try again in a few minutes")
-    return StreamingResponse(iter([xlsx]), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                             headers=_accounting_headers(f"scalpars_accounting_{lo:%Y-%m-%d}_{hi:%Y-%m-%d}.xlsx"))
+        raise HTTPException(status_code=503, detail="An accounting file is already being prepared — try again in a minute.")
+    look = await _AE.leverage_lookup_for(db, lo_ms, hi_ms)
+    _ACCOUNTING_JOBS[job] = dict(t=time.time(), state="running", detail="Reading Binance…", data=None,
+                                 name=f"scalpars_accounting_{f(lo_ms)}_{f(hi_ms)}.xlsx")
+
+    async def _run():
+        async with _ACCOUNTING_LOCK:
+            try:
+                data, _st = await _AE.build_live(lo_ms, hi_ms, look)
+                _ACCOUNTING_JOBS.get(job, {}).update(state="ready", data=data, detail="")
+            except Exception as e:
+                binance_service._detect_ban(e)          # a 418 from these reads sets the shared ban like every other Binance error
+                logger.warning(f"[ACCOUNTING_EXPORT] failed: {e}")
+                _ACCOUNTING_JOBS.get(job, {}).update(state="error", detail=f"{str(e)[:200]} — try again in a few minutes.")
+    _t = asyncio.create_task(_run())
+    _ACCOUNTING_TASKS.add(_t)
+    _t.add_done_callback(_ACCOUNTING_TASKS.discard)
+    return {"job": job}
+
+
+@app.get("/api/accounting/job/{job}")
+async def accounting_job(job: str):
+    j = _ACCOUNTING_JOBS.get(job)
+    if j is None:
+        raise HTTPException(status_code=404, detail="This export expired — click again.")
+    return {"state": j["state"], "detail": j["detail"], "name": j["name"]}
+
+
+@app.get("/api/accounting/job/{job}/file")
+async def accounting_job_file(job: str):
+    j = _ACCOUNTING_JOBS.get(job)
+    if j is None or j["state"] != "ready":
+        raise HTTPException(status_code=404, detail="This export is not ready (or expired) — click again.")
+    return StreamingResponse(iter([j["data"]]), media_type=_XLSX, headers=_accounting_headers(j["name"]))
+
+
+@app.get("/api/accounting/statements")
+async def accounting_statements(db: AsyncSession = Depends(get_db)):
+    """the stored monthly statements, newest first (no file bytes)."""
+    from models import AccountingStatement
+    from services.accounting_export import statement_name
+    rows = (await db.execute(select(AccountingStatement.month, AccountingStatement.status, AccountingStatement.trades,
+                                    AccountingStatement.net_pnl, AccountingStatement.size, AccountingStatement.built_at,
+                                    AccountingStatement.error, AccountingStatement.attempts)
+                             .order_by(AccountingStatement.month.desc()))).all()
+    from services.accounting_export import due_months
+    due = set(due_months(datetime.now(timezone.utc).replace(tzinfo=None)))
+    return {"statements": [dict(month=m, status=st, trades=tr, net=nt, size=sz, built_at=(b.isoformat() if b else None), error=er,
+                                attempts=at, name=statement_name(m), retrying=(st == "ERROR" and m in due))
+                           for m, st, tr, nt, sz, b, er, at in rows]}
+
+
+@app.get("/api/accounting/statements/{month}.xlsx")
+async def accounting_statement_file(month: str, db: AsyncSession = Depends(get_db)):
+    from models import AccountingStatement
+    from services.accounting_export import statement_name
+    if not re.fullmatch(r"\d{4}-\d{2}", month):
+        raise HTTPException(status_code=400, detail="month must be YYYY-MM")
+    row = (await db.execute(select(AccountingStatement).where(AccountingStatement.month == month))).scalars().first()
+    if row is None or not row.xlsx:
+        raise HTTPException(status_code=404, detail=f"No stored statement for {month}.")
+    return StreamingResponse(iter([row.xlsx]), media_type=_XLSX, headers=_accounting_headers(statement_name(month)))
 
 
 

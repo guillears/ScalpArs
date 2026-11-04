@@ -1,7 +1,7 @@
 """
 SCALPARS Trading Platform - Database Models
 """
-from sqlalchemy import Column, Integer, BigInteger, String, Float, Boolean, DateTime, Enum as SQLEnum, Text, UniqueConstraint, Index
+from sqlalchemy import Column, Integer, BigInteger, String, Float, Boolean, DateTime, Enum as SQLEnum, Text, UniqueConstraint, Index, LargeBinary
 from sqlalchemy.sql import func
 from database import Base
 from datetime import datetime
@@ -1721,3 +1721,20 @@ class ExchangeIncome(Base):
     trade_id = Column(String(40), nullable=True)
     info = Column(String(120), nullable=True)
 
+
+class AccountingStatement(Base):
+    """📒 (DECISION_LOG 457) one row per Argentina-time month (UTC-3): the accountant Excel built from Binance's own records on day 2 of the
+    next month (services/accounting_export.statement_pass) and kept for good (Binance serves ~3 months). status READY (activity) / EMPTY
+    (no futures trade, transfer or spot trade — the file is still kept) / ERROR (retried every hour, error text kept)."""
+    __tablename__ = "accounting_statements"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    month = Column(String(7), nullable=False, unique=True, index=True)   # YYYY-MM, Argentina time
+    status = Column(String(8), nullable=False)
+    built_at = Column(DateTime, nullable=True)                           # UTC
+    attempts = Column(Integer, nullable=False, default=0)
+    trades = Column(Integer, nullable=True)
+    net_pnl = Column(Float, nullable=True)
+    xlsx = Column(LargeBinary, nullable=True)
+    size = Column(Integer, nullable=True)
+    error = Column(String(300), nullable=True)

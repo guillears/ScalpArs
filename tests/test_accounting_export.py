@@ -83,11 +83,11 @@ def test_spot_fifo_lots_fees_and_unknown_cost():
                                   MS("2026-10-15 00:00"), MS("2026-12-01 00:00"))
     assert [t["Side"] for t in tr] == ["Buy", "Sell", "Sell"]                                     # the 10-01 buy is before the period
     sol = [l for l in lots if l["Asset"] == "SOL"]
-    assert len(sol) == 2 and sol[0]["Buy date (UTC)"] == "2026-10-01 10:00:00" and sol[0]["Quantity"] == 2.0
+    assert len(sol) == 2 and sol[0]["Buy date (UTC-3)"] == "2026-10-01 07:00:00" and sol[0]["Quantity"] == 2.0
     assert sol[0]["Cost (USDT)"] == 201.0 and abs(sol[0]["Realized P&L (USDT)"] - (2.0 * 299.7 / 2.5 - 201.0)) < 1e-3
     assert abs(sol[1]["Quantity"] - 0.5) < 1e-9 and abs(sol[1]["Buy price (USDT)"] - 110 / 0.99) < 1e-4
     eth = [l for l in lots if l["Asset"] == "ETH"][0]
-    assert eth["Cost (USDT)"] is None and eth["Realized P&L (USDT)"] is None and eth["Buy date (UTC)"].startswith("unknown")
+    assert eth["Cost (USDT)"] is None and eth["Realized P&L (USDT)"] is None and eth["Buy date (UTC-3)"].startswith("unknown")
     h = {x["Asset"]: x for x in hold}
     assert abs(h["SOL"]["Cost (USDT)"] - 0.49 * 110 / 0.99) < 1e-3 and h["SOL"]["Current value (USDT)"] == round(0.49 * 130.0, 4)
     assert h["USDT"]["Cost (USDT)"] is None and h["USDT"]["Current value (USDT)"] == 50.0
@@ -113,6 +113,7 @@ def test_xlsx_bytes_valid_and_escaped():
 
 
 class _FakeBS:
+    """the spot / capital / balance side of binance_service."""
     def __init__(self):
         self.spot_exchange = SimpleNamespace(
             markets={"SOL/USDT": dict(spot=True, base="SOL", quote="USDT", id="SOLUSDT"),
@@ -120,9 +121,6 @@ class _FakeBS:
             fetch_balance=self._bal, privateGetMyTrades=self._trades, fetch_tickers=self._tickers, fetch_ohlcv=self._ohlcv,
             sapiGetCapitalDepositHisrec=self._deps, sapiGetCapitalWithdrawHistory=self._wds)
         self.calls = []
-
-    def used_weight_1m(self):
-        return 100
 
     async def _deps(self, q):
         self.calls.append(("dep", q["startTime"], q["endTime"]))
@@ -134,10 +132,6 @@ class _FakeBS:
 
     async def _load_spot_markets(self):
         return None
-
-    async def fetch_income_page(self, lo, hi, **_k):
-        return [dict(incomeType="REALIZED_PNL", tranId=1, asset="USDT", income=12.0, time=MS("2026-10-20 11:00"))] \
-            if lo <= MS("2026-10-20 11:00") <= hi else []
 
     async def get_balance(self):
         return {"ok": True, "usdt_total": 1500.0}
@@ -153,18 +147,98 @@ class _FakeBS:
         return {"SOL/USDT": {"last": 120.0}, "BNB/USDT": {"last": 600.0}}
 
     async def _ohlcv(self, sym, tf, since=None, limit=None):
-        return [[MS("2026-10-20 11:00"), 0, 0, 0, 600.0, 0]] if since <= MS("2026-10-20 11:00") else []
+        return [[MS("2026-10-20 11:00"), 0, 0, 0, 500.0, 0]] if since <= MS("2026-10-20 11:00") else []
 
 
-def test_build_end_to_end_one_file():
-    xlsx = asyncio.run(AE.build([_o("2026-10-20 10:00", "2026-10-20 11:00", 10.0, fund=0.0)], _FakeBS(),
-                                MS("2026-10-14 00:00"), MS("2026-10-31 23:59")))
+def _fill(i, t, side, price, qty, rpnl=0.0, comm=0.0, asset="USDT"):
+    return dict(id=i, orderId=1000 + i, time=MS(t), side=side, price=str(price), qty=str(qty), realizedPnl=str(rpnl),
+                commission=str(comm), commissionAsset=asset, maker=False)
+
+
+class _FakeRec:
+    """services.app_trades.AppTradeRecorder's read surface (budget / ban handled there): LINK long 10 @ 100 → 101 on 10-20 (fees 0.04 USDT
+    + 0.002 BNB at 500, funding −0.5) · ARB short opened 10-03 (before the fetch window) closed 10-16 · an open BTC position."""
+    INCOME = [dict(incomeType="REALIZED_PNL", tranId=1, symbol="LINKUSDT", asset="USDT", income=10.0, time=MS("2026-10-20 11:00")),
+              dict(incomeType="COMMISSION", tranId=2, symbol="LINKUSDT", asset="USDT", income=-0.04, time=MS("2026-10-20 10:00")),
+              dict(incomeType="COMMISSION", tranId=3, symbol="LINKUSDT", asset="BNB", income=-0.002, time=MS("2026-10-20 11:00")),
+              dict(incomeType="FUNDING_FEE", tranId=4, symbol="LINKUSDT", asset="USDT", income=-0.5, time=MS("2026-10-20 10:30")),
+              dict(incomeType="REALIZED_PNL", tranId=5, symbol="ARBUSDT", asset="USDT", income=4.0, time=MS("2026-10-16 12:00")),
+              dict(incomeType="COMMISSION", tranId=6, symbol="ARBUSDT", asset="USDT", income=-0.2, time=MS("2026-10-16 12:00")),
+              dict(incomeType="COMMISSION", tranId=7, symbol="BTCUSDT", asset="USDT", income=-0.1, time=MS("2026-10-25 09:00")),
+              dict(incomeType="TRANSFER", tranId=8, asset="USDT", income=1000.0, time=MS("2026-10-15 09:00"))]
+    FILLS = {"LINKUSDT": [_fill(1, "2026-10-20 10:00", "BUY", 100, 10, comm=0.04), _fill(2, "2026-10-20 11:00", "SELL", 101, 10, 10.0, 0.002, "BNB")],
+             "ARBUSDT": [_fill(3, "2026-09-28 09:00", "SELL", 1.0, 100, comm=0.0), _fill(4, "2026-10-16 12:00", "BUY", 0.96, 100, 4.0, 0.2)],
+             "BTCUSDT": [_fill(5, "2026-10-25 09:00", "BUY", 60000, 0.01, comm=0.1)]}
+
+    def __init__(self):
+        self.svc = SimpleNamespace(get_net_positions=self._pos)
+        self.fill_calls = []
+
+    def now_ms(self):
+        return MS("2026-11-02 12:00")
+
+    EARLY_FUNDING = [dict(incomeType="FUNDING_FEE", tranId=9, symbol="ARBUSDT", asset="USDT", income=0.3, time=MS("2026-09-29 08:00"))]
+
+    def ban_active(self):
+        return False
+
+    async def _pos(self):
+        return {"BTCUSDT": 0.01}
+
+    async def _call(self, w, fn, *a):
+        return await fn(*a)
+
+    async def _income(self, lo, hi, symbol=None, income_type=None):
+        rows = [r for r in self.INCOME + self.EARLY_FUNDING if lo <= r["time"] <= hi]
+        return [r for r in rows if (symbol is None or r.get("symbol") == symbol) and (income_type is None or r["incomeType"] == income_type)]
+
+    async def _fills(self, sym, lo, hi):
+        from services.app_trades import parse_fill
+        self.fill_calls.append((sym, lo, hi))
+        return [parse_fill(r) for r in self.FILLS.get(sym, []) if lo <= r["time"] <= hi]
+
+    async def prepare_rates(self, times):
+        return None
+
+    def rate(self, asset, t):
+        return {"USDT": (1.0, False), "BNB": (500.0, False)}.get(asset)
+
+    async def _leverage(self, sym):
+        return 10
+
+
+def test_futures_from_fills_binance_numbers_and_backward_read():
+    rec = _FakeRec()
+    lo, hi = AE.month_bounds("2026-10")
+    rows = asyncio.run(AE.futures_from_fills(rec, rec.INCOME, lo, rec.now_ms(), lo, hi,
+                                             lambda sym, t: 5.0 if sym == "LINKUSDT" else None, rec.now_ms() - AE.INCOME_HORIZON_MS))
+    r = {x["Symbol"]: x for x in rows}
+    assert set(r) == {"LINKUSDT", "ARBUSDT"}                                   # the open BTC position is not a closed trade
+    ln = r["LINKUSDT"]
+    assert ln["Gross P&L (USDT)"] == 10.0 and ln["Trading fees (USDT)"] == -1.04 and ln["Funding (USDT)"] == -0.5
+    assert ln["Net P&L (USDT)"] == 8.46 and ln["Leverage"] == 5.0 and ln["Margin (USDT)"] == 200.0 and ln["Position size (USDT)"] == 1000.0
+    assert ln["Close date (UTC-3)"] == "2026-10-20 08:00:00" and ln["Side"] == "Long"     # Argentina time
+    ar = r["ARBUSDT"]
+    assert ar["Side"] == "Short" and ar["Open date (UTC-3)"] == "2026-09-28 06:00:00" and ar["Leverage"] == 10.0   # read back past the window
+    assert any(c[0] == "ARBUSDT" and c[1] <= MS("2026-09-28 09:00") <= c[2] for c in rec.fill_calls)   # a week with no fee row, read back
+    assert ar["Funding (USDT)"] == 0.3 and ar["Net P&L (USDT)"] == 4.1        # its funding before the read window is counted too
+
+
+def test_futures_unreadable_entry_raises():
+    rec = _FakeRec()
+    lo, hi = AE.month_bounds("2026-10")
+    with pytest.raises(RuntimeError):                                             # the entry is older than Binance's history
+        asyncio.run(AE.futures_from_fills(rec, rec.INCOME, lo, rec.now_ms(), lo, hi, None, MS("2026-10-01 05:00")))
+
+
+def test_build_live_end_to_end_one_file():
+    lo, hi = AE.month_bounds("2026-10")
+    xlsx, st = asyncio.run(AE.build_live(lo, hi, None, rec=_FakeRec(), bs=_FakeBS()))
     names, data = _sheets(xlsx)
     assert names == ["Futures trades", "Monthly summary", "Transfers", "Spot trades", "Spot holdings", "Spot sold lots"]
-    hdr = data[0].index(AE.TRADE_COLS)
-    assert data[0][hdr + 1][2] == "LINKUSDT" and float(data[0][hdr + 1][13]) == 10.0
+    assert st["trades"] == 2 and st["activity"] and abs(st["net"] - (8.46 + 4.1)) < 1e-9
     ms = data[1][[i for i, r in enumerate(data[1]) if r[:1] == ["Month"]][0] + 1]
-    assert ms[0] == "2026-10" and float(ms[MS_COL("Binance net P&L (check)")]) == 12.0 and float(ms[MS_COL("Difference")]) == -2.0
+    assert ms[0] == "2026-10" and abs(float(ms[MS_COL("Difference")]) - 0.4) < 1e-9   # the open BTC fee (0.1) + ARB's September funding (0.3)
     assert any(r[:1] == ["SOL"] and r[2] for r in data[4])                                     # holding with a known average price
 
 
@@ -172,14 +246,18 @@ def MS_COL(c):
     return AE.MONTH_COLS.index(c)
 
 
-def test_build_raises_on_failed_wallet():
+def test_build_live_raises_on_failed_wallet_and_old_period():
     bs = _FakeBS()
 
     async def bad():
         return {"ok": False}
     bs.get_balance = bad
+    lo, hi = AE.month_bounds("2026-10")
     with pytest.raises(RuntimeError):
-        asyncio.run(AE.build([], bs, MS("2026-10-14 00:00"), MS("2026-10-31 23:59")))
+        asyncio.run(AE.build_live(lo, hi, None, rec=_FakeRec(), bs=bs))
+    lo, hi = AE.month_bounds("2026-08")
+    with pytest.raises(RuntimeError):                                              # starts beyond Binance's ~3 months: use the stored statement
+        asyncio.run(AE.build_live(lo, hi, None, rec=_FakeRec(), bs=_FakeBS()))
 
 
 def test_monthly_income_horizon_blanks_old_months():
@@ -191,14 +269,76 @@ def test_monthly_income_horizon_blanks_old_months():
     assert m["TOTAL"]["Binance net P&L (check)"] is None and m["2026-08"]["Net P&L (USDT)"] == 9.5     # own numbers stay
 
 
-def test_capital_flows_windows_and_guard():
+def test_capital_flows_windows():
     bs = _FakeBS()
     rows = asyncio.run(AE.read_capital_flows(bs, MS("2026-06-01 00:00"), MS("2026-11-01 00:00")))
     assert rows == [(MS("2026-10-15 08:00"), 1000.0, "USDT")]
     assert len([c for c in bs.calls if c[0] == "dep"]) == 2 and all(b - a < 90 * 86_400_000 for _k, a, b in bs.calls)
-    bs.used_weight_1m = lambda: 1500
-    with pytest.raises(RuntimeError):
-        asyncio.run(AE.read_income(bs, MS("2026-10-14 00:00"), MS("2026-10-20 00:00")))       # the live bot's budget comes first
+
+
+def test_argentina_months_and_dates():
+    a, b = AE.month_bounds("2026-11")
+    assert a == MS("2026-11-01 03:00") and b == MS("2026-12-01 03:00") - 1      # 00:00 ART = 03:00 UTC
+    assert AE.fmt_dt(MS("2026-11-01 02:30")) == "2026-10-31 23:30:00" and AE.month_of_ms(MS("2026-11-01 02:30")) == "2026-10"
+    assert AE.fmt_dt(datetime(2026, 11, 1, 2, 30)) == "2026-10-31 23:30:00"     # naive DB datetimes are UTC
+    assert AE.month_bounds("2026-12")[1] == MS("2027-01-01 03:00") - 1
+
+
+def test_due_months_day2_art():
+    assert AE.due_months(datetime(2026, 12, 2, 2, 59)) == ["2026-10"]          # Dec 1 23:59 ART: November not due yet
+    assert AE.due_months(datetime(2026, 12, 2, 3, 0)) == ["2026-11", "2026-10"]  # Dec 2 00:00 ART
+    assert AE.due_months(datetime(2027, 1, 5, 12, 0)) == ["2026-12", "2026-11"]
+
+
+def test_statement_pass_stores_and_retries():
+    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+    from sqlalchemy import select
+    import models
+
+    calls = []
+
+    async def fake_build(lo, hi, look):
+        calls.append(AE.fmt_dt(lo)[:7])
+        if len(calls) == 1:
+            raise RuntimeError("Binance busy")
+        return b"PK-xlsx", dict(trades=3 if AE.fmt_dt(lo)[:7] == "2026-11" else 0, net=12.5, activity=AE.fmt_dt(lo)[:7] == "2026-11")
+
+    async def run():
+        eng = create_async_engine("sqlite+aiosqlite:///:memory:")
+        async with eng.begin() as c:
+            await c.run_sync(models.Base.metadata.create_all)
+        sf = async_sessionmaker(eng, expire_on_commit=False)
+
+        async def commit(db):
+            await db.commit()
+        now = datetime(2026, 12, 3, 12, 0)
+        d1 = await AE.statement_pass(sf, commit, now, fake_build, keys=lambda: True)
+        d2 = await AE.statement_pass(sf, commit, now, fake_build, keys=lambda: True)
+        d3 = await AE.statement_pass(sf, commit, now, fake_build, keys=lambda: True)
+        async with sf() as db:
+            rows = {r.month: r for r in (await db.execute(select(models.AccountingStatement))).scalars().all()}
+        await eng.dispose()
+        return d1, d2, d3, rows
+    d1, d2, d3, rows = asyncio.run(run())
+    assert d1 == ["2026-10"] and d2 == ["2026-11"] and d3 == []                    # Nov failed once → retried; nothing rebuilt after
+    assert rows["2026-11"].status == "READY" and rows["2026-11"].attempts == 2 and rows["2026-11"].xlsx == b"PK-xlsx" and rows["2026-11"].trades == 3
+    assert rows["2026-10"].status == "EMPTY" and rows["2026-10"].error is None
+    assert AE.statement_name("2026-11") == "scalpars_accounting_2026-11.xlsx"
+
+
+def test_statement_pass_no_keys_does_nothing():
+    assert asyncio.run(AE.statement_pass(object(), None, datetime(2026, 12, 3), None, keys=lambda: False)) == []
+
+
+def test_archive_sync_routes_statements(tmp_path):
+    sys.path.insert(0, os.path.join(ROOT, "scripts"))
+    import export_glob as EG
+    dl, ar = tmp_path / "dl", tmp_path / "ar"
+    dl.mkdir()
+    (dl / "scalpars_accounting_2027-01.xlsx").write_bytes(b"x")
+    (dl / "scalpars_accounting_2027-01 (1).xlsx").write_bytes(b"y")                   # a browser duplicate is not a statement name
+    assert EG.sync_archive(str(dl), str(ar), force=True) == 1
+    assert (ar / "accounting" / "scalpars_accounting_2027-01.xlsx").read_bytes() == b"x"
 
 
 def test_xlsx_strips_control_chars_and_nan():
@@ -215,8 +355,10 @@ def test_build_paper_marked_and_binance_free():
     assert not any("Binance" in c or "balance" in c.lower() for c in AE.PAPER_MONTH_COLS)
 
 
-def test_dashboard_mode_select_and_error_message():
+def test_dashboard_controls():
     html = open(os.path.join(ROOT, "templates", "index.html")).read()
     assert 'id="acct-mode"' in html and '<option value="paper">Paper (check)</option>' in html
     assert "onclick=\"_acctDownload(this)\"" in html and "q.push('mode=' + encodeURIComponent(m));" in html
-    assert "if (!r.ok)" in html                                            # an error is a message, never a downloaded .json
+    assert "fetch(_acctUrl('/api/accounting/prepare'), {method: 'POST'})" in html          # prepare → poll → save
+    assert 'id="acct-statements"' in html and 'id="auto-acct-toggle"' in html
+    assert "if (last === null) {" in html and "for (const x of ready.filter(x => x.month > last))" in html   # first visit remembers; each new month once

@@ -40,6 +40,8 @@ _STAMP = re.compile(r"_live_(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})")
 DOWNLOADS = os.path.expanduser("~/Downloads")
 ARCHIVE_DIR = os.path.join(_ROOT, "exports_archive")
 _EXPORT_NAME = re.compile(r"^scalpars_(?:orders|decisions)_(?:paper|live)_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}.*\.csv$")
+_ACCOUNTING_NAME = re.compile(r"^scalpars_accounting_\d{4}-\d{2}\.xlsx$")   # 📒 (DECISION_LOG 457) monthly statements → exports_archive/accounting/
+ACCOUNTING_SUBDIR = "accounting"
 
 
 SYNC_TTL_S = 60.0
@@ -57,7 +59,7 @@ def sync_archive(src=None, dst=None, force=False):
     _LAST_SYNC[(src, dst)] = now
     n = 0
     try:
-        names = [f for f in os.listdir(src) if _EXPORT_NAME.match(f)]
+        names = [f for f in os.listdir(src) if _EXPORT_NAME.match(f) or _ACCOUNTING_NAME.match(f)]
     except OSError:
         return 0
     try:
@@ -72,7 +74,14 @@ def sync_archive(src=None, dst=None, force=False):
     except OSError:
         pass
     for f in names:
-        a, b = os.path.join(src, f), os.path.join(dst, f)
+        sub = os.path.join(dst, ACCOUNTING_SUBDIR) if _ACCOUNTING_NAME.match(f) else dst
+        if sub != dst:
+            try:
+                os.makedirs(sub, exist_ok=True)
+            except OSError as e:
+                print(f"[export_glob] accounting archive folder unavailable ({e!r})", file=sys.stderr)
+                continue
+        a, b = os.path.join(src, f), os.path.join(sub, f)
         try:
             sa = os.stat(a)
             if os.path.exists(b):

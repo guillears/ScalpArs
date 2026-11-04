@@ -1,14 +1,15 @@
 """📒 Accountant export (DECISION_LOG 455, operator 2026-11-04: "an excel / csv to download for my accountant … simple, but contain all
 the necessary information. Similar to what i would download from binance").
 
-SCOPE      LIVE money (mode=paper → build_paper: the paper trades + monthly totals, marked NOT for accounting — operator 11-04), USDT, UTC, from the first live trade (or the period asked). Bot trades, dashboard-opened
+SCOPE      LIVE money (mode=paper → build_paper: the paper trades + monthly totals, marked NOT for accounting — operator 11-04), USDT,
+           ARGENTINA TIME UTC-3 for every date and month boundary (DECISION_LOG 457), the period asked. Bot trades, dashboard-opened
            trades and Binance-app trades (auto-recorded, DECISION_LOG 329) are ONE list — nothing in the file says which is which
            (operator: "dont want to disclose bot or manual").
 SHEETS     ① Futures trades — one row per closed position from the live Order rows (the dashboard's own numbers): close / open date,
              symbol, side, quantity, entry / exit price, margin, leverage, position size, gross P&L, trading fees, funding, net P&L, result.
              Order convention: pnl is NET of the entry + exit fees and EXCLUDES funding (funding_fee_usd, negative = paid) → gross = pnl
              + fees · net = pnl + funding · margin = position size / leverage (so margin × leverage = position size on every row).
-           ② Monthly summary — per UTC month: trades, wins / losses, gross, fees, funding, net (from ①) + the CHECK against Binance's own
+           ② Monthly summary — per month (Argentina time): trades, wins / losses, gross, fees, funding, net (from ①) + the CHECK against Binance's own
              income history (REALIZED_PNL + COMMISSION + FUNDING_FEE, BNB commission × the BNB hourly close) and the difference ·
              deposits / withdrawals (capital history, stablecoins) · net transfers into futures · end-of-month futures USDT wallet
              balance (= today's wallet − every later USDT income row). A total row.
@@ -25,40 +26,42 @@ import logging
 import math
 import re
 import zipfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Callable, Dict, Iterable, List, Optional, Tuple
 from xml.sax.saxutils import escape
 
 logger = logging.getLogger(__name__)
 
 STABLES = ("USDT", "USDC", "FDUSD")
+EXPORT_WEIGHT_PER_MIN = 300                     # the export's own futures-API budget (the app recorder and track record use 600 each; the bot first)
 WINDOW_MS = 7 * 86_400_000                      # Binance income: ≤ 7-day windows
 DAY_MS = 86_400_000
 INCOME_HORIZON_MS = 89 * DAY_MS                 # Binance keeps ~3 months of futures income: older months get no check / balance (noted)
 CAPITAL_WINDOW_MS = 89 * DAY_MS                 # deposit / withdrawal history: ≤ 90-day windows per call
-WEIGHT_STOP = 1200                              # X-MBX-USED-WEIGHT-1M above this → stop (the live bot shares the IP's 2,400 / min)
 _CTRL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
-TRADE_COLS = ["Close date (UTC)", "Open date (UTC)", "Symbol", "Side", "Quantity", "Entry price", "Exit price", "Margin (USDT)",
+ART = timezone(timedelta(hours=-3))             # 🇦🇷 (DECISION_LOG 457, operator) months and every date in the file: Argentina time, UTC-3
+TRADE_COLS = ["Close date (UTC-3)", "Open date (UTC-3)", "Symbol", "Side", "Quantity", "Entry price", "Exit price", "Margin (USDT)",
               "Leverage", "Position size (USDT)", "Gross P&L (USDT)", "Trading fees (USDT)", "Funding (USDT)", "Net P&L (USDT)", "Result"]
 MONTH_COLS = ["Month", "Trades", "Wins", "Losses", "Gross P&L (USDT)", "Trading fees (USDT)", "Funding (USDT)", "Net P&L (USDT)",
               "Binance net P&L (check)", "Difference", "Deposits (USDT)", "Withdrawals (USDT)", "Net transfers into futures (USDT)",
               "End-of-month futures balance (USDT)"]
-TRANSFER_COLS = ["Date (UTC)", "Type", "Asset", "Amount"]
-SPOT_TRADE_COLS = ["Date (UTC)", "Symbol", "Side", "Quantity", "Price", "Total (USDT)", "Fee (USDT)"]
+TRANSFER_COLS = ["Date (UTC-3)", "Type", "Asset", "Amount"]
+SPOT_TRADE_COLS = ["Date (UTC-3)", "Symbol", "Side", "Quantity", "Price", "Total (USDT)", "Fee (USDT)"]
 HOLDING_COLS = ["Asset", "Quantity", "Average buy price (USDT)", "Cost (USDT)", "Current price (USDT)", "Current value (USDT)",
                 "Unrealized P&L (USDT)"]
-LOT_COLS = ["Asset", "Buy date (UTC)", "Sell date (UTC)", "Quantity", "Buy price (USDT)", "Sell price (USDT)", "Cost (USDT)",
+LOT_COLS = ["Asset", "Buy date (UTC-3)", "Sell date (UTC-3)", "Quantity", "Buy price (USDT)", "Sell price (USDT)", "Cost (USDT)",
             "Proceeds (USDT)", "Realized P&L (USDT)"]
 
 
 def fmt_dt(d) -> str:
+    """epoch ms or a datetime (naive = UTC, the database convention) → 'YYYY-MM-DD HH:MM:SS' in Argentina time (UTC-3)."""
     if d is None:
         return ""
     if isinstance(d, (int, float)):
         d = datetime.fromtimestamp(d / 1000, tz=timezone.utc)
-    if d.tzinfo is not None:
-        d = d.astimezone(timezone.utc).replace(tzinfo=None)
-    return d.strftime("%Y-%m-%d %H:%M:%S")
+    if d.tzinfo is None:
+        d = d.replace(tzinfo=timezone.utc)
+    return d.astimezone(ART).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _f(x, default=0.0) -> float:
@@ -82,7 +85,7 @@ def trade_row(o) -> dict:
     lev = _f(getattr(o, "leverage", 0)) or 1.0
     net = pnl + funding
     return {
-        "Close date (UTC)": fmt_dt(o.closed_at), "Open date (UTC)": fmt_dt(o.opened_at), "Symbol": str(o.pair).replace("/", ""),
+        "Close date (UTC-3)": fmt_dt(o.closed_at), "Open date (UTC-3)": fmt_dt(o.opened_at), "Symbol": str(o.pair).replace("/", ""),
         "Side": "Long" if str(o.direction).upper() == "LONG" else "Short", "Quantity": _r(_f(o.quantity), 8),
         "Entry price": _r(_f(o.entry_price), 8), "Exit price": _r(_f(o.exit_price), 8), "Margin (USDT)": _r(size / lev, 2),
         "Leverage": _r(lev, 2), "Position size (USDT)": _r(size, 2), "Gross P&L (USDT)": _r(pnl + fees, 4),
@@ -94,13 +97,10 @@ def trade_row(o) -> dict:
 def trade_rows(orders: Iterable) -> List[dict]:
     """CLOSED live rows → sheet ① rows, oldest close first (caller filters is_paper False ∧ CLOSED ∧ the period)."""
     rows = [trade_row(o) for o in orders if getattr(o, "closed_at", None) is not None]
-    return sorted(rows, key=lambda r: r["Close date (UTC)"])
+    return sorted(rows, key=lambda r: r["Close date (UTC-3)"])
 
 
 # ── Binance income → monthly check (pure) ───────────────────────────────────────────────────────────────────────────────────────────
-def income_key(r: dict) -> tuple:
-    return (str(r.get("incomeType")), str(r.get("tranId")), str(r.get("symbol") or ""), str(r.get("asset") or ""))
-
 
 def month_of_ms(ms: int) -> str:
     return fmt_dt(int(ms))[:7]
@@ -129,16 +129,16 @@ def month_end_balances(months: List[str], income: Iterable[dict], wallet_now: Op
 
 
 def month_bounds(m: str) -> Tuple[int, int]:
-    """'YYYY-MM' → (first ms, last ms) UTC."""
+    """'YYYY-MM' → (first ms, last ms) of that month in Argentina time (UTC-3)."""
     y, mo = int(m[:4]), int(m[5:7])
-    a = int(datetime(y, mo, 1, tzinfo=timezone.utc).timestamp() * 1000)
-    b = int(datetime(y + (mo == 12), mo % 12 + 1, 1, tzinfo=timezone.utc).timestamp() * 1000) - 1
+    a = int(datetime(y, mo, 1, tzinfo=ART).timestamp() * 1000)
+    b = int(datetime(y + (mo == 12), mo % 12 + 1, 1, tzinfo=ART).timestamp() * 1000) - 1
     return a, b
 
 
 def monthly_rows(trades: List[dict], income: List[dict], flows: List[Tuple[int, float, str]], usd, wallet_now: Optional[float],
                  binance_ok: bool, income_from_ms: int = 0) -> List[dict]:
-    """sheet ② — one row per UTC month with a trade, an income row or a flow, + TOTAL. income_from_ms = the oldest instant Binance's
+    """sheet ② — one row per month (Argentina time) with a trade, an income row or a flow, + TOTAL. income_from_ms = the oldest instant Binance's
     income history still holds: a month starting before it gets no check (blank), a month ending before it no balance (blank)."""
     tin = [r for r in income if str(r.get("incomeType")) == "TRANSFER" and str(r.get("asset") or "") in STABLES]
     months = sorted({t["_month"] for t in trades} | {month_of_ms(int(r.get("time") or 0)) for r in income}
@@ -177,7 +177,7 @@ def transfer_rows(income: List[dict], flows: List[Tuple[int, float, str]], lo_ms
     rows += [(int(r.get("time") or 0), "Spot → Futures" if _f(r.get("income")) > 0 else "Futures → Spot", str(r.get("asset") or ""),
               abs(_f(r.get("income")))) for r in income if str(r.get("incomeType")) == "TRANSFER"
              and lo_ms <= int(r.get("time") or 0) <= hi_ms]
-    return [{"Date (UTC)": fmt_dt(t), "Type": k, "Asset": a, "Amount": _r(v, 8)} for t, k, a, v in sorted(rows)]
+    return [{"Date (UTC-3)": fmt_dt(t), "Type": k, "Asset": a, "Amount": _r(v, 8)} for t, k, a, v in sorted(rows)]
 
 
 # ── ④–⑥ spot, FIFO (pure) ───────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -201,7 +201,7 @@ def spot_fifo(fills: List[dict], base_of: Dict[str, str], usd: Callable[[str, in
         fee_usd = cm * price if fee_in_base else (cm * px if px is not None else 0.0)
         buy = bool(r.get("isBuyer"))
         if lo_ms <= t <= hi_ms:
-            trades_out.append({"Date (UTC)": fmt_dt(t), "Symbol": sym, "Side": "Buy" if buy else "Sell", "Quantity": _r(qty, 8),
+            trades_out.append({"Date (UTC-3)": fmt_dt(t), "Symbol": sym, "Side": "Buy" if buy else "Sell", "Quantity": _r(qty, 8),
                                "Price": _r(price, 8), "Total (USDT)": _r(quote, 4), "Fee (USDT)": _r(-fee_usd, 4)})
         book = lots.setdefault(base, [])
         if buy:
@@ -221,14 +221,14 @@ def spot_fifo(fills: List[dict], base_of: Dict[str, str], usd: Callable[[str, in
                     book.pop(0)
                 cost, proc = take * lc, take * unit_proceeds
                 if lo_ms <= t <= hi_ms:
-                    lots_out.append({"Asset": base, "Buy date (UTC)": fmt_dt(lt), "Sell date (UTC)": fmt_dt(t), "Quantity": _r(take, 8),
+                    lots_out.append({"Asset": base, "Buy date (UTC-3)": fmt_dt(lt), "Sell date (UTC-3)": fmt_dt(t), "Quantity": _r(take, 8),
                                      "Buy price (USDT)": _r(lc, 8), "Sell price (USDT)": _r(unit_proceeds, 8), "Cost (USDT)": _r(cost, 4),
                                      "Proceeds (USDT)": _r(proc, 4), "Realized P&L (USDT)": _r(proc - cost, 4)})
                 left -= take
             else:
                 if lo_ms <= t <= hi_ms:
-                    lots_out.append({"Asset": base, "Buy date (UTC)": "unknown (no earlier buy in this account's history)",
-                                     "Sell date (UTC)": fmt_dt(t), "Quantity": _r(left, 8), "Buy price (USDT)": None,
+                    lots_out.append({"Asset": base, "Buy date (UTC-3)": "unknown (no earlier buy in this account's history)",
+                                     "Sell date (UTC-3)": fmt_dt(t), "Quantity": _r(left, 8), "Buy price (USDT)": None,
                                      "Sell price (USDT)": _r(unit_proceeds, 8), "Cost (USDT)": None,
                                      "Proceeds (USDT)": _r(left * unit_proceeds, 4), "Realized P&L (USDT)": None})
                 left = 0.0
@@ -340,39 +340,6 @@ def strip_private(rows: List[dict], cols: List[str]) -> List[dict]:
 
 
 # ── Binance reads (read-only) ───────────────────────────────────────────────────────────────────────────────────────────────────────
-def _guard(bs):
-    """before every futures-API call: an active ban, or the IP's used weight above WEIGHT_STOP → stop (the live bot shares the budget)."""
-    from services.binance_service import get_ban_status
-    if get_ban_status().get("banned"):
-        raise RuntimeError("Binance rate-limit ban active")
-    w = bs.used_weight_1m() if hasattr(bs, "used_weight_1m") else None
-    if w is not None and w > WEIGHT_STOP:
-        raise RuntimeError(f"Binance request budget busy ({w} / min used)")
-
-
-async def read_income(bs, lo_ms: int, hi_ms: int) -> List[dict]:
-    """every income row in [lo, hi] — ≤ 7-day windows, paged on the last row's time, deduped (income_key)."""
-    seen, out, w = set(), [], lo_ms
-    while w <= hi_ms:
-        we, cur = min(w + WINDOW_MS - 1, hi_ms), w
-        for _ in range(50):
-            _guard(bs)
-            rows = await bs.fetch_income_page(cur, we)
-            for r in rows:
-                k = income_key(r)
-                if k not in seen:
-                    seen.add(k)
-                    out.append(r)
-            if len(rows) < 1000:
-                break
-            nxt = int(rows[-1].get("time") or 0)
-            if nxt <= cur:
-                raise RuntimeError("income paging made no progress")
-            cur = nxt
-        w = we + 1
-    return sorted(out, key=lambda r: int(r.get("time") or 0))
-
-
 async def read_capital_flows(bs, lo_ms: int, hi_ms: int) -> List[Tuple[int, float, str]]:
     """completed deposits (+) and withdrawals (−), every coin, [lo, hi] — ≤ 89-day windows, a full page (1,000) splits its window, no cache
     (binance_service.get_capital_flows keeps only the last 89 days). Statuses as the portfolio card: deposit 1 / 6, withdrawal 6."""
@@ -479,7 +446,7 @@ def build_paper(orders: List, lo_ms: int, hi_ms: int) -> bytes:
     no Binance read (the account's transfers / spot / Binance check describe the REAL account, not the simulation)."""
     trades = trade_rows(orders)
     months = monthly_rows(trades, [], [], lambda a, ms: 1.0, None, False)
-    period = f"Period {fmt_dt(lo_ms)} → {fmt_dt(hi_ms)} UTC · USDT"
+    period = f"Period {fmt_dt(lo_ms)} → {fmt_dt(hi_ms)} (UTC-3) · USDT"
     return xlsx_bytes([
         ("Futures trades (PAPER)", TRADE_COLS, strip_private(trades, TRADE_COLS),
          [PAPER_NOTE, period, "One row per closed futures position. Net P&L = gross P&L + trading fees + funding."]),
@@ -487,52 +454,262 @@ def build_paper(orders: List, lo_ms: int, hi_ms: int) -> bytes:
     ])
 
 
-async def build(orders: List, bs, lo_ms: int, hi_ms: int) -> bytes:
-    """→ the xlsx bytes. Raises when a Binance read fails: an accountant file is never shipped incomplete."""
-    trades = trade_rows(orders)
-    now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
-    inc_lo = max(lo_ms, now_ms - INCOME_HORIZON_MS)                      # Binance keeps ~3 months of income: older months noted, never guessed
-    income = await read_income(bs, inc_lo, hi_ms) if inc_lo <= hi_ms else []
-    after = await read_income(bs, max(hi_ms + 1, inc_lo), now_ms) if hi_ms < now_ms - 60_000 else []
-    _guard(bs)
+# ── live futures trades from Binance's own fills (DECISION_LOG 457) ──────────────────────────────────────────────────────────────────
+def first_flat_ms(fills: List, start_net: float) -> Optional[int]:
+    """the time the replay first reaches a flat book from start_net (None = it never does inside these fills) — pure."""
+    from services.app_trades import qty_eps
+    eps, net = qty_eps(fills), float(start_net)
+    if abs(net) <= eps:
+        return None
+    for f in sorted(fills, key=lambda x: (x.t, x.trade_id)):
+        net += f.signed
+        if abs(net) <= eps or (net > 0) != (start_net > 0):
+            return f.t
+    return None
+
+
+def episode_row(ep, comm_usd: float, funding: float, leverage: Optional[float]) -> dict:
+    """one closed Binance position (services.app_trades.Episode) → sheet ① row: gross = Σ Binance realized P&L (before fees), fees = Σ
+    commission actually charged (USDT), funding = Σ funding paid / received while open, net = gross − fees + funding; size = entry VWAP
+    × peak quantity; margin = size / leverage — pure."""
+    from services.app_trades import vwap
+    qty = ep.max_abs_net
+    entry, exitp = vwap(ep.opens()), vwap(ep.closes())
+    gross = sum(l.rpnl for l in ep.legs)
+    size = (entry or 0.0) * qty
+    lev = float(leverage) if leverage and float(leverage) >= 1 else 1.0
+    net = gross - comm_usd + funding
+    return {"Close date (UTC-3)": fmt_dt(ep.end_ms), "Open date (UTC-3)": fmt_dt(ep.start_ms), "Symbol": ep.symbol,
+            "Side": "Long" if ep.direction == "LONG" else "Short", "Quantity": _r(qty, 8), "Entry price": _r(entry, 8),
+            "Exit price": _r(exitp, 8), "Margin (USDT)": _r(size / lev, 2), "Leverage": _r(lev, 2), "Position size (USDT)": _r(size, 2),
+            "Gross P&L (USDT)": _r(gross, 4), "Trading fees (USDT)": _r(-comm_usd, 4), "Funding (USDT)": _r(funding, 4),
+            "Net P&L (USDT)": _r(net, 4), "Result": "Win" if net > 0 else "Loss",
+            "_month": fmt_dt(ep.end_ms)[:7], "_gross": gross, "_fees": -comm_usd, "_funding": funding, "_net": net, "_close_ms": ep.end_ms}
+
+
+async def futures_from_fills(rec, income: List[dict], fetch_lo: int, now_ms: int, lo_ms: int, hi_ms: int,
+                             lev_lookup: Callable[[str, int], Optional[float]], horizon_ms: int) -> List[dict]:
+    """every position that CLOSED in [lo, hi], rebuilt from Binance's fills (rec = services.app_trades.AppTradeRecorder: its budgeted,
+    ban-aware reads). Symbols and fill windows from the account's income (REALIZED_PNL / COMMISSION rows); each symbol's replay is anchored
+    on its live position now; a position already open before fetch_lo whose close lands in the period reads earlier 7-day windows until it
+    is flat (never before horizon_ms → RuntimeError: never an invented entry)."""
+    from services.app_trades import build_episodes, comm_usdt, W_POS
+    active: Dict[str, set] = {}
+    for r in income:
+        if str(r.get("incomeType")) in ("REALIZED_PNL", "COMMISSION") and r.get("symbol"):
+            active.setdefault(str(r["symbol"]), set()).add((int(r.get("time") or 0) - fetch_lo) // WINDOW_MS)
+    positions = await rec._call(W_POS, rec.svc.get_net_positions) if active else {}
+    if not isinstance(positions, dict):
+        raise RuntimeError("Binance positions unreadable")
+    eps = []
+    for sym in sorted(active):
+        fills, seen, fetched = [], set(), set()
+
+        async def read(k):
+            w0 = max(fetch_lo + k * WINDOW_MS, horizon_ms)    # the oldest week is clamped to what Binance still holds
+            fetched.add(k)
+            for f in await rec._fills(sym, w0, min(w0 + WINDOW_MS - 1, now_ms)):
+                if f.trade_id not in seen:
+                    seen.add(f.trade_id)
+                    fills.append(f)
+        for k in sorted(active[sym]):
+            await read(k)
+        while True:
+            start_net = float(positions.get(sym, 0.0)) - sum(f.signed for f in fills)
+            flat = first_flat_ms(fills, start_net)
+            if flat is None or flat < lo_ms:
+                break                                         # flat at the start, or the leading position closed before the period
+            k = min(fetched) - 1                              # every week back from the earliest one read (an opening fill may carry no fee row)
+            if fetch_lo + (k + 1) * WINDOW_MS - 1 < horizon_ms:
+                raise RuntimeError(f"{sym}: a position open before {fmt_dt(horizon_ms)} closes in the period — Binance no longer has its entry")
+            await read(k)
+        done, _open, _lead = build_episodes(sym, fills, float(positions.get(sym, 0.0)) - sum(f.signed for f in fills))
+        eps += [e for e in done if lo_ms <= e.end_ms <= hi_ms]
+    await rec.prepare_rates({"BNB": [l.fill.t for e in eps for l in e.legs if l.fill.comm_asset == "BNB"]})
+    rows = []
+    for e in eps:
+        comm, _est = comm_usdt(e.legs, rec.rate)              # raises on a fee asset it cannot price (never guessed)
+        fund = 0.0
+        early = await rec._income(e.start_ms, fetch_lo - 1, e.symbol, "FUNDING_FEE") if e.start_ms < fetch_lo else []
+        for r in list(income) + list(early):                 # a position read back past the window: its earlier funding too
+            if str(r.get("incomeType")) == "FUNDING_FEE" and str(r.get("symbol")) == e.symbol and e.start_ms <= int(r.get("time") or 0) <= e.end_ms:
+                px = rec.rate(str(r.get("asset") or "USDT"), int(r.get("time") or 0))
+                if px is None:
+                    raise RuntimeError(f"funding paid in {r.get('asset')} cannot be converted to USDT")
+                fund += _f(r.get("income")) * px[0]
+        lev = lev_lookup(e.symbol, e.start_ms) if lev_lookup else None
+        if not lev:
+            lev = await rec._leverage(e.symbol)
+        rows.append(episode_row(e, comm, fund, lev))
+    return sorted(rows, key=lambda r: r["_close_ms"])
+
+
+async def build_live(lo_ms: int, hi_ms: int, lev_lookup=None, rec=None, bs=None) -> Tuple[bytes, dict]:
+    """→ (xlsx bytes, {trades, net, activity}). Every number from Binance (read-only); raises when a read fails — an accountant file is
+    never shipped incomplete."""
+    if rec is None:
+        from services.app_trades import AppTradeRecorder, WeightBudget
+        rec = AppTradeRecorder(budget=WeightBudget(per_min=EXPORT_WEIGHT_PER_MIN))
+    if bs is None:
+        from services.binance_service import binance_service as bs
+    now_ms = rec.now_ms()
+    horizon = now_ms - INCOME_HORIZON_MS
+    if lo_ms < horizon:                                   # trades before it cannot be read: never a file with silent zeros
+        raise RuntimeError(f"Binance keeps about 3 months of futures history — the period starts before {fmt_dt(horizon)[:10]}: "
+                           "download those months from the stored monthly statements")
+    fetch_lo = max(lo_ms - WINDOW_MS, horizon)            # a week before the period: positions that opened earlier and close inside it
+    income_all = await rec._income(fetch_lo, now_ms)
+    trades = await futures_from_fills(rec, income_all, fetch_lo, now_ms, lo_ms, hi_ms, lev_lookup, horizon)
+    income = [r for r in income_all if lo_ms <= int(r.get("time") or 0) <= hi_ms]
+    after = [r for r in income_all if int(r.get("time") or 0) > hi_ms]
+    if rec.ban_active():                                  # the spot / capital reads below go through the spot client: same IP, same ban
+        raise RuntimeError("Binance rate-limit ban active")
     flows = await read_capital_flows(bs, lo_ms, hi_ms)
-    flows_all = flows
-    wb = await bs.get_balance()
-    if not wb.get("ok"):
+    wb = await rec._call(5, bs.get_balance)
+    if not wb or not wb.get("ok"):
         raise RuntimeError("futures wallet balance read failed")
-    fills, base_of, balances, prices = await read_spot(bs, [c for _t, _a, c in flows_all])
-    first = min([lo_ms] + [int(f.get("time") or lo_ms) for f in fills])   # BNB fees of older spot fills (their FIFO cost) priced at their hour too
+    fills, base_of, balances, prices = await read_spot(bs, [c for _t, _a, c in flows])
+    first = min([lo_ms] + [int(f.get("time") or lo_ms) for f in fills])
     bnb = await read_bnb_hourly(bs, first, hi_ms)
     usd = usd_rate(bnb, prices)
-    # the end-of-month balances walk back from TODAY's wallet: income after the period end is included in the walk
     wallet_at_end = _f(wb.get("usdt_total")) - sum(_f(r.get("income")) for r in after if str(r.get("asset") or "") == "USDT")
-    months = monthly_rows(trades, income, flows, usd, wallet_at_end, True, inc_lo if inc_lo > lo_ms else 0)   # only Binance's horizon blanks a month, never the period start
-    old = (f"Binance keeps about 3 months of futures history: months before {fmt_dt(inc_lo)[:10]} have no Binance check, no end-of-month "
-           "balance and no spot ↔ futures moves (blank)." if inc_lo > lo_ms else "")
+    months = monthly_rows(trades, income, flows, usd, wallet_at_end, True)
+    old = ""
     s_trades, holds, lots = spot_fifo(fills, base_of, usd, balances, prices, lo_ms, hi_ms)
-    period = f"Period {fmt_dt(lo_ms)} → {fmt_dt(hi_ms)} UTC · USDT"
+    xfers = transfer_rows(income, flows, lo_ms, hi_ms)
+    period = f"Period {fmt_dt(lo_ms)} → {fmt_dt(hi_ms)} (UTC-3) · USDT"
     sheets = [
         ("Futures trades", TRADE_COLS, strip_private(trades, TRADE_COLS),
-         [period, "One row per closed futures position. Net P&L = gross P&L + trading fees + funding.",
-          "Per-trade fees and funding are the platform's bookings (some fees are estimated at the exchange fee rate, a missing funding read "
-          "counts as 0; positions taken over from the Binance app show the take-over time as open date) — the monthly sheet's Binance "
-          "check is the authoritative total."]),
+         [period, "One row per futures position closed in the period, rebuilt from Binance's own fills: gross P&L = Binance's realized "
+                  "P&L, trading fees = the commission Binance charged, funding = paid / received while open. Net = gross + fees + funding.",
+          "Margin and leverage: the leverage the position was opened with when the platform recorded it, else the coin's leverage setting "
+          "at the time of this file (Binance does not keep the leverage of past trades)."]),
         ("Monthly summary", MONTH_COLS, months,
-         [period, "Binance net P&L (check) = Binance's own income history (realized P&L + commissions + funding; BNB fees at the hourly "
-                  "BNB price). Difference = this file's net P&L − Binance's.",
+         [period, "Binance net P&L (check) = Binance's income history (realized P&L + commissions + funding; BNB fees at the hourly BNB "
+                  "price). Difference = this file's net P&L − Binance's (funding outside a closed position, rounding).",
           "End-of-month futures balance = the USDT futures wallet at the month's last second (today's wallet less every later income row)."]
          + ([old] if old else [])),
-        ("Transfers", TRANSFER_COLS, transfer_rows(income, flows, lo_ms, hi_ms),
+        ("Transfers", TRANSFER_COLS, xfers,
          [period, "Deposits and withdrawals of the Binance account, and moves between the spot and futures wallets."] + ([old] if old else [])),
         ("Spot trades", SPOT_TRADE_COLS, s_trades,
          [period, "Spot buys and sells against USDT / USDC / FDUSD (stablecoins counted 1:1 with USDT).",
           "Coins found from the current balances, the deposit / withdrawal history and BNB; a coin bought and sold to zero that never "
           "sat in the wallet and was never deposited is not listed."]),
         ("Spot holdings", HOLDING_COLS, holds,
-         [f"Holdings at {fmt_dt(datetime.now(timezone.utc))} UTC. Average buy price / cost from the FIFO lots still held; blank = the "
+         [f"Holdings at {fmt_dt(datetime.now(timezone.utc))} (UTC-3). Average buy price / cost from the FIFO lots still held; blank = the "
           "quantity is not fully explained by spot buys (deposited coins, coins moved to futures, or BNB spent on trading fees)."]),
         ("Spot sold lots", LOT_COLS, lots,
          [period, "Each sale matched to the earliest buys first (FIFO). Cost includes the buy fee; proceeds are net of the sell fee. "
                   "Confirm FIFO with your tax rules."]),
     ]
-    return xlsx_bytes(sheets)
+    stats = dict(trades=len(trades), net=sum(t["_net"] for t in trades), activity=bool(trades or xfers or s_trades))
+    return xlsx_bytes(sheets), stats
+
+
+# ── monthly statements (DECISION_LOG 457): the previous Argentina month, built on day 2, stored for good ──────────────────────────────
+STATEMENT_DAY = 2                       # operator 11-04: "maybe day 2" — late bookings / the last funding are in
+STATEMENT_INTERVAL_S = 3600             # hourly: a failed build (Binance busy) retries the next hour
+STATEMENT_FIRST_DELAY_S = 300
+
+
+def statement_name(month: str) -> str:
+    return f"scalpars_accounting_{month}.xlsx"
+
+
+def due_months(now_utc: datetime, n_back: int = 2) -> List[str]:
+    """the months whose statement is due at now (Argentina time): the previous month from day STATEMENT_DAY 00:00 on, and the one before
+    it (a missed run while Binance still holds it) — newest first — pure."""
+    a = now_utc.replace(tzinfo=timezone.utc).astimezone(ART) if now_utc.tzinfo is None else now_utc.astimezone(ART)
+    y, m = a.year, a.month
+    out = []
+    for k in range(1, n_back + 1):
+        mm, yy = m - k, y
+        while mm <= 0:
+            mm, yy = mm + 12, yy - 1
+        out.append(f"{yy:04d}-{mm:02d}")
+    return out if a.day >= STATEMENT_DAY else out[1:]
+
+
+async def leverage_lookup_for(db, lo_ms: int, hi_ms: int):
+    """{(symbol) → [(open ms, leverage)]} of the live rows the platform recorded around the period → lookup(sym, open_ms): the leverage of a
+    row opened within ±120 s of the Binance position's first fill, else None."""
+    from sqlalchemy import select, and_
+    from models import Order
+    lo = datetime.fromtimestamp((lo_ms - 30 * DAY_MS) / 1000, tz=timezone.utc).replace(tzinfo=None)
+    hi = datetime.fromtimestamp(hi_ms / 1000, tz=timezone.utc).replace(tzinfo=None)
+    rows = (await db.execute(select(Order.pair, Order.opened_at, Order.leverage).where(and_(
+        Order.is_paper == False, Order.opened_at >= lo, Order.opened_at <= hi)))).all()  # noqa: E712
+    idx: Dict[str, List[Tuple[int, float]]] = {}
+    for p, o, lv in rows:
+        if o is not None and lv:
+            idx.setdefault(str(p).replace("/", ""), []).append((int(o.replace(tzinfo=timezone.utc).timestamp() * 1000), float(lv)))
+
+    def look(sym: str, t: int) -> Optional[float]:
+        best = min(((abs(ot - t), lv) for ot, lv in idx.get(sym, [])), default=None)
+        return best[1] if best and best[0] <= 120_000 else None
+    return look
+
+
+async def statement_pass(sf=None, commit=None, now_utc: Optional[datetime] = None, build=None, keys=None) -> List[str]:
+    """build every due month without a READY / EMPTY statement → stored; a failure is stored as ERROR (retried next pass)."""
+    from sqlalchemy import select
+    from models import AccountingStatement
+    if sf is None:
+        from database import AsyncSessionLocal as sf
+    if commit is None:
+        from database import locked_commit as commit
+    if keys is None:
+        from services.track_record import _keys_configured as keys
+    if not keys():
+        return []
+    now_utc = now_utc or datetime.now(timezone.utc).replace(tzinfo=None)
+    done = []
+    for month in due_months(now_utc):
+        lo, hi = month_bounds(month)
+        async with sf() as db:                                # short read session — never held open across the Binance reads
+            row = (await db.execute(select(AccountingStatement).where(AccountingStatement.month == month))).scalars().first()
+            if row is not None and row.status in ("READY", "EMPTY"):
+                continue
+            look = await leverage_lookup_for(db, lo, hi)
+        try:
+            xlsx, st = await (build or build_live)(lo, hi, look)
+            status, err = ("READY" if st["activity"] else "EMPTY"), None
+        except Exception as e:
+            xlsx, st, status, err = None, {}, "ERROR", f"{type(e).__name__}: {e}"[:300]
+            logger.error(f"[ACCOUNTING_STATEMENT] {month}: not built — {err} (retried next hour)")
+        async with sf() as db:
+            row = (await db.execute(select(AccountingStatement).where(AccountingStatement.month == month))).scalars().first()
+            if row is None:
+                row = AccountingStatement(month=month, status=status, attempts=0)
+                db.add(row)
+            row.attempts = int(row.attempts or 0) + 1
+            row.status, row.error = status, err
+            if xlsx is not None:
+                row.xlsx, row.size, row.built_at = xlsx, len(xlsx), now_utc
+                row.trades, row.net_pnl = int(st.get("trades") or 0), float(st.get("net") or 0.0)
+                logger.info(f"[ACCOUNTING_STATEMENT] {month}: {status} · {row.trades} trades · net {row.net_pnl:+.2f} USDT · {len(xlsx)} bytes")
+            await commit(db)
+            if status != "ERROR":
+                done.append(month)
+    return done
+
+
+async def statement_loop(should_stop: Callable[[], bool], lock=None):
+    """background task: every hour, statement_pass (under the export lock — one Binance-reading export at a time). Never raises out."""
+    import asyncio
+    await asyncio.sleep(STATEMENT_FIRST_DELAY_S)
+    while not should_stop():
+        try:
+            if lock is not None:
+                async with lock:
+                    await statement_pass()
+            else:
+                await statement_pass()
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.error(f"[ACCOUNTING_STATEMENT] pass failed: {type(e).__name__}: {e}", exc_info=True)
+        for _ in range(STATEMENT_INTERVAL_S):
+            if should_stop():
+                return
+            await asyncio.sleep(1)

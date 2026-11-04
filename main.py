@@ -2854,6 +2854,52 @@ async def export_orders_csv(db: AsyncSession = Depends(get_db)):
     )
 
 
+# 📒 (DECISION_LOG 455) accountant export — LIVE money only, USDT, UTC, from the first live trade (or ?start= / ?end= YYYY-MM-DD, UTC days,
+# end inclusive). .xlsx = futures trades · monthly summary (checked against Binance's income) · transfers · spot trades / holdings / sold
+# lots (one download, operator 11-04). Binance reads are read-only; a failed read returns 503 (an accountant file is never incomplete).
+async def _accounting_period(db: AsyncSession, start: Optional[str], end: Optional[str]):
+    first = (await db.execute(select(func.min(Order.opened_at)).where(and_(Order.is_paper == False, Order.status == "CLOSED")))).scalar()  # noqa: E712
+    try:
+        lo = datetime.strptime(start, "%Y-%m-%d") if start else (first.replace(day=1, hour=0, minute=0, second=0, microsecond=0) if first else None)   # the month's first day: its funding deposit is in
+        hi = datetime.strptime(end, "%Y-%m-%d") + timedelta(days=1) - timedelta(microseconds=1) if end else datetime.now(timezone.utc).replace(tzinfo=None)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="start / end must be YYYY-MM-DD")
+    if lo is None:
+        raise HTTPException(status_code=404, detail="no closed live trade yet")
+    if lo.tzinfo is not None:
+        lo = lo.astimezone(timezone.utc).replace(tzinfo=None)
+    rows = (await db.execute(select(Order).where(and_(Order.is_paper == False, Order.status == "CLOSED",  # noqa: E712
+                                                      Order.closed_at >= lo, Order.closed_at <= hi)).order_by(Order.closed_at))).scalars().all()
+    to_ms = lambda d: int(d.replace(tzinfo=timezone.utc).timestamp() * 1000)   # noqa: E731
+    return rows, to_ms(lo), to_ms(hi), lo, hi
+
+
+def _accounting_headers(name: str) -> dict:
+    return {"Content-Disposition": f'attachment; filename="{name}"', "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"}
+
+
+_ACCOUNTING_LOCK = asyncio.Lock()   # one export at a time (repeated clicks never stack Binance reads on the live bot's IP budget)
+
+
+@app.get("/api/accounting/export.xlsx")
+async def export_accounting_xlsx(start: Optional[str] = None, end: Optional[str] = None, db: AsyncSession = Depends(get_db)):
+    from services import accounting_export as _AE
+    rows, lo_ms, hi_ms, lo, hi = await _accounting_period(db, start, end)
+    if get_ban_status().get("banned"):
+        raise HTTPException(status_code=503, detail="Binance rate limit active — try again in a few minutes")
+    if _ACCOUNTING_LOCK.locked():
+        raise HTTPException(status_code=503, detail="an accounting export is already running — try again in a minute")
+    async with _ACCOUNTING_LOCK:
+        try:
+            xlsx = await _AE.build(rows, binance_service, lo_ms, hi_ms)
+        except Exception as e:
+            binance_service._detect_ban(e)          # a 418 from these reads sets the shared ban like every other Binance error
+            logger.warning(f"[ACCOUNTING_EXPORT] failed: {e}")
+            raise HTTPException(status_code=503, detail=f"Binance read failed ({str(e)[:120]}) — try again in a few minutes")
+    return StreamingResponse(iter([xlsx]), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                             headers=_accounting_headers(f"scalpars_accounting_{lo:%Y-%m-%d}_{hi:%Y-%m-%d}.xlsx"))
+
+
 
 # 🧷 (DECISION_LOG 383) the ML_MATCHED rows of the Decisions CSV (one per ml_matched_refusals row): t = the refusal (ms), price / conf in the shared
 # columns, everything else in mr_* columns (mr_entry_fields = the JSON entry_* snapshot). Read by scripts/scout_ml_matched_refusals.py.

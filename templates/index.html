@@ -1123,14 +1123,20 @@
                         <button type="button" data-origin="BOT" onclick="setOriginView('BOT')">🤖 Bot</button>
                         <button type="button" data-origin="MANUAL" onclick="setOriginView('MANUAL')">🖐 Manual</button>
                     </div>
-                    <button id="copy-analytics-btn" onclick="copyAnalytics()" class="ml-auto px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded transition-colors">Copy Analytics</button>
-                    <button id="copy-split-btn" onclick="copySplitReport()" class="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium rounded transition-colors">Copy Split Report</button>
-                    <a id="download-orders-csv-btn" href="/api/orders/export.csv" download class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium rounded transition-colors" title="Download all CLOSED + SIGNAL_EXPIRED orders for current mode (paper/live) as CSV — no row limit, every Order column included. Use for counterfactual analysis, cross-sample re-binning, custom cross-tabs." onclick="this.href='/api/orders/export.csv?t=' + Date.now()">Download Orders CSV</a>
-                    <a id="download-decisions-csv-btn" href="/api/decisions/export.csv" download class="px-3 py-1.5 bg-sky-700 hover:bg-sky-600 text-white text-sm font-medium rounded transition-colors" title="🔭 What the bot DECIDED over the whole current paper batch (decision journal, up to 7 days; live: the last 3 days): every fill with its strategy, every refusal aggregated per 5 min × pair × gate, and the positions open right now. Read by the hourly opportunity scout (scripts/opportunity_scout.py) to tell 'no signal' from 'blocked by gate X' from 'book full'. Save it to Downloads." onclick="this.href='/api/decisions/export.csv?t=' + Date.now()">Download Decisions CSV</a>
+                    <button id="copy-analytics-btn" onclick="copyAnalytics()" class="ml-auto px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded transition-colors">Analytics</button>
+                    <button id="copy-split-btn" onclick="copySplitReport()" class="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium rounded transition-colors">Split Report</button>
+                    <a id="download-orders-csv-btn" href="/api/orders/export.csv" download class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium rounded transition-colors" title="Download all CLOSED + SIGNAL_EXPIRED orders for current mode (paper/live) as CSV — no row limit, every Order column included. Use for counterfactual analysis, cross-sample re-binning, custom cross-tabs." onclick="this.href='/api/orders/export.csv?t=' + Date.now()">Orders CSV</a>
+                    <a id="download-decisions-csv-btn" href="/api/decisions/export.csv" download class="px-3 py-1.5 bg-sky-700 hover:bg-sky-600 text-white text-sm font-medium rounded transition-colors" title="🔭 What the bot DECIDED over the whole current paper batch (decision journal, up to 7 days; live: the last 3 days): every fill with its strategy, every refusal aggregated per 5 min × pair × gate, and the positions open right now. Read by the hourly opportunity scout (scripts/opportunity_scout.py) to tell 'no signal' from 'blocked by gate X' from 'book full'. Save it to Downloads." onclick="this.href='/api/decisions/export.csv?t=' + Date.now()">Decisions CSV</a>
                     <label class="flex items-center gap-1 text-xs text-gray-400 cursor-pointer whitespace-nowrap" title="🔭 While THIS dashboard tab is open, download the Decisions CSV automatically twice a day (every ~12 h) into your Downloads folder (the scout reads it). Uses your existing login in this browser; nothing is sent anywhere else. The first time, the browser may ask to allow automatic downloads from this site. A download that fails (e.g. the login expired) is retried every 10 minutes. If no file appears in Downloads, allow automatic downloads for this site in the browser settings — the page cannot see a download the browser blocked. Chrome's 'Ask where to save each file' turns it into a Save dialog, and Memory Saver can pause a background tab.">
                         <input type="checkbox" id="auto-decisions-toggle" onchange="_autoDecToggle(this.checked)" class="accent-sky-600"> Auto 2×/day
                         <span id="auto-decisions-status" class="text-gray-500"></span>
                     </label>
+                    <!-- 📒 (DECISION_LOG 455) accountant export: LIVE money only, USDT, UTC; empty dates = from the first live trade to now -->
+                    <span class="flex items-center gap-1 text-xs text-gray-400 whitespace-nowrap" title="📒 For your accountant: LIVE trades only (never paper), USDT, UTC. One Excel file: futures trades · monthly summary checked against Binance's own records · transfers · spot trades, holdings and sold lots. Leave the dates empty for everything since the first live trade (to = inclusive).">
+                        📒 From <input type="date" id="acct-from" class="bg-gray-800 border border-white/10 rounded px-1 py-0.5 text-xs text-gray-200">
+                        to <input type="date" id="acct-to" class="bg-gray-800 border border-white/10 rounded px-1 py-0.5 text-xs text-gray-200">
+                    </span>
+                    <a id="download-accounting-xlsx-btn" href="/api/accounting/export.xlsx" download class="px-3 py-1.5 bg-amber-700 hover:bg-amber-600 text-white text-sm font-medium rounded transition-colors" title="📒 Accountant Excel (6 sheets). Reads Binance (read-only) — takes a few seconds." onclick="this.href=_acctUrl('/api/accounting/export.xlsx')">Accounting</a>
                 </div>
 
                 <!-- Period Performance Summary -->
@@ -13784,7 +13790,7 @@
                 btn.classList.remove('bg-indigo-600', 'hover:bg-indigo-500');
                 btn.classList.add('bg-emerald-600');
                 setTimeout(() => {
-                    btn.textContent = 'Copy Analytics';
+                    btn.textContent = 'Analytics';
                     btn.classList.remove('bg-emerald-600');
                     btn.classList.add('bg-indigo-600', 'hover:bg-indigo-500');
                     btn.disabled = false;
@@ -13795,7 +13801,7 @@
                 btn.classList.remove('bg-indigo-600', 'hover:bg-indigo-500');
                 btn.classList.add('bg-red-600');
                 setTimeout(() => {
-                    btn.textContent = 'Copy Analytics';
+                    btn.textContent = 'Analytics';
                     btn.classList.remove('bg-red-600');
                     btn.classList.add('bg-indigo-600', 'hover:bg-indigo-500');
                     btn.disabled = false;
@@ -13888,7 +13894,7 @@
                 btn.classList.remove('bg-purple-600', 'hover:bg-purple-500');
                 btn.classList.add('bg-emerald-600');
                 setTimeout(() => {
-                    btn.textContent = 'Copy Split Report';
+                    btn.textContent = 'Split Report';
                     btn.classList.remove('bg-emerald-600');
                     btn.classList.add('bg-purple-600', 'hover:bg-purple-500');
                     btn.disabled = false;
@@ -13899,7 +13905,7 @@
                 btn.classList.remove('bg-purple-600', 'hover:bg-purple-500');
                 btn.classList.add('bg-red-600');
                 setTimeout(() => {
-                    btn.textContent = 'Copy Split Report';
+                    btn.textContent = 'Split Report';
                     btn.classList.remove('bg-red-600');
                     btn.classList.add('bg-purple-600', 'hover:bg-purple-500');
                     btn.disabled = false;
@@ -25088,6 +25094,14 @@
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
             setTimeout(() => URL.revokeObjectURL(url), 60e3);
+        }
+        // 📒 (DECISION_LOG 455) accountant export URL: optional from / to (UTC days, to inclusive) + a cache-buster
+        function _acctUrl(base){
+            const q = [], f = (document.getElementById('acct-from') || {}).value, t = (document.getElementById('acct-to') || {}).value;
+            if (f) q.push('start=' + encodeURIComponent(f));
+            if (t) q.push('end=' + encodeURIComponent(t));
+            q.push('t=' + Date.now());
+            return base + '?' + q.join('&');
         }
         function _autoDecToggle(on){ _lsSet(_AUTO_DEC_ON, on ? '1' : '0'); _autoDecStatus(); if (on) _autoDecTick(); }
         async function _autoDecTick(){

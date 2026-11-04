@@ -157,4 +157,61 @@ def test_frenzy_shortlist_never_loses_a_non_alpha_coin_to_an_alpha_one():
     assert new[:25] == old and sorted(new[25:]) == sorted(f"A{i}USDT" for i in range(10))
     assert te.frenzy_shortlist_split([p for p in allp if p["pair"].startswith("N")], set(), 15.0, 2e7, m) == old   # block ON → identical
     src = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
-    assert "names = frenzy_shortlist_split(allp, skip, chg, vmin, binance_service.public_exchange.markets or {})" in src
+    assert "_sl_b, _sl_a, _q_b, _q_a = frenzy_shortlist_parts(allp, skip, chg, vmin, binance_service.public_exchange.markets or {})" in src
+
+
+def test_alpha_shortlist_never_crowds_out_a_followed_coin():
+    src = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
+    assert "names = frenzy_read_order(_sl_b, _sl_a, _follow, _frenzy_flags, by, skip," in src
+    from services import trading_engine as te
+    m = {"A/USDT:USDT": {"info": {"underlyingSubType": ["Alpha"]}}}
+    ps = [dict(symbol="A/USDT:USDT", pair="AUSDT", change_24h=50, range_24h=0, volume_24h=5e7),
+          dict(symbol="B/USDT:USDT", pair="BUSDT", change_24h=20, range_24h=0, volume_24h=5e7)]
+    assert te.frenzy_shortlist_split(ps, set(), 15.0, 2e7, m) == ["BUSDT", "AUSDT"]
+    assert te.frenzy_shortlist_split(ps, set(), 15.0, 2e7, m, alpha_cap=0) == ["BUSDT"]
+
+
+def test_shortlist_parts_count_qualifying_before_the_cap():
+    from services import trading_engine as te
+    m, allp = {}, []
+    for i in range(30):
+        allp.append(dict(symbol=f"N{i}/USDT:USDT", pair=f"N{i}USDT", change_24h=16 + i, range_24h=0, volume_24h=5e7))
+    for i in range(3):
+        allp.append(dict(symbol=f"A{i}/USDT:USDT", pair=f"A{i}USDT", change_24h=40, range_24h=0, volume_24h=5e7))
+        m[f"A{i}/USDT:USDT"] = {"info": {"underlyingSubType": ["Alpha"]}}
+    allp.append(dict(symbol="L/USDT:USDT", pair="LUSDT", change_24h=40, range_24h=0, volume_24h=1e6))   # too thin → never qualifies
+    b, a, qb, qa = te.frenzy_shortlist_parts(allp, set(), 15.0, 2e7, m)
+    assert (len(b), len(a), qb, qa) == (25, 3, 30, 3)
+    src = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
+    assert "[FRENZY_CAP] shortlist cap cut coins" in src
+
+
+def _pre464_read(sl, follow, flags, by, skip):
+    """the follow loop exactly as it was before DL 464"""
+    names = list(sl)
+    for k in follow:
+        if k in by and k.upper() not in skip and k not in names and (len(names) < 40 or k in flags):
+            names.append(k)
+    return names
+
+
+def test_read_order_non_alpha_part_identical_to_before_464():
+    from services import trading_engine as te
+    import random
+    rnd = random.Random(7)
+    for _ in range(200):
+        base = [f"N{i}USDT" for i in range(60)]
+        alpha = {f"A{i}USDT" for i in range(30)}
+        by = {k: {} for k in base + sorted(alpha)}
+        sl_b = rnd.sample(base, rnd.randint(0, 25))
+        sl_a = rnd.sample(sorted(alpha), rnd.randint(0, 25))
+        follow = rnd.sample(base + sorted(alpha), rnd.randint(0, 40)) + rnd.sample(base, 3)
+        flags = set(rnd.sample(base + sorted(alpha), 5))
+        skip = {"N1USDT"}
+        got = te.frenzy_read_order(sl_b, sl_a, follow, flags, by, skip, lambda k: k in alpha)
+        want_base = _pre464_read(sl_b, [k for k in follow if k not in alpha], flags, by, skip)
+        assert got[:len(want_base)] == want_base                                              # non-Alpha part: same coins, same order
+        assert all(k in alpha for k in got[len(want_base):])                                 # Alpha only after it
+        assert [k for k in got if k in alpha][:len(sl_a)] == sl_a                            # Alpha shortlist before followed Alpha
+        assert len(got) == len(set(got))
+    assert te.frenzy_read_order(["A1"], [], ["A2"], set(), {"A1": {}, "A2": {}}, set(), lambda k: False) == ["A1", "A2"]

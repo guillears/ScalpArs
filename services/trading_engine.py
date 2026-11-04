@@ -3208,14 +3208,42 @@ def frenzy_shortlist(allp, skip, chg: float, vmin: float, cap: int = 25) -> list
     return [p['pair'] for p in sorted(keep, key=lambda p: (abs(p.get('change_24h') or 0) < chg, -_move(p)))[:cap]]
 
 
-def frenzy_shortlist_split(allp, skip, chg: float, vmin: float, markets, cap: int = 25) -> list:
+def frenzy_shortlist_split(allp, skip, chg: float, vmin: float, markets, cap: int = 25, alpha_cap: int = 25) -> list:
     """🅰️ (DECISION_LOG 464, operator "make sure nothing else has changed in frenzy") the NON-Alpha shortlist exactly as before (its own cap
     25 — an Alpha coin never takes a place from a coin Frenzy already reads), then the Alpha coins' own shortlist (cap 25) appended. With
     alpha_filter_frenzy ON allp holds no Alpha coin and this is frenzy_shortlist(allp, …) unchanged. Pure."""
+    b, a, _, _ = frenzy_shortlist_parts(allp, skip, chg, vmin, markets, cap, alpha_cap)
+    return b + a
+
+
+def frenzy_read_order(sl_b, sl_a, follow, flags, by, skip, is_alpha, limit: int = 40) -> list:
+    """🅰️ (DECISION_LOG 465 review) FRENZY's read list with the NON-Alpha part exactly as before DL 464 — the non-Alpha shortlist, then the
+    followed non-Alpha coins (a flagged one always, the rest while the non-Alpha part holds < limit) — and only THEN the Alpha shortlist and
+    the followed Alpha coins (flagged always, the rest while the Alpha part holds < limit). Reads are submitted in this order (≤ 6 at a
+    time, first come first served), so an Alpha coin never delays, displaces or crowds out a non-Alpha one. Pure."""
+    base, alpha = list(sl_b), []
+    for k in follow or ():
+        if k not in by or k.upper() in skip or k in base or k in alpha or k in sl_a:
+            continue
+        if is_alpha(k):
+            alpha.append(k)                       # placed after the Alpha shortlist below
+        elif len(base) < limit or k in flags:     # a flagged pair is never crowded out (Oct-3 review)
+            base.append(k)
+    out_a = list(sl_a)
+    for k in alpha:
+        if len(out_a) < limit or k in flags:
+            out_a.append(k)
+    return base + out_a
+
+
+def frenzy_shortlist_parts(allp, skip, chg: float, vmin: float, markets, cap: int = 25, alpha_cap: int = 25) -> tuple:
+    """🅰️ (DECISION_LOG 465) → (non-Alpha shortlist, Alpha shortlist, non-Alpha QUALIFYING count, Alpha qualifying count) — the counts
+    are the pairs that pass the move / volume / skip rules BEFORE each list's cap, so a log can show when a cap cuts coins. Pure."""
     alpha = [p for p in allp or [] if binance_alpha_flag((((markets or {}).get(p.get('symbol')) or {}).get('info') or {}).get('underlyingSubType'))]
     ids = {id(p) for p in alpha}
     base = [p for p in allp or [] if id(p) not in ids]
-    return frenzy_shortlist(base, skip, chg, vmin, cap) + frenzy_shortlist(alpha, skip, chg, vmin, cap)
+    qb, qa = frenzy_shortlist(base, skip, chg, vmin, 10 ** 6), frenzy_shortlist(alpha, skip, chg, vmin, 10 ** 6)
+    return qb[:cap], (qa[:alpha_cap] if alpha_cap > 0 else []), len(qb), len(qa)
 
 
 class TradingEngine:
@@ -9435,7 +9463,14 @@ class TradingEngine:
             # |24 h change|: a pair deep into its episode can be DOWN on the day (MOVR −31 % on day 3) — the walk decides, not the sign.
             # 🔥 Oct-3: OR the 24 h low→high range — a pair that dumped then pumped back nets ~0 on the day (MOVR Oct-3: change −0.6 %, range 28 %,
             # a READY entry never read). The backtest universe had no shortlist at all; this only stops the live bot missing pairs the walk would flag.
-            names = frenzy_shortlist_split(allp, skip, chg, vmin, binance_service.public_exchange.markets or {})   # 🅰️ (464)
+            _sl_b, _sl_a, _q_b, _q_a = frenzy_shortlist_parts(allp, skip, chg, vmin, binance_service.public_exchange.markets or {})   # 🅰️ (464)
+            _mk_a = binance_service.public_exchange.markets or {}
+            _frenzy_status.update(sl_base=len(_sl_b), sl_base_q=_q_b, sl_alpha=len(_sl_a), sl_alpha_q=_q_a)
+            _capkey = (_q_b > len(_sl_b), _q_a > len(_sl_a), _q_b, _q_a)
+            if (_capkey[0] or _capkey[1]) and _capkey != _frenzy_status.get('cap_logged'):   # 📏 (465) a cap cut coins — logged when the counts change
+                _frenzy_status['cap_logged'] = _capkey
+                logger.info(f"[FRENZY_CAP] shortlist cap cut coins: non-Alpha {_q_b} qualified → {len(_sl_b)} read · Alpha {_q_a} qualified → "
+                            f"{len(_sl_a)} read (caps {len(_sl_b) if _capkey[0] else '≥' + str(_q_b)} / {len(_sl_a) if _capkey[1] else '≥' + str(_q_a)})")
             _follow = list(_frenzy_flags)
             if not _frenzy_status.get('seeded'):   # once per process: pairs recently observed / traded stay in view across a deploy
                 _frenzy_status['seeded'] = True
@@ -9449,17 +9484,28 @@ class TradingEngine:
                     _follow += await self._flatbase_follow_seed(db)   # 🩳 (348) episodes FLATBASE is still tracking (their S4 window may outlive the flag)
                 except Exception as _se:
                     logger.warning(f"[FRENZY] follow-list seed failed ({str(_se)[:80]}) — shortlist only")
-            for k in _follow:
-                if k in by and k.upper() not in skip and k not in names and (len(names) < 40 or k in _frenzy_flags):   # a flagged pair is never crowded out (Oct-3 review)
-                    names.append(k)
+            # 🅰️ (465 review) non-Alpha shortlist + followed non-Alpha first (exactly the pre-464 list and order), then the Alpha ones
+            names = frenzy_read_order(_sl_b, _sl_a, _follow, _frenzy_flags, by, skip,
+                                      lambda k: binance_alpha_flag((((_mk_a.get((by.get(k) or {}).get('symbol')) or {}).get('info')) or {}).get('underlyingSubType')) is True)
             _fz_names = list(names)   # FRENZY's own read set — the FLATBASE-only extras below never enter any FRENZY / WIDE / LITE / WILLY judgement
             _fbs_only, _fbs_seen = set(), set()
             if _fbs:   # 🩳 (348) pairs with a TRACKING episode (its 96 h S4 window outlives the flag): ≤ FLATBASE_EXTRA_READS_MAX EXTRA reads per pass, rotating
-                _fbx = sorted(p for p in self._flatbase_pairs() if p in by and p.upper() not in skip and p not in names)
+                _fbx_all = sorted(p for p in self._flatbase_pairs() if p in by and p.upper() not in skip and p not in names)
+                _isa = lambda k: binance_alpha_flag((((_mk_a.get((by.get(k) or {}).get('symbol')) or {}).get('info')) or {}).get('underlyingSubType')) is True
+                _fbx_b, _fbx_a = [p for p in _fbx_all if not _isa(p)], [p for p in _fbx_all if _isa(p)]
+                _fbx = _fbx_b + _fbx_a
                 if _fbx:
-                    _o = int(self.__dict__.get('_fbs_follow_rot', 0)) % len(_fbx)
-                    _take = (_fbx[_o:] + _fbx[:_o])[:FLATBASE_EXTRA_READS_MAX]
-                    self._fbs_follow_rot = _o + len(_take)
+                    _take = []
+                    if _fbx_b:   # the non-Alpha rotation exactly as before (🅰️ 465 review); Alpha tracked pairs only fill the slots left over
+                        _o = int(self.__dict__.get('_fbs_follow_rot', 0)) % len(_fbx_b)
+                        _take = (_fbx_b[_o:] + _fbx_b[:_o])[:FLATBASE_EXTRA_READS_MAX]
+                        self._fbs_follow_rot = _o + len(_take)
+                    _left = FLATBASE_EXTRA_READS_MAX - len(_take)
+                    if _fbx_a and _left > 0:
+                        _oa = int(self.__dict__.get('_fbs_follow_rot_a', 0)) % len(_fbx_a)
+                        _ta = (_fbx_a[_oa:] + _fbx_a[:_oa])[:_left]
+                        self._fbs_follow_rot_a = _oa + len(_ta)
+                        _take += _ta
                     names += _take
                     _fbs_only = set(_take)   # read for FLATBASE ONLY (never flagged / judged / traded by the long sleeves)
                     if len(_fbx) > len(_take):
@@ -9666,7 +9712,7 @@ class TradingEngine:
             _frenzy_status.update(checked_at=now_ms, shortlisted=len(_fz_names), unreadable=n_bad, flagged=len(_frenzy_flags), error=None,
                                   took_s=round(_leash_time.time() - now_ms / 1000, 1))
             if _frenzy_flags or n_bad:
-                logger.info(f"[FRENZY] {len(names)} shortlisted · {len(_frenzy_flags)} flagged ({', '.join(sorted(_frenzy_flags)) or '-'}) · "
+                logger.info(f"[FRENZY] {len(names)} shortlisted (non-Alpha {_q_b}→{len(_sl_b)} · Alpha {_q_a}→{len(_sl_a)}) · {len(_frenzy_flags)} flagged ({', '.join(sorted(_frenzy_flags)) or '-'}) · "
                             f"{n_bad} unreadable · {n_new_breaks} new short observations · {_frenzy_status['took_s']}s")
         except Exception as e:
             logger.error(f"[FRENZY] update failed: {e}")

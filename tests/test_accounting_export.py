@@ -351,7 +351,7 @@ def test_build_paper_marked_and_binance_free():
     assert names == ["Futures trades (PAPER)", "Monthly summary (PAPER)"]
     assert data[0][0][0].startswith("PAPER TRADING") and data[1][0][0].startswith("PAPER TRADING")
     hdr = data[1].index(AE.PAPER_MONTH_COLS)
-    assert data[1][hdr + 1][0] == "2026-10" and float(data[1][hdr + 1][7]) == 9.5
+    assert data[1][hdr + 1][0] == "2026-10" and float(data[1][hdr + 1][AE.PAPER_MONTH_COLS.index("Net P&L (USDT)")]) == 9.5
     assert not any("Binance" in c or "balance" in c.lower() for c in AE.PAPER_MONTH_COLS)
 
 
@@ -380,14 +380,15 @@ def test_statements_box_hidden_until_a_month_exists():
 
 def test_number_formats_per_column():
     assert [AE.col_kind(c) for c in ("Margin (USDT)", "Entry price", "Quantity", "Leverage", "Trades", "Difference", "Symbol",
-                                      "Average buy price (USDT)", "Amount")] == ["money", "price", "price", None, "int", "money", None,
-                                                                                  "price", "price"]
+                                      "Average buy price (USDT)", "Amount", "Win rate %", "Return %", "Avg leverage")] == \
+        ["money", "price", "qty", None, "int", "money", None, "price", "price", "pct", "pct", None]
     x = AE.xlsx_bytes([("S", ["Month", "Net P&L (USDT)", "Entry price", "Trades"], [{"Month": "2026-10", "Net P&L (USDT)": 1767.19,
                                                                                        "Entry price": 0.004863, "Trades": 3},
                                                                                       {"Month": "TOTAL", "Net P&L (USDT)": 1767.19, "Trades": 3}], [])])
     z = zipfile.ZipFile(io.BytesIO(x))
     st, sh = z.read("xl/styles.xml").decode(), z.read("xl/worksheets/sheet1.xml").decode()
-    assert 'formatCode="#,##0.00"' in st and 'formatCode="#,##0.00######"' in st and 'cellXfs count="9"' in st
+    assert 'formatCode="#,##0.00"' in st and 'formatCode="#,##0.00######"' in st and 'formatCode="#,##0.0000"' in st
+    assert 'cellXfs count="13"' in st and 'numFmts count="3"' in st and st.count("<xf ") == 13       # every cellXfs entry declared (count matches)
     assert '<c r="B2" s="3"><v>1767.19</v></c>' in sh and '<c r="C2" s="5"><v>0.004863</v></c>' in sh and '<c r="D2" s="7"><v>3</v></c>' in sh
     assert '<c r="B3" s="4"><v>1767.19</v></c>' in sh and '<c r="D3" s="8"><v>3</v></c>' in sh      # TOTAL row: bold, same formats
     assert '<c r="A2" t="inlineStr"><is><t>2026-10</t></is></c>' in sh                              # text keeps the default style
@@ -406,6 +407,33 @@ def test_live_rows_carry_binance_order_ids():
 
 def test_column_width_fits_the_formatted_number():
     assert AE._shown(12345678.0, "price") == "12,345,678.00" and AE._shown(0.004863, "price") == "0.004863"
+    assert AE._shown(22902.89657854, "qty") == "22,902.8966" and AE._shown(0.1234, "pct") == "12.34%"
     assert AE._shown(1767.19, "money") == "1,767.19" and AE._shown(3, "int") == "3" and AE._shown("x", None) == "x"
-    sh = zipfile.ZipFile(io.BytesIO(AE.xlsx_bytes([("S", ["Quantity"], [{"Quantity": 12345678.0}], [])]))).read("xl/worksheets/sheet1.xml").decode()
+    sh = zipfile.ZipFile(io.BytesIO(AE.xlsx_bytes([("S", ["Entry price"], [{"Entry price": 12345678.0}], [])]))).read("xl/worksheets/sheet1.xml").decode()
     assert 'width="15"' in sh                                                                     # 13 shown characters + 2
+
+
+def test_monthly_new_columns():
+    t = [dict(_month="2026-10", _gross=12.0, _fees=-2.0, _funding=0.0, _net=10.0, _size=1000.0, _margin=100.0),
+         dict(_month="2026-10", _gross=-3.0, _fees=-1.0, _funding=-1.0, _net=-5.0, _size=3000.0, _margin=600.0),
+         dict(_month="2026-10", _gross=31.0, _fees=-1.0, _funding=0.0, _net=30.0, _size=1000.0, _margin=100.0)]
+    inc = [dict(incomeType="REALIZED_PNL", tranId=1, asset="USDT", income=40.0, time=MS("2026-10-20 11:00")),
+           dict(incomeType="COMMISSION", tranId=2, asset="USDT", income=-4.0, time=MS("2026-10-20 11:00")),
+           dict(incomeType="FUNDING_FEE", tranId=3, asset="USDT", income=-1.0, time=MS("2026-10-20 11:00"))]
+    m = {r["Month"]: r for r in AE.monthly_rows(t, inc, [], lambda a, ms: 1.0, 1035.0, True)}["2026-10"]
+    assert abs(m["Win rate %"] - 2 / 3) < 1e-9 and m["Volume traded (USDT)"] == 5000.0 and m["Avg margin per trade (USDT)"] == 266.67
+    assert m["Avg leverage"] == 6.2 and abs(m["Fees % of volume"] - 4 / 5000) < 1e-12                 # 5000 / 800 size-weighted
+    assert (m["Avg win (USDT)"], m["Avg loss (USDT)"], m["Largest win (USDT)"], m["Largest loss (USDT)"]) == (20.0, -5.0, 30.0, -5.0)
+    assert m["Start-of-month futures balance (USDT)"] == 1000.0 and m["End-of-month futures balance (USDT)"] == 1035.0
+    assert abs(m["Return %"] - 35 / 1000) < 1e-12
+    p = {r["Month"]: r for r in AE.monthly_rows(t, [], [], lambda a, ms: 1.0, None, False)}["2026-10"]
+    assert p["Return %"] is None and p["Start-of-month futures balance (USDT)"] is None                # paper: no account balance
+    assert "Return %" not in AE.PAPER_MONTH_COLS and "Win rate %" in AE.PAPER_MONTH_COLS
+
+
+def test_spot_quantity_keeps_small_decimals():
+    x = AE.xlsx_bytes([("Spot holdings", AE.HOLDING_COLS, [{"Asset": "BTC", "Quantity": 0.00012345}], [], AE.SPOT_QTY),
+                       ("Futures trades", ["Quantity"], [{"Quantity": 22902.89657854}], [])])
+    z = zipfile.ZipFile(io.BytesIO(x))
+    assert '<c r="B2" s="5">' in z.read("xl/worksheets/sheet1.xml").decode()                     # spot: price format (≤ 8 decimals)
+    assert '<c r="A2" s="11">' in z.read("xl/worksheets/sheet2.xml").decode()                     # futures: 4 decimals

@@ -42,9 +42,15 @@ _CTRL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 ART = timezone(timedelta(hours=-3))             # 🇦🇷 (DECISION_LOG 457, operator) months and every date in the file: Argentina time, UTC-3
 TRADE_COLS = ["Close date (UTC-3)", "Open date (UTC-3)", "Symbol", "Side", "Quantity", "Entry price", "Exit price", "Margin (USDT)",
               "Leverage", "Position size (USDT)", "Gross P&L (USDT)", "Trading fees (USDT)", "Funding (USDT)", "Net P&L (USDT)", "Result"]
-MONTH_COLS = ["Month", "Trades", "Wins", "Losses", "Gross P&L (USDT)", "Trading fees (USDT)", "Funding (USDT)", "Net P&L (USDT)",
-              "Binance net P&L (check)", "Difference", "Deposits (USDT)", "Withdrawals (USDT)", "Net transfers into futures (USDT)",
-              "End-of-month futures balance (USDT)"]
+# 📊 (DECISION_LOG 461, operator) + win rate, volume, average margin / leverage, fees % of volume, average and largest win / loss, and on
+# the live file the start-of-month balance and the month's return
+_MONTH_TRADING = ["Month", "Trades", "Wins", "Losses", "Win rate %", "Volume traded (USDT)", "Avg margin per trade (USDT)", "Avg leverage",
+                  "Gross P&L (USDT)", "Trading fees (USDT)", "Fees % of volume", "Funding (USDT)", "Net P&L (USDT)", "Avg win (USDT)",
+                  "Avg loss (USDT)", "Largest win (USDT)", "Largest loss (USDT)"]
+MONTH_COLS = _MONTH_TRADING + ["Binance net P&L (check)", "Difference", "Deposits (USDT)", "Withdrawals (USDT)",
+                               "Net transfers into futures (USDT)", "Start-of-month futures balance (USDT)",
+                               "End-of-month futures balance (USDT)", "Return %"]
+SPOT_QTY = {"Quantity": "price"}                # spot quantities keep up to 8 decimals (a 0.00012345 BTC balance stays readable)
 TRADE_COLS_LIVE = TRADE_COLS + ["Open order ID", "Close order ID"]   # 🧾 (DECISION_LOG 460) Binance orders — the same kind of reference on every row
 TRANSFER_COLS = ["Date (UTC-3)", "Type", "Asset", "Amount"]
 SPOT_TRADE_COLS = ["Date (UTC-3)", "Symbol", "Side", "Quantity", "Price", "Total (USDT)", "Fee (USDT)"]
@@ -92,7 +98,7 @@ def trade_row(o) -> dict:
         "Leverage": _r(lev, 2), "Position size (USDT)": _r(size, 2), "Gross P&L (USDT)": _r(pnl + fees, 4),
         "Trading fees (USDT)": _r(-fees, 4), "Funding (USDT)": _r(funding, 4), "Net P&L (USDT)": _r(net, 4),
         "Result": "Win" if net > 0 else "Loss",
-        "_month": fmt_dt(o.closed_at)[:7], "_gross": pnl + fees, "_fees": -fees, "_funding": funding, "_net": net}
+        "_month": fmt_dt(o.closed_at)[:7], "_gross": pnl + fees, "_fees": -fees, "_funding": funding, "_net": net, "_size": size, "_margin": size / lev}
 
 
 def trade_rows(orders: Iterable) -> List[dict]:
@@ -148,6 +154,9 @@ def monthly_rows(trades: List[dict], income: List[dict], flows: List[Tuple[int, 
     bal = month_end_balances(months, income, wallet_now) if binance_ok else {m: None for m in months}
     checked = {m for m in months if month_bounds(m)[0] >= income_from_ms}
     bal = {m: (v if month_bounds(m)[1] >= income_from_ms else None) for m, v in bal.items()}
+    usdt_in = {m: sum(_f(r.get("income")) for r in income if str(r.get("asset") or "") == "USDT"
+                      and month_of_ms(int(r.get("time") or 0)) == m) for m in months}
+    start = {m: (None if bal.get(m) is None or m not in checked else bal[m] - usdt_in[m]) for m in months}   # the wallet before the month's income
     out, tot = [], dict.fromkeys(["n", "w", "l", "g", "f", "fu", "net", "bn", "dep", "wd", "tr"], 0.0)
     for m in months:
         g = [t for t in trades if t["_month"] == m]
@@ -159,17 +168,31 @@ def monthly_rows(trades: List[dict], income: List[dict], flows: List[Tuple[int, 
                  dep=dep, wd=wd, tr=tr)
         for k in tot:
             tot[k] += s[k]
-        out.append(_month_row(m, s, binance_ok and m in checked, bal.get(m)))
-    out.append(_month_row("TOTAL", tot, binance_ok and set(months) <= checked, bal.get(months[-1]) if months else None))
+        out.append(_month_row(m, s, g, binance_ok and m in checked, start.get(m), bal.get(m)))
+    out.append(_month_row("TOTAL", tot, trades, binance_ok and set(months) <= checked, start.get(months[0]) if months else None,
+                          bal.get(months[-1]) if months else None))
     return out
 
 
-def _month_row(m, s, ok, bal) -> dict:
-    return {"Month": m, "Trades": int(s["n"]), "Wins": int(s["w"]), "Losses": int(s["l"]), "Gross P&L (USDT)": _r(s["g"], 2),
-            "Trading fees (USDT)": _r(s["f"], 2), "Funding (USDT)": _r(s["fu"], 2), "Net P&L (USDT)": _r(s["net"], 2),
+def _month_row(m, s, trades, ok, start_bal, end_bal) -> dict:
+    """one summary row. Avg leverage = Σ size ÷ Σ margin (size-weighted); fees % of volume; return % = net P&L ÷ the start-of-month
+    futures balance (TOTAL: ÷ the first month's start — not compounded, transfers not netted out)."""
+    vol = sum(t.get("_size", 0.0) for t in trades)
+    mar = sum(t.get("_margin", 0.0) for t in trades)
+    wins = [t["_net"] for t in trades if t["_net"] > 0]
+    loss = [t["_net"] for t in trades if t["_net"] <= 0]
+    n = int(s["n"])
+    return {"Month": m, "Trades": n, "Wins": int(s["w"]), "Losses": int(s["l"]), "Win rate %": (s["w"] / n) if n else None,
+            "Volume traded (USDT)": _r(vol, 2), "Avg margin per trade (USDT)": _r(mar / n, 2) if n else None,
+            "Avg leverage": _r(vol / mar, 1) if mar > 0 else None, "Gross P&L (USDT)": _r(s["g"], 2),
+            "Trading fees (USDT)": _r(s["f"], 2), "Fees % of volume": (-s["f"] / vol) if vol > 0 else None,
+            "Funding (USDT)": _r(s["fu"], 2), "Net P&L (USDT)": _r(s["net"], 2),
+            "Avg win (USDT)": _r(sum(wins) / len(wins), 2) if wins else None, "Avg loss (USDT)": _r(sum(loss) / len(loss), 2) if loss else None,
+            "Largest win (USDT)": _r(max(wins), 2) if wins else None, "Largest loss (USDT)": _r(min(loss), 2) if loss else None,
             "Binance net P&L (check)": _r(s["bn"], 2) if ok else None, "Difference": _r(s["net"] - s["bn"], 2) if ok else None,
             "Deposits (USDT)": _r(s["dep"], 2), "Withdrawals (USDT)": _r(s["wd"], 2), "Net transfers into futures (USDT)": _r(s["tr"], 2),
-            "End-of-month futures balance (USDT)": _r(bal, 2)}
+            "Start-of-month futures balance (USDT)": _r(start_bal, 2), "End-of-month futures balance (USDT)": _r(end_bal, 2),
+            "Return %": (s["net"] / start_bal) if (start_bal and start_bal > 0) else None}
 
 
 def transfer_rows(income: List[dict], flows: List[Tuple[int, float, str]], lo_ms: int, hi_ms: int) -> List[dict]:
@@ -253,14 +276,18 @@ def spot_fifo(fills: List[dict], base_of: Dict[str, str], usd: Callable[[str, in
 
 # ── writers (pure) ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 # 🔢 (DECISION_LOG 460, operator: "numbers … with 2 decimals") display formats only — the cell keeps the full value
-_FMT_MONEY, _FMT_PRICE, _FMT_INT = "#,##0.00", "#,##0.00######", "#,##0"
-STYLE = {None: (0, 1), "money": (3, 4), "price": (5, 6), "int": (7, 8)}   # (plain, bold TOTAL) cellXfs index per column kind
-_PRICE_WORDS = ("price", "quantity", "amount")
+_FMT_MONEY, _FMT_PRICE, _FMT_INT, _FMT_PCT, _FMT_QTY = "#,##0.00", "#,##0.00######", "#,##0", "0.00%", "#,##0.0000"
+STYLE = {None: (0, 1), "money": (3, 4), "price": (5, 6), "int": (7, 8), "pct": (9, 10), "qty": (11, 12)}   # (plain, bold TOTAL) cellXfs per kind
+_PRICE_WORDS = ("price", "amount")
 
 
 def col_kind(name: str) -> Optional[str]:
     """a column header → money (USDT, 2 decimals) · price (prices / quantities / coin amounts: ≥ 2, ≤ 8 decimals) · int · None (text)."""
     n = name.lower()
+    if "%" in n:
+        return "pct"                                       # a fraction shown as 12.34 %
+    if n == "quantity":
+        return "qty"                                       # operator 11-04: 4 decimals are enough for a quantity
     if any(w in n for w in _PRICE_WORDS):
         return "price"
     if n in ("trades", "wins", "losses"):
@@ -282,6 +309,10 @@ def _shown(v, kind) -> str:
             return t + "0" * max(0, 2 - len(t.split(".")[1])) if "." in t else t
         if kind == "int":
             return f"{v:,.0f}"
+        if kind == "pct":
+            return f"{v * 100:.2f}%"
+        if kind == "qty":
+            return f"{v:,.4f}"
     return str(v)
 
 
@@ -307,8 +338,8 @@ def _cell(ref: str, v, style: int = 0) -> str:
     return f'<c r="{ref}" t="inlineStr"{st}><is><t>{escape(_CTRL.sub("", str(v)))}</t></is></c>'
 
 
-def _sheet_xml(cols: List[str], rows: List[dict], notes: List[str]) -> str:
-    kinds = [col_kind(c) for c in cols]
+def _sheet_xml(cols: List[str], rows: List[dict], notes: List[str], kind_over: Optional[Dict[str, str]] = None) -> str:
+    kinds = [(kind_over or {}).get(c, col_kind(c)) for c in cols]
     widths = [max([len(c)] + [len(_shown(r.get(c), k)) for r in rows]) for c, k in zip(cols, kinds)]
     cx = "".join(f'<col min="{i + 1}" max="{i + 1}" width="{min(60, w + 2)}" customWidth="1"/>' for i, w in enumerate(widths))
     out, n = [], 1
@@ -360,18 +391,21 @@ def xlsx_bytes(sheets: List[Tuple[str, List[str], List[dict], List[str]]]) -> by
                              for i in range(len(sheets)))
                    + f'<Relationship Id="rId{len(sheets) + 1}" Type="{rel}/styles" Target="styles.xml"/></Relationships>')
         z.writestr("xl/styles.xml", f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="{ns}">'
-                   f'<numFmts count="2"><numFmt numFmtId="164" formatCode="{_FMT_MONEY}"/><numFmt numFmtId="165" formatCode="{_FMT_PRICE}"/></numFmts>'
+                   f'<numFmts count="3"><numFmt numFmtId="164" formatCode="{_FMT_MONEY}"/><numFmt numFmtId="165" formatCode="{_FMT_PRICE}"/>'
+                   f'<numFmt numFmtId="166" formatCode="{_FMT_QTY}"/></numFmts>'
                    '<fonts count="3"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font>'
                    '<font><i/><sz val="10"/><name val="Calibri"/></font></fonts>'
                    '<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>'
                    '<borders count="1"><border/></borders><cellStyleXfs count="1"><xf/></cellStyleXfs>'
-                   '<cellXfs count="9"><xf fontId="0"/><xf fontId="1" applyFont="1"/><xf fontId="2" applyFont="1"/>'
+                   '<cellXfs count="13"><xf fontId="0"/><xf fontId="1" applyFont="1"/><xf fontId="2" applyFont="1"/>'
                    '<xf numFmtId="164" fontId="0" applyNumberFormat="1"/><xf numFmtId="164" fontId="1" applyNumberFormat="1" applyFont="1"/>'
                    '<xf numFmtId="165" fontId="0" applyNumberFormat="1"/><xf numFmtId="165" fontId="1" applyNumberFormat="1" applyFont="1"/>'
                    '<xf numFmtId="3" fontId="0" applyNumberFormat="1"/><xf numFmtId="3" fontId="1" applyNumberFormat="1" applyFont="1"/>'
+                   '<xf numFmtId="10" fontId="0" applyNumberFormat="1"/><xf numFmtId="10" fontId="1" applyNumberFormat="1" applyFont="1"/>'
+                   '<xf numFmtId="166" fontId="0" applyNumberFormat="1"/><xf numFmtId="166" fontId="1" applyNumberFormat="1" applyFont="1"/>'
                    '</cellXfs></styleSheet>')
-        for i, (_n, cols, rows, notes) in enumerate(sheets):
-            z.writestr(f"xl/worksheets/sheet{i + 1}.xml", _sheet_xml(cols, rows, notes))
+        for i, (_n, cols, rows, notes, *over) in enumerate(sheets):
+            z.writestr(f"xl/worksheets/sheet{i + 1}.xml", _sheet_xml(cols, rows, notes, over[0] if over else None))
     return b.getvalue()
 
 
@@ -477,7 +511,7 @@ async def read_spot(bs, extra_assets: Iterable[str]):
     return fills, base_of, balances, prices
 
 
-PAPER_MONTH_COLS = ["Month", "Trades", "Wins", "Losses", "Gross P&L (USDT)", "Trading fees (USDT)", "Funding (USDT)", "Net P&L (USDT)"]
+PAPER_MONTH_COLS = list(_MONTH_TRADING)
 PAPER_NOTE = "PAPER TRADING — simulated, NOT for accounting (a check of the platform's own numbers only)."
 
 
@@ -490,7 +524,9 @@ def build_paper(orders: List, lo_ms: int, hi_ms: int) -> bytes:
     return xlsx_bytes([
         ("Futures trades (PAPER)", TRADE_COLS, strip_private(trades, TRADE_COLS),
          [PAPER_NOTE, period, "One row per closed futures position. Net P&L = gross P&L + trading fees + funding."]),
-        ("Monthly summary (PAPER)", PAPER_MONTH_COLS, strip_private(months, PAPER_MONTH_COLS), [PAPER_NOTE, period]),
+        ("Monthly summary (PAPER)", PAPER_MONTH_COLS, strip_private(months, PAPER_MONTH_COLS),
+         [PAPER_NOTE, period, "Volume = Σ position size (entry side) — fees % of volume therefore covers the round trip. Avg leverage = "
+                              "volume ÷ Σ margin (size-weighted)."]),
     ])
 
 
@@ -526,7 +562,8 @@ def episode_row(ep, comm_usd: float, funding: float, leverage: Optional[float]) 
             "Net P&L (USDT)": _r(net, 4), "Result": "Win" if net > 0 else "Loss",
             "Open order ID": ", ".join(dict.fromkeys(str(l.fill.order_id) for l in ep.opens() if l.fill.order_id not in (None, "None", ""))),
             "Close order ID": ", ".join(dict.fromkeys(str(l.fill.order_id) for l in ep.closes() if l.fill.order_id not in (None, "None", ""))),
-            "_month": fmt_dt(ep.end_ms)[:7], "_gross": gross, "_fees": -comm_usd, "_funding": funding, "_net": net, "_close_ms": ep.end_ms}
+            "_month": fmt_dt(ep.end_ms)[:7], "_gross": gross, "_fees": -comm_usd, "_funding": funding, "_net": net, "_close_ms": ep.end_ms,
+            "_size": size, "_margin": size / lev}
 
 
 async def futures_from_fills(rec, income: List[dict], fetch_lo: int, now_ms: int, lo_ms: int, hi_ms: int,
@@ -630,20 +667,23 @@ async def build_live(lo_ms: int, hi_ms: int, lev_lookup=None, rec=None, bs=None)
         ("Monthly summary", MONTH_COLS, months,
          [period, "Binance net P&L (check) = Binance's income history (realized P&L + commissions + funding; BNB fees at the hourly BNB "
                   "price). Difference = this file's net P&L − Binance's (funding outside a closed position, rounding).",
-          "End-of-month futures balance = the USDT futures wallet at the month's last second (today's wallet less every later income row)."]
+          "End-of-month futures balance = the USDT futures wallet at the month's last second (today's wallet less every later income row); "
+          "start-of-month = that less the month's own income. Return % = net P&L ÷ start-of-month balance (TOTAL: ÷ the first month's "
+          "start, not compounded; a period starting mid-month: the balance at the period start). Volume = Σ position size (entry side) — "
+          "fees % of volume therefore covers the round trip. Avg leverage = volume ÷ Σ margin (size-weighted)."]
          + ([old] if old else [])),
         ("Transfers", TRANSFER_COLS, xfers,
          [period, "Deposits and withdrawals of the Binance account, and moves between the spot and futures wallets."] + ([old] if old else [])),
         ("Spot trades", SPOT_TRADE_COLS, s_trades,
          [period, "Spot buys and sells against USDT / USDC / FDUSD (stablecoins counted 1:1 with USDT).",
           "Coins found from the current balances, the deposit / withdrawal history and BNB; a coin bought and sold to zero that never "
-          "sat in the wallet and was never deposited is not listed."]),
+          "sat in the wallet and was never deposited is not listed."], SPOT_QTY),
         ("Spot holdings", HOLDING_COLS, holds,
          [f"Holdings at {fmt_dt(datetime.now(timezone.utc))} (UTC-3). Average buy price / cost from the FIFO lots still held; blank = the "
-          "quantity is not fully explained by spot buys (deposited coins, coins moved to futures, or BNB spent on trading fees)."]),
+          "quantity is not fully explained by spot buys (deposited coins, coins moved to futures, or BNB spent on trading fees)."], SPOT_QTY),
         ("Spot sold lots", LOT_COLS, lots,
          [period, "Each sale matched to the earliest buys first (FIFO). Cost includes the buy fee; proceeds are net of the sell fee. "
-                  "Confirm FIFO with your tax rules."]),
+                  "Confirm FIFO with your tax rules."], SPOT_QTY),
     ]
     stats = dict(trades=len(trades), net=sum(t["_net"] for t in trades), activity=bool(trades or xfers or s_trades))
     return xlsx_bytes(sheets), stats

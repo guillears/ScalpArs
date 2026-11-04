@@ -423,7 +423,7 @@ def test_monthly_new_columns():
     m = {r["Month"]: r for r in AE.monthly_rows(t, inc, [], lambda a, ms: 1.0, 1035.0, True)}["2026-10"]
     assert abs(m["Win rate %"] - 2 / 3) < 1e-9 and m["Volume traded (USDT)"] == 5000.0 and m["Avg margin per trade (USDT)"] == 266.67
     assert m["Avg leverage"] == 6.2 and abs(m["Fees % of volume"] - 4 / 5000) < 1e-12                 # 5000 / 800 size-weighted
-    assert (m["Avg win (USDT)"], m["Avg loss (USDT)"], m["Largest win (USDT)"], m["Largest loss (USDT)"]) == (20.0, -5.0, 30.0, -5.0)
+    assert not any(c in AE.MONTH_COLS for c in ("Avg win (USDT)", "Avg loss (USDT)", "Largest win (USDT)", "Largest loss (USDT)"))   # DL 462
     assert m["Start-of-month futures balance (USDT)"] == 1000.0 and m["End-of-month futures balance (USDT)"] == 1035.0
     assert abs(m["Return %"] - 35 / 1000) < 1e-12
     p = {r["Month"]: r for r in AE.monthly_rows(t, [], [], lambda a, ms: 1.0, None, False)}["2026-10"]

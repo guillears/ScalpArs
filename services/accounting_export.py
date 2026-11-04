@@ -42,11 +42,10 @@ _CTRL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 ART = timezone(timedelta(hours=-3))             # 🇦🇷 (DECISION_LOG 457, operator) months and every date in the file: Argentina time, UTC-3
 TRADE_COLS = ["Close date (UTC-3)", "Open date (UTC-3)", "Symbol", "Side", "Quantity", "Entry price", "Exit price", "Margin (USDT)",
               "Leverage", "Position size (USDT)", "Gross P&L (USDT)", "Trading fees (USDT)", "Funding (USDT)", "Net P&L (USDT)", "Result"]
-# 📊 (DECISION_LOG 461, operator) + win rate, volume, average margin / leverage, fees % of volume, average and largest win / loss, and on
-# the live file the start-of-month balance and the month's return
+# 📊 (DECISION_LOG 461 / 462, operator) + win rate, volume, average margin / leverage, fees % of volume, and on the live file the
+# start-of-month balance and the month's return (average / largest win and loss removed 11-04: no value for the accountant)
 _MONTH_TRADING = ["Month", "Trades", "Wins", "Losses", "Win rate %", "Volume traded (USDT)", "Avg margin per trade (USDT)", "Avg leverage",
-                  "Gross P&L (USDT)", "Trading fees (USDT)", "Fees % of volume", "Funding (USDT)", "Net P&L (USDT)", "Avg win (USDT)",
-                  "Avg loss (USDT)", "Largest win (USDT)", "Largest loss (USDT)"]
+                  "Gross P&L (USDT)", "Trading fees (USDT)", "Fees % of volume", "Funding (USDT)", "Net P&L (USDT)"]
 MONTH_COLS = _MONTH_TRADING + ["Binance net P&L (check)", "Difference", "Deposits (USDT)", "Withdrawals (USDT)",
                                "Net transfers into futures (USDT)", "Start-of-month futures balance (USDT)",
                                "End-of-month futures balance (USDT)", "Return %"]
@@ -179,16 +178,12 @@ def _month_row(m, s, trades, ok, start_bal, end_bal) -> dict:
     futures balance (TOTAL: ÷ the first month's start — not compounded, transfers not netted out)."""
     vol = sum(t.get("_size", 0.0) for t in trades)
     mar = sum(t.get("_margin", 0.0) for t in trades)
-    wins = [t["_net"] for t in trades if t["_net"] > 0]
-    loss = [t["_net"] for t in trades if t["_net"] <= 0]
     n = int(s["n"])
     return {"Month": m, "Trades": n, "Wins": int(s["w"]), "Losses": int(s["l"]), "Win rate %": (s["w"] / n) if n else None,
             "Volume traded (USDT)": _r(vol, 2), "Avg margin per trade (USDT)": _r(mar / n, 2) if n else None,
             "Avg leverage": _r(vol / mar, 1) if mar > 0 else None, "Gross P&L (USDT)": _r(s["g"], 2),
             "Trading fees (USDT)": _r(s["f"], 2), "Fees % of volume": (-s["f"] / vol) if vol > 0 else None,
             "Funding (USDT)": _r(s["fu"], 2), "Net P&L (USDT)": _r(s["net"], 2),
-            "Avg win (USDT)": _r(sum(wins) / len(wins), 2) if wins else None, "Avg loss (USDT)": _r(sum(loss) / len(loss), 2) if loss else None,
-            "Largest win (USDT)": _r(max(wins), 2) if wins else None, "Largest loss (USDT)": _r(min(loss), 2) if loss else None,
             "Binance net P&L (check)": _r(s["bn"], 2) if ok else None, "Difference": _r(s["net"] - s["bn"], 2) if ok else None,
             "Deposits (USDT)": _r(s["dep"], 2), "Withdrawals (USDT)": _r(s["wd"], 2), "Net transfers into futures (USDT)": _r(s["tr"], 2),
             "Start-of-month futures balance (USDT)": _r(start_bal, 2), "End-of-month futures balance (USDT)": _r(end_bal, 2),

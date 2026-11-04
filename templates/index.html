@@ -1136,12 +1136,14 @@
                     </span>
                     <button id="download-accounting-xlsx-btn" type="button" class="px-3 py-1.5 bg-amber-700 hover:bg-amber-600 text-white text-sm font-medium rounded transition-colors" title="📒 Accountant Excel for the dates chosen (Argentina days, UTC-3), in the bot's current mode. Live: built from Binance's own fills, fees and funding — futures trades · monthly summary · transfers · spot (read-only; can take a minute). Paper: trades + monthly totals, marked NOT for accounting." onclick="_acctDownload(this)">Accounting</button>
                     <!-- 📒 (DECISION_LOG 457) the stored monthly statements (built on day 2 of the next month, Argentina time) + auto-download -->
+                    <span id="acct-statements-group" class="flex items-center gap-2 whitespace-nowrap" style="display:none"><!-- 📒 (DECISION_LOG 459) hidden until a month is stored; box + Auto stay together -->
                     <select id="acct-statements" class="bg-gray-800 border border-white/10 rounded px-1 py-0.5 text-xs text-gray-200" title="📒 Monthly statements: one Excel per month (Argentina time, UTC-3), built automatically on day 2 of the next month from Binance's own records and kept on the server for good. Pick a month to download it." onchange="_acctStatementPick(this)">
-                        <option value="">Monthly statements…</option>
+                        <option value="">Statements…</option>
                     </select>
                     <label class="flex items-center gap-1 text-xs text-gray-400 cursor-pointer whitespace-nowrap" title="📒 While this dashboard tab is open, each new monthly statement is downloaded once into your Downloads folder (the hourly scout then copies it into the project's exports_archive/accounting/).">
                         <input type="checkbox" id="auto-acct-toggle" onchange="_autoAcctToggle(this.checked)" class="accent-amber-600"> Auto monthly
                     </label>
+                    </span>
                 </div>
 
                 <!-- Period Performance Summary -->
@@ -25126,7 +25128,9 @@
                 const list = (await r.json()).statements || [];
                 const sel = document.getElementById('acct-statements');
                 if (sel) {
-                    sel.innerHTML = '<option value="">Monthly statements…</option>';
+                    sel.innerHTML = '<option value="">Statements…</option>';
+                    const grp = document.getElementById('acct-statements-group');
+                    if (grp) grp.style.display = list.length ? '' : 'none';   // never an empty box
                     list.forEach(x => {
                         const o = document.createElement('option');
                         o.value = (x.status === 'READY' || x.status === 'EMPTY') ? x.month : '';
@@ -25153,7 +25157,7 @@
         }
         (function(){
             const cb = document.getElementById('auto-acct-toggle'); if (cb) cb.checked = _autoAcctOn();
-            setTimeout(_acctStatementsTick, 20e3);
+            setTimeout(_acctStatementsTick, 3e3);            // show the stored months right after the page opens
             setInterval(_acctStatementsTick, 60 * 60e3);
         })();
         function _autoDecToggle(on){ _lsSet(_AUTO_DEC_ON, on ? '1' : '0'); _autoDecStatus(); if (on) _autoDecTick(); }

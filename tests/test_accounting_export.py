@@ -370,3 +370,9 @@ def test_prepare_follows_bot_mode():
     import main
     src = inspect.getsource(main.accounting_prepare)
     assert "mode: Optional[str] = None" in src and "bool(trading_engine.is_paper_mode)" in src and 'mode must be live or paper' in src
+
+
+def test_statements_box_hidden_until_a_month_exists():
+    html = open(os.path.join(ROOT, "templates", "index.html")).read()
+    assert '<span id="acct-statements-group" class="flex items-center gap-2 whitespace-nowrap" style="display:none">' in html
+    assert "grp.style.display = list.length ? '' : 'none';" in html and "Monthly statements…" not in html

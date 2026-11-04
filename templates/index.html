@@ -1108,6 +1108,13 @@
                         <option value="SHORT">🔴 SHORTs only</option>
                     </select>
                     <span id="direction-filter-badge" class="text-xs text-gray-500"></span>
+                    <span class="text-sm font-semibold text-amber-300">Alpha:</span>
+                    <select id="alpha-filter" class="bg-white/5 border border-amber-500/20 rounded px-3 py-1.5 text-white text-sm" onchange="loadPerformance()" title="🅰️ (DECISION_LOG 466) Binance Alpha coins — read from each trade's own stamp (the tag AT ENTRY). Non-Alpha = not Alpha at entry, or unstamped (every trade before Nov-4, when no Alpha coin was tradeable).">
+                        <option value="">All coins</option>
+                        <option value="ALPHA">α Alpha only</option>
+                        <option value="NON_ALPHA">Non-Alpha only</option>
+                    </select>
+                    <span id="alpha-filter-badge" class="text-xs text-gray-500"></span>
                     <!-- 🧹 (DL 346) second copy of the All · Bot · Manual switch (DL 323) — ONE shared state: setOriginView paints both -->
                     <span class="flex items-center gap-2 whitespace-nowrap"><!-- 📈📉 (DECISION_LOG 457) the label never wraps away from its switch -->
                     <span class="text-sm font-semibold text-sky-300">Show:</span>
@@ -9439,7 +9446,7 @@
             out.push('\n## 🔥 FRENZY Flagged Pairs (now)\n');
             if (perf.frenzy_flags && perf.frenzy_flags.length) {
                 out.push(`${'Pair'.padEnd(16)} ${'Spike UTC'.padEnd(12)} ${'Hrs'.padStart(5)} ${'Gain%'.padStart(7)} ${'OffPk%'.padStart(7)} ${'vsAvg%'.padStart(7)} ${'Vol×'.padStart(6)} ${'ATR%'.padStart(5)} ${'Vol24h$M'.padStart(9)}  Long status / last setup`);
-                for (const f of perf.frenzy_flags) out.push(`${(frenzyMark(f) + ' ' + f.pair).padEnd(16)} ${(f.spike || '').padEnd(12)} ${(f.hours != null ? f.hours.toFixed(1) : '-').padStart(5)} ${sg(f.gain_pct, 0).padStart(7)} ${sg(f.off_peak_pct, 0).padStart(7)} ${sg(f.vs_vwap_pct, 1).padStart(7)} ${(f.vol_mult != null ? f.vol_mult.toFixed(0) : '-').padStart(6)} ${(f.atr_pct != null ? f.atr_pct.toFixed(2) : '-').padStart(5)} ${(f.volume_24h != null ? (f.volume_24h / 1e6).toFixed(0) : '-').padStart(9)}  ${frenzyReportStatus(f)}${f.last_fire ? ' | ' + frenzyLastFireLocal(f.last_fire) : ''}${f.willy_last ? ' | 🎲 ' + frenzyLastFireLocal(f.willy_last) : ''}${f.willy_pending ? ' | 🟥 ' + frenzyWillyPendingText(f) : ''}${f.lite_retry_last ? ' | 🔁 ' + frenzyLastFireLocal(f.lite_retry_last) : ''}${f.stale ? ' (not read this bar)' : ''}`);
+                for (const f of perf.frenzy_flags) out.push(`${(frenzyMark(f) + ' ' + f.pair + (f.alpha === true ? ' α' : '')).padEnd(16)} ${(f.spike || '').padEnd(12)} ${(f.hours != null ? f.hours.toFixed(1) : '-').padStart(5)} ${sg(f.gain_pct, 0).padStart(7)} ${sg(f.off_peak_pct, 0).padStart(7)} ${sg(f.vs_vwap_pct, 1).padStart(7)} ${(f.vol_mult != null ? f.vol_mult.toFixed(0) : '-').padStart(6)} ${(f.atr_pct != null ? f.atr_pct.toFixed(2) : '-').padStart(5)} ${(f.volume_24h != null ? (f.volume_24h / 1e6).toFixed(0) : '-').padStart(9)}  ${frenzyReportStatus(f)}${f.last_fire ? ' | ' + frenzyLastFireLocal(f.last_fire) : ''}${f.willy_last ? ' | 🎲 ' + frenzyLastFireLocal(f.willy_last) : ''}${f.willy_pending ? ' | 🟥 ' + frenzyWillyPendingText(f) : ''}${f.lite_retry_last ? ' | 🔁 ' + frenzyLastFireLocal(f.lite_retry_last) : ''}${f.stale ? ' (not read this bar)' : ''}`);
             } else out.push('  none');
             out.push('\n## 🔥 FRENZY Fills (FRENZY_LONG · FRENZY_LITE · FRENZY_LITE_RETRY · FRENZY_WILLY · FRENZY_WILLY_HT · FLATBASE_SHORT)\n');
             if (perf.frenzy_rows && perf.frenzy_rows.length) {
@@ -12146,6 +12153,8 @@
                 }
                 if (_flipSrc1) _params1.push(`flip_source=${encodeURIComponent(_flipSrc1)}`);
                 if (_dir1) _params1.push(`direction=${encodeURIComponent(_dir1)}`);
+                const _alpha1 = (document.getElementById('alpha-filter') || {}).value || '';   // 🅰️ (466) the export reports the view on screen
+                if (_alpha1) _params1.push(`alpha=${encodeURIComponent(_alpha1)}`);
                 const _ov1 = _originView();
                 if (_ov1 !== 'ALL') _params1.push(`origin=${_ov1}`);   // 🤖 (323) the export reports the view on screen
                 const _dirBadge = document.getElementById('direction-filter-badge');
@@ -12183,6 +12192,7 @@
                     if (windowFilter) _fbits.push(`window=${windowFilter}`);
                     if (_flipSrc1) _fbits.push(`sleeve=${_flipSrc1}`);
                     if (_dir1) _fbits.push(`direction=${_dir1}`);
+                    if (_alpha1) _fbits.push(`alpha=${_alpha1}`);
                     if (_ov1 !== 'ALL') _fbits.push(`view=${ORIGIN_LABELS[_ov1]}`);
                     if (_fbits.length) lines.push(`⚠ ACTIVE FILTERS (this report is a SLICE, not the full book): ${_fbits.join(' · ')}`);
                 }
@@ -13838,8 +13848,9 @@
                 const windowFilter = (document.getElementById('window-filter') || {}).value || '';
                 const _flipSrcSplit = (document.getElementById('flip-source-filter') || {}).value || '';
                 const _dirSplit = (document.getElementById('direction-filter') || {}).value || '';
+                const _alphaSplit = (document.getElementById('alpha-filter') || {}).value || '';   // 🅰️ (466)
                 const _ov2 = _originView();
-                const _winSuffix = _buildWindowQuery('&') + (_flipSrcSplit ? `&flip_source=${encodeURIComponent(_flipSrcSplit)}` : '') + (_dirSplit ? `&direction=${encodeURIComponent(_dirSplit)}` : '') + _originParam('&');
+                const _winSuffix = _buildWindowQuery('&') + (_flipSrcSplit ? `&flip_source=${encodeURIComponent(_flipSrcSplit)}` : '') + (_dirSplit ? `&direction=${encodeURIComponent(_dirSplit)}` : '') + (_alphaSplit ? `&alpha=${encodeURIComponent(_alphaSplit)}` : '') + _originParam('&');
                 const [perfBullRes, perfBearRes, cfgRes, logRes, statusRes, bnbRes, invRes] = await Promise.all([
                     fetch(`${API_BASE}/api/performance?regime=BULLISH${_winSuffix}`),
                     fetch(`${API_BASE}/api/performance?regime=BEARISH${_winSuffix}`),
@@ -13870,6 +13881,7 @@
                     if (windowFilter) _fbits.push(`window=${windowFilter}`);
                     if (_flipSrcSplit) _fbits.push(`sleeve=${_flipSrcSplit}`);
                     if (_dirSplit) _fbits.push(`direction=${_dirSplit}`);
+                    if (_alphaSplit) _fbits.push(`alpha=${_alphaSplit}`);
                     if (_ov2 !== 'ALL') _fbits.push(`view=${ORIGIN_LABELS[_ov2]}`);
                     if (_fbits.length) lines.push(`⚠ ACTIVE FILTERS (this report is a SLICE, not the full book): ${_fbits.join(' · ')}`);
                 }
@@ -13980,6 +13992,14 @@
             return `${prefix}window_hours=${sel}`;
         }
 
+        // 🅰️ (DECISION_LOG 466) small amber α by a pair: trades read their OWN stamp (Binance Alpha tag at entry — tags move), the FRENZY
+        // pairs table reads Binance's tag now. Unknown / not Alpha → nothing.
+        function alphaMark(flag, atEntry) {
+            if (flag !== true) return '';
+            const tip = atEntry ? 'Binance Alpha coin at entry' : 'Binance Alpha coin (current tag) — read by FRENZY since Nov-4';
+            return `<sup class="ml-0.5 text-[10px] font-semibold text-amber-400 cursor-help shrink-0 self-start" title="${tip}">α</sup>`;
+        }
+
         let _perfGen = 0;  // Sep-7 hygiene: request generation — a slower stale response must never render over a newer filter
         async function loadPerformance() {
             const _myGen = ++_perfGen;
@@ -14004,6 +14024,9 @@
                 }
                 if (flipSourceFilter) params.push(`flip_source=${encodeURIComponent(flipSourceFilter)}`);
                 if (directionFilter) params.push(`direction=${encodeURIComponent(directionFilter)}`);
+                const alphaFilter = (document.getElementById('alpha-filter') || {}).value || '';   // 🅰️ (466)
+                if (alphaFilter) params.push(`alpha=${encodeURIComponent(alphaFilter)}`);
+                { const _ab = document.getElementById('alpha-filter-badge'); if (_ab) _ab.textContent = alphaFilter === 'ALPHA' ? 'Alpha coins only' : alphaFilter === 'NON_ALPHA' ? 'non-Alpha only' : ''; }
                 const _ovPerf = _originView();
                 if (_ovPerf !== 'ALL') params.push(`origin=${_ovPerf}`);   // 🤖 (323)
                 const queryStr = params.length ? '?' + params.join('&') : '';
@@ -18703,7 +18726,7 @@
                     if (fzF) {
                         const _maxAtr = data.frenzy_monitor ? data.frenzy_monitor.max_atr : 2.5;
                         fzF.innerHTML = (data.frenzy_flags && data.frenzy_flags.length) ? data.frenzy_flags.map(f => `<tr class="hover:bg-white/5${f.stale ? ' opacity-60' : ''}">
-                            <td class="px-2 py-1.5 text-orange-300 font-medium whitespace-nowrap">${frenzyMark(f)} ${_fzE(f.pair)}</td>
+                            <td class="px-2 py-1.5 text-orange-300 font-medium whitespace-nowrap">${frenzyMark(f)} ${_fzE(f.pair)}${alphaMark(f.alpha, false)}</td>
                             <td class="px-2 py-1.5 text-gray-300 whitespace-nowrap">${surgeTime(f.spike_ms, f.spike, true, true)}</td>
                             <td class="px-2 py-1.5 text-right text-gray-300">${f.hours != null ? f.hours.toFixed(1) : '—'}</td>
                             <td class="px-2 py-1.5 text-right ${(f.gain_pct || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}">${_fzS(f.gain_pct, 0)}%</td>
@@ -19162,7 +19185,7 @@
                     return `
                         <tr class="${!_fz && p.pair === 'LINKUSDT' ? 'bg-white/[0.07] hover:bg-white/10' : 'hover:bg-white/5'} transition${_fz ? ' bg-orange-500/[0.05] frenzy-group-row' + (_frenzyGroupExpanded === true ? '' : ' hidden') : ''}">
                             <td class="px-3 py-3 font-medium">${_fz   // 🔥 Oct-5 (operator): the badge stays whole, the NAME truncates like every other row — the column width no longer jumps when the FRENZY group opens
-                                ? `<div class="flex items-center max-w-[5rem]"><span class="shrink-0">${_fzBadge}</span><span class="truncate min-w-0 cursor-copy-icon hover:text-orange-300" data-copy-pair="${_escAttr(p.pair)}" title="${_escAttr(p.pair)} — click to copy">${p.pair}</span></div>`
+                                ? `<div class="flex items-center max-w-[5rem]"><span class="shrink-0">${_fzBadge}</span><span class="truncate min-w-0 cursor-copy-icon hover:text-orange-300" data-copy-pair="${_escAttr(p.pair)}" title="${_escAttr(p.pair)} — click to copy">${p.pair}</span>${alphaMark(_fz.alpha, false)}</div>`
                                 : `<div class="truncate max-w-[5rem] cursor-copy-icon hover:text-orange-300" data-copy-pair="${_escAttr(p.pair)}" title="${_escAttr(p.pair)} — click to copy">${p.pair}</div>`}</td>
                             <td class="px-3 py-3 text-right font-mono text-sm text-gray-400">$${formatVolume(p.volume_24h || 0)}</td>
                             <td class="px-3 py-3 text-right font-mono text-sm text-gray-400" title="${p.cmc_rank ? 'CMC rank #' + p.cmc_rank : 'market cap unavailable'}">${p.mcap_usd ? '$' + (p.mcap_usd >= 1e12 ? (p.mcap_usd / 1e12).toFixed(2) + 'T' : formatVolume(p.mcap_usd)) : '–'}</td>
@@ -19762,7 +19785,7 @@
                     return `
                         <tr class="hover:bg-white/5 transition">
                             <td class="px-4 py-3 text-sm">${formatTime(o.opened_at)}</td>
-                            <td class="px-4 py-3 font-medium">${o.pair}</td>
+                            <td class="px-4 py-3 font-medium">${o.pair}${alphaMark(o.entry_pair_alpha, true)}</td>
                             <td class="px-4 py-3 ${confClass}">${o.confidence || '-'}</td>
                             <td class="px-4 py-3 ${dirClass} font-medium">${o.direction}</td>
                             <td class="px-4 py-3 text-center"><span class="px-1.5 py-0.5 rounded text-[10px] font-semibold whitespace-nowrap ${_stratColor}" title="${manualBadgeTitle(o)}">${_stratLabel}</span>${doorBadgeHtml(o)}${importBadgeHtml(o)}</td>
@@ -19871,7 +19894,7 @@
                         <tr class="hover:bg-white/5 transition">
                             <td class="px-4 py-3 text-sm">${formatTime(o.opened_at)}</td>
                             <td class="px-4 py-3 text-sm">${formatTime(o.closed_at)}</td>
-                            <td class="px-4 py-3 font-medium">${o.pair}</td>
+                            <td class="px-4 py-3 font-medium">${o.pair}${alphaMark(o.entry_pair_alpha, true)}</td>
                             <td class="px-4 py-3 ${confClass}">${o.confidence || '-'}</td>
                             <td class="px-4 py-3 ${dirClass} font-medium">${o.direction}</td>
                             <td class="px-4 py-3 text-center"><span class="px-1.5 py-0.5 rounded text-[10px] font-semibold whitespace-nowrap ${_stratColor}" title="${manualBadgeTitle(o)}">${_stratLabel}</span>${doorBadgeHtml(o)}${importBadgeHtml(o)}</td>

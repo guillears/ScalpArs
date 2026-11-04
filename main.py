@@ -2110,6 +2110,7 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
         orders_data.append({
             "id": o.id,
             "pair": o.pair,
+            "entry_pair_alpha": getattr(o, 'entry_pair_alpha', None),   # 🅰️ (DECISION_LOG 466) α mark: Binance Alpha tag AT ENTRY
             "direction": o.direction,
             "confidence": o.confidence,
             "investment": round(o.investment, 2),
@@ -2729,6 +2730,7 @@ async def get_closed_orders(db: AsyncSession = Depends(get_db)):
         orders_data.append({
             "id": o.id,
             "pair": o.pair,
+            "entry_pair_alpha": getattr(o, 'entry_pair_alpha', None),   # 🅰️ (DECISION_LOG 466) α mark: Binance Alpha tag AT ENTRY
             "direction": o.direction,
             "confidence": o.confidence,
             "investment": round(o.investment, 2),
@@ -3906,7 +3908,7 @@ async def reconcile_positions(db: AsyncSession = Depends(get_db)):
 async def get_performance(regime: str = None, window_hours: int = None,
                           from_date: str = None, to_date: str = None,
                           flip_source: str = None, direction: str = None, cell_source: str = None,
-                          origin: str = None, db: AsyncSession = Depends(get_db)):
+                          origin: str = None, alpha: str = None, db: AsyncSession = Depends(get_db)):
     """Get closed orders performance metrics, optionally filtered by macro trend regime and/or time window.
 
     origin: str (Oct-20, DECISION_LOG 323) — ALL (default) · BOT (the bot's own entries; trades the operator edited / closed by hand
@@ -3927,13 +3929,15 @@ async def get_performance(regime: str = None, window_hours: int = None,
                   FGP_* ticket = the de-noised real-money book), "PLAIN" (no cell tag = the
                   un-multiplied base book), or an exact cell tag (NONEXP_CALM3D / UNMATCHED / W2 ...).
                   None / "" / "ALL" = no filter.
+    alpha: str (Nov-4, DECISION_LOG 466) — ALPHA = trades stamped Binance-Alpha at entry (entry_pair_alpha True) · NON_ALPHA = every other
+                  trade (stamped False or unstamped). None / "" = no filter.
     """
     await trading_engine.initialize(db)
 
     try:
         out = await _compute_performance(db, regime=regime, window_hours=window_hours,
                                          from_date=from_date, to_date=to_date, flip_source=flip_source,
-                                         direction=direction, cell_source=cell_source, origin=origin)
+                                         direction=direction, cell_source=cell_source, origin=origin, alpha=alpha)
     except Exception as e:
         logger.error(f"[PERF] Unhandled error in get_performance: {e}\n{traceback.format_exc()}")
         out = {
@@ -4748,6 +4752,17 @@ def _frenzy_monitor_payload():
         return None
 
 
+def _pair_is_alpha_now(pair):
+    """🅰️ (DECISION_LOG 466) Binance's current "Alpha" tag of a pair (markets as loaded by the process) → True / False / None. Never raises."""
+    try:
+        from services.trading_engine import binance_alpha_flag
+        sym = str(pair or '')[:-4] + '/USDT:USDT' if str(pair or '').endswith('USDT') else None
+        info = (((binance_service.public_exchange.markets or {}).get(sym) or {}).get('info') or {}) if sym else {}
+        return binance_alpha_flag(info.get('underlyingSubType'))
+    except Exception:
+        return None
+
+
 def _frenzy_flag_view(f):
     """One flagged pair for the dashboard / exports (rounded; the badge marks: ★ long setup ON, ⏳ still flagged ≥ 32 h)."""
     from datetime import datetime as _dt
@@ -4756,6 +4771,7 @@ def _frenzy_flag_view(f):
             "hours": _r(f.get('hours'), 1), "gain_pct": _r(f.get('gain_pct'), 1), "run_pct": _r(f.get('run_pct'), 1), "off_peak_pct": _r(f.get('off_peak_pct'), 1),
             "vs_vwap_pct": _r(f.get('vs_vwap_pct'), 2), "vwap": f.get('vwap'), "vol_mult": _r(f.get('vol_mult'), 0), "atr_pct": _r(f.get('atr_pct'), 2),
             "volume_24h": f.get('volume_24h'), "in_state": bool(f.get('in_state')), "ready": bool(f.get('ready')), "late": bool((f.get('hours') or 0) >= 32),
+            "alpha": _pair_is_alpha_now(f.get('pair')),   # 🅰️ (466) α mark: Binance's tag NOW (a flagged pair is not a trade yet)
             "code": f.get('code'), "text": f.get('text'), "last_fire": f.get('last_fire'), "stale": bool(f.get('misses')),
             "lite_code": f.get('lite_code'), "lite_ready": bool(f.get('lite_ready')),   # 🪶 Oct-7 (243): FRENZY_LITE's read on the last bar
             "lite_retry_last": f.get('lite_retry_last'), "lite_retry_pending": f.get('lite_retry_pending'),   # 🔁 (316) the retry's own outcome / armed window
@@ -6074,7 +6090,7 @@ def _sleeve_filter_status(th, orders) -> dict:
 
 async def _compute_performance(db: AsyncSession, regime: str = None, window_hours: int = None,
                                 from_date: str = None, to_date: str = None, flip_source: str = None,
-                                direction: str = None, cell_source: str = None, origin: str = None):
+                                direction: str = None, cell_source: str = None, origin: str = None, alpha: str = None):
     from services.origin_view import norm_origin, origin_keep, touched_summary
     _origin = norm_origin(origin)
     result = await db.execute(
@@ -6273,6 +6289,13 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         orders = [o for o in orders if (getattr(o, 'direction', None) or '').upper() == _dir]
         signal_expired_orders = [o for o in signal_expired_orders
                                  if (getattr(o, 'direction', None) or '').upper() == _dir]
+    # 🅰️ (DECISION_LOG 466) Alpha filter: ALPHA = trades stamped Binance-Alpha AT ENTRY · NON_ALPHA = every other trade (stamped False AND
+    # the unstamped ones from before 2026-11-04, when no traded coin was Alpha-visible to the bot's universes). Composes after direction.
+    _alpha_f = (alpha or '').strip().upper()
+    if _alpha_f in ('ALPHA', 'NON_ALPHA'):
+        _want = _alpha_f == 'ALPHA'
+        orders = [o for o in orders if (getattr(o, 'entry_pair_alpha', None) is True) == _want]
+        signal_expired_orders = [o for o in signal_expired_orders if (getattr(o, 'entry_pair_alpha', None) is True) == _want]
     # 🖐 Sep-29: every ENTRY-INDICATOR table below is a read of the systematic book — MANUAL fills (which now carry the pair/BTC
     # readings at the click) must never enter those buckets. Totals, balances and the sleeve table keep using `orders`.
     _ind_orders = [o for o in orders if (getattr(o, 'entry_strategy', None) or '').upper() != 'MANUAL']

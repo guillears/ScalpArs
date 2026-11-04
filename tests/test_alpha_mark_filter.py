@@ -70,3 +70,39 @@ def test_frenzy_flagged_pairs_table_and_exports_carry_the_mark():
     h = T._html()
     assert "${frenzyMark(f)} ${_fzE(f.pair)}${alphaMark(f.alpha, false)}</td>" in h                    # Performance → FRENZY Flagged Pairs
     assert "(frenzyMark(f) + ' ' + f.pair + (f.alpha === true ? ' α' : ''))" in h                       # both text exports (shared lines)
+
+
+def test_transactions_carry_the_order_stamp():
+    """(467) both rows of an Alpha trade (open + close) show α — from the order's own stamp, joined by order id."""
+    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+    import datetime as dt
+    import main, models
+
+    async def run():
+        eng = create_async_engine("sqlite+aiosqlite:///:memory:")
+        async with eng.begin() as c:
+            await c.run_sync(models.Base.metadata.create_all)
+        S = async_sessionmaker(eng, expire_on_commit=False)
+        _mode = main.trading_engine.is_paper_mode
+        main.trading_engine.is_paper_mode = True
+        async def _noinit(db): return None
+        main.trading_engine.initialize, _orig = _noinit, main.trading_engine.initialize
+        try:
+            async with S() as db:
+                o1 = T._order(models, 0, "FRENZY_LITE_RETRY", "FRENZY_LITE_RETRY", entry_pair_alpha=True)
+                o2 = T._order(models, 1, "MOMENTUM", None)
+                db.add_all([o1, o2]); await db.commit()
+                for o in (o1, o2):
+                    for act in ("OPEN_LONG", "CLOSE_LONG"):
+                        db.add(models.Transaction(order_id=o.id, pair=o.pair, action=act, price=1.0, quantity=1.0, investment=10.0, leverage=4.0,
+                                                  notional_value=40.0, fee=0.01, timestamp=dt.datetime(2026, 11, 4, 12), is_paper=True))
+                await db.commit()
+                return await main.get_transactions(db)
+        finally:
+            main.trading_engine.initialize = _orig
+            main.trading_engine.is_paper_mode = _mode
+            await eng.dispose()
+    rows = asyncio.run(run())
+    got = sorted((r["pair"], r["action"], r["entry_pair_alpha"]) for r in rows)
+    assert got == [("P0USDT", "CLOSE_LONG", True), ("P0USDT", "OPEN_LONG", True), ("P1USDT", "CLOSE_LONG", None), ("P1USDT", "OPEN_LONG", None)]
+    assert "${t.pair}${alphaMark(t.entry_pair_alpha, true)}</td>" in T._html()

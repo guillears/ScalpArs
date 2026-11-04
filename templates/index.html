@@ -19439,7 +19439,7 @@
                         <tr class="hover:bg-white/5 transition">
                             <td class="px-4 py-3 text-sm">${formatTime(t.timestamp)}</td>
                             <td class="px-4 py-3 text-sm font-mono">${t.binance_order_id || t.order_id}</td>
-                            <td class="px-4 py-3 font-medium">${t.pair}</td>
+                            <td class="px-4 py-3 font-medium">${t.pair}${alphaMark(t.entry_pair_alpha, true)}</td>
                             <td class="px-4 py-3 ${confClass}">${t.confidence || '-'}</td>
                             <td class="px-4 py-3 ${actionClass} font-medium">${t.action}</td>
                             <td class="px-4 py-3 text-center">${otBadge}</td>

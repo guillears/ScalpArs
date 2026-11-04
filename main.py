@@ -3179,7 +3179,7 @@ async def get_transactions(db: AsyncSession = Depends(get_db)):
     
     # Join with Order to get confidence + cell_multiplier (for UI coloring)
     result = await db.execute(
-        select(Transaction, Order.confidence, Order.cell_multiplier, Order.cell_multiplier_source)
+        select(Transaction, Order.confidence, Order.cell_multiplier, Order.cell_multiplier_source, Order.entry_pair_alpha)
         .outerjoin(Order, Transaction.order_id == Order.id)
         .where(Transaction.is_paper == trading_engine.is_paper_mode)
         .order_by(desc(Transaction.timestamp))
@@ -3203,8 +3203,9 @@ async def get_transactions(db: AsyncSession = Depends(get_db)):
         "fee": round(t.fee, 4),
         "order_type": getattr(t, 'order_type', None) or "TAKER",
         "timestamp": t.timestamp.isoformat(),
-        "confidence": confidence
-    } for t, confidence, cell_multiplier, cell_multiplier_source in rows]
+        "confidence": confidence,
+        "entry_pair_alpha": entry_pair_alpha,   # 🅰️ (DECISION_LOG 467) the order's Alpha-at-entry stamp → the α mark on both of its rows
+    } for t, confidence, cell_multiplier, cell_multiplier_source, entry_pair_alpha in rows]
 
 
 @app.post("/api/orders/close")

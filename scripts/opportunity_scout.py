@@ -1296,6 +1296,14 @@ def run():
     except Exception as _stc_e:
         log(f"stamp coverage lines failed: {_stc_e}")
         _rg_sec += ["## 🧾🔒 STAMP COVERAGE per sleeve", "", f"Unavailable this run ({str(_stc_e)[:120]}).", ""]
+    try:                                               # 💧📏 Nov-4 LIQUIDITY CAPS & CAPACITY per sleeve (DECISION_LOG 454; exports + master only, no network; observe only; never breaks the run)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_liquidity_capacity as _lqc
+        _rg_sec += _lqc.run(now_ms)
+    except Exception as _lqc_e:
+        log(f"liquidity capacity lines failed: {_lqc_e}")
+        _rg_sec += ["## 💧📏 LIQUIDITY CAPS & CAPACITY per sleeve", "", f"Unavailable this run ({str(_lqc_e)[:120]}).", ""]
     try:                                               # 🧭 Oct-28 OBSERVATION LINES vs the LIVE EXIT (DECISION_LOG 406; config only, no network; never breaks the run)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

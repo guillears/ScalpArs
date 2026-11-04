@@ -82,7 +82,7 @@ BOOKED = {   # booked P&L — `era` = drops fills by WILLY exit era (registered 
     "scout_b1h_negflank.py": None, "scout_fade_late_weak.py": None, "scout_fade_watch.py": None,
     # review M5: booked WR judged against TODAY's breakeven over FRENZY fills spanning exit eras (LONG −3 → −4, LITE pre-C)
     "scout_frenzy_entry_lines.py": {**_FZ_STOP3}, "scout_frenzy_wl_lines.py": {**_FZ_STOP3, **_NO_LITE_C}, "scout_lite_late_btcfall.py": {"frenzy_lite_c_enabled": False, "frenzy_lite_tp_pct": 3.0, "frenzy_stop_pct": 3.0}, "scout_lite_ob_thin.py": None, "scout_lite_off30.py": None,
-    "scout_lite_z3.py": None, "scout_long_resize.py": None, "scout_ml_cooldown.py": None, "scout_ml_regime_lines.py": None,
+    "scout_lite_z3.py": None, "scout_liquidity_capacity.py": None, "scout_long_resize.py": None, "scout_ml_cooldown.py": None, "scout_ml_regime_lines.py": None,
     "scout_ml_trend_lines.py": None, "scout_ml_w4_watch.py": None, "scout_ml_mkt_hot_watch.py": None,
     # (413) FADE_NOSTRETCH judges booked WR against the frozen breakeven of today's fade exit (72.1 %) → pinned to its keys
     "scout_fade_nostretch_watch.py": {"hard_tp_enabled": True, "runner_trail_short_enabled": True, "runner_trail_short_use_atr": True, "runner_trail_short_be_ratchet_enabled": False,

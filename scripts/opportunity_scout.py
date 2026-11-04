@@ -260,7 +260,7 @@ def bot_universe(cfg):
     tk = _retry(EX.fetch_tickers) or {}
     limit = int(cfg.get("trading_pairs_limit", 50) or 50)
     nl_days = int(cfg.get("new_listing_filter_days", 0) or 0)
-    alpha = bool(cfg.get("alpha_subtype_filter_enabled", False))
+    alpha = bool(cfg.get("alpha_filter_momentum", True))           # 🅰️ (DECISION_LOG 464) the main scan's own switch
     coin = bool(cfg.get("coin_underlying_only", False))
     now = time.time() * 1000
     rows = []
@@ -1535,6 +1535,14 @@ def run():
     except Exception as _rbt_e:
         log(f"RETRY_BTC1H line failed: {_rbt_e}")
         _rg_sec += ["## 👁 RETRY_BTC1H", "", f"Unavailable this run ({str(_rbt_e)[:120]}).", ""]
+    try:                                               # 👁🅰️ Nov-4 ALPHA_SLEEVES — every sleeve on Binance "Alpha" coins (tag at entry), per-sleeve frozen re-block gate (DECISION_LOG 464; orders exports only, no network; never breaks the run)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_alpha_sleeves_watch as _alps
+        _rg_sec += _alps.run(now_ms)
+    except Exception as _alps_e:
+        log(f"ALPHA_SLEEVES line failed: {_alps_e}")
+        _rg_sec += ["## 👁🅰️ ALPHA_SLEEVES", "", f"Unavailable this run ({str(_alps_e)[:120]}).", ""]
     try:                                               # 👁 Nov-4 G51_BAND1_MOVING — momentum LONGs refused only by gate-51 band ①, split by BTC 24 h range ≥ 2.5 % (DECISION_LOG 463; decisions exports + budgeted public 1m; never breaks the run)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

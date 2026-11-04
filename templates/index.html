@@ -4996,7 +4996,7 @@
                             <p class="text-xs text-gray-500 mt-1">Jul 14: allowlist Binance <code>underlyingType == "COIN"</code> — excludes 132+ EQUITY/TradFi perps (tokenized stocks MU/INTC/SPY/NVDA…, commodities NATGAS/COPPER/XPT, indexes, leveraged ETFs) before the top-N cut. Signals are calibrated to crypto microstructure; equity perps trade synthetically while the underlying market is closed. Fail-open on missing metadata.</p>
                         </div>
                         <div class="md:col-span-1">
-                            <label class="block text-sm text-gray-400 mb-2">Alpha Subtype Filter</label>
+                            <label class="block text-sm text-gray-400 mb-2">Alpha Filter — market-volume reads</label>
                             <div class="flex items-center gap-4 py-2">
                                 <label class="flex items-center cursor-pointer">
                                     <input type="checkbox" id="config-alpha-subtype-filter-enabled" class="sr-only peer" checked>
@@ -5006,7 +5006,22 @@
                                     <span class="ml-2 text-sm text-gray-300">Enabled</span>
                                 </label>
                             </div>
-                            <p class="text-xs text-gray-500 mt-1">Auto-exclude pairs Binance flags as <span class="text-amber-400 font-mono">underlyingSubType: ["Alpha"]</span> (launchpad / Innovation Zone tier — high volatility, thin liquidity, "do your own research" warning). Catches pairs like LABUSDT before they ever trade. Independent of listing age.</p>
+                            <p class="text-xs text-gray-500 mt-1">Auto-exclude pairs Binance flags as <span class="text-amber-400 font-mono">underlyingSubType: ["Alpha"]</span> (launchpad / Innovation Zone tier — high volatility, thin liquidity, "do your own research" warning). Catches pairs like LABUSDT before they ever trade. Independent of listing age. 🅰️ Since Nov-4 (DECISION_LOG 464) this switch drives only the SURGE / FRENZY market-volume reads — the trading universes use the three per-sleeve switches beside it.</p>
+                        </div>
+                        <div class="md:col-span-1">
+                            <label class="block text-sm text-gray-400 mb-2">🅰️ Alpha Filter per sleeve</label>
+                            <div class="flex flex-col gap-1 py-1">
+                                <label class="flex items-center cursor-pointer"><input type="checkbox" id="config-alpha-filter-momentum" class="sr-only peer">
+                                    <div class="w-9 h-5 bg-white/10 peer-checked:bg-amber-500/50 rounded-full relative transition-colors"><div class="w-4 h-4 bg-white rounded-full absolute top-0.5 left-0.5 peer-checked:translate-x-4 transition-transform"></div></div>
+                                    <span class="ml-2 text-sm text-gray-300">Momentum (main scan, incl. SURGE)</span></label>
+                                <label class="flex items-center cursor-pointer"><input type="checkbox" id="config-alpha-filter-frenzy" class="sr-only peer">
+                                    <div class="w-9 h-5 bg-white/10 peer-checked:bg-amber-500/50 rounded-full relative transition-colors"><div class="w-4 h-4 bg-white rounded-full absolute top-0.5 left-0.5 peer-checked:translate-x-4 transition-transform"></div></div>
+                                    <span class="ml-2 text-sm text-gray-300">Frenzy + Flatbase</span></label>
+                                <label class="flex items-center cursor-pointer"><input type="checkbox" id="config-alpha-filter-spike" class="sr-only peer">
+                                    <div class="w-9 h-5 bg-white/10 peer-checked:bg-amber-500/50 rounded-full relative transition-colors"><div class="w-4 h-4 bg-white rounded-full absolute top-0.5 left-0.5 peer-checked:translate-x-4 transition-transform"></div></div>
+                                    <span class="ml-2 text-sm text-gray-300">Spike (fade / bounce / chase)</span></label>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">ON = that group never sees Binance "Alpha" coins. Since Nov-4 Frenzy is OFF (sees Alpha coins — Binance re-tagged ~62 on Oct-31 and the May evidence was Momentum-only); Momentum and Spike stay ON. Each Frenzy sleeve's first 15 Alpha fills (scout 👁 ALPHA_SLEEVES) decide whether its block returns; re-decided before LIVE.</p>
                         </div>
                         <!-- ===== LIQUIDITY & RISK CAPS (Jun 2 — see CLAUDE.md) ===== -->
                         <div class="md:col-span-4 mt-2 pt-3 border-t border-white/10">
@@ -22384,6 +22399,10 @@
                 if (_nlf) _nlf.value = config.new_listing_filter_days !== undefined ? config.new_listing_filter_days : 0;
                 const _asf = document.getElementById('config-alpha-subtype-filter-enabled');
                 if (_asf) _asf.checked = config.alpha_subtype_filter_enabled !== false;
+                for (const [_id, _k] of [['config-alpha-filter-momentum', 'alpha_filter_momentum'], ['config-alpha-filter-frenzy', 'alpha_filter_frenzy'],
+                                         ['config-alpha-filter-spike', 'alpha_filter_spike']]) {   // 🅰️ (464) default OFF
+                    const _e = document.getElementById(_id); if (_e) _e.checked = _k === 'alpha_filter_frenzy' ? config[_k] === true : config[_k] !== false;
+                }
                 { const _cuo = document.getElementById('config-coin-underlying-only'); if (_cuo) _cuo.checked = config.coin_underlying_only !== false; }
                 { const _e = document.getElementById('config-mcap-fetch-enabled'); if (_e) _e.checked = config.mcap_fetch_enabled !== false; }
                 { const _e = document.getElementById('config-mcap-refresh-minutes'); if (_e && config.mcap_refresh_minutes !== undefined) _e.value = config.mcap_refresh_minutes; }
@@ -24014,6 +24033,9 @@
                 no_trade_pairs: (document.getElementById('config-no-trade-pairs')||{}).value !== undefined ? (document.getElementById('config-no-trade-pairs').value||'').trim() : '',
                 new_listing_filter_days: parseInt(document.getElementById('config-new-listing-filter-days')?.value) || 0,
                 alpha_subtype_filter_enabled: !!document.getElementById('config-alpha-subtype-filter-enabled')?.checked,
+                alpha_filter_momentum: !!document.getElementById('config-alpha-filter-momentum')?.checked,   // 🅰️ (464)
+                alpha_filter_frenzy: !!document.getElementById('config-alpha-filter-frenzy')?.checked,
+                alpha_filter_spike: !!document.getElementById('config-alpha-filter-spike')?.checked,
                 coin_underlying_only: !!document.getElementById('config-coin-underlying-only')?.checked,
                 mcap_fetch_enabled: !!document.getElementById('config-mcap-fetch-enabled')?.checked,
                 mcap_refresh_minutes: (() => { const _v = parseFloat(document.getElementById('config-mcap-refresh-minutes')?.value); return (isFinite(_v) && _v >= 5) ? _v : 30; })(),

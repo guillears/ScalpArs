@@ -64,7 +64,7 @@ def _eligible(EX, retry, cfg):
     mk = retry(EX.load_markets) or {}
     tk = retry(EX.fetch_tickers) or {}
     nl_days = int(cfg.get("new_listing_filter_days", 0) or 0)
-    alpha = bool(cfg.get("alpha_subtype_filter_enabled", False))
+    alpha = bool(cfg.get("alpha_filter_frenzy", False))   # 🅰️ (DECISION_LOG 464) the FRENZY loop's own switch (cohort = engine universe)
     coin = bool(cfg.get("coin_underlying_only", False))
     now = time.time() * 1000
     out = {}

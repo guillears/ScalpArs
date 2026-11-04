@@ -88,7 +88,11 @@ def coverage(frame, since_ms, E=None, until_ms=None):
             des = tuple(E.STAMP_NULL_BY_DESIGN.get(c) or ())
             if des and es.startswith(des):
                 continue
-            cov = float(g[c].notna().mean()) if c in g else 0.0
+            _since = (getattr(E, "STAMP_SINCE", {}) or {}).get(c)
+            gc = g[g.o >= pd.Timestamp(_since)] if _since is not None else g   # (464) a later column is judged from its own deploy
+            if not len(gc):
+                continue
+            cov = float(gc[c].notna().mean()) if c in gc else 0.0
             bar = BAR_BEST if c in E.STAMP_BEST_EFFORT else BAR
             if cov < bar:
                 low.append((c, cov, bar))

@@ -33,6 +33,9 @@
   "no_trade_pairs": "BTCUSDT,ETHUSDT",
   "new_listing_filter_days": 90,
   "alpha_subtype_filter_enabled": true,
+  "alpha_filter_momentum": true,
+  "alpha_filter_frenzy": false,
+  "alpha_filter_spike": true,
   "coin_underlying_only": true,
   "investment": {
     "mode": "equal_split",

@@ -66,7 +66,7 @@ def test_gvol_gate_wired_fail_closed():
     assert "_gv = await self._frenzy_gvol_value(bar_open - 300_000, wait=_gvmax > 0)" in body
     assert "_gvb = frenzy_gvol_block(_gv, th)" in body and "if _gvb:" in body                   # unreadable = no entry (pure rule, tests/test_frenzy_lite.py)
     assert body.index("_frenzy_gvol_value(") < body.index("FRENZY_ENTRY_MAX_LATE_S")            # the wait counts toward lateness
-    assert "self._frenzy_gvol_start(allp, bar_open - 300_000)" in eng and "entry_frenzy_gvol=_gv" in body
+    assert "self._frenzy_gvol_start(gvol_universe(allp, binance_service.public_exchange.markets or {}), bar_open - 300_000)" in eng   # 🅰️ (464) and "entry_frenzy_gvol=_gv" in body
     import json
     cfg = json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
     assert cfg["frenzy_gvol_max"] == 0.0   # 2026-10-09 (DECISION_LOG 263): gate OFF, measured in scout GVOL_SPLIT

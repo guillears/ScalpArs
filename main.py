@@ -837,6 +837,9 @@ class ConfigUpdate(BaseModel):
     trading_pairs_limit: Optional[int] = None
     new_listing_filter_days: Optional[int] = None
     alpha_subtype_filter_enabled: Optional[bool] = None
+    alpha_filter_momentum: Optional[bool] = None   # 🅰️ (DECISION_LOG 464) per-sleeve-group Alpha block
+    alpha_filter_frenzy: Optional[bool] = None
+    alpha_filter_spike: Optional[bool] = None
     coin_underlying_only: Optional[bool] = None
     mcap_fetch_enabled: Optional[bool] = None      # 💰 Sep-28 (DECISION_LOG 124)
     mcap_refresh_minutes: Optional[float] = None

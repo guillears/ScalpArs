@@ -267,6 +267,9 @@ class Order(Base):
     # the new-listing filter 180->90-day step-down (edge-by-age; NULL pre-deploy or
     # missing metadata). Rides the orders CSV via column introspection.
     entry_pair_age_days = Column(Float, nullable=True)
+    # 🅰️ Nov-4 (DECISION_LOG 464): Binance tagged the coin "Alpha" (underlyingSubType) at entry — tags move (62 coins re-tagged Oct-30/31),
+    # so the per-sleeve Alpha watch lines read this stamp, never today's tag. Every fill (post-fill backfill). Rides the orders CSV.
+    entry_pair_alpha = Column(Boolean, nullable=True)
 
     # 🌊 Aug 21 gate 57 — Bull-Run Monitor readings at entry (BULLRUN_LONG fills only, NULL
     # otherwise). The episode-review optimization surface: fills bucketed by regime intensity

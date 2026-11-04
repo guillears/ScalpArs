@@ -354,6 +354,26 @@ def bnb_real_floor_usd(tc, target) -> float:
     return min(floor, max(float(target or 0.0), 0.0))
 
 
+def gvol_universe(pairs, markets, exclude_alpha=None):
+    """🅰️ (DECISION_LOG 464 review) the market-volume reads (FRENZY gvol, as SURGE's) stay on the universe they were calibrated on: with
+    alpha_subtype_filter_enabled (default True) the Alpha coins are dropped even though the FRENZY loop now sees them. Pure."""
+    if exclude_alpha is None:
+        exclude_alpha = bool(getattr(config.trading_config, 'alpha_subtype_filter_enabled', True))
+    if not exclude_alpha:
+        return list(pairs or [])
+    return [p for p in pairs or [] if not binance_alpha_flag((((markets or {}).get(p.get('symbol')) or {}).get('info') or {}).get('underlyingSubType'))]
+
+
+def binance_alpha_flag(subtype):
+    """🅰️ (DECISION_LOG 464) Binance underlyingSubType → True when it carries "Alpha" (list or string, as binance_service's filter reads it),
+    False for any other readable value, None when unknown. Pure."""
+    if isinstance(subtype, (list, tuple)):
+        return any(str(x) == "Alpha" for x in subtype)
+    if isinstance(subtype, str):
+        return subtype == "Alpha"
+    return None
+
+
 def pair_entry_stamps(indicators, signal) -> dict:
     """📐 Sep-29 the PAIR-level entry stamps of one indicator snapshot — the exact formulas and rounding the momentum scan
     passes to open_position, in ONE place: the scan call and the MANUAL sleeve both use this, so a manual fill records
@@ -3188,6 +3208,16 @@ def frenzy_shortlist(allp, skip, chg: float, vmin: float, cap: int = 25) -> list
     return [p['pair'] for p in sorted(keep, key=lambda p: (abs(p.get('change_24h') or 0) < chg, -_move(p)))[:cap]]
 
 
+def frenzy_shortlist_split(allp, skip, chg: float, vmin: float, markets, cap: int = 25) -> list:
+    """🅰️ (DECISION_LOG 464, operator "make sure nothing else has changed in frenzy") the NON-Alpha shortlist exactly as before (its own cap
+    25 — an Alpha coin never takes a place from a coin Frenzy already reads), then the Alpha coins' own shortlist (cap 25) appended. With
+    alpha_filter_frenzy ON allp holds no Alpha coin and this is frenzy_shortlist(allp, …) unchanged. Pure."""
+    alpha = [p for p in allp or [] if binance_alpha_flag((((markets or {}).get(p.get('symbol')) or {}).get('info') or {}).get('underlyingSubType'))]
+    ids = {id(p) for p in alpha}
+    base = [p for p in allp or [] if id(p) not in ids]
+    return frenzy_shortlist(base, skip, chg, vmin, cap) + frenzy_shortlist(alpha, skip, chg, vmin, cap)
+
+
 class TradingEngine:
     """Main trading engine that manages positions and executes trades"""
 
@@ -4236,7 +4266,7 @@ class TradingEngine:
         'entry_ema_gap_8_13', 'entry_ema5_stretch', 'entry_price_vs_ema5_pct', 'entry_ema20_slope', 'entry_ema50_slope', 'entry_range_position',
         'entry_pos_di', 'entry_neg_di', 'entry_pair_ema20_ema50_gap_pct', 'entry_dist_from_ema13_pct', 'entry_pair_volume_ratio',
         'entry_gap_expand_marginal', 'entry_gap_5_20_signed_pct', 'entry_gap_5_20_prev_signed_pct', 'entry_gap_5_8_signed_pct',
-        'entry_quality_score', 'entry_funding_rate', 'entry_pair_1d_ndi', 'entry_pair_age_days', 'entry_pair_volume_24h_usd',
+        'entry_quality_score', 'entry_funding_rate', 'entry_pair_1d_ndi', 'entry_pair_age_days', 'entry_pair_alpha', 'entry_pair_volume_24h_usd',
         'entry_pair_1h_ema20_200_gap_pct', 'entry_mcap_usd', 'entry_cmc_rank', 'entry_vol_mcap_ratio', 'entry_alt_corr24', 'entry_alt_beta24',
         # market (market_entry_stamps / monitor_entry_stamps / zone)
         'entry_btc_adx', 'entry_btc_adx_prev', 'entry_btc_rsi', 'entry_btc_rsi_prev', 'entry_btc_rsi_prev6', 'entry_btc_atr_pct',
@@ -4261,6 +4291,9 @@ class TradingEngine:
                          'entry_btc_4h_ema50_200_gap_pct')    # its global refreshes only while the fade laggard gate is on (spike_fade_lag_ndi_min > 0)
     # (column, entry_strategy prefixes where NULL is BY DESIGN) — the coverage alert skips these pairs
     STAMP_NULL_BY_DESIGN = {}
+    # 🅰️ (DECISION_LOG 464 review) a universal column added later is REQUIRED only on fills opened from its deploy on (naive UTC) — older
+    # fills carry NULL by construction and must not raise stamp-gap alarms (dashboard banner, scout_stamp_coverage)
+    STAMP_SINCE = {'entry_pair_alpha': datetime(2026, 11, 4, 23, 0)}
 
     @classmethod
     def stamp_class(cls, col) -> str:
@@ -4399,6 +4432,12 @@ class TradingEngine:
                         st['entry_pair_age_days'] = round((_leash_time.time() * 1000 - int(_ob)) / 86400000.0, 1)
                 except Exception:
                     pass
+            try:   # 🅰️ (464) Binance "Alpha" tag at entry (underlyingSubType, in memory) — tags move, so the watch lines read this stamp
+                _st = binance_alpha_flag((((binance_service.public_exchange.markets or {}).get(symbol) or {}).get('info') or {}).get('underlyingSubType'))
+                if _st is not None:
+                    st['entry_pair_alpha'] = _st
+            except Exception:
+                pass
             cols = Order.__table__.columns
             vals = {k: func.coalesce(getattr(Order, k), v) for k, v in st.items()
                     if k in cols and k.startswith('entry_') and k not in self.STAMP_BACKFILL_NEVER}
@@ -4424,9 +4463,18 @@ class TradingEngine:
     def stamp_missing(self, es, row_values) -> list:
         """(391) the UNIVERSAL columns still NULL on one fill, minus the (column, sleeve) pairs NULL by design. Pure."""
         out = []
+        _oa = row_values.get('opened_at')
         for c in self.STAMP_UNIVERSAL:
             if row_values.get(c) is not None:
                 continue
+            _since = self.STAMP_SINCE.get(c)
+            if _since is not None and _oa is not None:
+                try:
+                    _o = _oa if isinstance(_oa, datetime) else datetime.fromisoformat(str(_oa)[:19])
+                    if _o.replace(tzinfo=None) < _since:
+                        continue
+                except (TypeError, ValueError):
+                    pass
             _des = tuple(self.STAMP_NULL_BY_DESIGN.get(c) or ())
             if _des and str(es or "").startswith(_des):
                 continue
@@ -9374,7 +9422,7 @@ class TradingEngine:
             _judged = _frenzy_status.setdefault('judged', set())   # pairs read on this bar: a retry pass never re-reads or re-counts them
             allp = await binance_service.get_top_futures_pairs(
                 5000, new_listing_filter_days=getattr(tc, 'new_listing_filter_days', 0),
-                alpha_subtype_filter_enabled=getattr(tc, 'alpha_subtype_filter_enabled', True),
+                alpha_subtype_filter_enabled=getattr(tc, 'alpha_filter_frenzy', False),   # 🅰️ (464) the FRENZY group's own switch
                 coin_underlying_only=getattr(tc, 'coin_underlying_only', True))
             if not allp:
                 _frenzy_status.update(bar=(None if _frenzy_status['passes'] < 3 else bar_open), error="tickers unavailable")   # ≤ 2 retries
@@ -9387,7 +9435,7 @@ class TradingEngine:
             # |24 h change|: a pair deep into its episode can be DOWN on the day (MOVR −31 % on day 3) — the walk decides, not the sign.
             # 🔥 Oct-3: OR the 24 h low→high range — a pair that dumped then pumped back nets ~0 on the day (MOVR Oct-3: change −0.6 %, range 28 %,
             # a READY entry never read). The backtest universe had no shortlist at all; this only stops the live bot missing pairs the walk would flag.
-            names = frenzy_shortlist(allp, skip, chg, vmin)
+            names = frenzy_shortlist_split(allp, skip, chg, vmin, binance_service.public_exchange.markets or {})   # 🅰️ (464)
             _follow = list(_frenzy_flags)
             if not _frenzy_status.get('seeded'):   # once per process: pairs recently observed / traded stay in view across a deploy
                 _frenzy_status['seeded'] = True
@@ -9419,7 +9467,7 @@ class TradingEngine:
                                     f"{FLATBASE_EXTRA_READS_MAX}), the rest on the next passes")
             # klines for the whole shortlist CONCURRENTLY (≤ 6 at a time) so the scan is held a few seconds, not one pair after another
             if _on or _wide or _lite or _willy:   # 🌊 Oct-3 (DECISION_LOG 194): the market's volume on the bar that just closed, read in parallel (own client) — 🎲 WILLY: stamp only
-                self._frenzy_gvol_start(allp, bar_open - 300_000)
+                self._frenzy_gvol_start(gvol_universe(allp, binance_service.public_exchange.markets or {}), bar_open - 300_000)   # 🅰️ (464)
             _cu_max = max(0, int(float(getattr(th, 'frenzy_catchup_max_bars', 0) or 0)))   # ⏪ Oct-6 catch-up (0 = off)
             _cu_prev = _frenzy_status.get('catchup_prev')   # the global horizon; per pair: _frenzy_pair_prev (pairs unreadable since)
             _sem = asyncio.Semaphore(6)
@@ -10934,7 +10982,7 @@ class TradingEngine:
                 logger.info(f"[FRENZY_CATCHUP] {pair}: ON bar {_on_txt} was not judged (bot paused/restarting) → refused: {age} bars old (max {int(max_bars)})")
                 return
             if allp:   # ⏪ lazy: the catch-up market-volume read starts on the first candidate of the bar (in parallel with the rebuild)
-                self._frenzy_gvol_catchup_start(allp, bar_open - 300_000, max_bars)
+                self._frenzy_gvol_catchup_start(gvol_universe(allp, binance_service.public_exchange.markets or {}), bar_open - 300_000, max_bars)   # 🅰️ (464)
             idx = next((i for i in range(len(closed) - 1, -1, -1) if int(closed[i][0]) == on_ms), None)
             trunc = closed[:idx + 1] if idx is not None else None
             ep_on = frenzy_walk(trunc, norm_hour, th) if (trunc and len(trunc) >= 300) else None
@@ -12529,7 +12577,7 @@ class TradingEngine:
         universe = await binance_service.get_top_futures_pairs(
             _max_pairs,
             new_listing_filter_days=getattr(config.trading_config, 'new_listing_filter_days', 0),
-            alpha_subtype_filter_enabled=getattr(config.trading_config, 'alpha_subtype_filter_enabled', True),
+            alpha_subtype_filter_enabled=getattr(config.trading_config, 'alpha_filter_spike', True),   # 🅰️ (464) the spike group's own switch (ON)
             coin_underlying_only=getattr(config.trading_config, 'coin_underlying_only', True),
         )
         # Jul 24 (review fix I2): stamp the eligible-universe volume rank (1 = highest)
@@ -17397,6 +17445,11 @@ class TradingEngine:
         meta = getattr(self, '_scan_pair_meta', {}) or {}
         if pair in meta and (time.time() - (getattr(self, '_scan_pair_meta_at', 0.0) or 0.0)) <= 1800:
             st['entry_pair_volume_24h_usd'], st['entry_pair_rank'], st['entry_pair_age_days'] = meta[pair]
+        try:   # 🅰️ (464) Binance "Alpha" tag at entry, as the post-fill backfill stamps every other sleeve
+            st['entry_pair_alpha'] = binance_alpha_flag((((binance_service.public_exchange.markets or {}).get(symbol) or {}).get('info') or {})
+                                                        .get('underlyingSubType'))
+        except Exception:
+            st['entry_pair_alpha'] = None
         st['entry_vol_mcap_ratio'] = vol_mcap_ratio(st.get('entry_pair_volume_24h_usd'), st.get('entry_mcap_usd'))   # 🔄 (251) never raises
         st.update(alt_corr_stamp())   # 📈 (DECISION_LOG 383) the alt-correlation regime stamp (memory read; NULL on any failure)
         st['entry_funding_rate'] = round(_fr, 6) if isinstance(_fr, (int, float)) else None
@@ -20765,7 +20818,7 @@ class TradingEngine:
         # Jul 14 FUNNEL v2: scan sequence for edge-triggered episode counting.
         self._funnel_scan_seq = getattr(self, '_funnel_scan_seq', 0) + 1
         _new_listing_days = getattr(config.trading_config, 'new_listing_filter_days', 0)
-        _alpha_filter = getattr(config.trading_config, 'alpha_subtype_filter_enabled', True)
+        _alpha_filter = getattr(config.trading_config, 'alpha_filter_momentum', True)   # 🅰️ (464) the main-scan group's own switch (ON)
         _coin_only = getattr(config.trading_config, 'coin_underlying_only', True)
         top_pairs = await binance_service.get_top_futures_pairs(
             pairs_limit,

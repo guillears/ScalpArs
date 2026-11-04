@@ -148,6 +148,8 @@ def test_manual_fill_records_every_field_a_momentum_fill_records(monkeypatch):
     monkeypatch.setattr(T.alt_corr_tracker, "value", dict(bar_close_ms=int(time.time() * 1000) // 300_000 * 300_000, corr=0.41, beta=1.3, n=20, at=0))   # 📈 (383)
     eng = T.TradingEngine.__new__(T.TradingEngine); eng.is_paper_mode = True
     eng._scan_pair_meta = {"QNTUSDT": (2.5e8, 17, 900.0)}; eng._scan_pair_meta_at = time.time()
+    monkeypatch.setattr(T.binance_service.public_exchange, "markets",
+                        {"QNT/USDT:USDT": {"info": {"underlyingSubType": ["Infrastructure", "Crypto"]}}}, raising=False)   # 🅰️ (464)
     st = asyncio.run(eng._manual_entry_stamps("QNTUSDT", "QNT/USDT:USDT", "LONG", 268.0))
 
     cols = [c.name for c in models.Order.__table__.columns if c.name.startswith("entry_")]
@@ -161,6 +163,7 @@ def test_manual_fill_records_every_field_a_momentum_fill_records(monkeypatch):
     assert st['entry_btc_adx'] == 24.1235 and st['entry_btc_rsi'] == 57.3 and st['entry_global_volume_ratio'] == 1.1235
     assert st['entry_pair_rank'] == 17 and st['entry_funding_rate'] == 0.000123 and st['entry_cmc_rank'] == 88
     assert st['exit_btc_regime'] == st['entry_btc_regime'] and 'entry_slippage_pct' not in st
+    assert st['entry_pair_alpha'] is False
     models.Order(**st)                                                                    # every key is a real column
 
     # fail-soft: no klines, no funding, no scan meta → the pair fields are empty, nothing raises, market fields still land

@@ -163,7 +163,7 @@ CTOR_ALWAYS = {
     'entry_alt_corr24', 'entry_alt_beta24', 'entry_btc_off30d_high_pct', 'entry_pair_1h_ema20_200_gap_pct', 'entry_pair_volume_24h_usd',
     'entry_atr_pct', 'entry_btc_regime', 'entry_btc_rsi_closed', 'entry_btc_r72_pct', 'entry_btc_eff72',   # the never-backfilled five
 }
-BACKFILL_EXPLICIT = {'entry_funding_rate', 'entry_pair_1d_ndi', 'entry_quality_score', 'entry_pair_age_days', 'entry_btc_price',
+BACKFILL_EXPLICIT = {'entry_funding_rate', 'entry_pair_1d_ndi', 'entry_quality_score', 'entry_pair_age_days', 'entry_pair_alpha', 'entry_btc_price',
                      'entry_btc_4h_ema50_200_gap_pct', 'entry_btc_ema50_100_gap_pct', 'entry_eth_5m_ret1_pct', 'entry_btc_1d_ret_pct'}
 
 

@@ -3196,9 +3196,17 @@ class TradingConfig(BaseModel):
     # "never-positive + emergency-SL" failure pattern (LABUSDT, RAVEUSDT in
     # the May 5 batch).  Independent of listing age — catches launchpad pairs
     # regardless of when they listed.  6 pairs in current top-50 are Alpha.
-    # Default ON.  Toggle off only for analysis (e.g., to test whether Alpha
-    # pairs are systematically bad or sometimes profitable).
+    # Default ON. 🅰️ Since DECISION_LOG 464 it drives ONLY the market-volume reads (SURGE gvol, FRENZY gvol) — the trading universes use
+    # the per-group switches below.
     alpha_subtype_filter_enabled: bool = True
+    # 🅰️ Nov-4 (DECISION_LOG 464, operator "go Alpha"): the Alpha block PER SLEEVE GROUP. Binance re-tagged ~62 coins "Alpha" on Oct-30/31
+    # (excluded 69 → 131 of 513) and Frenzy's flags fell ~8 → 2-3 per pass; the May-5 evidence was Momentum-only and predates today's stack.
+    # B25 fills on now-Alpha coins before the re-tag: LITE+RETRY 10 · +$1,144 · WILLY 5 · −$1,018 · Flatbase 5 · −$575 · Momentum 2 · +$6.
+    # PAPER test (operator 11-04 "we add alpha just to frenzy"): FRENZY OFF (sees Alpha coins), Momentum + Spike ON (blocked, as before);
+    # each FRENZY sleeve's first 15 Alpha fills (👁 ALPHA_SLEEVES, frozen) decide whether the block returns; re-decided before LIVE. alpha_subtype_filter_enabled above now drives ONLY the SURGE market-volume read (its trigger stays as measured).
+    alpha_filter_momentum: bool = True    # the main scan universe (momentum, flips, Bear-Run, Bull-Run, SURGE — it picks from the scan list)
+    alpha_filter_frenzy: bool = False     # the FRENZY loop universe (LITE / RETRY / LONG / WIDE / WILLY / HT + FLATBASE_SHORT)
+    alpha_filter_spike: bool = True       # SPIKE fade / bounce / chase: the spike scanner universe + spike hits on appended Alpha coins in the main scan
     # Crypto-only universe (Jul 14, 2026): allowlist `underlyingType == "COIN"` —
     # excludes Binance's 132+ EQUITY/TradFi perps (tokenized stocks: MU/INTC/SPY/NVDA...,
     # commodities: NATGAS/COPPER/XPT, indexes, leveraged ETFs) in ONE condition.

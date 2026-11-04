@@ -625,6 +625,8 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_pair_rank INTEGER"))
                 if 'entry_pair_age_days' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_pair_age_days FLOAT"))
+                if 'entry_pair_alpha' not in columns:   # 🅰️ Nov-4 (DECISION_LOG 464): coin tagged Binance "Alpha" at entry
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_pair_alpha BOOLEAN"))
                 # Jul 27 spike full ship: option-D L2 state columns
                 if 'spike_rsi_max' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN spike_rsi_max FLOAT"))

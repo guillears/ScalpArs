@@ -1046,8 +1046,8 @@
             <div class="glass rounded-xl p-6">
                 <p class="text-xs text-gray-500 mb-4">All metrics below are calculated from closed orders only</p>
 
-                <!-- Filters (line 1) · report and export buttons (line 2, below) -->
-                <div class="mb-4 flex items-center gap-4 flex-wrap">
+                <!-- Filters (line 1) · Show switch + report / export buttons (line 2) · accounting (line 3), DECISION_LOG 472 -->
+                <div class="mb-3 flex items-center gap-4 flex-wrap">
                     <span class="text-sm font-semibold text-gray-300">Macro Trend:</span>
                     <select id="regime-filter" class="bg-white/5 border border-white/10 rounded px-3 py-1.5 text-white text-sm" onchange="loadPerformance()">
                         <option value="">All Regimes</option>
@@ -1115,6 +1115,9 @@
                         <option value="NON_ALPHA">Non-Alpha only</option>
                     </select>
                     <span id="alpha-filter-badge" class="text-xs text-gray-500"></span>
+                </div>
+                <!-- 🗂 (DECISION_LOG 472, operator 11-05) three lines: ① filters · ② Show switch + report / export buttons · ③ accounting -->
+                <div class="mb-3 flex items-center gap-3 flex-wrap">
                     <!-- 🧹 (DL 346) second copy of the All · Bot · Manual switch (DL 323) — ONE shared state: setOriginView paints both -->
                     <span class="flex items-center gap-2 whitespace-nowrap"><!-- 📈📉 (DECISION_LOG 457) the label never wraps away from its switch -->
                     <span class="text-sm font-semibold text-sky-300">Show:</span>
@@ -1125,9 +1128,6 @@
                         <button type="button" data-origin="MANUAL" onclick="setOriginView('MANUAL')">🖐 Manual</button>
                     </div>
                     </span>
-                </div>
-                <!-- 📈📉 (DECISION_LOG 456, operator 11-04) two lines: filters above, report / export buttons below -->
-                <div class="mb-4 flex items-center gap-3 flex-wrap">
                     <button id="copy-analytics-btn" onclick="copyAnalytics()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded transition-colors">Analytics</button>
                     <button id="copy-split-btn" onclick="copySplitReport()" class="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium rounded transition-colors">Split Report</button>
                     <a id="download-orders-csv-btn" href="/api/orders/export.csv" download class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium rounded transition-colors" title="Download all CLOSED + SIGNAL_EXPIRED orders for current mode (paper/live) as CSV — no row limit, every Order column included. Use for counterfactual analysis, cross-sample re-binning, custom cross-tabs." onclick="this.href='/api/orders/export.csv?t=' + Date.now()">Orders CSV</a>
@@ -1136,7 +1136,9 @@
                         <input type="checkbox" id="auto-decisions-toggle" onchange="_autoDecToggle(this.checked)" class="accent-sky-600"> Auto 2×/day
                         <span id="auto-decisions-status" class="text-gray-500"></span>
                     </label>
-                    <!-- 📒 (DECISION_LOG 455 / 456) accountant export: Live (real account) or Paper (check only), USDT, UTC; empty dates = from the first trade of the chosen mode to now -->
+                </div>
+                <div class="mb-4 flex items-center gap-3 flex-wrap">
+                    <!-- 📒 (DECISION_LOG 455 / 456) accountant export: Live (real account) or Paper (check only), USDT, Argentina time (UTC-3); empty dates = from the first trade of the chosen mode to now -->
                     <span class="flex items-center gap-1 text-xs text-gray-400 whitespace-nowrap" title="📒 For your accountant: Follows the bot's mode: LIVE = your real account (from Binance's own records); PAPER = a check only (marked NOT for accounting). USDT, Argentina time (UTC-3). One Excel file: futures trades · monthly summary checked against Binance's own records · transfers · spot trades, holdings and sold lots. Empty dates: LIVE = every whole month Binance still holds (about 3 months), PAPER = since the first paper trade (to = inclusive).">
                         📒 From <input type="date" id="acct-from" class="bg-gray-800 border border-white/10 rounded px-1 py-0.5 text-xs text-gray-200">
                         to <input type="date" id="acct-to" class="bg-gray-800 border border-white/10 rounded px-1 py-0.5 text-xs text-gray-200">

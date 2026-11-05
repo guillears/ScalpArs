@@ -50,7 +50,7 @@ THEORY = {"WILLY_GAP": "after (EMA cut from the data, DL 414)", "OBS-F1 late wea
           "LONG_ADX35": "after (post-hoc cut, DL 418)"}
 LUCK = {}   # (sleeve, line) → luck.csv row, filled in main() from best_dcr.py's luck test
 # how each line's registration search compares with the luck test's family (deep review 473: the family is not a bound either way)
-LUCK_NOTE = {"FB_CONFIRM": "optimistic: the 1–24 h waits tried at registration are not priced here",
+LUCK_NOTE = {"FB_CONFIRM": "search priced: confirm +5/−10 and +1/−4, waits 1–24 h, selling 1–7 % higher (DL 474); 'a move against then a 1 h close back below' not priced",
              "WILLY_GAP": "registration searched wider: 28,545 cells", "ML_MKT_HOT": "registration searched 49 market conditions, not in this family",
              "LONG_ADX35": "registration kept one 1D cut — the 1D p is the closer read"}
 
@@ -62,6 +62,9 @@ def luck_cell(sleeve, line):
     if r["verdict"] == "TOO FEW":
         return f"too few to test ({int(r['n'])} trades before the freeze)"
     note = f" ({LUCK_NOTE[line]})" if line in LUCK_NOTE else ""
+    dr = r.get("dropped", 0)
+    if dr == dr and dr:
+        note += f" · {int(dr)} trade(s) left out: an alternative unpriced"
     p1 = r.get("p_1d", float("nan"))
     p1s = f" · 1D search p {p1:.2f}" if p1 == p1 and p1 != r["p_search"] else ""
     return f"**{r['verdict']}** — alone p {r['p_single']:.3f}{p1s} · full search p {r['p_search']:.2f}{note}"

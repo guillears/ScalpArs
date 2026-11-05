@@ -261,7 +261,12 @@ for sl, combo in _best:
             g = g if fz is None else g[g.o < fz]
             if "cf_why" in g:   # confirm-entered fills have no S4 counterfactual (as confidence.inputs)
                 g = g[~g.cf_why.astype(str).eq("CONFIRMED_LIVE")]
-            d = pd.DataFrame({"FB_CONFIRM": g.cf510 - g.now510, "FB +1/−4": g.cf14 - g.now510})
+            _alts = ("w1", "w2", "w4", "w8", "w12", "w24", "hi1", "hi2", "hi3", "hi4", "hi5", "hi6", "hi7")   # fb_combo.ALT_COLS (no import: it fetches)
+            if not set(_alts) <= set(g.columns):   # a pre-474 fb_combo.csv would silently fall back to the too-easy 2-alternative test
+                sys.exit("fb_combo.csv lacks the FB_CONFIRM search alternatives (w* / hi*) — re-run fb_combo.py")
+            d = pd.DataFrame({"FB_CONFIRM": g.cf510 - g.now510, "FB +1/−4": g.cf14 - g.now510,
+                              # 🎲 (474) the waits and higher sells the registration study also tried (fb_combo.ALT_COLS)
+                              **{c: g[c] - g.now510 for c in g.columns if (c[:1] == "w" and c[1:].isdigit()) or (c[:2] == "hi" and c[2:].isdigit())}})
             res = LT.gain_line(d, g.o.dt.strftime("%Y-%m-%d").to_numpy(), "FB_CONFIRM")
         elif ln.startswith("EXIT "):
             g = FX.assign(o=pd.to_datetime(FX.k, format="mixed"))

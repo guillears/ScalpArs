@@ -14,7 +14,8 @@ four median quadrants · the line's own zone), zone and rest ≥ MIN_SIDE scored
 line's own zone (no search) — the gap between them is what the search cost.
 EXIT / TIMING lines (FB_CONFIRM, FAN flips TP +2: they claim a gain per trade): Δ per trade vs today's exit; null = each day's Δs flip sign
 together (no effect = as likely +x as −x), best mean over the alternatives that were tried and are priced (FAN TP 1.5 / 2 / 3 · FB_CONFIRM at
-+5 / −10 and +1 / −4 — FB_CONFIRM's study also tried waits of 1–24 h that are not priced here, so its p is OPTIMISTIC, stated).
++5 / −10 and +1 / −4 · waits of 1 / 2 / 4 / 8 / 12 / 24 h · selling 1–7 % higher: the alternatives its registration study tried, priced in
+fb_combo.py since DECISION_LOG 474 — the operator caught that a 2-alternative penalty made a short Flatbase history read REAL).
 LIMITS (deep review 473): the family is the standard sweep, not each line's own registration search — WIDER for some lines (LONG_ADX35 was
 one post-hoc 1D cut; a sleeve with more stamped columns gets a bigger family), NARROWER for others (WILLY_GAP searched 28,545 cells;
 ML_MKT_HOT 49 rebuilt market conditions that are not entry columns) → p(after search) is not a bound either way; p(1D search) (every 1D
@@ -147,9 +148,10 @@ def gain_line(d, days, chosen, r=R, seed=SEED):
     """d = DataFrame of per-trade Δ (one column per alternative tried), chosen = the line's column → dict as block_line (zone = n). PURE."""
     d = d.apply(pd.to_numeric, errors="coerce")
     ok = d.notna().all(axis=1).to_numpy()
+    dropped = int((~ok).sum())          # a fill with ANY unpriced alternative leaves the test (shown on the cell, never silent)
     d, days = d[ok].reset_index(drop=True), np.asarray(days)[ok]
     n = len(d)
-    base = dict(n=n, nz=n, delta=float("nan"), p_single=float("nan"), p_1d=float("nan"), p_search=float("nan"), k=d.shape[1])
+    base = dict(n=n, nz=n, delta=float("nan"), p_single=float("nan"), p_1d=float("nan"), p_search=float("nan"), k=d.shape[1], dropped=dropped)
     if n < MIN_N:
         return dict(base, verdict=FEW)
     M = d.to_numpy(float)

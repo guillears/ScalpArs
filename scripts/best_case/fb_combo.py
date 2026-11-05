@@ -25,7 +25,34 @@ bud = CF.LS.Budget()
 SHIP_MS = CF._GK.dl_deploy_ms(CF.DL_SHIP, lag_min=10, label="FB_CONFIRM ship")
 if SHIP_MS is None:
     sys.exit("FB_CONFIRM ship time not found — cannot split S4-entered vs confirm-entered fills")
+# 🎲 (DECISION_LOG 474) the OTHER entries the FB_CONFIRM study tried at registration (DL 417), priced so the luck test penalises the real
+# search: waits of 1–24 h (enter at the open of the first 5m bar ≥ signal + W, today's +5 / −10) and selling 1–7 % higher (a resting short
+# at E × (1 + x %) filled by the first bar whose high reaches it within 24 h, walked from the next bar; never filled = no trade = 0 %).
+# Not priced: "a move against then a 1 h close back below" (stated in the luck note).
+WAITS_H = (1, 2, 4, 8, 12, 24)
+HIGHER_PCT = (1, 2, 3, 4, 5, 6, 7)
+ALT_COLS = tuple(f"w{h}" for h in WAITS_H) + tuple(f"hi{x}" for x in HIGHER_PCT)
 def th(tp, sl): return FS._th_tp(tp, sl)
+def walk_from(E, rows, tp, sl):
+    """(474) an alternative entry gets the same 72 h hold from ITS OWN entry — anchored on the first bar walked (rows < rows[0] + 72 h; the
+    engine's TIME exit), never the signal's window (a late entry cut at signal + 72 h reads OPEN). → net % or NaN while still short."""
+    if not rows:
+        return np.nan
+    rows = [b for b in rows if b[0] < rows[0][0] + 72 * 3600_000]
+    x = price_path_exit(E, rows, th(tp, sl))
+    if x is None or x["reason"] == "OPEN":
+        return np.nan
+    return float(x["net_pct"])
+def bars_to(pair, te, need_ms, bars):
+    """the fill's 5m bars extended (one more cached page from the last bar) until need_ms, or as far as the budget allows."""
+    out = list(bars)
+    while out and out[-1][0] + CF.M5 < need_ms:
+        more = CF.fetch_bars(pair, out[-1][0] + CF.M5, now, bud)
+        new = [q for q in (more or []) if q[0] > out[-1][0]]
+        if not new:   # no page / budget stop / nothing newer — never loop on the same bars
+            break
+        out += new
+    return out
 def walk(E, bars, tp, sl, te):
     rows = [b for b in bars if b[0] < te + 72 * 3600_000]
     x = price_path_exit(E, rows, th(tp, sl))
@@ -47,6 +74,22 @@ for r in c.itertuples():
                booked_min=(pd.Timestamp(r.closed_at) - r.o).total_seconds() / 60)
     rec["now510"], rec["h_now510"] = walk(r.E, after, 5, 10, r.te)
     rec["tp1sl4"], rec["h_tp1sl4"] = walk(r.E, after, 1, 4, r.te)
+    if r.te < SHIP_MS:   # 🎲 (474) the alternatives tried at registration (S4-entered fills only — a confirm-entered fill has no S4 entry)
+        bx = bars_to(r.pair, r.te, min(r.te + (24 + 72) * 3600_000, now), bars)   # the latest entry (24 h) + its own 72 h hold
+        b = np.asarray(bx, float); t = b[:, 0].astype("int64")
+        for h in WAITS_H:
+            j = np.flatnonzero(t >= FS.tp_path_start(r.te + h * 3600_000)[0])   # the bar a fill at signal + W would start at (474 review)
+            rec[f"w{h}"] = walk_from(float(b[j[0], 1]), [list(x) for x in bx[j[0]:]], 5, 10) if len(j) else np.nan
+        for x in HIGHER_PCT:
+            lim = r.E * (1 + x / 100)
+            j = np.flatnonzero((t >= st) & (t < r.te + 24 * 3600_000) & (b[:, 2] >= lim))
+            if not len(j):
+                rec[f"hi{x}"] = 0.0 if (len(t) and t[-1] >= r.te + 24 * 3600_000) else np.nan   # never filled → no trade (0 %), or still open
+            else:
+                # the fill bar is stop-checked from the limit (its high can run through the stop after the fill), never TP-credited (its
+                # low may come before the fill): a synthetic [t, lim, high, lim, close] first row (474 deep review)
+                f0 = bx[j[0]]
+                rec[f"hi{x}"] = walk_from(lim, [[f0[0], lim, f0[2], lim, f0[4]]] + [list(y) for y in bx[j[0] + 1:]], 5, 10)
     if r.te >= SHIP_MS:   # confirm-entered: the real fill is the CF
         rec["cf_why"], rec["cf_510_ref"] = "CONFIRMED_LIVE", r.pct
         rec["cf510"], rec["h_cf510"] = r.pct, rec["booked_min"]

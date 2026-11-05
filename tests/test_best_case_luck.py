@@ -109,3 +109,26 @@ def test_wiring_best_dcr_confidence_and_report():
                     [f"LUCK {k}: B25 total 0.100 %/day | master total 0.200 · re-sized: none" for k, _ in RB.SCEN if k != "TOTAL B"])
     t = RB.clean(txt, "LUCK")
     assert t["today"] == (-3.85, 1.25) and t["TOTAL B"] == (-1.0, 1.3) and "WILLY_GAP" in t["calls"]
+
+
+def test_fb_confirm_luck_prices_the_registration_search():
+    """(DECISION_LOG 474, operator: "It doesnt make sense that flatbase is REAL with so few trades") — the FB_CONFIRM luck test must
+    penalise every entry its registration study tried (waits 1–24 h, selling 1–7 % higher), not 2 alternatives."""
+    fb = open(os.path.join(ROOT, "scripts", "best_case", "fb_combo.py"), encoding="utf-8").read()
+    assert "WAITS_H = (1, 2, 4, 8, 12, 24)" in fb and "HIGHER_PCT = (1, 2, 3, 4, 5, 6, 7)" in fb
+    assert 'rec[f"w{h}"]' in fb and 'rec[f"hi{x}"]' in fb and "if r.te < SHIP_MS:" in fb
+    src = open(os.path.join(ROOT, "scripts", "best_case", "best_dcr.py"), encoding="utf-8").read()
+    assert '(c[:1] == "w" and c[1:].isdigit()) or (c[:2] == "hi" and c[2:].isdigit())' in src
+    assert "lacks the FB_CONFIRM search alternatives" in src                              # a stale csv stops, never the easy test
+    d = pd.DataFrame({"A": [1.0] * 20, "B": [np.nan] + [0.0] * 19})
+    assert LT.gain_line(d, np.repeat([f"d{i}" for i in range(10)], 2), "A")["dropped"] == 1
+    days = np.repeat([f"d{i}" for i in range(10)], 2)     # 15 alternatives of pure noise, the best picked: calibrated over 40 seeds
+    hits_single = hits_search = 0
+    for seed in range(40):
+        rng = np.random.default_rng(seed)
+        alts = pd.DataFrame({f"a{j}": rng.normal(0, 3, 20) for j in range(15)})
+        r = LT.gain_line(alts, days, alts.mean().idxmax(), r=500, seed=seed)
+        assert r["p_search"] >= r["p_single"]
+        hits_single += r["p_single"] <= 0.05
+        hits_search += r["p_search"] <= 0.05
+    assert hits_search <= 6 and hits_single >= 3 * max(hits_search, 1)   # the search penalty is what keeps a picked best near 5 % REAL

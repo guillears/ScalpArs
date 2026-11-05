@@ -21,6 +21,7 @@ from starlette.requests import Request
 from starlette.responses import RedirectResponse
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel, Field
 from sqlalchemy import select, and_, or_, func, desc, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -802,6 +803,25 @@ app.add_middleware(
     secret_key=os.environ.get("SESSION_SECRET") or _secrets.token_hex(32),  # Sep-7: missing env → per-boot random (sessions reset, forgery impossible) instead of a repo-known constant
     max_age=60 * 60 * 24 * 30,
 )
+# 🗜 (DECISION_LOG 475, operator 11-05 "why reload in mobile takes so long?") — the 2.6 MB dashboard and every JSON payload went out
+# uncompressed (nginx on EB does not gzip proxied responses): ≈ 3–6 s of download per phone reload. Gzip → ≈ 450 KB. Added LAST so it is
+# the OUTERMOST layer (compresses the login redirect / page / API output alike). Starlette's GZip never compresses text/event-stream
+# (the 🖥 live terminal feed stays a live stream — test-pinned) and skips bodies under 1 KB. The stream path is ALSO skipped by name, so
+# the feed never depends on which Starlette version EB installs (requirements pin fastapi only).
+# Already-compressed files (images, Excel = zip) are skipped by path too: gzip would only burn CPU (deep review 475).
+class _GZipExceptStreams(GZipMiddleware):
+    STREAM_PATHS = ("/api/terminal/stream", "/")   # "/" = the dashboard, served pre-compressed by root() (never encoded twice on any Starlette)
+    COMPRESSED_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".xlsx", ".zip", ".gz", "/file")   # /file = accounting xlsx job
+
+    async def __call__(self, scope, receive, send):
+        path = scope.get("path", "")
+        if scope.get("type") == "http" and (path in self.STREAM_PATHS or path.lower().endswith(self.COMPRESSED_SUFFIXES)):
+            await self.app(scope, receive, send)
+            return
+        await super().__call__(scope, receive, send)
+
+
+app.add_middleware(_GZipExceptStreams, minimum_size=1000, compresslevel=6)
 
 # Create directories if they don't exist
 os.makedirs("static", exist_ok=True)
@@ -910,11 +930,28 @@ async def logout(request: Request):
 
 # ============== API Routes ==============
 
+_PAGE_GZ = {"mtime": None, "raw": b"", "gz": b""}   # 🗜 (475) the dashboard, compressed once per file version
+
+
+def _page_bytes():
+    """→ (raw, gz) of templates/index.html, re-read and re-compressed only when the file changes (a deploy). Compressing the
+    2.6 MB page on every reload would stall the event loop the trading engine shares for ~50–100 ms (deep review 475)."""
+    import gzip
+    m = os.path.getmtime("templates/index.html")
+    if _PAGE_GZ["mtime"] != m:
+        with open("templates/index.html", "rb") as f:
+            raw = f.read()
+        _PAGE_GZ.update(mtime=m, raw=raw, gz=gzip.compress(raw, compresslevel=6))
+    return _PAGE_GZ["raw"], _PAGE_GZ["gz"]
+
+
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
-    """Serve main page"""
-    with open("templates/index.html", "r") as f:
-        return HTMLResponse(content=f.read())
+    """Serve main page (gzip from the cache when the browser accepts it; the middleware passes an encoded body through untouched)"""
+    raw, gz = _page_bytes()
+    if "gzip" in request.headers.get("accept-encoding", "").lower():
+        return HTMLResponse(content=gz, headers={"Content-Encoding": "gzip", "Vary": "Accept-Encoding"})
+    return HTMLResponse(content=raw)
 
 
 # ----- Live Terminal (UI-only observability) -----

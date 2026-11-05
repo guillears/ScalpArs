@@ -1527,6 +1527,14 @@ def run():
     except Exception as _mhw_e:
         log(f"ML_MKT_HOT line failed: {_mhw_e}")
         _rg_sec += ["## 👁 ML_MKT_HOT", "", f"Unavailable this run ({str(_mhw_e)[:120]}).", ""]
+    try:                                               # 👁🎯 Nov-5 ML_FIXED_TP — momentum longs: fixed TP +0.5/1/2/3 vs today's exit, history + forward, all and kept by ML_MKT_HOT (DECISION_LOG 479; recorded columns + cached breadth)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_ml_fixed_tp_watch as _mft
+        _rg_sec += _mft.run(now_ms)
+    except Exception as _mft_e:
+        log(f"ML_FIXED_TP line failed: {_mft_e}")
+        _rg_sec += ["## 👁 ML_FIXED_TP", "", f"Unavailable this run ({str(_mft_e)[:120]}).", ""]
     try:                                               # 👁 Oct-30 RETRY_BTC1H — FRENZY_LITE_RETRY with BTC 1 h slope ≤ 0, frozen expectancy bar (DECISION_LOG 415; forward)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

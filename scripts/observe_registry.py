@@ -74,6 +74,13 @@ EXIT = {
     "scout_stop_slip.py": dict(dl="244", sleeves="every stopped sleeve", walks=_FZ_STOP3),
     "scout_heat_regime.py": dict(dl="208", sleeves="MOMENTUM", walks={"ema13_cross_exit_long_enabled": False}),
     "scout_ml_matched_refusals.py": dict(dl="380 · 383", sleeves="MOMENTUM", walks={"ema13_cross_exit_long_enabled": False}),
+    # 🎯 (479) ML_FIXED_TP: "before" = today's booked momentum-long exit (runner trail + ladder + recovery hold); the TP walk continues profit exits on
+    # the 45-min post-exit record against the −0.70 stop → a change to the long runner / ladder / hard-TP keys makes the line STALE
+    "scout_ml_fixed_tp_watch.py": dict(dl="479", sleeves="MOMENTUM LONG", walks={
+                                       "runner_trail_enabled": True, "runner_trail_arm_peak": 0.4, "runner_trail_k": 0.5, "runner_trail_use_atr": True,
+                                       "runner_trail_atr_mult": 1.0, "runner_trail_be_ratchet_enabled": True, "runner_trail_be_lock_pct": 0.1,
+                                       "runner_trail_giveback_frac": 0.0, "hard_tp_enabled": True,
+                                       "hard_tp_ladder_long": "1.25:0.25,1.5:0.30,2.0:0.40,3.0:0.60,4.0:0.80", "recovery_hold_enabled": True}),
     "scout_surge_obs.py": dict(dl="202 · 203", sleeves="SURGE_LONG", walks={"surge_long_exit_no_lock": True}),
     "study_surge_exit_grid.py": dict(dl="397", sleeves="SURGE_LONG", walks={"surge_long_exit_no_lock": True}),
 }

@@ -13484,6 +13484,7 @@ class InvestorRename(BaseModel):
     name: Optional[str] = None
     eth_wallet: Optional[str] = None   # PATCH: send to set/edit ('' clears); omit to leave unchanged
     deposit_total: Optional[float] = None  # Aug-24: EDIT the deposited total — the delta vs current is applied at NAV (deposit/withdraw + ledger)
+    joined: Optional[str] = None           # 🗓 (11-05) YYYY-MM-DD, UTC-3 day — must not change which ledger rows belong to the investor
 
 
 def _open_unrealized_pnl(open_orders) -> float:
@@ -13918,6 +13919,41 @@ def investor_edit_adjustment(current_deposited, target_deposited, nav, shares):
         raise ValueError(f"Reducing deposited by ${-delta:.2f} needs {sh:.4f} shares; "
                          f"investor holds {float(shares):.4f}")
     return {"delta": delta, "shares_delta": (sh if delta > 0 else -sh)}
+
+
+_JOIN_GRACE = timedelta(seconds=2)     # the ledger-scope grace used by the ledger view and the statement
+
+
+def investor_joined_change(old_created_at, new_day, ledger_times, today_utc3):
+    """🗓 Pure core for editing an investor's JOINED date (operator 11-05).
+
+    `Investor.created_at` is not only a label: the ledger view and the monthly statement keep ONLY the ledger rows at or after it
+    (minus a 2 s grace) — rows from before belong to a previous holder of a recycled id (Jul 3). So a new date must leave that set
+    EXACTLY as it is: a date after the first deposit would hide real deposits; a date before an old holder's rows would pull them in.
+
+    new_day = the chosen calendar day (UTC-3, like every investor date) → stored as 00:00 UTC-3 of that day (= 03:00 UTC, naive UTC
+    like the column). ledger_times = created_at of EVERY ledger row of this investor id (all holders). Returns the new naive-UTC
+    datetime, or None when the day is unchanged; raises ValueError with an operator-readable reason. PURE."""
+    if new_day > today_utc3:
+        raise ValueError("The joined date cannot be in the future")
+    if old_created_at is not None and (old_created_at - timedelta(hours=3)).date() == new_day:
+        return None
+    new_at = datetime(new_day.year, new_day.month, new_day.day, 3, 0, 0)
+
+    def scope(at):
+        return {i for i, t in enumerate(ledger_times) if t is not None and (at is None or t >= at - _JOIN_GRACE)}
+
+    before, after = scope(old_created_at), scope(new_at)
+    hidden = before - after
+    if hidden:
+        first = min(ledger_times[i] for i in hidden) - timedelta(hours=3)
+        raise ValueError(f"The joined date cannot be after the investor's first ledger entry ({first:%b %d, %Y}) — "
+                         f"{len(hidden)} entr{'y' if len(hidden) == 1 else 'ies'} would disappear from their history and statements")
+    added = after - before
+    if added:
+        raise ValueError(f"{len(added)} older ledger entr{'y' if len(added) == 1 else 'ies'} of a previous investor with the same id "
+                         f"would join this investor's history — choose a later date")
+    return new_at
 
 
 def investor_transfer_split(amount, nav, from_shares, from_deposited):
@@ -14538,6 +14574,19 @@ async def rename_investor(investor_id: int, body: InvestorRename, db: AsyncSessi
             _nav_pre = await _get_nav_per_share(db)
             if _nav_pre <= 0:
                 raise HTTPException(503, "NAV unavailable — retry the deposit edit shortly")
+    _new_joined = None
+    if fields.get('joined'):
+        try:
+            _jd = datetime.strptime(str(body.joined).strip(), "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(400, "Joined date must be YYYY-MM-DD")
+        _times = [t for (t,) in (await db.execute(
+            select(InvestorLedger.created_at).where(InvestorLedger.investor_id == investor_id))).all()]
+        try:
+            _new_joined = investor_joined_change(inv.created_at, _jd, _times,
+                                                 (datetime.now(timezone.utc) - timedelta(hours=3)).date())
+        except ValueError as _ve:
+            raise HTTPException(400, str(_ve))
     if 'name' in fields:
         new_name = (body.name or "").strip()
         if not new_name:
@@ -14569,8 +14618,11 @@ async def rename_investor(investor_id: int, body: InvestorRename, db: AsyncSessi
                                  note=(f"Edit-investor adjustment: deposited ${_was:,.2f} → "
                                        f"${_target:,.2f} (correction, not a cash flow)"))
             _adj = round(_delta, 2)
+    if _new_joined is not None:
+        inv.created_at = _new_joined
     await db.flush()
-    return {"ok": True, "id": investor_id, "name": inv.name, "eth_wallet": inv.eth_wallet, "deposit_adjustment": _adj}
+    return {"ok": True, "id": investor_id, "name": inv.name, "eth_wallet": inv.eth_wallet, "deposit_adjustment": _adj,
+            "joined": inv.created_at.isoformat() if inv.created_at else None}
 
 
 @app.delete("/api/investors/{investor_id}")

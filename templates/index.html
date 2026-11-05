@@ -4690,6 +4690,10 @@
                         <label class="block text-sm text-gray-400 mb-1">Deposited (USD) <span class="text-gray-600">(edit the total — the difference is applied at current NAV and logged in the ledger)</span></label>
                         <input type="number" step="0.01" id="investor-edit-amount" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white">
                     </div>
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-1">Joined <span class="text-gray-600">(UTC-3 day — cannot be after their first deposit)</span></label>
+                        <input type="date" id="investor-edit-joined" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white [color-scheme:dark]">
+                    </div>
                     <div class="flex gap-3 justify-end">
                         <button onclick="closeInvestorModal()" class="px-4 py-2 bg-white/10 hover:bg-white/20 text-gray-300 rounded-lg text-sm transition">Cancel</button>
                         <button onclick="_investorSubmitOnce(submitEditInvestor)" class="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-sm transition">Save</button>
@@ -21864,11 +21868,13 @@
 
         function fmtInvestorDate(iso, withTime) {
             if (!iso) return '—';
-            const d = new Date(iso);
+            // 🗓 (DL 478 review) the server sends naive UTC: read it AS UTC and show the UTC-3 day/time (investor dates, statements,
+            // the Joined edit field) — the browser-local parse showed day D in the table while the edit field showed D−1 near midnight.
+            const d = new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(iso) ? iso : iso + 'Z');
             if (isNaN(d.getTime())) return '—';
             return withTime
-                ? d.toLocaleString(undefined, {month:'short', day:'numeric', year:'2-digit', hour:'2-digit', minute:'2-digit'})
-                : d.toLocaleDateString(undefined, {year:'numeric', month:'short', day:'numeric'});
+                ? d.toLocaleString(undefined, {month:'short', day:'numeric', year:'2-digit', hour:'2-digit', minute:'2-digit', timeZone:'America/Argentina/Buenos_Aires'})
+                : d.toLocaleDateString(undefined, {year:'numeric', month:'short', day:'numeric', timeZone:'America/Argentina/Buenos_Aires'});
         }
 
         // Track which investor ledgers are expanded so the 10s auto-refresh
@@ -21945,6 +21951,14 @@
             }
         }
 
+        // 🗓 (11-05) the investor's joined day in UTC-3 (created_at is naive UTC from the server) — YYYY-MM-DD for the date input.
+        function _investorJoinedDay(iso) {
+            if (!iso) return '';
+            const d = new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(iso) ? iso : iso + 'Z');
+            if (isNaN(d.getTime())) return '';
+            return new Date(d.getTime() - 3 * 3600 * 1000).toISOString().slice(0, 10);
+        }
+
         async function submitEditInvestor() {
             const id = parseInt(document.getElementById('investor-edit-id').value);
             const inv = (_investorsCache || []).find(i => i.id === id) || {};
@@ -21958,6 +21972,8 @@
                 if (name !== inv.name) patch.name = name;
                 if (wallet !== ((inv.eth_wallet) || '')) patch.eth_wallet = wallet;
                 if (!isNaN(depTotal) && Math.abs(depTotal - (inv.total_deposited || 0)) > 0.005) patch.deposit_total = depTotal;
+                const joined = document.getElementById('investor-edit-joined').value;
+                if (joined && joined !== _investorJoinedDay(inv.created_at)) patch.joined = joined;
                 if (Object.keys(patch).length) {
                     const res = await fetch(`${API_BASE}/api/investors/${id}`, {method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(patch)});
                     if (!res.ok) { const e = await res.json().catch(() => ({})); showToast(e.detail || 'Edit failed', 'error'); return; }
@@ -22079,6 +22095,7 @@
                 document.getElementById('investor-edit-name').value = inv ? inv.name : '';
                 document.getElementById('investor-edit-wallet').value = (inv && inv.eth_wallet) || '';
                 document.getElementById('investor-edit-amount').value = (inv && inv.total_deposited != null) ? inv.total_deposited.toFixed(2) : '';
+                document.getElementById('investor-edit-joined').value = _investorJoinedDay(inv && inv.created_at);
                 document.getElementById('investor-form-edit').classList.remove('hidden');
             } else if (mode === 'add') {
                 title.textContent = 'Add Investor';

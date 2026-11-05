@@ -21837,6 +21837,7 @@
                                 <button onclick="openInvestorModal('deposit', ${inv.id})" class="px-2 py-1 bg-cyan-600/30 hover:bg-cyan-600/50 text-cyan-400 rounded text-xs transition" title="Deposit">+$</button>
                                 <button onclick="openInvestorModal('withdraw', ${inv.id})" class="px-2 py-1 bg-orange-600/30 hover:bg-orange-600/50 text-orange-400 rounded text-xs transition" title="Withdraw">-$</button>
                                 <button onclick="openInvestorModal('transfer', ${inv.id})" class="px-2 py-1 bg-teal-600/30 hover:bg-teal-600/50 text-teal-300 rounded text-xs transition" title="Transfer value to another investor (no money enters or leaves the fund)">⇄</button>
+                                <button onclick="openStatementMenu(${inv.id}, this)" class="px-2 py-1 bg-slate-500/30 hover:bg-slate-500/50 text-slate-200 rounded text-xs transition" title="Monthly statement (PDF)">🧾</button>
                                 <button onclick="openInvestorModal('remove', ${inv.id})" class="px-2 py-1 bg-red-600/30 hover:bg-red-600/50 text-red-400 rounded text-xs transition" title="Remove">✕</button>
                             </div>
                         </td>
@@ -21965,6 +21966,68 @@
                 closeInvestorModal();
                 await loadInvestors();
             } catch (e) { showToast(`Error: ${e.message}`, 'error'); }
+        }
+
+        // 🧾 (DECISION_LOG 476) investor monthly statement: the row's 🧾 opens a month menu (the investor's months, the last finished
+        // one pre-selected; the current month = "to date, preliminary") → the PDF is built on the server on click and downloaded.
+        // The popover lives on <body>: the investors table is rebuilt every 10 s and would drop a menu placed inside the row.
+        function _stmtEsc(s) { return String(s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c])); }
+        function closeStatementMenu() {
+            const m = document.getElementById('statement-menu');
+            if (m) m.remove();
+            if (window._stmtOutside) { document.removeEventListener('mousedown', window._stmtOutside); window._stmtOutside = null; }
+        }
+        async function openStatementMenu(id, btn) {
+            closeStatementMenu();
+            const tok = (window._stmtTok = (window._stmtTok || 0) + 1);      // a 2nd fast click wins; the 1st never opens a duplicate menu
+            let data;
+            try {
+                const r = await fetch(`${API_BASE}/api/investors/${id}/statements`);
+                data = await r.json();
+                if (!r.ok) throw new Error(data.detail || r.status);
+            } catch (e) { showToast(`Statement: ${e.message || e}`, 'error'); return; }
+            if (tok !== window._stmtTok) return;
+            closeStatementMenu();
+            if (!data.months || !data.months.length) { showToast('No statement yet: this investor has no deposit', 'error'); return; }
+            const box = document.createElement('div');
+            box.id = 'statement-menu';
+            box.className = 'fixed z-50 rounded-lg border border-white/10 bg-slate-900 p-3 shadow-xl text-xs text-gray-300';
+            box.style.minWidth = '250px';
+            const opts = data.months.slice().reverse().map(m =>
+                `<option value="${m.month}" ${m.month === data.default ? 'selected' : ''}>${_stmtEsc(m.label)}</option>`).join('');
+            box.innerHTML = `<div class="mb-2 font-medium text-white">Monthly statement · ${_stmtEsc(data.name)}</div>
+                <select id="statement-month" class="w-full mb-2 rounded bg-slate-800 border border-white/10 px-2 py-1 text-white">${opts}</select>
+                <div class="flex gap-2 justify-end">
+                    <button onclick="closeStatementMenu()" class="px-2 py-1 rounded bg-white/5 hover:bg-white/10">Cancel</button>
+                    <button id="statement-dl" class="px-2 py-1 rounded bg-emerald-600/40 hover:bg-emerald-600/60 text-emerald-200">Download PDF</button>
+                </div>`;
+            document.body.appendChild(box);
+            const rc = btn.getBoundingClientRect();
+            box.style.top = `${Math.max(8, Math.min(rc.bottom + 6, window.innerHeight - box.offsetHeight - 8))}px`;
+            box.style.left = `${Math.max(8, Math.min(rc.right - box.offsetWidth, window.innerWidth - box.offsetWidth - 8))}px`;
+            document.getElementById('statement-dl').onclick = () => downloadStatement(id, document.getElementById('statement-month').value);
+            window._stmtOutside = ev => { const m = document.getElementById('statement-menu'); if (!m || !m.contains(ev.target)) closeStatementMenu(); };
+            setTimeout(() => { if (window._stmtOutside) document.addEventListener('mousedown', window._stmtOutside); }, 0);
+        }
+        async function downloadStatement(id, month) {
+            const b = document.getElementById('statement-dl');
+            if (b) { b.disabled = true; b.textContent = 'Building…'; }
+            try {
+                const r = await fetch(`${API_BASE}/api/investors/${id}/statement/${month}.pdf`);
+                if (!r.ok) { let d = r.status; try { d = (await r.json()).detail || d; } catch (e) {} throw new Error(d); }
+                const blob = await r.blob();
+                const cd = r.headers.get('Content-Disposition') || '';
+                const fn = (cd.match(/filename="([^"]+)"/) || [])[1] || `scalpars_statement_${month}.pdf`;
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = fn; document.body.appendChild(a); a.click(); a.remove();
+                setTimeout(() => URL.revokeObjectURL(url), 5000);
+                closeStatementMenu();
+                showToast(`Statement downloaded: ${fn}`, 'success');
+            } catch (e) {
+                showToast(`Statement not built: ${e.message || e}`, 'error');
+                if (b) { b.disabled = false; b.textContent = 'Download PDF'; }
+            }
         }
 
         async function copyInvestorWallet(investorId) {

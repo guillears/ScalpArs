@@ -15,7 +15,7 @@ import re
 from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks, Form
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 from starlette.responses import RedirectResponse
@@ -811,7 +811,7 @@ app.add_middleware(
 # Already-compressed files (images, Excel = zip) are skipped by path too: gzip would only burn CPU (deep review 475).
 class _GZipExceptStreams(GZipMiddleware):
     STREAM_PATHS = ("/api/terminal/stream", "/")   # "/" = the dashboard, served pre-compressed by root() (never encoded twice on any Starlette)
-    COMPRESSED_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".xlsx", ".zip", ".gz", "/file")   # /file = accounting xlsx job
+    COMPRESSED_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".xlsx", ".zip", ".gz", ".pdf", "/file")   # /file = accounting xlsx job · .pdf = investor statements (476)
 
     async def __call__(self, scope, receive, send):
         path = scope.get("path", "")
@@ -14118,6 +14118,86 @@ async def investor_ledger(investor_id: int, db: AsyncSession = Depends(get_db)):
         "created_at": e.created_at.isoformat() if e.created_at else None,
     } for e in entries]
     return {"investor_id": investor_id, "entries": rows}
+
+
+# ── 🧾 (DECISION_LOG 476) investor monthly statement — one-page PDF, built on click, nothing stored ───────────────────────────────
+async def _statement_inputs(db: AsyncSession, inv):
+    """(ledger rows of the investor's current life, {UTC-3 day: NAV close} of the current NAV history)."""
+    from services import investor_statement as IS
+    q = select(InvestorLedger).where(InvestorLedger.investor_id == inv.id)
+    if inv.created_at is not None:
+        q = q.where(InvestorLedger.created_at >= inv.created_at - timedelta(seconds=2))   # same scope as the ledger view
+    ledger = [dict(type=e.type, amount=e.amount, shares_delta=e.shares_delta, nav_at_time=e.nav_at_time, created_at=e.created_at, note=e.note)
+              for e in (await db.execute(q.order_by(InvestorLedger.created_at, InvestorLedger.id))).scalars().all()
+              if e.created_at is not None]
+    _ep_day, _ep_at = await _get_nav_epoch(db)
+    _ep_clause = _nav_epoch_clause(_ep_day, _ep_at)
+    sq = select(NavSnapshot.date, NavSnapshot.nav_per_share)
+    if _ep_clause is not None:
+        sq = sq.where(_ep_clause)
+    snaps = {}
+    for d, nav in (await db.execute(sq)).all():
+        try:
+            if nav and nav > 0:
+                snaps[datetime.strptime(d, "%Y-%m-%d").date()] = float(nav)
+        except (TypeError, ValueError):
+            continue
+    return ledger, snaps
+
+
+@app.get("/api/investors/{investor_id}/statements")
+async def investor_statement_months(investor_id: int, db: AsyncSession = Depends(get_db)):
+    """the months a statement can be opened for (oldest first) — the current month is flagged preliminary."""
+    from services import investor_statement as IS
+    inv = await db.get(Investor, investor_id)
+    if inv is None:
+        raise HTTPException(status_code=404, detail="Investor not found")
+    ledger, _ = await _statement_inputs(db, inv)
+    now = datetime.utcnow()
+    months = IS.statement_months(ledger, now)
+    cur = IS.month_key(IS.day_utc3(now))
+    j = IS.join_day(ledger)
+    out = []
+    for m in months:
+        lab = IS.month_label(m)
+        if j is not None and IS.month_key(j) == m and j.day != 1:
+            lab += f" (from {IS.fmt_day_short(j)})"
+        if m == cur:
+            lab += " (to date, preliminary)"
+        out.append({"month": m, "label": lab, "preliminary": m == cur})
+    finals = [o["month"] for o in out if not o["preliminary"]]
+    return {"investor_id": investor_id, "name": inv.name, "months": out,
+            "default": finals[-1] if finals else (out[-1]["month"] if out else None)}
+
+
+@app.get("/api/investors/{investor_id}/statement/{month}.pdf")
+async def investor_statement_pdf(investor_id: int, month: str, db: AsyncSession = Depends(get_db)):
+    from services import investor_statement as IS
+    if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", month or ""):
+        raise HTTPException(status_code=400, detail="month must be YYYY-MM")
+    inv = await db.get(Investor, investor_id)
+    if inv is None:
+        raise HTTPException(status_code=404, detail="Investor not found")
+    ledger, snaps = await _statement_inputs(db, inv)
+    m_first, m_last = IS.month_days(month)
+    lo, hi = IS.utc_bounds(m_first, m_last)
+    orows = (await db.execute(select(Order.closed_at, Order.pnl, Order.pnl_percentage, Order.is_paper).where(and_(
+        Order.status == "CLOSED", Order.closed_at >= lo, Order.closed_at < hi)))).all()
+    orders = [dict(closed_at=c, pnl=p, pnl_percentage=pp, is_paper=ip) for c, p, pp, ip in orows]
+    try:
+        st = IS.compute_statement(inv.name, ledger, snaps, orders, month, datetime.utcnow(),
+                                  paper_now=bool(getattr(trading_engine, "is_paper_mode", True)))
+        pdf = await asyncio.to_thread(IS.render_pdf, st)        # ~100 ms of layout: off the event loop the engine shares
+    except IS.StatementError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except RuntimeError as e:                                   # the renderer refuses to spill onto a 2nd page — say so, never a bare 500
+        logger.error(f"[STATEMENT] {inv.name} {month}: {e}")
+        raise HTTPException(status_code=500, detail=f"statement layout: {e}")
+    logger.info(f"[STATEMENT] {inv.name} {month}: {len(pdf):,} bytes · {st.trades} trades · "
+                f"{'simulated' if st.simulated else 'live'}{' · preliminary' if st.preliminary else ''}")
+    return Response(content=pdf, media_type="application/pdf", headers={
+        "Content-Disposition": f'attachment; filename="{IS.file_name(inv.name, month)}"',
+        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"})
 
 
 @app.post("/api/investors")

@@ -106,3 +106,10 @@ def test_transactions_carry_the_order_stamp():
     got = sorted((r["pair"], r["action"], r["entry_pair_alpha"]) for r in rows)
     assert got == [("P0USDT", "CLOSE_LONG", True), ("P0USDT", "OPEN_LONG", True), ("P1USDT", "CLOSE_LONG", None), ("P1USDT", "OPEN_LONG", None)]
     assert "${t.pair}${alphaMark(t.entry_pair_alpha, true)}</td>" in T._html()
+
+
+def test_frenzy_header_counts_alpha_pairs():
+    """(468) the FRENZY group header shows how many flagged pairs are Alpha: "FRENZY pairs (9 · 5 α)" — nothing when none."""
+    h = T._html()
+    assert "const _nAlpha = _fzs.filter(f => f && f.alpha === true).length;" in h
+    assert "🔥 FRENZY pairs (${_fzIdx.length}${_nAlpha ? ` · <span" in h and "${_nAlpha} α</span>` : ''}) · ${_nOn} ON" in h

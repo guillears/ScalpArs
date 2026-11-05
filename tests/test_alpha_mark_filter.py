@@ -113,3 +113,4 @@ def test_frenzy_header_counts_alpha_pairs():
     h = T._html()
     assert "const _nAlpha = _fzs.filter(f => f && f.alpha === true).length;" in h
     assert "🔥 FRENZY pairs (${_fzIdx.length}${_nAlpha ? ` · <span" in h and "${_nAlpha} α</span>` : ''}) · ${_nOn} ON" in h
+    i = h.index("${_nAlpha} α</span>"); assert "text-amber" not in h[i - 160:i]          # (469) inherits the header colour (green when hot)

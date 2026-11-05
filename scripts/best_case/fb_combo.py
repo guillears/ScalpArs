@@ -20,6 +20,11 @@ for r in b24.itertuples():
     for col in ("entry_frenzy_run_pct", "entry_flatbase_off_peak_pct", "notional_value"):
         c.loc[m, col] = getattr(r, col)
 bud = CF.LS.Budget()
+# fills opened after the FB_CONFIRM ship (DL 428 + 10 min) were entered at the confirm bar already: their booked result IS the
+# FB_CONFIRM outcome (cf510 = booked at today's +5 / −10) — shadow-confirming them again would ask for a SECOND 4-h close.
+SHIP_MS = CF._GK.dl_deploy_ms(CF.DL_SHIP, lag_min=10, label="FB_CONFIRM ship")
+if SHIP_MS is None:
+    sys.exit("FB_CONFIRM ship time not found — cannot split S4-entered vs confirm-entered fills")
 def th(tp, sl): return FS._th_tp(tp, sl)
 def walk(E, bars, tp, sl, te):
     rows = [b for b in bars if b[0] < te + 72 * 3600_000]
@@ -31,7 +36,10 @@ out = []
 for r in c.itertuples():
     bars = CF.fetch_bars(r.pair, r.te, now, bud)
     if not bars:
-        out.append(dict(k=r.kk, pair=r.pair)); continue
+        rec = dict(k=r.kk, pair=r.pair)
+        if r.te >= SHIP_MS:   # confirm-entered: its CF is the booked result, no bars needed (471 deep review)
+            rec.update(cf_why="CONFIRMED_LIVE", cf_510_ref=r.pct, cf510=r.pct, wait_min=0.0, booked=r.pct)
+        out.append(rec); continue
     st, _ = FS.tp_path_start(r.te)
     after = [b for b in bars if b[0] >= st]
     rec = dict(k=r.kk, pair=r.pair, day=r.day, booked=r.pct, notional=r.notional_value,
@@ -39,6 +47,12 @@ for r in c.itertuples():
                booked_min=(pd.Timestamp(r.closed_at) - r.o).total_seconds() / 60)
     rec["now510"], rec["h_now510"] = walk(r.E, after, 5, 10, r.te)
     rec["tp1sl4"], rec["h_tp1sl4"] = walk(r.E, after, 1, 4, r.te)
+    if r.te >= SHIP_MS:   # confirm-entered: the real fill is the CF
+        rec["cf_why"], rec["cf_510_ref"] = "CONFIRMED_LIVE", r.pct
+        rec["cf510"], rec["h_cf510"] = r.pct, rec["booked_min"]
+        rec["cf14"], rec["h_cf14"] = rec["tp1sl4"], rec["h_tp1sl4"]
+        rec["wait_min"] = 0.0
+        out.append(rec); continue
     why, sh = CF.price_shadow(bars, r.te, r.E, now)
     rec["cf_why"], rec["cf_510_ref"] = why, sh
     if why in ("SKIP",):

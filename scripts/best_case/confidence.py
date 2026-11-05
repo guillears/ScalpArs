@@ -145,6 +145,8 @@ def inputs():
     fb = pd.read_csv(os.path.join(SC, "fb_combo.csv"))
     fb["o"] = pd.to_datetime(fb.k, format="mixed")
     fb["d"] = fb.cf510 - fb.now510                                 # vs TODAY's exit (+5 / −10), not the +8 / −15 some fills booked
+    if "cf_why" in fb:   # (471 deep review) confirm-entered fills (after the DL 428 ship) have no S4 counterfactual — their Δ is replica
+        fb.loc[fb.cf_why.astype(str).eq("CONFIRMED_LIVE"), "d"] = np.nan   # noise, never FB_CONFIRM evidence; the revert gate reads them
     fx = pd.read_csv(os.path.join(SC, "flip_exits.csv"))
     fx["o"] = pd.to_datetime(fx.k, format="mixed")
     fx["d"] = fx["TP2"] - np.where(fx.src == "B25", fx.booked, fx["stack"])

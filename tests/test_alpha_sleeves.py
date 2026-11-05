@@ -5,6 +5,7 @@ import os
 import re
 import sys
 
+import numpy as np
 import pandas as pd
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -116,7 +117,7 @@ def test_not_evaluable_and_hook_registry(monkeypatch):
     monkeypatch.setattr(W._GK, "dl_deploy_ms", lambda *a, **k: None)
     assert any("NOT EVALUABLE" in x for x in W.run(state_path=None))
     src = open(os.path.join(ROOT, "scripts", "opportunity_scout.py"), encoding="utf-8").read()
-    assert "import scout_alpha_sleeves_watch as _alps" in src and "_alps.run(now_ms)" in src
+    assert "import scout_alpha_sleeves_watch as _alps" in src and "_alps.run(now_ms, market=True)" in src
     import observe_registry as R
     assert "scout_alpha_sleeves_watch.py" in R.BOOKED
     assert "reports/SCOUT_ALPHA_SLEEVES.json" in open(os.path.join(ROOT, ".gitignore")).read().split("\n")
@@ -215,3 +216,55 @@ def test_read_order_non_alpha_part_identical_to_before_464():
         assert [k for k in got if k in alpha][:len(sl_a)] == sl_a                            # Alpha shortlist before followed Alpha
         assert len(got) == len(set(got))
     assert te.frenzy_read_order(["A1"], [], ["A2"], set(), {"A1": {}, "A2": {}}, set(), lambda k: False) == ["A1", "A2"]
+
+
+# ── 🧭 (DECISION_LOG 471) Alpha or another watch line? — the shared zones and the confound note
+def test_watch_zones_unscored_market_lines_are_none_and_shared_by_best_case():
+    import watch_zones as WZ
+    d = pd.DataFrame({"entry_adx": [60.0, 30.0, np.nan], "entry_ema_gap_8_13": [2.0, 0.5, np.nan]})
+    z = WZ.zones(d)
+    assert z["FRENZY_WILLY"]["MKT_HOT"] is None and z["MOMENTUM_LONG"]["STOP_COOLDOWN"] is None
+    assert z["FRENZY_WILLY"]["WILLY_GAP"].tolist() == [True, True, False]          # NaN inputs → never in the zone
+    assert WZ.zones(d, hot=["zone", "rest", None])["FRENZY_WILLY"]["MKT_HOT"].tolist() == [True, False, False]
+    assert WZ.sleeve_name("MOMENTUM", "LONG") == "MOMENTUM_LONG" and WZ.sleeve_name(np.nan, "SHORT") == "MOMENTUM_SHORT"
+    assert WZ.sleeve_name("FRENZY_LITE", "LONG") == "FRENZY_LITE"
+    for f in ("best_dcr.py", "best_dcr_noflip.py"):                                # one definition: the best case reads the same zones
+        src = open(os.path.join(ROOT, "scripts", "best_case", f), encoding="utf-8").read()
+        assert "WZ.zones(d, hot=d.hot, late=d.late, cool=d.cool)" in src and '"WILLY_GAP": (ax' not in src
+
+
+def test_confound_note_splits_alpha_fills_inside_vs_outside_lines(tmp_path):
+    df = _rows([("FRENZY_WILLY", True, -4.0, "CLOSED"), ("FRENZY_WILLY", True, 1.2, "CLOSED"),
+                ("FRENZY_WILLY", False, -1.0, "CLOSED"), ("FLATBASE_SHORT", True, 5.0, "CLOSED")])
+    df["entry_adx"] = [60.0, 30.0, 70.0, np.nan]
+    df["entry_ema_gap_8_13"] = [2.0, 2.0, 2.0, np.nan]
+    out = "\n".join(W.run(now_ms=0, paths=_write(tmp_path, df), state_path=None, since_ms=0))
+    assert "Alpha or another watch line?" in out
+    assert "| FRENZY_WILLY | 1 · -4.00 % · $" in out and "| 1 · 100% · +1.20 % · $" in out   # the control fill (ADX 70) is never counted
+    assert "| MKT_HOT |" in out                                                        # market line listed as not scored offline
+    assert "FRENZY_WILLY -4.00 % → WILLY_GAP" in out and "FRENZY_WILLY +1.20 % → outside every line" in out
+    assert "| FLATBASE_SHORT | no block line for this sleeve |" in out
+
+
+def test_confound_note_scores_mkt_hot_once_when_market_on(tmp_path, monkeypatch):
+    df = _rows([("FRENZY_WILLY", True, 1.0, "CLOSED"), ("FRENZY_WILLY_HT", True, 2.0, "CLOSED"), ("FRENZY_LITE", True, -3.0, "CLOSED")])
+    df["entry_adx"], df["entry_ema_gap_8_13"] = 30.0, 2.0
+    calls = []
+    monkeypatch.setattr(W, "market_hot", lambda o, now: calls.append(len(o)) or np.array(["zone"] * len(o), dtype=object))
+    out = "\n".join(W.run(now_ms=0, paths=_write(tmp_path, df), state_path=None, since_ms=0, market=True))
+    assert calls == [2]                                                               # one read for WILLY + HT, none for LITE
+    assert "FRENZY_WILLY +1.00 % → MKT_HOT" in out and "FRENZY_WILLY_HT +2.00 % → MKT_HOT" in out
+    monkeypatch.setattr(W, "market_hot", lambda o, now: None)                          # incomplete read → not scored, never 'outside'
+    out = "\n".join(W.run(now_ms=0, paths=_write(tmp_path, df), state_path=None, since_ms=0, market=True))
+    assert "| FRENZY_WILLY | 0 | 1 · 100% · +1.00 % · $+10 | MKT_HOT |" in out
+
+
+def test_every_column_a_zone_reads_is_loaded_by_the_scout():
+    """(471 deep review) a new line whose column is missing from ZONE_COLS would read all-NaN (= never in the zone) in the scout."""
+    import watch_zones as WZ
+    src = open(os.path.join(ROOT, "scripts", "watch_zones.py"), encoding="utf-8").read()
+    body = src[src.index("def zones("):src.index("ZONE_COLS =")]
+    read = set(re.findall(r'_num\(d, "([a-z0-9_]+)"\)', body)) | set(re.findall(r'd\.get\("([a-z0-9_]+)"', body)) | \
+        set(re.findall(r'd\.([a-z0-9_]+)\.astype', body)) | set(re.findall(r'"([a-z0-9_]+)" in d', body))
+    assert read and read <= set(WZ.ZONE_COLS), read - set(WZ.ZONE_COLS)
+    assert set(WZ.ZONE_COLS) <= set(W.COLS)

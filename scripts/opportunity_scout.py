@@ -1535,11 +1535,11 @@ def run():
     except Exception as _rbt_e:
         log(f"RETRY_BTC1H line failed: {_rbt_e}")
         _rg_sec += ["## 👁 RETRY_BTC1H", "", f"Unavailable this run ({str(_rbt_e)[:120]}).", ""]
-    try:                                               # 👁🅰️ Nov-4 ALPHA_SLEEVES — every sleeve on Binance "Alpha" coins (tag at entry), per-sleeve frozen re-block gate (DECISION_LOG 464; orders exports only, no network; never breaks the run)
+    try:                                               # 👁🅰️ Nov-4 ALPHA_SLEEVES — every sleeve on Binance "Alpha" coins (tag at entry), per-sleeve frozen re-block gate (DECISION_LOG 464; orders exports + the cached ML_MKT_HOT breadth read for the 471 confound note; never breaks the run)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         import scout_alpha_sleeves_watch as _alps
-        _rg_sec += _alps.run(now_ms)
+        _rg_sec += _alps.run(now_ms, market=True)   # 🧭 (471) MKT_HOT scored from the budgeted, cached breadth read
     except Exception as _alps_e:
         log(f"ALPHA_SLEEVES line failed: {_alps_e}")
         _rg_sec += ["## 👁🅰️ ALPHA_SLEEVES", "", f"Unavailable this run ({str(_alps_e)[:120]}).", ""]

@@ -3,7 +3,7 @@ import sys, os, time, itertools
 import numpy as np, pandas as pd
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))); SC = os.path.join(ROOT, "reports", "best_case")
 sys.path.insert(0, os.path.join(ROOT, "scripts")); sys.path.insert(0, ROOT)
-import review_math as RM, scout_fade_late_weak as LW, scout_ml_mkt_hot_watch as MH
+import review_math as RM, scout_fade_late_weak as LW, scout_ml_mkt_hot_watch as MH, watch_zones as WZ
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import master_exits as MX
 EXP = sys.argv[1]; NOW = int(time.time() * 1000)
 B0, FLOWS = pd.Timestamp("2026-10-23 18:30"), [("2026-10-26T13:50:00", 7100.0)]
@@ -55,25 +55,8 @@ def add_flags(d):
             d.loc[i, "cool"] = bool(((o > sc) & (o - sc < np.timedelta64(30, "m"))).any())
     return d
 A, M = add_flags(A), add_flags(M)
-def L(d):   # every current block line → boolean zone (unscored = False, never blocked)
-    hb = d.entry_btc_regime.astype(str).eq("HEALTHY_BEAR") if "entry_btc_regime" in d else False
-    ad, ax, ba = num(d, "entry_adx_delta"), num(d, "entry_adx"), num(d, "entry_btc_adx_prev")
-    pdi, ext, rsi1 = num(d, "entry_pos_di"), num(d, "entry_dist_from_ema13_pct"), num(d, "entry_btc_rsi_1h")
-    gap = num(d, "entry_ema_gap_8_13"); w4 = d.get("entry_pattern_w4_match", pd.Series(False, index=d.index)).astype(str).str.lower().isin(("true", "1", "1.0"))
-    return {
-     "SPIKE_FADE": {"① ADX not rising": ad < 2.359, "② pair ADX ≤ 19.2": ax <= 19.2, "⑤ HB ∧ ADX flat": hb & (ad <= 2.4341),
-                    "⑥ HB ∧ BTC ADX high": hb & (ba > 24.5874), "OBS-F1 late weak spike": (pd.Series(d.late, index=d.index) > 0) & (pdi <= 48.5) & (ext <= 1.80),
-                    "NOSTRETCH": (rsi1 <= 50) & (pdi <= 45) & (ext <= 2)},
-     "FRENZY_WILLY": {"WILLY_GAP": (ax > 55) | (gap <= 0.90), "WILLY_ADX55": ax > 55, "MKT_HOT": d.hot.eq("zone")},
-     "FRENZY_WILLY_HT": {"WILLY_GAP": (ax > 55) | (gap <= 0.90), "MKT_HOT": d.hot.eq("zone")},
-     "MOMENTUM_LONG": {"ML_MKT_HOT": d.hot.eq("zone"), "ML_W4": w4, "STOP_COOLDOWN": d.cool.astype(bool),
-                       "PAIR_1H_DOWNTREND": num(d, "entry_pair_1h_ema20_200_gap_pct") <= 0},
-     "FRENZY_LITE": {"LITE_LATE_BTCFALL": (num(d, "entry_frenzy_hours") >= 12) & (num(d, "entry_btc_1h_slope") <= 0)},
-     "FRENZY_LITE_RETRY": {"RETRY_BTC1H": num(d, "entry_btc_1h_slope") <= 0,
-                           "LATE_BTCFALL": (num(d, "entry_frenzy_hours") >= 12) & (num(d, "entry_btc_1h_slope") <= 0)},
-     "FRENZY_LONG": {"LONG_ADX35": ax > 35},
-     "SURGE_LONG": {"SURGE_BTC_HOT": num(d, "entry_btc_rsi") >= 78, "SURGE_THIN": num(d, "entry_pair_volume_24h_usd") < 150e6},
-    }
+def L(d):   # every current block line → boolean zone (unscored = False, never blocked) — one definition: scripts/watch_zones.py (DL 471)
+    return WZ.zones(d, hot=d.hot, late=d.late, cool=d.cool)
 LA, LM = L(A), L(M)
 # per-fill zone flags for confidence.py (every line, both pools; unscored → False, as in the best case)
 _z = []

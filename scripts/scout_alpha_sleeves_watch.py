@@ -21,7 +21,12 @@ LIMITS     the tag is Binance's as loaded at the bot's last process start (marke
 CONFOUND   (operator 11-04: "is the problem the Alpha pair, or the watchlist item?") a RE-BLOCK is a CANDIDATE only: before the switch goes back ON,
            the batch review's W/L sweep (entry_pair_alpha is an entry_* stamp → 1D and EVERY-pair 2D with the sleeve's other variables, incl. each
            of its live watch lines' own columns) must show ALPHA still losing OUTSIDE those lines' zones. If the loss sits inside another line's
-           zone, that line is judged instead. The table's "in other zones" note lists, per sleeve, how many ALPHA fills are also in a watch zone.
+           zone, that line is judged instead. 🧭 (DECISION_LOG 471) the run prints it: per sleeve, ALPHA fills inside any of the sleeve's block
+           lines (scripts/watch_zones.py — the best-case set) vs outside every one, and each closed ALPHA fill with the lines it sits in. Every
+           ALPHA fill also counts in its sleeve's own lines like any other fill — this table is an extra view, never a separate bucket.
+           MKT_HOT needs market breadth (budgeted public 1h klines, cached — scout_ml_mkt_hot_watch): read only with run(market=True), as the
+           hourly scout calls it; an incomplete read → NOT SCORED, never 'outside'. STOP_COOLDOWN (MOMENTUM_LONG) and OBS-F1 (SPIKE_FADE)
+           are never scored here (listed under 'Lines not scored') — both groups keep Alpha blocked today.
 STATE      reports/SCOUT_ALPHA_SLEEVES.json (gitignored).
 Usage: venv/bin/python -I scripts/scout_alpha_sleeves_watch.py
 """
@@ -37,6 +42,7 @@ _D in sys.path or sys.path.insert(0, _D)
 import export_glob as _EG          # noqa: E402  (Downloads + exports_archive/, DL 409)
 import scout_gatekit as _GK        # noqa: E402  (operator-closed fills out · the DL commit time)
 import scout_b1h_negflank as NF    # noqa: E402  (state I/O)
+import watch_zones as WZ           # noqa: E402  (every sleeve's block-line zones, DL 471)
 
 DL = 464
 N_GATE = 15
@@ -45,7 +51,7 @@ _ROOT = os.path.dirname(_D)
 STATE = os.path.join(_ROOT, "reports", "SCOUT_ALPHA_SLEEVES.json")
 EXPORT_GLOB = os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")
 COLS = ("opened_at", "closed_at", "pair", "direction", "entry_strategy", "status", "pnl_percentage", "pnl", "close_reason",
-        "cell_multiplier_source", "entry_pair_alpha")
+        "cell_multiplier_source", "entry_pair_alpha") + WZ.ZONE_COLS
 REBLOCK = "RE-BLOCK CANDIDATE (operator decides after the 2D confound check; never automatic)"
 
 
@@ -91,6 +97,7 @@ def load(paths=None):
     d["sleeve"] = d.entry_strategy.fillna("").astype(str).replace({"": "MOMENTUM", "nan": "MOMENTUM"})
     d["alpha"] = [_flag(v) for v in d.entry_pair_alpha.values]
     d["pct"] = pd.to_numeric(d.pnl_percentage, errors="coerce")
+    d["zsleeve"] = [WZ.sleeve_name(a, b) for a, b in zip(d.entry_strategy.values, d.direction.values)]
     return d.sort_values(["o", "pair"]).reset_index(drop=True)
 
 
@@ -123,8 +130,76 @@ def _row(sleeve, a, c, u, frozen):
     return f"| {sleeve} | `{group_of(sleeve)}` | {cell(a)} | {cell(c)} | {len(u)} | {frozen} |"
 
 
-def run(now_ms=None, paths=None, state_path=STATE, since_ms=None):
-    """→ markdown lines. since_ms None → the DECISION_LOG 464 commit + 10 min (not in git → NOT EVALUABLE). state_path None → no write."""
+HOT_SLEEVES = ("FRENZY_WILLY", "FRENZY_WILLY_HT", "MOMENTUM_LONG")   # sleeves with a market-breadth (MKT_HOT) line
+
+
+def market_hot(o, now_ms):
+    """entry times (naive UTC) → ML_MKT_HOT zone labels ('zone' / 'rest' / 'unscored'), or None on an incomplete breadth read. Network
+    (budgeted, cached public 1h klines — the same read as scout_ml_mkt_hot_watch); never raises."""
+    try:
+        import scout_ml_mkt_hot_watch as MH
+        if not len(o):
+            return np.array([], dtype=object)
+        closes, complete = MH.fetch_closes(int(pd.Timestamp(min(o)).value // 10 ** 6), int(now_ms))
+        if not complete:
+            return None
+        return MH.score(pd.DataFrame({"o": list(o)}), MH.breadth_series(closes)).zone.values
+    except Exception:
+        return None
+
+
+def zone_view(a, hot=None):
+    """closed ALPHA fills of ONE sleeve (+ hot labels aligned to a, or None) → (in: rows inside ≥ 1 scored line, out: rows outside every
+    scored line, lines per row {index: [names]}, not-scored line names, has_lines). PURE."""
+    a = a.copy()
+    sl = a.zsleeve.iloc[0] if len(a) else ""
+    z = WZ.zones(a, hot=hot).get(sl, {})
+    names = {i: [] for i in a.index}
+    skipped = [ln for ln, m in z.items() if m is None]
+    for ln, m in z.items():
+        if m is None:
+            continue
+        for i in a.index[m.fillna(False).astype(bool).values]:
+            names[i].append(ln)
+    inn = a[[bool(names[i]) for i in a.index]]
+    out = a[[not names[i] for i in a.index]]
+    return inn, out, names, skipped, bool(z)
+
+
+def confound_lines(keep, now_ms, market=False):
+    """🧭 (DL 471) the 'Alpha or another watch line?' note → markdown lines."""
+    L = ["### 🧭 Alpha or another watch line? — closed ALPHA fills inside the sleeve's own block lines (DECISION_LOG 471)", "",
+         "Every ALPHA fill also counts in its sleeve's own lines like any other fill; this only shows where they overlap. A loss inside "
+         "another line's zone is that line's evidence first — Alpha is judged on the fills OUTSIDE every line.", "",
+         "| Sleeve | ALPHA inside a line's zone (N · Σ % · Σ$) | ALPHA outside every line (N · WR · avg · Σ$) | Lines not scored here |",
+         "|---|---|---|---|"]
+    cl = keep[keep.closed & keep.pct.notna() & (keep.alpha == True)] if len(keep) else keep   # noqa: E712
+    detail, hot_all = [], None
+    need = cl[cl.zsleeve.isin(HOT_SLEEVES)] if len(cl) else cl
+    if market and len(need):   # ONE breadth read per run for every sleeve that needs it
+        h = market_hot(need.o.values, now_ms)
+        hot_all = None if h is None else pd.Series(h, index=need.index)
+    for sl in sorted(cl.zsleeve.unique()) if len(cl) else []:
+        a = cl[cl.zsleeve == sl]
+        hot = hot_all.reindex(a.index).values if (hot_all is not None and sl in HOT_SLEEVES) else None
+        inn, out, names, skipped, has = zone_view(a, hot)
+        if not has:
+            L.append(f"| {sl} | no block line for this sleeve | {len(a)} (all) | – |")
+            continue
+        su = lambda g: pd.to_numeric(g.pnl, errors="coerce").sum()
+        cin = f"{len(inn)} · {inn.pct.sum():+.2f} % · ${su(inn):+,.0f}" if len(inn) else "0"
+        cout = f"{len(out)} · {(out.pct > 0).mean():.0%} · {out.pct.mean():+.2f} % · ${su(out):+,.0f}" if len(out) else "0"
+        L.append(f"| {sl} | {cin} | {cout} | {', '.join(skipped) or '–'} |")
+        for i, r in a.iterrows():
+            detail.append(f"- {r.o:%m-%d %H:%M} {r.pair} {sl} {r.pct:+.2f} % → {', '.join(names[i]) or 'outside every line'}")
+    if not len(cl):
+        L.append("| – | no closed ALPHA fill yet | – | – |")
+    return L + [""] + detail + ([""] if detail else [])
+
+
+def run(now_ms=None, paths=None, state_path=STATE, since_ms=None, market=False):
+    """→ markdown lines. since_ms None → the DECISION_LOG 464 commit + 10 min (not in git → NOT EVALUABLE). state_path None → no write.
+    market True → MKT_HOT scored from the budgeted breadth read (the hourly scout); False → listed as not scored (tests, offline)."""
     now_ms = int(time.time() * 1000) if now_ms is None else int(now_ms)
     L = [f"## 👁🅰️ ALPHA_SLEEVES — every sleeve on Binance \"Alpha\" coins (tag at entry), per-sleeve frozen re-block gate "
          f"(pre-registered 2026-11-04, DECISION_LOG {DL}, OBSERVE only)", ""]
@@ -178,6 +253,7 @@ def run(now_ms=None, paths=None, state_path=STATE, since_ms=None):
           f"(≥ {MIN_CONTROL} controls; fewer → Σ alone); else KEEP OPEN. Every group is re-decided from these lines before LIVE.",
           "Confound check before any RE-BLOCK: run `scripts/sweep_separators.py <SLEEVE>` — entry_pair_alpha must still separate losers outside the "
           "sleeve's other watch-line zones (2D cells); a loss that lives inside another line's zone is that line's, not Alpha's.", ""]
+    L += confound_lines(keep, now_ms, market)
     return L
 
 

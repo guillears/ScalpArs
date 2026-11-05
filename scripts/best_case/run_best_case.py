@@ -6,6 +6,8 @@ Two tables, in-sample upper bound — every current watch line switched on from 
   ② total, all sleeves, with the re-size ideas on top (DECISION_LOG 430), with and without the FAN flip TP +2 exit
      (TP +2's only master gain is the late-June crash window — the "no flip TP+2" columns are the corrected view), and CLEAN ONLY
      (only lines past their checkpoint on new trades, DECISION_LOG 447 — the number without the in-sample cut; DECISION_LOG 453).
+     🎲 LUCK-CHECKED (DECISION_LOG 473): every line whose built-on history does not beat the same search on day-shuffled results
+     (scripts/best_case/luck_test.py, run inside best_dcr.py → luck.csv) switched off; ③ shows each line's luck test + when its theory was written.
 
 Pipeline (outputs in reports/best_case/): fb_combo.py (FB_CONFIRM per Flatbase fill) → flip_exits.py (each flip on its own
 1m path under TP 1.5 / 2 / 3) → best_dcr.py (with flip exits) → best_dcr_noflip.py → confidence.py (③ how much to trust each line). Writes reports/best_case/BEST_CASE_<export stamp>.md.
@@ -59,17 +61,18 @@ def totals(txt):
     return t
 
 
-def clean(txt):
-    """CLEAN-ONLY totals (best_dcr.py): only lines past their checkpoint with the clean 95 % range on their side (DECISION_LOG 447)."""
-    m = re.search(rf"CLEAN TOTAL B: B25 real path {NUM} → {NUM} %/day · master intended size {NUM} → {NUM}", txt)
-    calls = re.search(r"^CLEAN CALLS: (.*)$", txt, re.M)
+def clean(txt, tag="CLEAN"):
+    """CLEAN-ONLY totals (best_dcr.py): only lines past their checkpoint with the clean 95 % range on their side (DECISION_LOG 447).
+    tag LUCK → the LUCK-CHECKED totals (DECISION_LOG 473): every line whose built-on history is NOT ABOVE LUCK switched off."""
+    m = re.search(rf"{tag} TOTAL B: B25 real path {NUM} → {NUM} %/day · master intended size {NUM} → {NUM}", txt)
+    calls = re.search(rf"^{tag} CALLS: (.*)$", txt, re.M)
     if not m or not calls:
-        sys.exit("best_dcr output changed: the CLEAN lines were not found — update run_best_case.clean()")
+        sys.exit(f"best_dcr output changed: the {tag} lines were not found — update run_best_case.clean()")
     t = {"today": (float(m[1]), float(m[3])), "TOTAL B": (float(m[2]), float(m[4])), "calls": calls[1]}
     for k in [k for k, _ in SCEN if k != "TOTAL B"]:
-        c = re.search(rf"^CLEAN {k}: B25 total {NUM} %/day \| master total {NUM}", txt, re.M)
+        c = re.search(rf"^{tag} {k}: B25 total {NUM} %/day \| master total {NUM}", txt, re.M)
         if not c:
-            sys.exit(f"best_dcr output changed: the 'CLEAN {k}' line was not found — update run_best_case.clean()")
+            sys.exit(f"best_dcr output changed: the '{tag} {k}' line was not found — update run_best_case.clean()")
         t[k] = (float(c[1]), float(c[2]))
     return t
 
@@ -102,19 +105,26 @@ def main(exp):
         cur = f"{f(r.b25_before)} → **{f(r.b25_best)}**" if ln != "no line helps" else f(r.b25_before)
         mas = "no master trades" if r.m_before != r.m_before else (f"{f(r.m_before)} → {f(r.m_best)}" if ln != "no line helps" else f(r.m_before))
         L.append(f"| {nm} | {ln} | {cur} | {mas} |")
-    ta, tb, tc = totals(a), totals(b), clean(a)
+    ta, tb, tc, tl = totals(a), totals(b), clean(a), clean(a, "LUCK")
     npass = tc["calls"].count(" PASS")
     L += ["", "## ② Total, all sleeves, with re-sizing on top", "",
           "Columns 3–4 leave out the FAN flips TP +2 exit (corrected view: its only master gain is the late-June crash). "
           "CLEAN ONLY = the same scenario with only the lines that passed their checkpoint on NEW trades (95 % range on their side, "
-          "DECISION_LOG 447) — no in-sample cut needed; a re-size counts only when its line passed. It grows toward the full number as lines pass.", "",
-          "| Scenario | Current batch | Master | Current batch, no FAN flips TP +2 | Master, no FAN flips TP +2 | **Clean only, current batch** | **Clean only, master** |",
-          "|---|---|---|---|---|---|---|",
-          f"| Today | {f(ta['today'][0])} | {f(ta['today'][1])} | {f(tb['today'][0])} | {f(tb['today'][1])} | {f(tc['today'][0])} | {f(tc['today'][1])} |"]
+          "DECISION_LOG 447) — no in-sample cut needed; a re-size counts only when its line passed. It grows toward the full number as lines pass. "
+          "LUCK-CHECKED = the same scenario with every line whose built-on history is NOT ABOVE LUCK switched off (the 🎲 luck test, "
+          "DECISION_LOG 473: the same search re-run on day-shuffled results) — the others still carry the 30–50 % in-sample cut; a re-size is off "
+          "when any of its sleeve's lines is NOT ABOVE LUCK.", "",
+          "| Scenario | Current batch | Master | Current batch, no FAN flips TP +2 | Master, no FAN flips TP +2 | **Clean only, current batch** | **Clean only, master** "
+          "| **Luck-checked, current batch** | **Luck-checked, master** |",
+          "|---|---|---|---|---|---|---|---|---|",
+          f"| Today | {f(ta['today'][0])} | {f(ta['today'][1])} | {f(tb['today'][0])} | {f(tb['today'][1])} | {f(tc['today'][0])} | {f(tc['today'][1])} "
+          f"| {f(tl['today'][0])} | {f(tl['today'][1])} |"]
     for k, lab in SCEN:
-        L.append(f"| {lab} | {f(ta[k][0])} | {f(ta[k][1])} | {f(tb[k][0])} | {f(tb[k][1])} | {f(tc[k][0])} | {f(tc[k][1])} |")
+        L.append(f"| {lab} | {f(ta[k][0])} | {f(ta[k][1])} | {f(tb[k][0])} | {f(tb[k][1])} | {f(tc[k][0])} | {f(tc[k][1])} | {f(tl[k][0])} | {f(tl[k][1])} |")
     L += ["", f"Clean-only lines: {npass} of {len(tc['calls'].split(' · '))} passed — {tc['calls']} "
-          "(PASS = in · STRADDLE = past checkpoint, range crosses 0 · AGAINST = retire · PRE = before its checkpoint)."]
+          "(PASS = in · STRADDLE = past checkpoint, range crosses 0 · AGAINST = retire · PRE = before its checkpoint).",
+          "", f"🎲 Luck test (built-on trades vs the same search on day-shuffled results; REAL p ≤ 0.05 · UNCLEAR ≤ 0.20 · NOT ABOVE LUCK > 0.20 · "
+          f"TOO FEW = cannot be tested): {tl['calls']}."]
     L += ["", "## ③ How much to trust each line", "",
           "Built on = the trades the line was found on (master + current batch before it was frozen: in-sample). Clean = current-batch "
           "trades since it was frozen. The 30–50 % cut applies until the checkpoint; after it, the clean result stands with its 95 % range. "

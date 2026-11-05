@@ -246,6 +246,59 @@ for nm, size in RESIZES:
     acc = b25_sized(CS[0], sz)
     print(f"CLEAN {nm.split()[0]}: B25 total {RM.dcr_account(acc, pd.Series(True, index=acc.index), 'ua', 2900, t0, t1, FLOWS):+.3f} %/day"
           f" | master total {m_sized(CS[1], CS[2], sz):+.3f} · re-sized: {', '.join(sz) or 'none'}")
+# ── 🎲 LUCK TEST (DECISION_LOG 473, operator 11-05: "why not doing for every rule in watchlist?"): each best line's BUILT-ON trades
+# (master + current batch before its freeze) against the same search run on day-shuffled results (luck_test.py). LUCK-CHECKED totals =
+# scenario B with every line whose history is NOT ABOVE LUCK switched off (its history counts for nothing); the locked 30–50 % cut is
+# unchanged for the others; a re-size is off when ANY of its sleeve's best lines is NOT ABOVE LUCK (deep review 473: FRENZY_LONG ×5 has
+# no gating line of its own, so the sleeve's lines decide).
+import luck_test as LT
+LROWS = []
+for sl, combo in _best:
+    for ln in combo.split(" + "):
+        fz = CF.freeze_ts(CF.LINES[ln if not ln.startswith("EXIT ") else "EXIT TP2"][0]) if (ln in CF.LINES or ln.startswith("EXIT ")) else None
+        if ln == "FB_CONFIRM":
+            g = FB.assign(o=pd.to_datetime(FB.k, format="mixed"))
+            g = g if fz is None else g[g.o < fz]
+            if "cf_why" in g:   # confirm-entered fills have no S4 counterfactual (as confidence.inputs)
+                g = g[~g.cf_why.astype(str).eq("CONFIRMED_LIVE")]
+            d = pd.DataFrame({"FB_CONFIRM": g.cf510 - g.now510, "FB +1/−4": g.cf14 - g.now510})
+            res = LT.gain_line(d, g.o.dt.strftime("%Y-%m-%d").to_numpy(), "FB_CONFIRM")
+        elif ln.startswith("EXIT "):
+            g = FX.assign(o=pd.to_datetime(FX.k, format="mixed"))
+            g = g if fz is None else g[(g.src == "MASTER") | (g.o < fz)]
+            base = np.where(g.src == "B25", g.booked, g["stack"])
+            d = pd.DataFrame({x: g[x] - base for x in EXITS})
+            res = LT.gain_line(d, g.o.dt.strftime("%Y-%m-%d").to_numpy(), ln[5:])
+        else:
+            mA = (A.sl == sl) & (A.o < fz) if fz is not None else (A.sl == sl)
+            parts = [M[M.sl == sl].assign(_z=LM[sl][ln].reindex(M.index[M.sl == sl]).fillna(False).astype(bool).values),
+                     A[mA].assign(_z=LA[sl][ln].reindex(A.index[mA]).fillna(False).astype(bool).values)]
+            g = pd.concat(parts, ignore_index=True, sort=False)
+            g["day"] = g.o.dt.strftime("%Y-%m-%d")
+            res = LT.block_line(g, g._z.to_numpy())
+        LROWS.append(dict(sleeve=sl, line=ln, **res))
+pd.DataFrame(LROWS).to_csv(os.path.join(SC, "luck.csv"), index=False)
+LCALL = {(r["sleeve"], r["line"]): r["verdict"] for r in LROWS}
+LS = ({}, set(), {})
+for sl, combo in _best:
+    keep = [ln for ln in combo.split(" + ") if LCALL.get((sl, ln)) != LT.LUCK]
+    exs = [c[5:] for c in keep if c.startswith("EXIT ")]; ex = exs[0] if exs else None
+    blk = [c for c in keep if c != "FB_CONFIRM" and not c.startswith("EXIT ")]
+    LS[0].update(b25_after(sl, blk, "FB_CONFIRM" in keep, ex))
+    if ex:
+        LS[2].update({i: float(fxm[M.loc[i, "kk"]][ex]) for i in M.index[M.sl == sl]})
+    z = pd.Series(False, index=M.index)
+    for ln in blk:
+        z |= LM[sl][ln].fillna(False).astype(bool)
+    LS[1].update(set(M.index[z & (M.sl == sl)]))
+print("\nLUCK CALLS: " + " · ".join(f"{sl}:{ln} {c}" for (sl, ln), c in LCALL.items()))
+print(f"LUCK TOTAL B: B25 real path {tb:+.3f} → {b25_dcr(allm, LS[0]):+.3f} %/day · master intended size {mt_b:+.3f} → "
+      f"{m_dcr(SLEEVES, frozenset(LS[1]), LS[2])[0]:+.3f}")
+for nm, size in RESIZES:
+    sz = {sl: f for sl, f in size.items() if not any(c == LT.LUCK for (s_, _l), c in LCALL.items() if s_ == sl)}
+    acc = b25_sized(LS[0], sz)
+    print(f"LUCK {nm.split()[0]}: B25 total {RM.dcr_account(acc, pd.Series(True, index=acc.index), 'ua', 2900, t0, t1, FLOWS):+.3f} %/day"
+          f" | master total {m_sized(LS[1], LS[2], sz):+.3f} · re-sized: {', '.join(sz) or 'none'}")
 # Spike Fade size line: HEALTHY_BEAR fades at 1× (traded 2×) — alone and on top of OBS-F1
 hbA = A.sl.eq("SPIKE_FADE") & A.entry_btc_regime.astype(str).eq("HEALTHY_BEAR")
 hbM = M.sl.eq("SPIKE_FADE") & M.entry_btc_regime.astype(str).eq("HEALTHY_BEAR")

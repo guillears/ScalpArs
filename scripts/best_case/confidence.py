@@ -41,6 +41,32 @@ LINES = {
     "ML_MKT_HOT": (416, 15, 8, "agrees (3 / 3 seeds)"),
     "LONG_ADX35": (418, 15, 8, "disagrees (seed 1)"),
 }
+# 🎲 (DECISION_LOG 473) was the line's theory written BEFORE its data were read? first = pre-registered (a real test) · after = a story fitted to
+# what the data showed (explains, never proves) · against = the theory frozen first predicted the opposite. Source: each line's DL entry.
+THEORY = {"WILLY_GAP": "after (EMA cut from the data, DL 414)", "OBS-F1 late weak spike": "after (W/L screen, DL 384)",
+          "FB_CONFIRM": "after (best of the waits tried, DL 417)", "EXIT TP2": "after (best of 3 exits, DL 411)",
+          "LATE_BTCFALL": "first (cut pre-registered, DL 353)", "MKT_HOT": "after (borrowed from ML_MKT_HOT)",
+          "SURGE_BTC_HOT": "after (cut seen in 6 fills, DL 427)", "ML_MKT_HOT": "against (frozen H5 said the opposite, DL 416)",
+          "LONG_ADX35": "after (post-hoc cut, DL 418)"}
+LUCK = {}   # (sleeve, line) → luck.csv row, filled in main() from best_dcr.py's luck test
+# how each line's registration search compares with the luck test's family (deep review 473: the family is not a bound either way)
+LUCK_NOTE = {"FB_CONFIRM": "optimistic: the 1–24 h waits tried at registration are not priced here",
+             "WILLY_GAP": "registration searched wider: 28,545 cells", "ML_MKT_HOT": "registration searched 49 market conditions, not in this family",
+             "LONG_ADX35": "registration kept one 1D cut — the 1D p is the closer read"}
+
+
+def luck_cell(sleeve, line):
+    r = LUCK.get((sleeve, line))
+    if r is None:
+        return "not run"
+    if r["verdict"] == "TOO FEW":
+        return f"too few to test ({int(r['n'])} trades before the freeze)"
+    note = f" ({LUCK_NOTE[line]})" if line in LUCK_NOTE else ""
+    p1 = r.get("p_1d", float("nan"))
+    p1s = f" · 1D search p {p1:.2f}" if p1 == p1 and p1 != r["p_search"] else ""
+    return f"**{r['verdict']}** — alone p {r['p_single']:.3f}{p1s} · full search p {r['p_search']:.2f}{note}"
+
+
 SHOW = {"FLIP:FAN_RATIO_GATE": "FAN flips", "FRENZY_WILLY": "WILLY", "FRENZY_WILLY_HT": "WILLY_HT", "SPIKE_FADE": "Spike Fade",
         "FLATBASE_SHORT": "Flatbase", "FRENZY_LITE_RETRY": "LITE RETRY", "SURGE_LONG": "SURGE Long", "MOMENTUM_LONG": "Momentum Long",
         "FRENZY_LONG": "FRENZY_LONG"}
@@ -135,7 +161,8 @@ def row(sleeve, line, built, clean, cdays, sign, fz, rest=None):
     nr = n95_vs_rest(b, rest) if rest is not None else "n/a"
     fzs = "not in git" if fz is None else f"{fz:%m-%d}"
     return (f"| {SHOW.get(sleeve, sleeve)} | {LABEL.get(line, line)} | {measure} | {fzs} | {bs} | {cs} | {len(c)}/{n_min} trades, "
-            f"{len(set(cdays))}/{d_min} days | {boot(c.values, cdays.values)} | {nd} ({gap}) | {nr} | {bt} |")
+            f"{len(set(cdays))}/{d_min} days | {boot(c.values, cdays.values)} | {nd} ({gap}) | {nr} | {bt} | {THEORY.get(line, '–')} | "
+            f"{luck_cell(sleeve, line)} |")
 
 
 def inputs():
@@ -185,17 +212,21 @@ def line_calls(pairs, Z=None, fb=None, fx=None):
 
 def main():
     Z, fb, fx = inputs()
+    lp = os.path.join(SC, "luck.csv")
+    if os.path.exists(lp):
+        LUCK.update({(r.sleeve, r.line): r._asdict() for r in pd.read_csv(lp).itertuples(index=False)})
     best = pd.read_csv(os.path.join(SC, "best_dcr_noflip.csv"))
     best = best[(best.scen == "B") & best.lines.notna() & (best.lines.astype(str) != "")]
     out = ["| Sleeve | Line | Measured on | Frozen | Built on: N · avg % | Clean since frozen: N · avg % | Checkpoint progress | Clean 95 % range "
-           "| N to prove it adds money (still needed) | N to prove blocked < kept (per side) | Backtest |", "|---|---|---|---|---|---|---|---|---|---|---|"]
+           "| N to prove it adds money (still needed) | N to prove blocked < kept (per side) | Backtest | Theory written | Luck test (built-on trades) |",
+           "|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
     rows = []
     for r in best.itertuples():
         for line in str(r.lines).split(" + "):
             if line == "FB_CONFIRM":
                 continue                                    # entry-timing line, read below from fb_combo
             if line not in LINES:
-                rows.append((0, f"| {SHOW.get(r.sleeve, r.sleeve)} | {line} | – | – | – | – | no freeze registered | – | – | – | – |"))
+                rows.append((0, f"| {SHOW.get(r.sleeve, r.sleeve)} | {line} | – | – | – | – | no freeze registered | – | – | – | – | – | {luck_cell(r.sleeve, line)} |"))
                 continue
             fz = freeze_ts(LINES[line][0])
             g = Z[(Z.sl == r.sleeve) & Z[line].fillna(False).astype(bool)]

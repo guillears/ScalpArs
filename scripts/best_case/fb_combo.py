@@ -65,7 +65,9 @@ for r in c.itertuples():
     if not bars:
         rec = dict(k=r.kk, pair=r.pair)
         if r.te >= SHIP_MS:   # confirm-entered: its CF is the booked result, no bars needed (471 deep review)
-            rec.update(cf_why="CONFIRMED_LIVE", cf_510_ref=r.pct, cf510=r.pct, wait_min=0.0, booked=r.pct)
+            rec.update(cf_why="CONFIRMED_LIVE", cf_510_ref=r.pct, cf510=r.pct, wait_min=0.0, booked=r.pct,
+                       booked_min=(pd.Timestamp(r.closed_at) - r.o).total_seconds() / 60)
+            rec["h_cf510"] = rec["booked_min"]   # its hold = the real one (best-case ①b, 480 review)
         out.append(rec); continue
     st, _ = FS.tp_path_start(r.te)
     after = [b for b in bars if b[0] >= st]

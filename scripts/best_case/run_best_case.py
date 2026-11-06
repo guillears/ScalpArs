@@ -10,7 +10,7 @@ Two tables, in-sample upper bound — every current watch line switched on from 
      (scripts/best_case/luck_test.py, run inside best_dcr.py → luck.csv) switched off; ③ shows each line's luck test + when its theory was written.
 
 Pipeline (outputs in reports/best_case/): fb_combo.py (FB_CONFIRM per Flatbase fill) → flip_exits.py (each flip on its own
-1m path under TP 1.5 / 2 / 3) → best_dcr.py (with flip exits) → best_dcr_noflip.py → confidence.py (③ how much to trust each line). Writes reports/best_case/BEST_CASE_<export stamp>.md.
+1m path under TP 1.5 / 2 / 3) → best_dcr.py (with flip exits; also best_hold.csv = ①b hold time + trades/day) → best_dcr_noflip.py → confidence.py (③ how much to trust each line). Writes reports/best_case/BEST_CASE_<export stamp>.md.
 Every fill is priced on TODAY's exit (master_exits.py, DECISION_LOG 448): master FRENZY_LONG at −4, current-batch LITE C +2 closes at +3,
 current-batch Flatbase at +5 / −10. A run STOPS on an unpriced fill or an incomplete market-breadth read (Binance per-minute weight: re-run).
 ⚠ Batch constants are hard-coded — update ALL of them for a new batch, or the cohort is silently wrong: best_dcr*.py (B0 = batch start,
@@ -32,7 +32,7 @@ OUT = os.path.join(ROOT, "reports", "best_case")
 PY = os.path.join(ROOT, "venv", "bin", "python")
 NAMES = {"FRENZY_WILLY": "WILLY", "SPIKE_FADE": "Spike Fade", "FLATBASE_SHORT": "Flatbase", "FLIP:FAN_RATIO_GATE": "FAN flips",
          "FRENZY_LITE_RETRY": "LITE RETRY", "FRENZY_WILLY_HT": "WILLY_HT", "SURGE_LONG": "SURGE Long", "MOMENTUM_LONG": "Momentum Long",
-         "FRENZY_LONG": "FRENZY_LONG", "FRENZY_LITE": "LITE", "MOMENTUM_SHORT": "Momentum Short"}
+         "FRENZY_LONG": "FRENZY_LONG", "FRENZY_LITE": "LITE", "MOMENTUM_SHORT": "Momentum Short", "BEARRUN_SHORT": "Bear-Run Short"}
 LABELS = {"EXIT TP1.5": "Exit TP +1.5", "EXIT TP2": "Exit TP +2", "EXIT TP3": "Exit TP +3", "SURGE_BTC_HOT": "BTC RSI ≥ 78",
           "MKT_HOT": "Market-hot", "FB_CONFIRM": "FB_CONFIRM (live)"}
 NUM = r"([-+]?(?:\d+\.?\d*|nan|inf))"
@@ -81,6 +81,13 @@ def f(x):
     return "–" if x != x else f"{x:+.2f}".replace("-", "−")
 
 
+def dur(m):
+    """minutes → '45 min' / '3.2 h' / '–'."""
+    if m != m:
+        return "–"
+    return f"{m:.0f} min" if m < 90 else f"{m / 60:.1f} h"
+
+
 def main(exp):
     os.makedirs(OUT, exist_ok=True)
     step("fb_combo.py", exp)
@@ -105,6 +112,30 @@ def main(exp):
         cur = f"{f(r.b25_before)} → **{f(r.b25_best)}**" if ln != "no line helps" else f(r.b25_before)
         mas = "no master trades" if r.m_before != r.m_before else (f"{f(r.m_before)} → {f(r.m_best)}" if ln != "no line helps" else f(r.m_before))
         L.append(f"| {nm} | {ln} | {cur} | {mas} |")
+    H = pd.read_csv(os.path.join(OUT, "best_hold.csv")).set_index("sleeve")
+    L += ["", "## ①b Hold time and trades per day, before → best", "",
+          "Same best line as ①. Hold = average time from entry to exit; an exit line holds to its own exit (FAN flips TP +2: first touch of "
+          "+2 or the stop on the 1m path), FB_CONFIRM from its confirmed entry. Trades per day: current batch = trades ÷ "
+          f"{H.b25_days.iloc[0]:.1f} days since the batch start · master = trades ÷ the calendar days of the batches the sleeve traded in "
+          "(its own live days) — the two bases are not directly comparable. Trade counts in brackets. Master hold = as traded: re-priced "
+          "master exits (most WILLY, FRENZY_LONG −4, some LITE and fades) and current-batch LITE C re-walks keep their traded hold.", "",
+          "| Sleeve | Line switched on | Avg hold, current batch | Avg hold, master | Trades/day, current batch | Trades/day, master |",
+          "|---|---|---|---|---|---|"]
+    for r in t.sort_values("gain", ascending=False).itertuples():
+        h = H.loc[r.sleeve]
+        nm = NAMES.get(r.sleeve, r.sleeve)
+        ln = r.lines if isinstance(r.lines, str) and r.lines else "no line helps"
+        on = ln != "no line helps"
+        ln = " + ".join(LABELS.get(x, x) for x in ln.split(" + "))
+        def pair(a0, a1):
+            return (f"{a0} → **{a1}**" if on and a0 != a1 else a0)
+        hc = pair(dur(h.b25_h0), dur(h.b25_h1))
+        hm = "no master trades" if not h.m_n0 else pair(dur(h.m_h0), dur(h.m_h1))
+        tc_ = pair(f"{h.b25_n0 / h.b25_days:.2f} ({h.b25_n0:.0f})", f"{h.b25_n1 / h.b25_days:.2f} ({h.b25_n1:.0f})")
+        tm = "no master trades" if not h.m_n0 else pair(f"{h.m_n0 / h.m_days:.2f} ({h.m_n0:.0f})", f"{h.m_n1 / h.m_days:.2f} ({h.m_n1:.0f})")
+        L.append(f"| {nm} | {ln} | {hc} | {hm} | {tc_} | {tm} |")
+    L += ["", f"All sleeves, trades/day: current batch {H.b25_n0.sum() / H.b25_days.iloc[0]:.2f} → **{H.b25_n1.sum() / H.b25_days.iloc[0]:.2f}** "
+          f"({H.b25_n0.sum():.0f} → {H.b25_n1.sum():.0f} trades). Master per sleeve only (each sleeve traded a different set of batches)."]
     ta, tb, tc, tl = totals(a), totals(b), clean(a), clean(a, "LUCK")
     npass = tc["calls"].count(" PASS")
     L += ["", "## ② Total, all sleeves, with re-sizing on top", "",

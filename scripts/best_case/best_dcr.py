@@ -74,7 +74,8 @@ FB = pd.read_csv(os.path.join(SC, "fb_combo.csv")); FB["kk"] = FB.k + FB.pair
 fbmap = dict(zip(FB.kk, FB.cf510))
 FX = pd.read_csv(os.path.join(SC, "flip_exits.csv")); FX["kk"] = FX.k + FX.pair
 EXITS = ("TP1.5", "TP2", "TP3")
-_bad = FX[(FX.status != "PRICED") | FX[list(EXITS)].isna().any(axis=1)]
+_bad = FX[(FX.status != "PRICED") | FX[list(EXITS)].isna().any(axis=1)
+         | (FX[[f"h_{x}" for x in EXITS]].isna().any(axis=1) if f"h_{EXITS[0]}" in FX else False)]   # a missing hold stops too (480 review)
 if len(_bad):   # an unpriced flip would count as $0 downstream (fillna / groupby) — stop, never flatter the TP exit
     sys.exit("unpriced flips in flip_exits.csv — re-run flip_exits.py:\n" + _bad[["src", "k", "pair", "status"]].to_string())
 _bad = FB[FB.cf510.isna()]
@@ -177,6 +178,49 @@ for sl in SLEEVES:
         for ln in blk:
             z |= LM[sl][ln].fillna(False).astype(bool)
         SCEN[tag][1].update(set(M.index[z & (M.sl == sl)]))
+# ── hold time + trades per day per sleeve, before → best (operator 11-06: "add avg duration before and after per sleeve and also avg trades
+# per day"), scenario B. Before = every fill on today's exits. Best = the fills the best line keeps; an exit line holds to its own exit
+# (flip_exits.csv h_<exit>), FB_CONFIRM from its confirmed entry to its exit (fb_combo.csv h_cf510 − wait_min). Trades per day: current
+# batch = N ÷ days since the batch start (to the last open/close in the export); master = N ÷ the calendar days of the batches the sleeve
+# traded in (its own live days, never the whole master span). MASTER HOLD = AS TRADED: re-priced master exits (stack_pct ≠ booked: most
+# WILLY, FRENZY_LONG −4, some LITE / fades) keep the traded close time, as do current-batch LITE C re-walks (the walks carry no exit time).
+def _hold(d):
+    return (pd.to_datetime(d.closed_at, format="mixed", utc=True).dt.tz_convert(None) - d.o).dt.total_seconds() / 60
+_raw = pd.read_csv(EXP, low_memory=False, usecols=["opened_at", "closed_at"])   # the export's own times (re-priced Flatbase walks move closed_at)
+_end = max(pd.to_datetime(_raw.opened_at, format="mixed", utc=True).dt.tz_convert(None).max(),
+           pd.to_datetime(_raw.closed_at, format="mixed", utc=True).dt.tz_convert(None).max())
+B25_DAYS = (_end - B0).total_seconds() / 86400
+FXH = {(s_, kk): r for (s_, kk), r in FX.set_index(["src", "kk"])[[f"h_{x}" for x in EXITS]].iterrows()} if "h_TP2" in FX else None
+FBH = dict(zip(FB.kk, pd.to_numeric(FB.get("h_cf510"), errors="coerce") - pd.to_numeric(FB.get("wait_min"), errors="coerce").fillna(0)))
+HOLD = []
+for tag, sl, *_r, combo in [r for r in rows if r[0] == "B"]:
+    ln = combo.split(" + ") if combo else []
+    ex = next((c[5:] for c in ln if c.startswith("EXIT ")), None)
+    blk = [c for c in ln if c != "FB_CONFIRM" and not c.startswith("EXIT ")]
+    if ex and FXH is None:
+        sys.exit("flip_exits.csv has no hold columns (h_TP*) — re-run flip_exits.py")
+    g = A[A.sl == sl]; hb = _hold(g)
+    aft = b25_after(sl, blk, "FB_CONFIRM" in ln, ex)
+    kept = [i for i in g.index if not (i in aft and aft[i] is None)]
+    if ex:
+        ha = pd.Series([FXH[("B25", A.at[i, "kk"])][f"h_{ex}"] for i in kept], index=kept, dtype=float)
+    elif "FB_CONFIRM" in ln:
+        ha = pd.Series([FBH.get(A.at[i, "kk"], np.nan) for i in kept], index=kept, dtype=float)
+        if ha.isna().any():   # a kept Flatbase fill without a confirm hold would silently drop out of the mean (480 review)
+            sys.exit("kept FB_CONFIRM fills without a hold in fb_combo.csv (h_cf510) — re-run fb_combo.py")
+    else:
+        ha = hb.reindex(kept)
+    gm = M[M.sl == sl]
+    z = pd.Series(False, index=M.index)
+    for b_ in blk:
+        z |= LM[sl][b_].fillna(False).astype(bool)
+    keptm = gm.index[~z.reindex(gm.index).fillna(False)]
+    hmb = _hold(gm)
+    hma = (pd.Series([FXH[("MASTER", M.at[i, "kk"])][f"h_{ex}"] for i in keptm], index=keptm, dtype=float) if ex else hmb.reindex(keptm))
+    mdays = sum(len(pd.date_range(a.normalize(), b.normalize())) for era, (a, b) in span.iterrows() if (gm.era == era).any())
+    HOLD.append(dict(sleeve=sl, b25_n0=len(g), b25_n1=len(kept), b25_h0=hb.mean(), b25_h1=ha.mean(), b25_days=B25_DAYS,
+                     m_n0=len(gm), m_n1=len(keptm), m_h0=hmb.mean(), m_h1=hma.mean(), m_days=mdays))
+pd.DataFrame(HOLD).to_csv(os.path.join(SC, "best_hold.csv"), index=False)
 allm = pd.Series(True, index=A.index)
 tb = b25_dcr(allm, {}); mt_b, n = m_dcr(SLEEVES)
 for tag in ("A", "B"):

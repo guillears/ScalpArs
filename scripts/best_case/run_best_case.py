@@ -17,7 +17,8 @@ current-batch Flatbase at +5 / −10. A run STOPS on an unpriced fill or an inco
   FLOWS = top-ups, START = 2,900, the 2,900 → 10,000 equity step date) · fb_combo.py (the previous batch's BASELINE archive file and the
   batch cutoff date) · flip_exits.py (the batch start date).
 
-Usage: venv/bin/python -I scripts/best_case/run_best_case.py ~/Downloads/scalpars_orders_paper_<stamp>.csv
+Usage: venv/bin/python -I scripts/best_case/run_best_case.py ~/Downloads/scalpars_orders_paper_<stamp>.csv [review date, e.g. 2026-11-19]
+④ Checkpoint timeline (DECISION_LOG 485): ④a where each line stands by the review date (default confidence.REVIEW_AT) · ④b what each needs to be decided.
 """
 import os
 import re
@@ -41,8 +42,8 @@ SCEN = [("TOTAL B", "Watch lines only"), ("C1", "+ WILLY at 8×"), ("C2", "+ WIL
         ("C5", "+ WILLY 10×, FRENZY_LONG ×5, Flatbase 0.5, Momentum Long ×5"), ("C6", "+ WILLY 10×, FRENZY_LONG ×5, Flatbase 0.5, Momentum Long ×10")]
 
 
-def step(script, exp):
-    r = subprocess.run([PY, "-I", "-W", "ignore", os.path.join(D, script), exp], capture_output=True, text=True, cwd=ROOT)
+def step(script, exp, *extra):
+    r = subprocess.run([PY, "-I", "-W", "ignore", os.path.join(D, script), exp, *extra], capture_output=True, text=True, cwd=ROOT)
     if r.returncode:
         sys.exit(f"{script} failed:\n{r.stdout[-2000:]}\n{r.stderr[-2000:]}")
     return r.stdout
@@ -88,12 +89,13 @@ def dur(m):
     return f"{m:.0f} min" if m < 90 else f"{m / 60:.1f} h"
 
 
-def main(exp):
+def main(exp, review=None):
     os.makedirs(OUT, exist_ok=True)
     step("fb_combo.py", exp)
     step("flip_exits.py", exp)
     a, b = step("best_dcr.py", exp), step("best_dcr_noflip.py", exp)
-    conf = step("confidence.py", exp)
+    conf = step("confidence.py", exp, review or "")
+    conf, _, tline = conf.partition("<!-- ④ checkpoint timeline -->")   # (485) ③ table · ④ checkpoint timeline
     open(os.path.join(OUT, "best_dcr_out.txt"), "w").write(a)
     open(os.path.join(OUT, "best_dcr_noflip_out.txt"), "w").write(b)
     t = pd.read_csv(os.path.join(OUT, "best_dcr.csv"))
@@ -168,6 +170,8 @@ def main(exp):
           "checkpoint; still optimistic, because in-sample averages are inflated). 95 % range shown from 3 clean days. "
           "Flatbase's built-on = the current batch before the freeze (its history is short). Backtest = a cross-check, never a veto.", "", conf.strip()]
     L += ["", "FAN flips row: its best line is the TP +2 exit; table ② shows the totals with and without it."]
+    if tline.strip():   # (DECISION_LOG 485, operator: "add this tables to the best case view, so its only one call")
+        L += ["", "## ④ Checkpoint timeline", "", tline.strip()]
     L += ["", "Caveats: in-sample (30–50 % haircut minimum) · each re-size waits for its line's frozen read (WILLY_GAP 15 fills, "
           "Flatbase revert gate, FRENZY_LONG DL 317, Momentum Long ML_MKT_HOT 15 fills on 8 days and a clean edge above 0 — DL 450) · master uses today's intended sizes, not the sizes traded.", ""]
     p = os.path.join(OUT, f"BEST_CASE_{stamp}.md")
@@ -179,4 +183,4 @@ def main(exp):
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         sys.exit(__doc__)
-    main(os.path.expanduser(sys.argv[1]))
+    main(os.path.expanduser(sys.argv[1]), sys.argv[2] if len(sys.argv) > 2 else None)   # optional review date, e.g. 2026-11-19

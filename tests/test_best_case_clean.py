@@ -61,3 +61,20 @@ def test_deciding_test_pace_and_dates():
     import re
     b0 = re.search(r'B0, FLOWS = pd.Timestamp\("([^"]+)"\)', open(os.path.join(os.path.dirname(CF.__file__), "best_dcr.py")).read())
     assert b0 and pd.Timestamp(b0[1]) == CF.B25_START                    # one batch start in both files (deep review 484)
+
+
+def test_checkpoint_timeline_section():
+    """(DECISION_LOG 485) ④ is built from the rows ③ printed, sorted by share, projected to the review date."""
+    end = pd.Timestamp("2026-11-06 12:00")
+    tl = [dict(sleeve="FRENZY_WILLY", line="WILLY_GAP", n=6, days=4, avg=-1.6, sign=-1, p=(1.0, 0.5), n_min=15, d_min=8, cp="Nov 13",
+               dec="adds money: 35 (29 more)", decided="Nov 29", end=end),
+          dict(sleeve="MOMENTUM_LONG", line="ML_MKT_HOT", n=8, days=3, avg=0.15, sign=-1, yard="rest", kept_avg=0.40, p=(1.0, 0.5), n_min=15, d_min=8, cp="Nov 16",
+               dec="blocked < kept (90 %): 53/side", decided="Dec 10", end=end)]
+    md = CF.timeline(tl, pd.Timestamp("2026-11-12 12:00"), {"FRENZY_WILLY": 2.19, "MOMENTUM_LONG": 0.03})
+    assert "④a" in md and "④b" in md and "6.0 days after this export" in md
+    assert md.index("WILLY_GAP (WILLY)") < md.index("Market-hot (Momentum Long)")              # sorted by share
+    assert "| WILLY_GAP (WILLY) | 6 / 4 | 1.00 / day | ~12 / ~7 |" in md                       # 6 + 6 trades · 4 + min(3, 6) days
+    assert "−1.60 ✓" in md and "+0.15 ✓ (kept +0.40)" in md and "**Dec 10**" in md             # rest line: blocked < kept
+    assert "⚠ the review date is not after" in CF.timeline(tl, end, {})
+    src = open(os.path.join(os.path.dirname(CF.__file__), "run_best_case.py")).read()
+    assert "## ④ Checkpoint timeline" in src and CF.TIMELINE_MARK in src

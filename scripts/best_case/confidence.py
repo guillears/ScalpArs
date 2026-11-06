@@ -58,6 +58,9 @@ THEORY = {"WILLY_GAP": "after (EMA cut from the data, DL 414)", "OBS-F1 late wea
           "SURGE_BTC_HOT": "after (cut seen in 6 fills, DL 427)", "ML_MKT_HOT": "against (frozen H5 said the opposite, DL 416)",
           "LONG_ADX35": "after (post-hoc cut, DL 418)"}
 LUCK = {}   # (sleeve, line) → luck.csv row, filled in main() from best_dcr.py's luck test
+TL = []     # (DECISION_LOG 485) one dict per row() call — the ④ checkpoint timeline is built from the SAME numbers as ③
+REVIEW_AT = pd.Timestamp("2026-11-12 12:00")   # the next batch review (B25, ≈ Nov 12) — ④a projects to it; ⚠ update per batch (or pass a date)
+TIMELINE_MARK = "<!-- ④ checkpoint timeline -->"
 # how each line's registration search compares with the luck test's family (deep review 473: the family is not a bound either way)
 LUCK_NOTE = {"FB_CONFIRM": "search priced: confirm +5/−10 and +1/−4, waits 1–24 h, selling 1–7 % higher (DL 474); 'a move against then a 1 h close back below' not priced",
              "WILLY_GAP": "registration searched wider: 28,545 cells", "ML_MKT_HOT": "registration searched 49 market conditions, not in this family",
@@ -82,7 +85,7 @@ def luck_cell(sleeve, line):
 SHOW = {"FLIP:FAN_RATIO_GATE": "FAN flips", "FRENZY_WILLY": "WILLY", "FRENZY_WILLY_HT": "WILLY_HT", "SPIKE_FADE": "Spike Fade",
         "FLATBASE_SHORT": "Flatbase", "FRENZY_LITE_RETRY": "LITE RETRY", "SURGE_LONG": "SURGE Long", "MOMENTUM_LONG": "Momentum Long",
         "FRENZY_LONG": "FRENZY_LONG"}
-LABEL = {"EXIT TP2": "Exit TP +2", "MKT_HOT": "Market-hot", "SURGE_BTC_HOT": "BTC RSI ≥ 78"}
+LABEL = {"EXIT TP2": "Exit TP +2", "MKT_HOT": "Market-hot", "SURGE_BTC_HOT": "BTC RSI ≥ 78", "ML_MKT_HOT": "Market-hot"}
 
 
 def freeze_ts(spec):
@@ -187,7 +190,7 @@ def fmt(x):
     return f"{x:+.2f}".replace("-", "−")
 
 
-def row(sleeve, line, built, clean, cdays, sign, fz, rest=None, p=(0.0, 0.0), end=None, clean_rest=0, p_rest=(0.0, 0.0)):
+def row(sleeve, line, built, clean, cdays, sign, fz, rest=None, p=(0.0, 0.0), end=None, clean_rest=0, p_rest=(0.0, 0.0), kept_avg=float("nan")):
     spec, n_min, d_min, bt = LINES[line]
     b = pd.Series(built, dtype=float).dropna()
     c = pd.Series(clean, dtype=float)
@@ -212,7 +215,7 @@ def row(sleeve, line, built, clean, cdays, sign, fz, rest=None, p=(0.0, 0.0), en
                + ("" if need is None else f" ({max(0, need - len(c))} more blocked · {max(0, need - clean_rest)} more kept)"))
         more = None if need is None else max(0, need - len(c))
     else:
-        dec = f"adds money: {nd}" + ("" if gap == "–" else f" ({gap})")
+        dec = ("adds money: can't be sized yet (no built-on spread)" if nd == "–" else f"adds money: {nd}" + ("" if gap == "–" else f" ({gap})"))
         more = None if gap == "–" else max(0, int(nd) - len(c))
     d_cp = eta_days(n_min - len(c), d_min - len(set(cdays)), p)
     if (nd == "never" and yard == "money") or (yard == "rest" and nr90 == "never"):
@@ -225,6 +228,9 @@ def row(sleeve, line, built, clean, cdays, sign, fz, rest=None, p=(0.0, 0.0), en
             d_dec = max(d_dec, eta_days(max(0, need - clean_rest), 0, p_rest))
         when_dec = when(max(d_dec, d_cp), end)                # a line is never decided before its checkpoint
     when_cp = when(d_cp, end)
+    TL.append(dict(sleeve=sleeve, line=line, n=len(c), days=len(set(cdays)), avg=(float(c.mean()) if len(c) else float("nan")), sign=sign,
+                   yard=yard, kept_avg=kept_avg,
+                   p=p, n_min=n_min, d_min=d_min, cp=when_cp, dec=dec, decided=when_dec, end=end))
     return (f"| {SHOW.get(sleeve, sleeve)} | {LABEL.get(line, line)} | {measure} | {fzs} | {bs} | {cs} | {len(c)}/{n_min} trades, "
             f"{len(set(cdays))}/{d_min} days | {boot(c.values, cdays.values)} | **{dec}** | {p[0]:.2f} trades/day | {when_cp} | {when_dec} | "
             f"{nd} ({gap}) | {nr} | {bt} | {THEORY.get(line, '–')} | {luck_cell(sleeve, line)} |")
@@ -275,7 +281,60 @@ def line_calls(pairs, Z=None, fb=None, fx=None):
     return out
 
 
+def shares():
+    """per sleeve: the best line's gain over today's rules, %/day — master and current batch POOLED by each sleeve's own live days
+    (best_dcr.csv scenario B × best_hold.csv days; the "line's gain" column of the checkpoint timeline)."""
+    t = pd.read_csv(os.path.join(SC, "best_dcr.csv"))
+    t = t[t.scen == "B"].set_index("sleeve")
+    hp = os.path.join(SC, "best_hold.csv")
+    h = pd.read_csv(hp).set_index("sleeve") if os.path.exists(hp) else pd.DataFrame()
+    out = {}
+    for s_, r in t.iterrows():
+        bd = float(h.loc[s_, "b25_days"]) if s_ in h.index else 1.0
+        md = float(h.loc[s_, "m_days"]) if (s_ in h.index and h.loc[s_, "m_n0"] > 0 and r.m_before == r.m_before) else 0.0
+        gm = (r.m_best - r.m_before) if md else 0.0
+        out[s_] = (gm * md + (r.b25_best - r.b25_before) * bd) / (md + bd)
+    return out
+
+
+def timeline(tl, review_at, share):
+    """→ markdown of the ④ checkpoint timeline (operator 11-06: "checkpoint timeline", DECISION_LOG 485) from the rows ③ printed. PURE."""
+    def way(r):
+        if not r["n"] or r["avg"] != r["avg"]:
+            return ""
+        if r.get("yard") == "rest":                     # its own test: clean blocked avg below the clean kept avg (deep review 485)
+            k = r.get("kept_avg", float("nan"))
+            return "" if k != k else (f" ✓ (kept {fmt(k)})" if r["avg"] < k else f" ✗ (kept {fmt(k)})")
+        return " ✓" if (r["avg"] < 0 if r["sign"] < 0 else r["avg"] > 0) else " ✗"
+    rows = sorted(tl, key=lambda r: -share.get(r["sleeve"], 0.0))
+    end = max(r["end"] for r in tl) if tl else review_at
+    dd = max(0.0, (review_at - end).total_seconds() / 86400)
+    late = review_at <= end
+    a = [f"### ④a Where the lines stand by the review ({review_at:%b %d}, {dd:.1f} days after this export)"
+         + (" — ⚠ the review date is not after this export: pass a later date (run_best_case.py <export> <date>)" if late else ""), "",
+         f"Clean trades / trading days; checkpoint = N trades on D days. Pace = the line's trades per day over the whole current batch. "
+         "Line's gain = how much the line adds over today's rules, %/day, master and current batch pooled by each sleeve's own live days "
+         "(a line that leaves master unchanged still counts master days, so it reads below its current-batch gain; the gains do not add up to "
+         "table ②'s totals, which compound on the shared account).", "",
+         "| Line (sleeve) | Now | Pace | Expected by the review | Checkpoint (N / days) | Reaches it ≈ | Line's gain (%/day) |", "|---|---|---|---|---|---|---|"]
+    for r in rows:
+        tp, dp = r["p"]
+        ne, de = r["n"] + tp * dd, min(r["days"] + dp * dd, r["days"] + np.ceil(dd))
+        a.append(f"| {LABEL.get(r['line'], r['line'])} ({SHOW.get(r['sleeve'], r['sleeve'])}) | {r['n']} / {r['days']} | {tp:.2f} / day | "
+                 f"~{ne:.0f} / ~{de:.0f} | {r['n_min']} / {r['d_min']} | **{r['cp']}** | {fmt(share.get(r['sleeve'], 0.0))} |")
+    b = ["", "### ④b What each line needs to be decided", "",
+         "Deciding test = the one the line's own gate uses (blocked < kept at 90 % for the Market-hot lines, adds money for the rest). ✓ / ✗ = the "
+         "clean trades so far point the line's way or not (Market-hot lines: blocked vs kept). Dates are projections — zone trades come in bursts.", "",
+         "| Line (sleeve) | Line's gain | Clean so far | Deciding test: trades needed | Checkpoint ≈ | Decided ≈ |", "|---|---|---|---|---|---|"]
+    for r in rows:
+        cs = f"{r['n']} on {r['days']} d · {fmt(r['avg'])}{way(r)}" if r["n"] else "0"
+        b.append(f"| {LABEL.get(r['line'], r['line'])} ({SHOW.get(r['sleeve'], r['sleeve'])}) | {fmt(share.get(r['sleeve'], 0.0))} | {cs} | "
+                 f"{r['dec']} | {r['cp']} | **{r['decided']}** |")
+    return "\n".join(a + b)
+
+
 def main():
+    TL.clear()                                          # one ④ per run, even if main() is called twice in-process (deep review 485)
     Z, fb, fx = inputs()
     lp = os.path.join(SC, "luck.csv")
     if os.path.exists(lp):
@@ -307,8 +366,9 @@ def main():
             g25 = g[g.src == "B25"]
             kc = 0 if fz is None else int(((g_all.src == "B25") & (g_all.o >= fz) & ~g_all[line].fillna(False).astype(bool)).sum())
             k25 = g_all[(g_all.src == "B25") & ~g_all[line].fillna(False).astype(bool)]
+            kav = float("nan") if fz is None else float(k25[k25.o >= fz].pct.mean()) if (k25.o >= fz).any() else float("nan")
             rows.append((r.b25_best - r.b25_before, row(r.sleeve, line, pre.pct, cl.pct, cl.o.dt.strftime("%Y-%m-%d"), -1, fz, keep.pct,
-                                                        pace(g25.o, end), end, kc, pace(k25.o, end))))
+                                                        pace(g25.o, end), end, kc, pace(k25.o, end), kav)))
     # FB_CONFIRM: Δ = confirm-entry result − today's-exit result, per signal (a skip books 0)
     fz = freeze_ts(LINES["FB_CONFIRM"][0])
     pre, cl = (fb, fb.iloc[0:0]) if fz is None else (fb[fb.o < fz], fb[fb.o >= fz])
@@ -324,6 +384,9 @@ def main():
                         pace(fx[fx.src == "B25"].o, end), end)))
     out += [x for _, x in sorted(rows, key=lambda t: -t[0])]
     print("\n".join(out))
+    review_at = pd.Timestamp(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2] else REVIEW_AT
+    print(TIMELINE_MARK)
+    print(timeline(TL, review_at, shares()))
 
 
 if __name__ == "__main__":

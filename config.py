@@ -3173,7 +3173,7 @@ class TradingConfig(BaseModel):
     # 🌡 (DECISION_LOG 489, operator 2026-11-06 "V2 only, build it") MARKET-HOT TRACKER (top-100 coins up over 4 h) — services/mkt_up4h.py: once per hour the
     # share of the day's rolling top-100 USDT perps above their close 4 h earlier is stamped on every fill (entry_mkt_up4h_pct / _n).
     # Evidence: the ML_MKT_HOT split holds on V2 (master blocked 71 · +0.01 vs kept 87 · +0.22; B25 15 · −0.19 vs 24 · +0.44 — reports/
-    # ML_MKT_HOT_ROLLING_2026-11-06.md). Observe-only (no trading rule reads it); ≈ 100 weight / hour, never while banned / IP weight > 600.
+    # ML_MKT_HOT_ROLLING_2026-11-06.md). Observe-only (no trading rule reads it); ≈ 100 weight / hour, never while banned / IP weight above the ceiling (services/mkt_up4h.WEIGHT_CEILING); reads paced ≤ 2 / s (DL 491).
     # KILL SWITCH: False = the loop reads nothing and every stamp is NULL.
     mkt_up4h_enabled: bool = True
     # 🗄 (DECISION_LOG 436, operator 2026-11-02 "build 1, 2 and 3") TRACK RECORD — services/track_record.py, daily after 00:10 UTC:

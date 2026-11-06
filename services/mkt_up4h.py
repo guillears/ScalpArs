@@ -53,8 +53,12 @@ EXACT_CANDIDATES = 150           # a mid-day cold build re-ranks this many (top 
 MAX_FAILED_READS = 10            # member reads still failing after the retry above this → no value for the hour
 UNIVERSE_RETRY_S = 600
 UNIVERSE_KEEP_DAYS = 3           # day lists kept in memory for the repair (older days are read back from the table)
-WEIGHT_CEILING = 600             # 🔒 the IP's X-MBX-USED-WEIGHT-1M (shared with trading) above this → no read starts (deferred)
-CONCURRENCY = 3                  # 🔒 reads in flight (100 reads ≈ 10–20 s, spread — never a burst on the shared IP budget)
+WEIGHT_CEILING = 500             # 🔒 the IP's X-MBX-USED-WEIGHT-1M (shared with trading) above this → no read starts (deferred). 11-06 (DL 491):
+                                 # 600 → 500 — the live 18:00 refresh read IP weight 313 incl. its own 100 reads (engine ≈ 210–310 / min); 400
+                                 # would skip busy hours, 500 stays far below Binance's 2,400 / min with the reads now paced
+READ_GAP_S = 0.5                 # 🔒 (11-06 tuning) the live tracker starts at most ~2 reads / s → an hour's ~100 reads spread over ~1 min
+COLD_GAP_S = 1.5                 # 🔒 … and the one-off mid-day cold ranking (~150 1d reads) over ~4 min, never a burst next to the engine
+CONCURRENCY = 3                  # 🔒 reads in flight; with READ_GAP_S the live hour's ~100 reads take ≈ 50 s (never a burst on the shared IP budget)
 CALL_TIMEOUT_S = 5.0
 
 
@@ -167,7 +171,8 @@ class MktUp4hTracker:
     is above WEIGHT_CEILING or while switched off — and a read that sees one of those mid-way stops the rest of the pass."""
 
     def __init__(self, fetch_klines=None, fetch_universe=None, is_limited=None, load_universe=None, save_universe=None,
-                 concurrency: int = CONCURRENCY, call_timeout_s: float = CALL_TIMEOUT_S, clock=None, used_weight=None, enabled=None):
+                 concurrency: int = CONCURRENCY, call_timeout_s: float = CALL_TIMEOUT_S, clock=None, used_weight=None, enabled=None,
+                 read_gap_s: float = 0.0, cold_gap_s: float = None):
         self.fetch_klines = fetch_klines
         self.fetch_universe = fetch_universe
         self.is_limited = is_limited
@@ -178,6 +183,11 @@ class MktUp4hTracker:
         self.clock = clock or (lambda: time.time() * 1000)
         self.used_weight = used_weight
         self.enabled = enabled
+        self.read_gap_s = float(read_gap_s or 0.0)       # min seconds between read STARTS (0 = no pacing — the tests' fakes)
+        self.cold_gap_s = float(cold_gap_s if cold_gap_s is not None else self.read_gap_s)
+        self._gap = self.read_gap_s
+        self._next_ok = 0.0
+        self._pace_lock = asyncio.Lock()
         self.skipped_weight = 0          # reads NOT started because the IP weight was above WEIGHT_CEILING
         self.reads = 0                   # reads started (≈ weight: 1h limit 6 / 1d limit ≤ 31 are weight 1 each)
         self.value = None            # dict(bar_close_ms, pct, n, size, failed, at)
@@ -233,7 +243,22 @@ class MktUp4hTracker:
             return True
         return self._heavy()
 
+    async def _pace(self):
+        """(11-06 tuning) spread the reads: at most one read START per `_gap` seconds across all in-flight workers."""
+        if self._gap <= 0:
+            return
+        async with self._pace_lock:
+            wait = self._next_ok - time.monotonic()
+            if wait > 0:
+                await asyncio.sleep(wait)
+            self._next_ok = time.monotonic() + self._gap
+
     async def _klines(self, sym, interval, limit, end_ms=None):
+        if self._gap > 0 and self._limited():                # (491 review) already limited → skip at once, never queue on the pace
+            self.skipped_limited += 1
+            self.skipped_weight += self._heavy()
+            return None
+        await self._pace()                                  # paced, then the limiter below sees the state right before the read
         if self._limited():
             self.skipped_limited += 1
             self.skipped_weight += self._heavy()
@@ -289,6 +314,7 @@ class MktUp4hTracker:
         if int(now_ms) - int(day) > FRESH_DAY_MS:      # mid-day: the 24 h ticker is not day D − 1 → exact 1d volumes for the top candidates
             cands = select_universe(vols, statuses, bases, None, EXACT_CANDIDATES)
             sem = asyncio.Semaphore(self.concurrency)
+            self._gap = self.cold_gap_s                     # (11-06 tuning) the one-off cold ranking goes slower (~4 min)
 
             async def one(s):
                 async with sem:
@@ -300,7 +326,10 @@ class MktUp4hTracker:
                     except (TypeError, ValueError, IndexError):
                         return s, None
                 return s, None
-            ex = {s: v for s, v in await asyncio.gather(*[one(s) for s in cands]) if v is not None}
+            try:
+                ex = {s: v for s, v in await asyncio.gather(*[one(s) for s in cands]) if v is not None}
+            finally:
+                self._gap = self.read_gap_s                 # back to the normal pace, whatever happened
             if self._limited():
                 raise RuntimeError("client rate-limited during the rebuild — retried later")
             if len(ex) < TOP_N:

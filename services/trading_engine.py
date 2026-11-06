@@ -153,6 +153,7 @@ def alt_corr_stamp(now_ms=None) -> dict:
 
 
 from services.mkt_up4h import MktUp4hTracker   # 🌡 (DECISION_LOG 489) Market-hot (top-100 up over 4 h), rolling top-100 (observe-only)
+from services.mkt_up4h import READ_GAP_S as _MKT_READ_GAP_S, COLD_GAP_S as _MKT_COLD_GAP_S
 
 
 async def _mkt_universe_load(day_ms):
@@ -179,8 +180,9 @@ mkt_up4h_tracker = MktUp4hTracker(fetch_klines=binance_service.fetch_regime_klin
                                         fetch_universe=binance_service.fetch_up4h_universe_inputs,
                                         is_limited=binance_service.regime_limited,
                                         load_universe=_mkt_universe_load, save_universe=_mkt_universe_save,
-                                        used_weight=binance_service.ip_used_weight_1m,   # 🔒 IP weight > 600 → no read starts
-                                        enabled=lambda: bool(getattr(config.trading_config, 'mkt_up4h_enabled', True)))   # 🔒 kill switch
+                                        used_weight=binance_service.ip_used_weight_1m,   # 🔒 IP weight > 500 → no read starts
+                                        enabled=lambda: bool(getattr(config.trading_config, 'mkt_up4h_enabled', True)),   # 🔒 kill switch
+                                        read_gap_s=_MKT_READ_GAP_S, cold_gap_s=_MKT_COLD_GAP_S)   # 🔒 (11-06) ≤ 2 reads / s; cold ranking ≈ 4 min
 
 
 def mkt_up4h_stamp(now_ms=None) -> dict:

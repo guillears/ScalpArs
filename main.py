@@ -511,7 +511,7 @@ async def mkt_up4h_repair_pass(tracker=None, now=None, delay_s=0.0) -> int:
 
 
 def _mkt_up4h_next_wake(now_s: float) -> float:
-    """seconds until the next hourly refresh: HH:00:05, or 00:00:30 UTC at the day turn. Pure."""
+    """seconds until the next hourly refresh: HH:01:30, or 00:00:30 UTC at the day turn. Pure."""
     nxt = (int(now_s // 3600) + 1) * 3600
     return max(1.0, nxt + (MKT_UP4H_DAY_OFFSET_S if nxt % 86400 == 0 else MKT_UP4H_OFFSET_S) - now_s)
 
@@ -524,11 +524,14 @@ def _mkt_up4h_on() -> bool:
         return False
 
 
+from services.mkt_up4h import last_closed_bar_ms as _mkt_last_closed_bar_ms   # (491 review)
+
+
 async def mkt_up4h_loop():
-    """🌡 (DECISION_LOG 489) OBSERVE-ONLY, ZERO-RISK: once per hour (HH:00:05; 00:00:30 UTC at the day turn, when the day's rolling top-100 list
+    """🌡 (DECISION_LOG 489) OBSERVE-ONLY, ZERO-RISK: once per hour (HH:01:30; 00:00:30 UTC at the day turn, when the day's rolling top-100 list
     is built) the Market-hot share (% of the rolling top-100 up over 4 h, services.mkt_up4h) is computed for the 1h bar that just closed — its
     own task on the regime public client (≈ 100 weight / hour + 41 / day, 3 reads in flight), so the scan / FRENZY / order paths never wait on
-    it; no read starts while banned / rate-limited, while the IP's used weight is above 600 or while `mkt_up4h_enabled` is off (then the loop
+    it; no read starts while banned / rate-limited, while the IP's used weight is above WEIGHT_CEILING (services/mkt_up4h.py) or while `mkt_up4h_enabled` is off (then the loop
     only sleeps and every stamp is NULL). First pass MKT_UP4H_BOOT_S after start (never in front of the boot's first scan). A failed hour is
     retried each minute for 15 min. Hourly (≈ HH:25) the 🩹 repair runs as its own task; once a day the stored day lists are pruned to 30
     days. Every iteration is wrapped: an error is logged, never propagated."""
@@ -545,6 +548,8 @@ async def mkt_up4h_loop():
                     await asyncio.sleep(_mkt_up4h_next_wake(time.time()))
                     continue
                 ok = await mkt_up4h_tracker.refresh()
+                if ok is not None and ok.get("bar_close_ms") != _mkt_last_closed_bar_ms(int(time.time() * 1000)):
+                    ok = None                                # (491 review) the pass ended on an older hour → retry this one in 60 s
                 if _repair_task is None or _repair_task.done():
                     _repair_task = asyncio.create_task(mkt_up4h_repair_pass(mkt_up4h_tracker, delay_s=MKT_UP4H_REPAIR_DELAY_S))
                 if time.time() - _last_prune > 86400:

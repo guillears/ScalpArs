@@ -404,7 +404,8 @@ def test_engine_tracker_is_wired_to_the_shared_ban_weight_and_switch(monkeypatch
     import services.binance_service as BS
     tr = TE.mkt_up4h_tracker
     assert tr.is_limited == TE.binance_service.regime_limited and tr.used_weight == TE.binance_service.ip_used_weight_1m
-    assert tr.concurrency <= 3 and tr.call_timeout_s <= 5.0 and MB.WEIGHT_CEILING == 600
+    assert tr.concurrency <= 3 and tr.call_timeout_s <= 5.0 and MB.WEIGHT_CEILING == 500                      # (DL 491) 600 → 500
+    assert tr.read_gap_s == MB.READ_GAP_S == 0.5 and tr.cold_gap_s == MB.COLD_GAP_S == 1.5                      # the LIVE tracker is paced
     monkeypatch.setattr(BS, "_ban_until", 1e12)                                           # an active ban (or the post-ban cooldown)
     assert TE.binance_service.regime_limited() is True and tr._limited() is True
 
@@ -444,3 +445,58 @@ def test_loop_boot_delay_and_daily_prune():
     body = src[src.index("async def mkt_up4h_loop():"):src.index("async def bnb_swap_loop():")]
     assert M.MKT_UP4H_BOOT_S >= 60 and "await asyncio.sleep(MKT_UP4H_BOOT_S)" in body and "> 86400" in body
     assert "if not _mkt_up4h_on():" in body
+
+
+def test_reads_are_paced_and_the_cold_pace_is_restored():
+    """(11-06 tuning) read STARTS are spaced by read_gap_s across concurrent workers; the cold ranking's slower pace never leaks."""
+    import time as _t
+    starts = []
+
+    async def kl(sym, interval, limit, end_ms=None):
+        starts.append(_t.monotonic())
+        return []
+    t = MB.MktUp4hTracker(fetch_klines=kl, is_limited=lambda: False, concurrency=3, read_gap_s=0.05, cold_gap_s=0.1)
+
+    async def run():
+        await asyncio.gather(*[t._klines(f"S{i}USDT", "1h", 6) for i in range(6)])
+    asyncio.run(run())
+    gaps = [b - a for a, b in zip(starts, starts[1:])]
+    assert len(starts) == 6 and min(gaps) >= 0.045                                       # never two starts closer than the gap
+    assert t._gap == t.read_gap_s
+    unpaced = MB.MktUp4hTracker(fetch_klines=kl, is_limited=lambda: False)
+    assert unpaced.read_gap_s == 0.0 and unpaced._gap == 0.0                               # the default (tests' fakes) is unpaced
+
+
+def test_cold_pace_applied_in_build_and_restored_on_every_path():
+    """(491 review) the mid-day cold ranking reads 1d volumes at cold_gap_s, the peg reads run at read_gap_s, and the gap is back to
+    read_gap_s after a successful build AND after a failed one (too few volumes)."""
+    day = MB.universe_day_ms(1_793_000_000_000)
+    now = day + 12 * 3600_000                                                             # mid-day → the exact previous-day ranking
+    syms = [f"C{i:03d}USDT" for i in range(160)]
+    seen = []
+
+    def make(ok):
+        async def kl(sym, interval, limit, end_ms=None):
+            seen.append((interval, t._gap))
+            if not ok:
+                return []
+            if interval == "1d" and limit == 3:
+                return [[day - MB.DAY, 1, 1, 1, 1, 1, 0, float(1000 - int(sym[1:4]))]]
+            return [[day - MB.DAY * k, 1, 1, 1, 1.0] for k in range(1, 32)]
+        return kl
+
+    async def uni():
+        return {"vols": {s: 1e6 - i for i, s in enumerate(syms)}, "statuses": {s: "TRADING" for s in syms},
+                "bases": {s: s[:-4] for s in syms}, "prices": {s: (1.0 if s == "C150USDT" else 5.0) for s in syms}}
+    t = MB.MktUp4hTracker(fetch_klines=make(True), fetch_universe=uni, is_limited=lambda: False, read_gap_s=0.001, cold_gap_s=0.002)
+    members = asyncio.run(t._build(day, now))
+    assert len(members[0] if isinstance(members, tuple) else members) == MB.TOP_N
+    assert {g for i, g in seen if i == "1d" and g == 0.002} and all(g == 0.002 for i, g in seen[:MB.EXACT_CANDIDATES])
+    assert t._gap == 0.001
+    seen.clear()
+    t2 = MB.MktUp4hTracker(fetch_klines=make(False), fetch_universe=uni, is_limited=lambda: False, read_gap_s=0.001, cold_gap_s=0.002)
+    t = t2
+    import pytest as _pt
+    with _pt.raises(RuntimeError):
+        asyncio.run(t2._build(day, now))
+    assert t2._gap == 0.001                                                                # restored after the failure

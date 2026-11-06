@@ -4548,7 +4548,7 @@
                 <!-- Performance by Hour -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by Hour (UTC-3)</h3>
-                    <p class="text-xs text-gray-500 mb-3">Win rate and avg P&L % by hour of day — identify best and worst trading windows. Each hour is an independent bucket (Avg P&L = dots, not a trend line); the trade count sits under each hour. Bar opacity ∝ trade count and dots with fewer than 10 trades are faded (noise); no-trade hours show no marker, not a fake 0%.</p>
+                    <p class="text-xs text-gray-500 mb-3">Win rate and avg P&L % by hour of day — identify best and worst trading windows. Each hour is an independent bucket (Avg P&L = dots, not a trend line); the trade count sits under each hour. Bar height = win rate; bar colour = whether the hour made money (avg P&L sign — a 60 % WR hour can still lose). Bar opacity ∝ trade count and dots with fewer than 10 trades are faded (noise); no-trade hours show no marker, not a fake 0%.</p>
                     <div style="height: 320px; position: relative;">
                         <canvas id="hourly-performance-chart"></canvas>
                     </div>
@@ -4558,7 +4558,7 @@
                 <!-- Performance by Day of Week -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by Day of Week (UTC-3)</h3>
-                    <p class="text-xs text-gray-500 mb-3">Win rate and avg P&L % by day of week — spot your best and worst trading days. Each day is an independent bucket (Avg P&L = dots, not a trend line). Under each day: how many of those weekdays the batch has seen (d) and the trades (t) — a weekday seen fewer than 4 times is grey: market-wide effects count in days, not trades. Bar opacity ∝ trade count; no-trade days show no marker, not a fake 0%.</p>
+                    <p class="text-xs text-gray-500 mb-3">Win rate and avg P&L % by day of week — spot your best and worst trading days. Each day is an independent bucket (Avg P&L = dots, not a trend line). Under each day: how many of those weekdays the batch has seen (d) and the trades (t) — a weekday seen fewer than 4 times is grey: market-wide effects count in days, not trades. Bar height = win rate; colour = avg P&L sign. Bar opacity ∝ trade count; no-trade days show no marker, not a fake 0%.</p>
                     <div style="height: 320px; position: relative;">
                         <canvas id="daily-performance-chart"></canvas>
                     </div>
@@ -8534,6 +8534,24 @@
             return Math.ceil(h / step) * step;
         }
         const _usd = v => `${v >= 0 ? '+' : '-'}$${Math.abs(v).toFixed(0)}`;
+        // 📊 (DECISION_LOG 495) PURE — the Performance-Over-Time balance walk, anchored at the batch START from ONE calendar snapshot
+        // (review: anchoring at "balance now" shifted the whole line by a fresh close until the 2-min calendar refresh caught up):
+        //   S (start) = calendar balance now − Σ the calendar's day P&L − Σ flows (the calendar's own pre-batch balance)
+        //   window value = S + P&L closed so far + flows (deposits / top-ups / expenses, signed) BEFORE the window's end (end exclusive,
+        //   like the windows themselves); capital = S + flows so far. A flow before the first window's end is in that window's value.
+        function potStartBalance(cal) {
+            if (!cal || cal.portfolio_now == null) return null;
+            const pnl = Object.values(cal.days || {}).reduce((a, e) => a + (e.pnl || 0), 0);
+            const fl = (cal.flows || []).reduce((a, f) => a + (f.amount || 0), 0);
+            return cal.portfolio_now - pnl - fl;
+        }
+        function potBalanceWalk(buckets, start, flows) {
+            const fl = flows || [];
+            const before = t => fl.reduce((a, f) => a + (f.t < t ? (f.amount || 0) : 0), 0);
+            const capital = buckets.map(b => start + before(b.t_end_ms));
+            const values = buckets.map((b, i) => capital[i] + (b.cumulative_pnl || 0));
+            return { values, capital, start };
+        }
 
         // Text-export cell formatter for the heatmap — shared by BOTH report builders.
         // Width 16: marginal totals like "85t 68%W +0.35%" are 15 chars and sheared the
@@ -8798,6 +8816,10 @@
                     pnlCalCurIdx = curIdx;
                     renderPnlCalendar();
                     try { renderDcrChart(); } catch (_dcrErr) { console.warn('[DCR chart]', _dcrErr); }   // 📈 (493) same data, its own chart
+                    if (window._potWantsCal && d && d.portfolio_now != null && _calView === 'ALL' && typeof _rfGuard === 'function') {
+                        window._potWantsCal = false;   // (495) the POT line was drawn on today's seed — redraw it on the real balance walk
+                        _rfGuard('perf', loadPerformance);
+                    }
                 })
                 .catch(() => {});
         }
@@ -9248,14 +9270,17 @@
                     ctx.restore();
                 }
             };
+            // (495) both axes symmetric around 0 → the bars' 0 % and the lines' 0 %/day are ONE horizontal (they sat apart before)
+            const _dcrL = niceHalfRange(Math.max(0.5, ...ser.map(p => Math.max(Math.abs(p.batch), Math.abs(p.roll7)) * 100)) * 1.1);
+            const _dcrR = niceHalfRange(Math.max(1, ...ser.map(p => Math.abs(p.r) * 100)) * 1.1);
             window._dcrChart = new Chart(canvas, {
                 data: {
                     labels: ser.map(p => ser.length > 300 ? p.day : p.day.slice(5)),   // (493 review) live history spans years → full dates
                     datasets: [
                         { type: 'line', label: 'Batch daily compound (to that day)', data: ser.map(p => p.batch * 100), yAxisID: 'y',
-                          borderColor: 'rgba(96,165,250,1)', backgroundColor: 'rgba(96,165,250,0.1)', borderWidth: 2, pointRadius: 2, tension: 0.25, order: 0 },
+                          borderColor: 'rgba(96,165,250,1)', backgroundColor: 'rgba(96,165,250,0.1)', borderWidth: 2, pointRadius: 2, tension: 0, order: 0 },
                         { type: 'line', label: 'Last 7 days', data: ser.map(p => p.roll7 * 100), yAxisID: 'y',
-                          borderColor: 'rgba(252,211,77,0.9)', borderWidth: 1.5, borderDash: [5, 3], pointRadius: 0, tension: 0.25, order: 1 },
+                          borderColor: 'rgba(252,211,77,0.9)', borderWidth: 1.5, borderDash: [5, 3], pointRadius: 0, tension: 0, order: 1 },
                         { type: 'bar', label: 'Day return', data: ser.map(p => p.r * 100), yAxisID: 'yDay',
                           backgroundColor: ser.map(p => p.r >= 0 ? 'rgba(52,211,153,0.35)' : 'rgba(248,113,113,0.35)'), borderWidth: 0, order: 2 },
                     ]
@@ -9283,8 +9308,10 @@
                     scales: {
                         x: { ticks: { color: '#6b7280', font: { size: 9 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 31 }, grid: { color: 'rgba(255,255,255,0.05)' } },
                         y: { position: 'left', title: { display: true, text: 'Compound %/day', color: '#93c5fd', font: { size: 10 } },
+                             min: -_dcrL, max: _dcrL,
                              ticks: { color: '#93c5fd', font: { size: 10 }, callback: v => `${v.toFixed(1)}%` }, grid: { color: 'rgba(255,255,255,0.05)' } },
                         yDay: { position: 'right', title: { display: true, text: 'Day return %', color: '#9ca3af', font: { size: 10 } },
+                                min: -_dcrR, max: _dcrR,
                                 ticks: { color: '#9ca3af', font: { size: 10 }, callback: v => `${v.toFixed(0)}%` }, grid: { drawOnChartArea: false } }
                     }
                 },
@@ -17430,7 +17457,8 @@
                 const potCanvas = document.getElementById('performance-over-time-chart');
                 const potEmpty = document.getElementById('performance-over-time-empty');
                 const potData = data.performance_over_time;
-                const potHash = JSON.stringify(potData || []);
+                const potHash = JSON.stringify([potData || [], !!data.unfiltered_view,   // (495) re-draw when the calendar's balance / flows arrive
+                    (typeof pnlCalData !== 'undefined' && pnlCalData) ? [pnlCalData.portfolio_now, pnlCalData.flows, pnlCalDataView] : null]);
                 if (potHash !== _lastPotHash) {
                     _lastPotHash = potHash;
                     if (window._potChart) { window._potChart.destroy(); window._potChart = null; }
@@ -17451,14 +17479,29 @@
                         // correct Starting Balance. Since total_portfolio = seed + closed_pnl, a curve of
                         // (seed + cumulative_pnl) lands exactly on the account's Total Portfolio Value.
                         // Fallback to the old reverse-derivation only if the API didn't supply the seed.
-                        const startingBalance = (balData && balData.starting_balance != null)
+                        let startingBalance = (balData && balData.starting_balance != null)
                             ? balData.starting_balance
                             : ((balData && data.total_pnl != null)
                                 ? (balData.usdt_balance || 0) + (balData.usdt_in_orders || 0) - (data.total_pnl || 0)
                                 : null);
-                        const portfolioValues = startingBalance != null
+                        let portfolioValues = startingBalance != null
                             ? cumValues.map(v => startingBalance + v)
                             : null;
+                        // 📊 (DECISION_LOG 495) whole-account view + the calendar loaded → the real balance path (potBalanceWalk): the batch's
+                        // start balance + P&L closed so far + deposits / top-ups / expenses so far. The old line drew today's seed
+                        // ($10,100) from day one — B25 ran on ≈ $2,900 until the 10-26 top-up.
+                        let capitalValues = null, potCenter = startingBalance;
+                        const _potCal = (typeof pnlCalData !== 'undefined' && pnlCalData) || null;
+                        if (data.unfiltered_view && _potCal && _potCal.portfolio_now != null && pnlCalDataView === 'ALL'
+                            && potData.every(b => b.t_end_ms != null)) {
+                            const _w = potBalanceWalk(potData, potStartBalance(_potCal), _potCal.flows);
+                            portfolioValues = _w.values; capitalValues = _w.capital; startingBalance = _w.start;
+                            potCenter = capitalValues[capitalValues.length - 1];   // axis centred on TODAY's capital (bars' zero lines up with it)
+                            window._potWantsCal = false;
+                        } else {
+                            // (495 review) whole-account view drawn WITHOUT the calendar → redraw once it arrives (loadPnlCalendar)
+                            window._potWantsCal = !!(data.unfiltered_view && potData.every(b => b.t_end_ms != null));
+                        }
 
                         // Anchor the curve to the seed: prepend an origin point AT startingBalance so the
                         // Portfolio Value line visibly rises from the dashed Starting Balance line through
@@ -17470,12 +17513,16 @@
                             pnlValues.unshift(null);
                             barColors.unshift('rgba(0,0,0,0)');
                             portfolioValues.unshift(startingBalance);
+                            if (capitalValues) capitalValues.unshift(startingBalance);
                             potMeta = [null].concat(potData);
                         }
 
-                        const sbLabel = startingBalance != null
-                            ? `Starting Balance ($${startingBalance.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})})`
-                            : 'Starting Balance';
+                        const _k = v => `$${Math.round(v).toLocaleString()}`;
+                        const sbLabel = capitalValues
+                            ? (Math.abs(capitalValues[capitalValues.length - 1] - capitalValues[0]) >= 1
+                                ? `Capital in (${_k(capitalValues[0])} → ${_k(capitalValues[capitalValues.length - 1])}: start + deposits / top-ups − expenses)`
+                                : `Starting Balance (${_k(capitalValues[0])})`)
+                            : (startingBalance != null ? `Starting Balance (${_k(startingBalance)})` : 'Starting Balance');
 
                         const datasets = [
                             {
@@ -17492,7 +17539,8 @@
                         if (portfolioValues) {
                             datasets.push({
                                 label: sbLabel,
-                                data: labels.map(() => startingBalance),
+                                data: capitalValues || labels.map(() => startingBalance),
+                                stepped: capitalValues ? 'before' : false,   // (495) steps at each deposit / top-up
                                 type: 'line',
                                 borderColor: 'rgba(255, 255, 255, 0.35)',
                                 borderWidth: 1,
@@ -17527,9 +17575,9 @@
                         let potYMin, potYMax, potY1Min, potY1Max;
                         if (portfolioValues && portfolioValues.length) {
                             let H = 0;
-                            for (const v of portfolioValues) H = Math.max(H, Math.abs(v - startingBalance));
-                            H = niceHalfRange(Math.max(H * 1.15, Math.abs(startingBalance) * 0.01, 5));   // 📊 (494) round end ticks
-                            potYMin = startingBalance - H; potYMax = startingBalance + H;
+                            for (const v of portfolioValues.concat(capitalValues || [])) H = Math.max(H, Math.abs(v - potCenter));
+                            H = niceHalfRange(Math.max(H * 1.15, Math.abs(potCenter) * 0.01, 5));   // 📊 (494) round end ticks
+                            potYMin = potCenter - H; potYMax = potCenter + H;
                             let Hb = 0;
                             for (const v of pnlValues) if (v != null) Hb = Math.max(Hb, Math.abs(v));
                             Hb = niceHalfRange(Math.max(Hb * 1.15, 10));
@@ -17557,6 +17605,7 @@
                                                 if (!b) return [];         // anchor origin row — no bucket behind it
                                                 const lines = [];
                                                 lines.push(`Cumulative P&L: $${(b.cumulative_pnl||0).toFixed(2)}`);
+                                                if (capitalValues) lines.push(`Capital in: $${Math.round(capitalValues[i]).toLocaleString()}`);
                                                 lines.push(`Trades: ${b.trades} (${b.longs}L/${b.shorts}S)`);
                                                 lines.push(`Win Rate: ${b.win_rate}%`);
                                                 lines.push(`Avg P&L: $${(b.avg_pnl||0).toFixed(2)}`);
@@ -17707,7 +17756,7 @@
                                 },
                                 scales: {
                                     x: _eqHasTs
-                                        ? { type: 'linear', ticks: { color: '#6b7280', font: { size: 9 }, maxRotation: 45, maxTicksLimit: 16, callback: v => _eqFmt(v) }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                                        ? { type: 'linear', ...(eqData[eqData.length - 1].ts > eqData[0].ts ? { min: eqData[0].ts, max: eqData[eqData.length - 1].ts } : {}), ticks: { color: '#6b7280', font: { size: 9 }, maxRotation: 45, maxTicksLimit: 16, callback: v => _eqFmt(v) }, grid: { color: 'rgba(255,255,255,0.05)' } }
                                         : { ticks: { color: '#6b7280', font: { size: 9 }, maxRotation: 45, maxTicksLimit: 20 }, grid: { color: 'rgba(255,255,255,0.05)' } },
                                     y: {
                                         title: { display: true, text: 'Cumulative P&L ($)', color: '#60a5fa', font: { size: 11 } },
@@ -17991,10 +18040,11 @@
                         const barColors = hourData.map(h => {
                             if (h.trades === 0) return 'rgba(107, 114, 128, 0.15)';
                             const a = (0.30 + 0.55 * (h.trades / _hMaxN)).toFixed(2);
-                            return h.win_rate >= 50 ? `rgba(52, 211, 153, ${a})` : `rgba(248, 113, 113, ${a})`;
+                            // (495) colour = did the hour MAKE money (avg P&L sign), not WR ≥ 50 % — the batch needs ≈ 68 % WR to break even
+                            return h.avg_pnl_pct >= 0 ? `rgba(52, 211, 153, ${a})` : `rgba(248, 113, 113, ${a})`;
                         });
                         const barBorders = hourData.map(h => h.trades === 0 ? 'rgba(107,114,128,0.3)'
-                            : (h.win_rate >= 50 ? 'rgba(52,211,153,1)' : 'rgba(248,113,113,1)'));
+                            : (h.avg_pnl_pct >= 0 ? 'rgba(52,211,153,1)' : 'rgba(248,113,113,1)'));
                         window._hourChart = new Chart(hourCanvas, {
                             type: 'bar',
                             data: {
@@ -18095,10 +18145,10 @@
                             if (d.trades === 0) return 'rgba(107, 114, 128, 0.15)';
                             if (_dowThin(d)) return 'rgba(156, 163, 175, 0.30)';
                             const a = (0.30 + 0.55 * (d.trades / _dMaxN)).toFixed(2);
-                            return d.win_rate >= 50 ? `rgba(52, 211, 153, ${a})` : `rgba(248, 113, 113, ${a})`;
+                            return d.avg_pnl_pct >= 0 ? `rgba(52, 211, 153, ${a})` : `rgba(248, 113, 113, ${a})`;   // (495) avg P&L sign
                         });
                         const dayBarBorders = dayData.map(d => d.trades === 0 ? 'rgba(107,114,128,0.3)'
-                            : (_dowThin(d) ? 'rgba(156,163,175,0.6)' : (d.win_rate >= 50 ? 'rgba(52,211,153,1)' : 'rgba(248,113,113,1)')));
+                            : (_dowThin(d) ? 'rgba(156,163,175,0.6)' : (d.avg_pnl_pct >= 0 ? 'rgba(52,211,153,1)' : 'rgba(248,113,113,1)')));
                         window._dayChart = new Chart(dayCanvas, {
                             type: 'bar',
                             data: {

@@ -132,3 +132,49 @@ def test_real_performance_payload_runs_and_carries_the_new_fields():
     assert all("ts" in p for p in allv["equity_curve"])
     bot = _perf(True, "BOT", 10_000.0)
     assert "_error" not in bot and bot["equity_curve_stats"]["max_dd_pct"] is None      # a filtered view → $ only
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+def test_pot_balance_walk_steps_at_the_topup():
+    """B25 shape (DL 495): $2,900 start, -$968 on day 1, a +$7,100 top-up, then +$100 - the line must start at $2,900, not today's seed."""
+    T = 1_000_000_000_000
+    buckets = [{"t_end_ms": T + 1, "pnl": -968, "cumulative_pnl": -968}, {"t_end_ms": T + 3, "pnl": 100, "cumulative_pnl": -868}]
+    flows = [{"t": T + 2, "amount": 7100}]
+    now = 2900 - 968 + 7100 + 100
+    cal = {"portfolio_now": now, "days": {"d1": {"pnl": -968}, "d2": {"pnl": 100}}, "flows": flows}
+    S = _js(f"potStartBalance({json.dumps(cal)})")
+    assert S == 2900
+    w = _js(f"potBalanceWalk({json.dumps(buckets)}, {S}, {json.dumps(flows)})")
+    assert w["values"] == [2900 - 968, now]
+    assert w["capital"] == [2900, 10000]                      # the capital line steps at the top-up
+    # (review) a performance payload NEWER than the calendar (a fresh +$50 close) moves only the last point, never the start
+    b2 = buckets + [{"t_end_ms": T + 5, "pnl": 50, "cumulative_pnl": -818}]
+    w2 = _js(f"potBalanceWalk({json.dumps(b2)}, {S}, {json.dumps(flows)})")
+    assert w2["values"][:2] == w["values"] and w2["values"][2] == now + 50
+    # a flow exactly at a window end belongs to the NEXT window (end exclusive); a flow before the first end is in window 1
+    assert _js(f"potBalanceWalk([{{\"t_end_ms\": 10, \"cumulative_pnl\": 0}}], 100, [{{\"t\": 10, \"amount\": 5}}])")["capital"] == [100]
+    assert _js(f"potBalanceWalk([{{\"t_end_ms\": 10, \"cumulative_pnl\": 0}}], 100, [{{\"t\": 3, \"amount\": 5}}])")["capital"] == [105]
+    assert _js("potStartBalance({days: {}})") is None
+
+
+def test_bar_colours_follow_avg_pnl_and_dcr_axes_align():
+    assert "return h.avg_pnl_pct >= 0 ? `rgba(52, 211, 153, ${a})`" in HTML and "return h.win_rate >= 50 ?" not in HTML
+    assert "return d.avg_pnl_pct >= 0 ? `rgba(52, 211, 153, ${a})`" in HTML and "return d.win_rate >= 50 ?" not in HTML
+    assert "min: -_dcrL, max: _dcrL" in HTML and "min: -_dcrR, max: _dcrR" in HTML
+    assert "min: eqData[0].ts, max: eqData[eqData.length - 1].ts" in HTML
+
+
+def test_time_windows_carry_their_end_ms():
+    import main
+    b = main._compute_time_buckets([_o(T0, 1, 0.1), _o(T0 + dt.timedelta(days=5), 1, 0.1)])
+    bm = b[0]["bucket_min"]
+    assert all(x["t_end_ms"] - y["t_end_ms"] == bm * 60000 for y, x in zip(b, b[1:]))
+    first_end = dt.datetime(2026, 10, 24, 16, 0, tzinfo=dt.timezone(dt.timedelta(hours=-3)))   # 4-h window 12:00–16:00 UTC-3
+    assert b[0]["t_end_ms"] == int(first_end.timestamp() * 1000)
+
+
+def test_pot_redraws_when_the_calendar_arrives_and_equity_axis_guard():
+    i = HTML.index("function loadPnlCalendar(")
+    assert "_rfGuard('perf', loadPerformance);" in HTML[i:HTML.index("function pnlCalNav(", i)]
+    assert "window._potWantsCal = !!(data.unfiltered_view" in HTML
+    assert "eqData[eqData.length - 1].ts > eqData[0].ts ? { min: eqData[0].ts" in HTML

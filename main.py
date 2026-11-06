@@ -6175,6 +6175,7 @@ def _compute_time_buckets(orders, bucket_minutes=None):
                 "time": local_time.strftime(_fmt),
                 "trades": count,
                 "bucket_min": bucket_minutes,   # 📊 (494) the chart caption names the bucket size
+                "t_end_ms": int((bk + timedelta(minutes=bucket_minutes)).timestamp() * 1000),   # 📊 (495) window END — the balance walk
                 "longs": longs,
                 "shorts": shorts,
                 "wins": wins,
@@ -11024,6 +11025,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "entry_conditions_by_strategy_outcome": entry_conditions_by_strategy_outcome,
         "period_performance": _compute_period_performance(_all_orders),
         "equity_curve": _compute_equity_curve(_all_orders),
+        "unfiltered_view": bool(_unfiltered_view),   # 📊 (495) the balance walks (POT line) only run on the whole-account view
         # 📊 (494) % only on the unfiltered account view (a window / regime / direction / origin … view has no known base)
         "equity_curve_stats": _equity_curve_stats(_compute_equity_curve(_all_orders),
                                                   initial_balance if _unfiltered_view else None),

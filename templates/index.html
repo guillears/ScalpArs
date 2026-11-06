@@ -21841,7 +21841,7 @@
                                 <button onclick="openInvestorModal('deposit', ${inv.id})" class="px-2 py-1 bg-cyan-600/30 hover:bg-cyan-600/50 text-cyan-400 rounded text-xs transition" title="Deposit">+$</button>
                                 <button onclick="openInvestorModal('withdraw', ${inv.id})" class="px-2 py-1 bg-orange-600/30 hover:bg-orange-600/50 text-orange-400 rounded text-xs transition" title="Withdraw">-$</button>
                                 <button onclick="openInvestorModal('transfer', ${inv.id})" class="px-2 py-1 bg-teal-600/30 hover:bg-teal-600/50 text-teal-300 rounded text-xs transition" title="Transfer value to another investor (no money enters or leaves the fund)">⇄</button>
-                                <button onclick="openStatementMenu(${inv.id}, this)" class="px-2 py-1 bg-slate-500/30 hover:bg-slate-500/50 text-slate-200 rounded text-xs transition" title="Monthly statement (PDF)">🧾</button>
+                                <button onclick="openStatementMenu(${inv.id}, this)" data-stmt-id="${inv.id}" class="px-2 py-1 bg-slate-500/30 hover:bg-slate-500/50 text-slate-200 rounded text-xs transition" title="Monthly statement (PDF)">🧾</button>
                                 <button onclick="openInvestorModal('remove', ${inv.id})" class="px-2 py-1 bg-red-600/30 hover:bg-red-600/50 text-red-400 rounded text-xs transition" title="Remove">✕</button>
                             </div>
                         </td>
@@ -21995,6 +21995,7 @@
         }
         async function openStatementMenu(id, btn) {
             closeStatementMenu();
+            const rc0 = btn.getBoundingClientRect();                           // the click-time anchor: the 10 s table rebuild can detach btn during the fetch
             const tok = (window._stmtTok = (window._stmtTok || 0) + 1);      // a 2nd fast click wins; the 1st never opens a duplicate menu
             let data;
             try {
@@ -22018,7 +22019,11 @@
                     <button id="statement-dl" class="px-2 py-1 rounded bg-emerald-600/40 hover:bg-emerald-600/60 text-emerald-200">Download PDF</button>
                 </div>`;
             document.body.appendChild(box);
-            const rc = btn.getBoundingClientRect();
+            // anchor: the clicked button if still on the page, else the same investor's rebuilt 🧾, else where it was at the click
+            // (a detached button measures 0,0 → the menu jumped to the top-left corner, operator 11-06)
+            const live = btn.isConnected ? btn : document.querySelector(`[data-stmt-id="${id}"]`);
+            const lr = live && live.getBoundingClientRect();
+            const rc = (lr && lr.width) ? lr : rc0;
             box.style.top = `${Math.max(8, Math.min(rc.bottom + 6, window.innerHeight - box.offsetHeight - 8))}px`;
             box.style.left = `${Math.max(8, Math.min(rc.right - box.offsetWidth, window.innerWidth - box.offsetWidth - 8))}px`;
             document.getElementById('statement-dl').onclick = () => downloadStatement(id, document.getElementById('statement-month').value);

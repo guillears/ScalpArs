@@ -31,6 +31,8 @@ from typing import Dict, List, Optional
 UTC3 = timezone(timedelta(hours=-3))
 IN_TYPES = ("DEPOSIT", "FOUNDING", "OPENING", "TRANSFER_IN")
 OUT_TYPES = ("WITHDRAW", "CASHOUT", "TRANSFER_OUT")
+EXP_TYPES = ("EXPENSE",)        # (DECISION_LOG 486) a fund operating expense: the investor's pro-rata slice, NO shares cancelled — it lowers
+                                # NAV, so the balance and the return are NET of it, while "Trading result" excludes it and it shows on its own line
 SHORT_PERIOD_DAYS = 15          # below this the page notes the period is too short to be representative
 MAX_MONTH_ROWS = 6              # "Since you joined" keeps one A4 page: the last 5 months + one row folding every earlier month (12 overflowed)
 
@@ -105,6 +107,11 @@ def signed_flow(row: dict) -> float:
     return 0.0
 
 
+def expense_of(row: dict) -> float:
+    """the investor's slice of a fund expense (≥ 0), else 0 — never a deposit / withdrawal flow (signed_flow → 0). PURE."""
+    return abs(float(row.get("amount") or 0.0)) if str(row.get("type") or "").upper() in EXP_TYPES else 0.0
+
+
 def dep_wd(rows: List[dict]):
     """(deposits, withdrawals) of ledger rows: an ADJUST (a deposit-total correction — the NAV rebuild, a deposit edit, a paper top-up
     mint) moves DEPOSITS by its sign and never counts as a withdrawal (deep review 476 — models.InvestorLedger: "must NEVER touch
@@ -176,6 +183,7 @@ class DayRow:
     pnl: float
     ret: Optional[float]
     deposited_net: float
+    expense: float = 0.0            # (486) the day's fund-expense slice; pnl = TRADING result (the expense added back), ret = net (NAV)
 
 
 @dataclass
@@ -192,7 +200,7 @@ class Statement:
     end_balance: float
     deposits: float
     withdrawals: float
-    result: float
+    result: float                   # TRADING result (fund expenses excluded, DECISION_LOG 486)
     ret_pct: Optional[float]
     total_deposited: float          # gross, all-time to the period end
     total_withdrawn: float
@@ -211,6 +219,8 @@ class Statement:
     mixed_until: Optional[datetime] = None
     month_rows: List[dict] = field(default_factory=list)
     month_total: Optional[dict] = None
+    expenses: float = 0.0           # (486) the month's fund-expense slice (≥ 0) · ret_pct is NET of it
+    total_expenses: float = 0.0     # all-time to the period end · total_profit is NET of it
 
 
 class StatementError(ValueError):
@@ -250,6 +260,7 @@ def _walk(ledger: List[dict], snaps: Dict[date, float], first: date, last: date)
     while d <= last:
         todays = by_day.get(d, [])
         flow = sum(signed_flow(r) for r in todays)
+        exp = sum(expense_of(r) for r in todays)
         base = prev_nav if shares > 1e-9 else None           # held shares overnight → yesterday's close is the base
         if base is None:                                       # (re)entered today → the NAV the shares were bought at
             buys = [r for r in todays if float(r.get("shares_delta") or 0.0) > 0 and r.get("nav_at_time")]
@@ -264,7 +275,7 @@ def _walk(ledger: List[dict], snaps: Dict[date, float], first: date, last: date)
         bal = max(shares, 0.0) * nav
         held = shares > 1e-9 or abs(flow) > 1e-9
         ret = (nav / base - 1.0) if (held and base) else None
-        out.append(DayRow(day=d, balance=bal, flow=flow, pnl=bal - prev_bal - flow, ret=ret, deposited_net=dep_net))
+        out.append(DayRow(day=d, balance=bal, flow=flow, pnl=bal - prev_bal - flow + exp, ret=ret, deposited_net=dep_net, expense=exp))
         prev_bal, prev_nav = bal, nav
         d += timedelta(days=1)
     return start_bal, out
@@ -275,12 +286,13 @@ def _month_row(ledger, snaps, month, join, today):
     first, last = max(first, join), min(last, today)
     start, days = _walk(ledger, snaps, first, last)
     flows = sum(r.flow for r in days)
+    exp = sum(r.expense for r in days)
     dep_in, _ = dep_wd([r for r in ledger if first <= day_utc3(r["created_at"]) <= last])
     end = days[-1].balance if days else start
-    res = end - start - flows
+    res = end - start - flows + exp                     # (486) trading result — the expense is its own column
     den = start + dep_in
     return dict(month=month, label=month_label(month) + (f" (from {fmt_day_short(join)})" if first == join and join.day != 1 else ""),
-                flows=flows, result=res, ret_pct=(res / den * 100.0) if den > 1e-9 else None, end=end, dep_in=dep_in)
+                flows=flows, expenses=exp, result=res, ret_pct=((res - exp) / den * 100.0) if den > 1e-9 else None, end=end, dep_in=dep_in)
 
 
 def compute_statement(name: str, ledger: List[dict], snaps: Dict[date, float], orders: List[dict], month: str,
@@ -300,11 +312,13 @@ def compute_statement(name: str, ledger: List[dict], snaps: Dict[date, float], o
     start_bal, days = _walk(ledger, snaps, first, last)
     dep, wd = dep_wd([r for r in ledger if first <= day_utc3(r["created_at"]) <= last])
     end_bal = days[-1].balance
-    result = end_bal - start_bal - (dep - wd)
+    exp = sum(r.expense for r in days)
+    result = end_bal - start_bal - (dep - wd) + exp     # (486) TRADING result; the balance identity: end = start + dep − wd + result − exp
     den = start_bal + dep
     upto = [r for r in ledger if day_utc3(r["created_at"]) <= last]
     tot_dep, tot_wd = dep_wd(upto)
-    tot_profit = end_bal - (tot_dep - tot_wd)
+    tot_exp = sum(expense_of(r) for r in upto)
+    tot_profit = end_bal - (tot_dep - tot_wd)           # NET of every fund expense (what the investor really made)
 
     rets = [r for r in days if r.ret is not None]
     dcr = None
@@ -322,7 +336,7 @@ def compute_statement(name: str, ledger: List[dict], snaps: Dict[date, float], o
             peak, peak_i = idx, i
         if idx / peak - 1.0 < dd:
             dd, dd_lo, dd_hi = idx / peak - 1.0, peak_i, i
-    dd_usd = sum(r.pnl for r in days[dd_lo + 1:dd_hi + 1]) if dd_hi is not None else 0.0
+    dd_usd = sum(r.pnl - r.expense for r in days[dd_lo + 1:dd_hi + 1]) if dd_hi is not None else 0.0   # net, like the NAV drawdown
     best = max(rets, key=lambda r: r.ret) if rets else None
     worst = min(rets, key=lambda r: r.ret) if rets else None
 
@@ -346,18 +360,19 @@ def compute_statement(name: str, ledger: List[dict], snaps: Dict[date, float], o
         o_dep = sum(r["dep_in"] for r in old)
         o_res = sum(r["result"] for r in old)
         rows.insert(0, dict(month=old[0]["month"], label=f"{month_label(old[0]['month'])} – {month_label(old[-1]['month'])}",
-                            flows=sum(r["flows"] for r in old), result=o_res, ret_pct=None, end=old[-1]["end"], dep_in=o_dep))
-    total = dict(flows=tot_dep - tot_wd, result=tot_profit, ret_pct=(tot_profit / tot_dep * 100.0) if tot_dep > 1e-9 else None,
-                 end=end_bal)
+                            flows=sum(r["flows"] for r in old), expenses=sum(r.get("expenses", 0.0) for r in old), result=o_res,
+                            ret_pct=None, end=old[-1]["end"], dep_in=o_dep))
+    total = dict(flows=tot_dep - tot_wd, expenses=tot_exp, result=tot_profit + tot_exp,
+                 ret_pct=(tot_profit / tot_dep * 100.0) if tot_dep > 1e-9 else None, end=end_bal)
     return Statement(
         name=name, month=month, first=first, last=last, join=join, preliminary=preliminary, simulated=simulated,
         generated_at=now_utc, start_balance=start_bal, end_balance=end_bal, deposits=dep, withdrawals=wd, result=result,
-        ret_pct=(result / den * 100.0) if den > 1e-9 else None, total_deposited=tot_dep, total_withdrawn=tot_wd,
+        ret_pct=((result - exp) / den * 100.0) if den > 1e-9 else None, total_deposited=tot_dep, total_withdrawn=tot_wd,
         total_profit=tot_profit, total_profit_pct=(tot_profit / tot_dep * 100.0) if tot_dep > 1e-9 else None, days=days,
         mixed_until=mixed_until, trades=n, win_rate=(sum(1 for o in ts if float(o.get("pnl") or 0.0) > 0) / n * 100.0) if n else None,
         avg_pnl_pct=(sum(float(o.get("pnl_percentage") or 0.0) for o in ts) / n) if n else None, dcr_pct=dcr,
         max_dd_pct=dd * 100.0, max_dd_usd=dd_usd, best=best, worst=worst, positive_days=sum(1 for r in rets if r.ret > 0),
-        month_rows=rows if len(rows) >= 2 else [], month_total=total if len(rows) >= 2 else None)
+        month_rows=rows if len(rows) >= 2 else [], month_total=total if len(rows) >= 2 else None, expenses=exp, total_expenses=tot_exp)
 
 
 # ── text (pure) ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -393,7 +408,11 @@ def period_text(st: Statement) -> str:
 
 def summary_text(st: Statement) -> str:
     mn = month_name(st.month)
-    s = f"Your balance is {money(st.end_balance)}: {money(st.result, sign=True)} ({pct(st.ret_pct)}) in {mn}"
+    if st.expenses > 0.005:   # (486) the expense is named, never blended into the trading result
+        s = (f"Your balance is {money(st.end_balance)}: {money(st.result, sign=True)} from trading and {money(-st.expenses, sign=True)} of fund "
+             f"expenses ({pct(st.ret_pct)} net) in {mn}")
+    else:
+        s = f"Your balance is {money(st.end_balance)}: {money(st.result, sign=True)} ({pct(st.ret_pct)}) in {mn}"
     if month_key(st.join) != st.month:
         s += f", and {money(st.total_profit, sign=True)} ({pct(st.total_profit_pct)}) since your first deposit on {fmt_day(st.join)}"
     s += "."
@@ -594,7 +613,9 @@ def render_pdf(st: Statement) -> bytes:
     row(xa, xa + cw, ya, f"Starting balance, {fmt_day_short(st.first)}", money(st.start_balance)); ya -= lead
     row(xa, xa + cw, ya, "Deposits", money(st.deposits)); ya -= lead
     row(xa, xa + cw, ya, "Withdrawals", money(st.withdrawals)); ya -= lead
-    row(xa, xa + cw, ya, "Trading result", money(st.result, sign=True), rcol); ya -= 6
+    row(xa, xa + cw, ya, "Trading result", money(st.result, sign=True), rcol); ya -= lead if st.expenses > 0.005 else 6
+    if st.expenses > 0.005:   # (486) its own line, only when the month had one
+        row(xa, xa + cw, ya, "Fund expenses", money(-st.expenses, sign=True)); ya -= 6
     hline(ya, xa, xa + cw)
     ya -= 11
     row(xa, xa + cw, ya, f"Ending balance, {fmt_day_short(st.last)}", money(st.end_balance), bold=True)
@@ -606,10 +627,11 @@ def render_pdf(st: Statement) -> bytes:
             ("Daily compound return", pct(st.dcr_pct, 2), None, None),
             ("Largest drop from peak", pct(st.max_dd_pct), f"({money(-abs(st.max_dd_usd), cents=False)})" if st.max_dd_pct < -0.05 else None, C_NEG)]
     if st.best is not None:
-        perf.append((f"Best day · {fmt_day_short(st.best.day)}", pct(st.best.ret * 100), f"({money(st.best.pnl, sign=True, cents=False)})",
-                     C_POS if st.best.pnl >= 0.5 else (C_NEG if st.best.pnl <= -0.5 else C_SEC)))
-        perf.append((f"Worst day · {fmt_day_short(st.worst.day)}", pct(st.worst.ret * 100), f"({money(st.worst.pnl, sign=True, cents=False)})",
-                     C_POS if st.worst.pnl >= 0.5 else (C_NEG if st.worst.pnl <= -0.5 else C_SEC)))
+        bn, wn = st.best.pnl - st.best.expense, st.worst.pnl - st.worst.expense    # (486) $ net like the % (the NAV return)
+        perf.append((f"Best day · {fmt_day_short(st.best.day)}", pct(st.best.ret * 100), f"({money(bn, sign=True, cents=False)})",
+                     C_POS if bn >= 0.5 else (C_NEG if bn <= -0.5 else C_SEC)))
+        perf.append((f"Worst day · {fmt_day_short(st.worst.day)}", pct(st.worst.ret * 100), f"({money(wn, sign=True, cents=False)})",
+                     C_POS if wn >= 0.5 else (C_NEG if wn <= -0.5 else C_SEC)))
     perf.append(("Positive days", f"{st.positive_days} of {nd}", None, None))
     for lab, val, sub, subcol in perf:
         row(xb, xb + cw, yb, lab, val, sub=sub, subcol=subcol)
@@ -624,8 +646,13 @@ def render_pdf(st: Statement) -> bytes:
         y -= 4
         head(L, y, "Since you joined", R)
         y -= 17
-        cols = [(L, "Month", "l"), (R - 290, "Deposits / withdrawals", "r"), (R - 190, "Result", "r"), (R - 110, "Return", "r"),
-                (R, "Ending balance", "r")]
+        has_exp = any(r.get("expenses", 0.0) > 0.005 for r in st.month_rows)   # (486) the column appears only once an expense exists
+        if has_exp:
+            cols = [(L, "Month", "l"), (R - 335, "Deposits / withdrawals", "r"), (R - 250, "Fund expenses", "r"),
+                    (R - 175, "Trading result", "r"), (R - 105, "Net return", "r"), (R, "Ending balance", "r")]
+        else:
+            cols = [(L, "Month", "l"), (R - 290, "Deposits / withdrawals", "r"), (R - 190, "Result", "r"), (R - 110, "Return", "r"),
+                    (R, "Ending balance", "r")]
         for x, lab, a in cols:
             text(x, y, lab, "R", 8.5, C_SEC, a)
         y -= 5
@@ -635,11 +662,17 @@ def render_pdf(st: Statement) -> bytes:
         def mrow(yy, r, bold=False):
             f = "M" if bold else "R"
             rc = C_POS if r["result"] >= 0.005 else (C_NEG if r["result"] <= -0.005 else C_TEXT)
+            rp = r["ret_pct"]
+            pc = C_TEXT if rp is None else (C_POS if rp >= 0.005 else (C_NEG if rp <= -0.005 else C_TEXT))
             text(L, yy, r.get("label", "Total"), f, 9)
             text(cols[1][0], yy, money(r["flows"], sign=True), f, 9, align="r")
-            text(cols[2][0], yy, money(r["result"], sign=True), f, 9, rc, "r")
-            text(cols[3][0], yy, pct(r["ret_pct"]), f, 9, rc, "r")
-            text(cols[4][0], yy, money(r["end"]), f, 9, align="r")
+            k = 2
+            if has_exp:
+                text(cols[2][0], yy, money(-r.get("expenses", 0.0), sign=True) if r.get("expenses", 0.0) > 0.005 else "–", f, 9, align="r")
+                k = 3
+            text(cols[k][0], yy, money(r["result"], sign=True), f, 9, rc, "r")
+            text(cols[k + 1][0], yy, pct(rp), f, 9, pc, "r")
+            text(cols[k + 2][0], yy, money(r["end"]), f, 9, align="r")
         for r in st.month_rows:
             mrow(y, r)
             y -= 12.5

@@ -1631,12 +1631,30 @@ class InvestorLedger(Base):
     # String(16): "TRANSFER_OUT" is exactly 12 — zero headroom on the old width. SQLite ignores
     # VARCHAR length so no migration is needed, but a future Postgres move would truncate.
     type = Column(String(16), nullable=False)        # DEPOSIT | WITHDRAW | CASHOUT | OPENING | ADJUST | FOUNDING | TRANSFER_IN | TRANSFER_OUT
+    # EXPENSE (DECISION_LOG 486) = the investor's pro-rata slice of a fund operating expense: amount = the slice, shares_delta = 0 (no share
+    # is cancelled — NAV drops, so every holder pays by ownership); never a deposit or a withdrawal (statement: its own "Fund expenses" line)
     # ADJUST (Sep-21) = a deposit-total EDIT: a CORRECTION of the recorded figure, NOT a cash
     # movement. It moves shares + total_deposited and must NEVER touch total_withdrawn.
     amount = Column(Float, nullable=False)            # USD moved (always positive)
     nav_at_time = Column(Float, nullable=True)        # NAV/share at the moment
     shares_delta = Column(Float, nullable=True)       # + on deposit, − on withdraw
     note = Column(String(200), nullable=True)
+    created_at = Column(DateTime, nullable=False, default=func.now())
+
+
+class FundExpense(Base):
+    """(DECISION_LOG 486) a fund operating expense (servers, data, exchange fees …) paid from the fund — the cost is shared pro rata by
+    ownership: no share is cancelled, the portfolio value drops, so NAV per share drops. One row per expense; each investor's slice is an
+    InvestorLedger EXPENSE row. PAPER: the paper account is reduced by the sum of its paper rows (trading_engine._recalculate_paper_balance);
+    LIVE: the operator sends the money out on the exchange, this row books it (the unbooked-money check counts it as an outflow)."""
+    __tablename__ = "fund_expense"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    amount = Column(Float, nullable=False)            # USD, > 0
+    category = Column(String(32), nullable=False)     # servers | data | exchange | other
+    note = Column(String(200), nullable=True)
+    is_paper = Column(Boolean, nullable=False, default=True)
+    nav_before = Column(Float, nullable=True)         # NAV / share just before the expense
     created_at = Column(DateTime, nullable=False, default=func.now())
 
 

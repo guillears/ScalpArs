@@ -4587,6 +4587,7 @@
                 <div class="flex gap-2">
                 <button onclick="openFundDepositModal()" class="px-3 py-1.5 bg-sky-700 hover:bg-sky-600 text-white text-sm rounded-lg">+ Deposit Funds</button>
                 <button onclick="openFundWithdrawModal()" class="px-3 py-1.5 bg-amber-700 hover:bg-amber-600 text-white text-sm rounded-lg">− Withdraw Funds</button>
+                <button onclick="openFundExpenseModal()" class="px-3 py-1.5 bg-rose-800 hover:bg-rose-700 text-white text-sm rounded-lg" title="🧾 Pay a fund operating cost (servers, data, exchange fees …) from the fund. Shared by every investor by ownership — no shares are cancelled, NAV drops. Each statement shows it on its own 'Fund expenses' line, never as trading result or a withdrawal (DECISION_LOG 486).">− Pay Expense</button>
                 <button onclick="openInvestorModal('add')" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm rounded-lg transition">+ Add Investor</button>
                 <button id="nav-epoch-btn" onclick="startNewNavHistory()" class="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-200 text-sm rounded-lg transition" title="Start the NAV / Share chart and the high-water mark fresh from now. Display only: no history, investor, share or ledger data is deleted or changed (DECISION_LOG 337).">↺ Start new NAV history</button>
                 </div>
@@ -4600,6 +4601,7 @@
                             Tradeable <span id="portfolio-tradeable" class="text-gray-300">$0</span>
                             · Reserve <span id="portfolio-reserve" class="text-emerald-400">$0</span>
                         </p>
+                        <p id="portfolio-expenses" class="text-[11px] text-gray-500 mt-0.5 hidden" title="🧾 Every fund operating expense booked in this mode (DECISION_LOG 486)">Expenses paid <span id="portfolio-expenses-usd" class="text-rose-300">$0</span></p>
                     </div>
                     <div class="text-center">
                         <p class="text-xs text-gray-500 mb-1">NAV / Share</p>
@@ -12099,7 +12101,7 @@
             if (invData.nav_unbooked_usd != null) lines.push(`⚠ Outside money $${invData.nav_unbooked_usd.toFixed(2)} does not match the investor ledger`);
             if (epoch) lines.push(`NAV history since ${epoch} (earlier history kept)`);
             if (!hist.length) { lines.push(`No NAV history since ${epoch} yet`); return lines; }
-            lines.push(`Current NAV: $${(invData.nav_per_share || 0).toFixed(6)}  |  High-Water Mark: $${(invData.nav_high_water || 0).toFixed(6)}  |  Portfolio: $${(invData.portfolio_value || 0).toFixed(2)}  |  Tradeable: ${(invData.tradeable != null ? '$' + invData.tradeable.toFixed(2) : '-')}  |  Reserve: ${(invData.reserve != null ? '$' + invData.reserve.toFixed(2) : '-')} (${invData.reserve_mode || '-'})`);
+            lines.push(`Current NAV: $${(invData.nav_per_share || 0).toFixed(6)}  |  High-Water Mark: $${(invData.nav_high_water || 0).toFixed(6)}  |  Portfolio: $${(invData.portfolio_value || 0).toFixed(2)}  |  Tradeable: ${(invData.tradeable != null ? '$' + invData.tradeable.toFixed(2) : '-')}  |  Reserve: ${(invData.reserve != null ? '$' + invData.reserve.toFixed(2) : '-')} (${invData.reserve_mode || '-'})  |  Fund expenses paid: $${(invData.fund_expenses_usd || 0).toFixed(2)}`);
             lines.push('');
             lines.push(`${'Date'.padEnd(12)} ${'NAV/Share'.padStart(12)} ${'Δ day'.padStart(10)} ${'Portfolio $'.padStart(14)}`);
             for (let i = 0; i < hist.length; i++) {
@@ -21796,6 +21798,12 @@
                     document.getElementById('portfolio-reserve').textContent = `$${(data.reserve || 0).toLocaleString(undefined, {maximumFractionDigits:0})}`;
                 }
 
+                const _exEl = document.getElementById('portfolio-expenses');   // 🧾 (486) fund expenses paid, only once there is one
+                if (_exEl) {
+                    _exEl.classList.toggle('hidden', !((data.fund_expenses_usd || 0) > 0));
+                    document.getElementById('portfolio-expenses-usd').textContent = `$${(data.fund_expenses_usd || 0).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+                }
+
                 // High-water mark + NAV/share history chart
                 const hwmEl = document.getElementById('portfolio-hwm');
                 const _nu = document.getElementById('nav-unbooked');
@@ -21891,7 +21899,7 @@
                 const data = await res.json();
                 const entries = data.entries || [];
                 if (!entries.length) { body.innerHTML = '<span class="text-gray-500">No cash-flow entries yet.</span>'; _ledgerHtmlCache[id] = body.innerHTML; return; }
-                const tc = t => t==='DEPOSIT'?'text-cyan-400':t==='WITHDRAW'?'text-orange-400':t==='CASHOUT'?'text-red-400':t==='ADJUST'?'text-amber-300':t==='FOUNDING'?'text-emerald-300':t==='TRANSFER_IN'?'text-teal-300':t==='TRANSFER_OUT'?'text-teal-500':'text-gray-500';
+                const tc = t => t==='DEPOSIT'?'text-cyan-400':t==='WITHDRAW'?'text-orange-400':t==='CASHOUT'?'text-red-400':t==='ADJUST'?'text-amber-300':t==='FOUNDING'?'text-emerald-300':t==='TRANSFER_IN'?'text-teal-300':t==='TRANSFER_OUT'?'text-teal-500':t==='EXPENSE'?'text-rose-300':'text-gray-500';
                 body.innerHTML = `<table class="w-full text-xs">
                     <thead><tr class="text-gray-500 border-b border-white/5">
                         <th class="text-left py-1 pr-3">Date</th><th class="text-left pr-3">Type</th>
@@ -21904,7 +21912,7 @@
                         <td class="text-right pr-3 text-gray-300">$${(e.amount||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
                         <td class="text-right pr-3 text-gray-500">${e.nav_at_time!=null?'$'+e.nav_at_time.toFixed(4):'—'}</td>
                         <td class="text-right pr-3 ${e.shares_delta>=0?'text-emerald-400':'text-red-400'}">${e.shares_delta!=null?(e.shares_delta>=0?'+':'')+e.shares_delta.toFixed(4):'—'}</td>
-                        <td class="text-left text-gray-500">${e.note||''}</td>
+                        <td class="text-left text-gray-500">${_escHtml(e.note||'')}</td>
                     </tr>`).join('')}</tbody></table>`;
                 _ledgerHtmlCache[id] = body.innerHTML;
             } catch (err) {
@@ -25064,6 +25072,27 @@
                 </div>
             </div>
         </div>
+        <!-- 🧾 (DECISION_LOG 486) fund operating expense, shared pro rata -->
+        <div id="fund-expense-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center">
+            <div class="glass rounded-xl p-6 w-full max-w-md">
+                <h3 class="text-lg font-semibold text-gray-200 mb-3">Pay Expense (from the fund)</h3>
+                <p class="text-xs text-gray-400 mb-3">An operating cost paid by the fund and shared by every investor by ownership: no shares are cancelled, NAV / share drops. Each investor's statement shows their share on its own "Fund expenses" line, never as trading result or a withdrawal.</p>
+                <p class="text-xs text-amber-300 mb-3">LIVE: send the money out of the <b>futures wallet</b> first, then book it here the <b>same day</b> (money paid from another wallet never lowers the fund's NAV — don't book it). PAPER: the paper account is reduced now.</p>
+                <label class="block text-xs text-gray-400 mb-1">Amount (USD)</label>
+                <input type="number" id="fx-amount" min="0" step="1" class="w-full bg-white/5 border border-white/10 rounded px-3 py-2 text-white mb-3">
+                <label class="block text-xs text-gray-400 mb-1">Category</label>
+                <select id="fx-category" class="w-full bg-white/5 border border-white/10 rounded px-3 py-2 text-white mb-3">
+                    <option value="servers">Servers / hosting</option><option value="data">Data</option><option value="exchange">Exchange fees</option><option value="other">Other</option>
+                </select>
+                <label class="block text-xs text-gray-400 mb-1">Note (optional)</label>
+                <input type="text" id="fx-note" maxlength="150" class="w-full bg-white/5 border border-white/10 rounded px-3 py-2 text-white mb-4">
+                <div id="fx-preview" class="hidden mb-4 text-xs"></div>
+                <div class="flex justify-end gap-2">
+                    <button onclick="document.getElementById('fund-expense-modal').classList.add('hidden')" class="px-3 py-1.5 bg-white/10 text-gray-300 text-sm rounded-lg">Cancel</button>
+                    <button id="fx-submit-btn" onclick="submitFundExpense()" class="px-3 py-1.5 bg-rose-800 hover:bg-rose-700 text-white text-sm rounded-lg">Preview expense</button>
+                </div>
+            </div>
+        </div>
         <div id="fund-withdraw-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center">
             <div class="glass rounded-xl p-6 w-full max-w-md">
                 <h3 class="text-lg font-semibold text-gray-200 mb-3">Withdraw Funds (pro-rata)</h3>
@@ -25163,6 +25192,50 @@
                 document.getElementById(prefix + '-preview').classList.add('hidden');
                 btn.textContent = `Preview ${verbLabel}`;
                 document.getElementById(modalId).classList.add('hidden');
+                if (typeof loadInvestors === 'function') loadInvestors();
+            } catch(e){ alert('Error: ' + e); }
+            finally { btn.disabled = false; }
+        }
+        // 🧾 (DECISION_LOG 486) Pay Expense — the same two-step preview → confirm as the fund modals; any amount / category change re-previews
+        let _fxKey = null;
+        function openFundExpenseModal(){
+            _fxKey = null;
+            for (const id of ['fx-amount', 'fx-note']) document.getElementById(id).value = '';   // a reopened modal starts empty
+            document.getElementById('fx-preview').classList.add('hidden');
+            document.getElementById('fx-submit-btn').textContent = 'Preview expense';
+            document.getElementById('fund-expense-modal').classList.remove('hidden');
+        }
+        async function submitFundExpense(){
+            const amt = safeFloat(document.getElementById('fx-amount').value);
+            if (!amt || amt <= 0) { alert('Enter a positive amount'); return; }
+            const body = { amount: amt, category: document.getElementById('fx-category').value, note: document.getElementById('fx-note').value || null };
+            const key = JSON.stringify({ a: body.amount, c: body.category });
+            const btn = document.getElementById('fx-submit-btn');
+            const box = document.getElementById('fx-preview');
+            try {
+                const _detail = j => (Array.isArray(j.detail) ? j.detail.map(d => d.msg).join('; ') : j.detail);   // a 422 is a list
+                if (_fxKey !== key) {
+                    btn.disabled = true;                                 // (486 review) a double-click can never turn a preview into a booking
+                    const r = await fetch(`${API_BASE}/api/investors/expense`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ...body, preview: true }) });
+                    const j = await r.json();
+                    if (!r.ok) { box.classList.add('hidden'); _fxKey = null; alert(_detail(j) || 'Expense failed'); return; }
+                    const rows = j.split.map(x => `<tr><td class="pr-3 py-0.5 text-gray-300">${_escHtml(x.investor)}</td><td class="pr-3 py-0.5 text-right text-gray-400">${Number(x.ownership_pct).toFixed(2)} %</td><td class="py-0.5 text-right text-white">$${Number(x.amount).toFixed(2)}</td></tr>`).join('');
+                    box.innerHTML = `<div class="rounded-lg border border-white/10 bg-white/5 p-3"><div class="text-gray-400 mb-2">${j.paper ? 'PAPER: the paper account is reduced now.' : 'LIVE: send the money out on the exchange first — this books it.'} NAV <span class="text-white font-mono">${Number(j.nav).toFixed(4)}</span> → <span class="text-white font-mono">${Number(j.nav_after).toFixed(4)}</span> · fund value $${Number(j.fund_value).toFixed(2)}</div><table class="w-full">${rows}</table><div class="text-gray-500 mt-2">Nothing has been booked yet — press Confirm to apply.</div></div>`;
+                    box.classList.remove('hidden');
+                    _fxKey = key;
+                    btn.textContent = `Confirm expense $${amt.toFixed(2)}`;
+                    return;
+                }
+                _fxKey = null;
+                btn.disabled = true;
+                const r = await fetch(`${API_BASE}/api/investors/expense`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+                const j = await r.json();
+                if (!r.ok) { btn.textContent = 'Preview expense'; box.classList.add('hidden'); alert(_detail(j) || 'Expense failed'); return; }
+                alert(`Expense booked: $${amt.toFixed(2)} (${body.category}) · NAV ${Number(j.nav).toFixed(4)} → ${Number(j.nav_after).toFixed(4)}` + String.fromCharCode(10)
+                      + j.split.map(x => `${x.investor}: $${x.amount}`).join(String.fromCharCode(10)));
+                box.classList.add('hidden');
+                btn.textContent = 'Preview expense';
+                document.getElementById('fund-expense-modal').classList.add('hidden');
                 if (typeof loadInvestors === 'function') loadInvestors();
             } catch(e){ alert('Error: ' + e); }
             finally { btn.disabled = false; }

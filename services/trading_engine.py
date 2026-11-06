@@ -20,7 +20,7 @@ from sqlalchemy.orm.attributes import set_committed_value   # ➕ (324 R5)
 from sqlalchemy import inspect as sa_inspect   # ➕ (324 round-3 #5)
 from sqlalchemy.orm.base import NO_VALUE   # ➕ (324 round-4)
 
-from models import Order, Transaction, BotState, PairData, BnbSwapLog, PhantomFlip, MonitorPeriod, BearMonitorPeriod, SurgeTrigger, FrenzyBreak, FrenzyFlag, WillyHoldBlock, FlatbaseEpisode, MatchedLongRefusal
+from models import Order, Transaction, BotState, PairData, BnbSwapLog, FundExpense, PhantomFlip, MonitorPeriod, BearMonitorPeriod, SurgeTrigger, FrenzyBreak, FrenzyFlag, WillyHoldBlock, FlatbaseEpisode, MatchedLongRefusal
 from database import AsyncSessionLocal, locked_commit, locked_execute_commit
 import config
 from config import save_trading_config, TradingConfig
@@ -5911,6 +5911,9 @@ class TradingEngine:
         )
         total_bnb_swaps = bnb_swap_result.scalar() or 0
         correct_balance = initial + total_closed_pnl + total_closed_fees - total_open_margin - total_bnb_swaps
+        # 🧾 (DECISION_LOG 486) fund operating expenses paid from the PAPER account (a live expense leaves the exchange for real)
+        correct_balance -= float((await db.execute(select(func.coalesce(func.sum(FundExpense.amount), 0)).where(
+            FundExpense.is_paper == True))).scalar() or 0)
         # ⛽ Sep-29: fees beyond the BNB reserve are paid from USDT (the BNB figure is clamped at 0 — see paper_bnb_split)
         _open_fees = (await db.execute(select(func.coalesce(func.sum(Order.entry_fee), 0)).where(
             and_(Order.status == "OPEN", Order.is_paper == True)))).scalar() or 0
@@ -6339,7 +6342,9 @@ class TradingEngine:
                 tc = config.trading_config
                 pnl = (await db.execute(select(func.coalesce(func.sum(Order.pnl), 0)).where(
                     and_(Order.status == "CLOSED", Order.is_paper == True)))).scalar() or 0
-                return float(tc.paper_balance) + float(tc.paper_bnb_initial_usd) + float(pnl)
+                _pexp = (await db.execute(select(func.coalesce(func.sum(FundExpense.amount), 0)).where(
+                    FundExpense.is_paper == True))).scalar() or 0             # 🧾 (486 review) fund expenses paid from paper
+                return float(tc.paper_balance) + float(tc.paper_bnb_initial_usd) + float(pnl) - float(_pexp)
             return self._equity_usd_last
         except Exception as _e:
             logger.debug(f"[BNB] equity read failed: {_e}")

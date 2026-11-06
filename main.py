@@ -27,7 +27,7 @@ from sqlalchemy import select, and_, or_, func, desc, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import init_db, get_db, AsyncSessionLocal, locked_commit, locked_execute_commit
-from models import Order, Transaction, BotState, PairData, ConfigChangeLog, BnbSwapLog, Investor, InvestorLedger, PhantomFlip, NavSnapshot, MonitorPeriod, BearMonitorPeriod, SurgeTrigger, OrderbookSnap, WillyHoldBlock, FlatbaseEpisode, MatchedLongRefusal, ExchangeDay, BackupRun, AltCorrUniverse
+from models import Order, Transaction, BotState, PairData, ConfigChangeLog, BnbSwapLog, Investor, InvestorLedger, FundExpense, PhantomFlip, NavSnapshot, MonitorPeriod, BearMonitorPeriod, SurgeTrigger, OrderbookSnap, WillyHoldBlock, FlatbaseEpisode, MatchedLongRefusal, ExchangeDay, BackupRun, AltCorrUniverse
 import config
 from config import (
     trading_config, save_trading_config, load_trading_config,
@@ -1264,6 +1264,14 @@ async def reset_trading(direction: str = "ALL", db: AsyncSession = Depends(get_d
         if is_paper:
             trading_engine.paper_balance = config.trading_config.paper_balance
             trading_engine.paper_bnb_balance_usd = config.trading_config.paper_bnb_initial_usd
+            try:   # 🧾 (486 review) paid fund expenses stay paid across a reset: the paper balance = config − Σ paper expenses
+                _pexp = float((await db.execute(select(func.coalesce(func.sum(FundExpense.amount), 0)).where(
+                    FundExpense.is_paper == True))).scalar() or 0)
+                if _pexp > 0:
+                    trading_engine.paper_balance = config.trading_config.paper_balance - _pexp
+                    logger.info(f"[RESET] paper balance {config.trading_config.paper_balance:,.2f} − fund expenses paid {_pexp:,.2f}")
+            except Exception as _e:
+                logger.warning(f"[RESET] fund-expense read failed ({str(_e)[:80]}) — the next balance sync applies it")
         else:
             # 🏦 Oct-1: a LIVE full reset starts a new era — drop the fixed baseline; the next balance read snapshots a fresh one
             _bs = (await db.execute(select(BotState).limit(1))).scalar_one_or_none()
@@ -2588,6 +2596,19 @@ async def get_pnl_calendar(tz_offset_min: int = 0, origin: str = None, db: Async
                     _day_end = datetime.combine(_flocal.date(), datetime.max.time())
                     _frac = max(0.0, min(1.0, (_day_end - _flocal).total_seconds() / 86400.0))
                     flows_by_day.setdefault(_flocal.date().isoformat(), []).append((_famt, _frac))
+            # 🧾 (486 review) a paper FUND EXPENSE lowers the paper equity without an order: a flow out (as a top-up is a flow in),
+            # else every earlier day's start-of-day equity is back-walked $X short and its day % reads inflated
+            for _ct, _famt in (await db.execute(select(FundExpense.created_at, FundExpense.amount).where(
+                    FundExpense.is_paper == True).order_by(FundExpense.created_at))).all():
+                if _ct is None or not _famt:
+                    continue
+                _famt = -abs(float(_famt))
+                flow_events.append((int(_ct.replace(tzinfo=timezone.utc).timestamp() * 1000), _famt))
+                _flocal = _ct + offset
+                flow_local_by_day.setdefault(_flocal.date().isoformat(), []).append((_flocal, _famt))
+                _day_end = datetime.combine(_flocal.date(), datetime.max.time())
+                _frac = max(0.0, min(1.0, (_day_end - _flocal).total_seconds() / 86400.0))
+                flows_by_day.setdefault(_flocal.date().isoformat(), []).append((_famt, _frac))
         except Exception as _pf_err:
             logger.warning(f"[PNL_CAL] paper top-up read failed ({str(_pf_err)[:60]}) - paper day percentages stay flow-blind")
             flows_by_day = {}; flow_events = []; flow_local_by_day = {}
@@ -13825,7 +13846,7 @@ async def _nav_unbooked_check(db: AsyncSession, reference_equity: float):
     except Exception as _e:
         logger.warning(f"[NAV_FLOW] unbooked check skipped: {str(_e)[:100]}")
         return None
-    booked = sum(float(a or 0) for t, a in led if t == "DEPOSIT") - sum(float(a or 0) for t, a in led if t in ("WITHDRAW", "CASHOUT"))
+    booked = sum(float(a or 0) for t, a in led if t == "DEPOSIT") - sum(float(a or 0) for t, a in led if t in ("WITHDRAW", "CASHOUT", "EXPENSE"))   # (486) a booked expense left the exchange
     gap = unbooked_flow(sum(a for _, a in rows), booked, reference_equity)
     if gap is not None and _NAV_UNBOOKED["usd"] != gap:
         logger.warning(f"[NAV_FLOW_UNBOOKED] outside money ${gap:+,.2f} does not match the ledger: if it is a real deposit or withdrawal, book it, or NAV reads it as profit / loss")
@@ -14076,6 +14097,17 @@ async def list_investors(db: AsyncSession = Depends(get_db)):
     portfolio_value = comps["total_equity"]
     nav = portfolio_value / total_shares if total_shares > _NAV_SHARES_EPS else 1.0   # (337 I3) same zero as _get_nav_per_share
 
+    # 🧾 (486) each investor's fund-expense slices (their current life, the ledger view's 2 s grace) + the fund's total in this mode
+    _exp_rows = (await db.execute(select(InvestorLedger.investor_id, InvestorLedger.amount, InvestorLedger.created_at)
+                                  .where(InvestorLedger.type == "EXPENSE"))).all()
+    _created = {inv.id: inv.created_at for inv in investors}
+    _inv_exp = {}
+    for _iid, _a, _t in _exp_rows:
+        _c = _created.get(_iid)
+        if _c is None or _t is None or _t >= _c - timedelta(seconds=2):
+            _inv_exp[_iid] = _inv_exp.get(_iid, 0.0) + float(_a or 0.0)
+    _fund_exp = float((await db.execute(select(func.coalesce(func.sum(FundExpense.amount), 0)).where(
+        FundExpense.is_paper == bool(trading_engine.is_paper_mode)))).scalar() or 0.0)
     rows = []
     for inv in investors:
         pct = (inv.shares / total_shares * 100) if total_shares > 0 else 0.0
@@ -14088,6 +14120,7 @@ async def list_investors(db: AsyncSession = Depends(get_db)):
             "value_usd": round(value, 2),
             "total_deposited": round(inv.total_deposited, 2),
             "total_withdrawn": round(inv.total_withdrawn, 2),
+            "total_expenses": round(_inv_exp.get(inv.id, 0.0), 2),               # 🧾 (486) their fund-expense slices (P&L is already net of them)
             "created_at": inv.created_at.isoformat() if inv.created_at else None,
             "eth_wallet": inv.eth_wallet,
         })
@@ -14127,6 +14160,7 @@ async def list_investors(db: AsyncSession = Depends(get_db)):
         "reserve": _reserve,
         "tradeable": _tradeable,
         "reserve_mode": _rmode,
+        "fund_expenses_usd": round(_fund_exp, 2),                               # 🧾 (486) every fund expense booked in this mode
     }
 
 
@@ -14484,6 +14518,92 @@ async def fund_withdraw(body: FundWithdraw, db: AsyncSession = Depends(get_db)):
     await db.flush()
     binance_service.invalidate_flow_caches()  # Sep-7 review: a fresh flow must not sit behind the 10-min transfer cache distorting return metrics
     return {"ok": True, "nav": round(nav, 6), "reconstructed": _reconstructed, "split": split}
+
+
+EXPENSE_CATEGORIES = ("servers", "data", "exchange", "other")
+
+
+class FundExpenseIn(BaseModel):
+    amount: float
+    category: str = "other"
+    note: Optional[str] = None
+    preview: bool = False
+
+
+def expense_split(amount: float, holdings: list):
+    """(DECISION_LOG 486) holdings [(key, shares)] → [(key, slice)] pro rata by shares, rounded to cents, the remainder on the last holder
+    (never negative), slices summing to amount (a non-last slice never exceeds what is left — 486 review: $0.05 over 7 holders). PURE."""
+    tot = sum(sh for _, sh in holdings)
+    out, alloc = [], 0.0
+    for i, (k, sh) in enumerate(holdings):
+        left = max(0.0, round(amount - alloc, 2))
+        amt = left if i == len(holdings) - 1 else min(round(amount * sh / tot, 2), left)
+        alloc += amt
+        out.append((k, amt))
+    return out
+
+
+@app.post("/api/investors/expense")
+@_investor_serialized
+async def fund_expense(body: FundExpenseIn, db: AsyncSession = Depends(get_db)):
+    """🧾 (DECISION_LOG 486, operator 11-06: pay servers / costs from the fund, shown honestly) a fund operating expense shared PRO RATA:
+    no share is cancelled — the portfolio value drops, so NAV / share drops and every holder pays by ownership. One FundExpense row + one
+    InvestorLedger EXPENSE row per investor (their slice, shares_delta 0, NAV before). PAPER: the paper account is reduced (the engine's
+    balance subtracts paper expenses). LIVE: send the money out on the exchange first; this books it (the unbooked check counts it).
+    Statements show it on its own "Fund expenses" line — never in the trading result, never as a withdrawal. preview → the split, no write."""
+    import math as _math
+    amt = float(body.amount or 0)
+    if not _math.isfinite(amt) or amt <= 0:                 # (486 review) NaN / inf pass a plain <= 0 test
+        raise HTTPException(400, "Amount must be a positive number")
+    amt = round(amt, 2)
+    cat = (body.category or "other").strip().lower()
+    if cat not in EXPENSE_CATEGORIES:
+        raise HTTPException(400, f"Category must be one of: {', '.join(EXPENSE_CATEGORIES)}")
+    invs = (await db.execute(select(Investor).where(Investor.shares > 0).order_by(Investor.id))).scalars().all()
+    if not invs:
+        raise HTTPException(400, "No investors with shares")
+    paper = bool(trading_engine.is_paper_mode)
+    total_shares = sum(i.shares for i in invs)
+    equity = await _get_portfolio_value(db)
+    # NAV before the expense: paper = now (the expense is applied by this call) · live = the money already left → add it back
+    nav = (equity / total_shares) if paper else ((equity + amt) / total_shares)
+    if nav <= 0:
+        raise HTTPException(503, "NAV unavailable — retry shortly")
+    fund_value = total_shares * nav
+    if amt > fund_value - 0.01:
+        raise HTTPException(400, f"Amount exceeds the fund value (${fund_value:,.2f})")
+    if paper:
+        _free = float(trading_engine.paper_balance or 0.0)
+        if amt > _free + 0.01:
+            raise HTTPException(400, f"Amount exceeds the free paper balance (${_free:,.2f}) — close positions or pay less")
+    split = expense_split(amt, [(inv, inv.shares) for inv in invs])
+    out = [{"investor": inv.name, "amount": a, "ownership_pct": round(inv.shares / total_shares * 100, 2)} for inv, a in split]
+    nav_after = (fund_value - amt) / total_shares
+    if body.preview:
+        return {"ok": True, "preview": True, "paper": paper, "nav": round(nav, 6), "nav_after": round(nav_after, 6),
+                "fund_value": round(fund_value, 2), "split": out}
+    note = (body.note or "").strip()[:150] or None
+    fx = FundExpense(amount=amt, category=cat, note=note, is_paper=paper, nav_before=nav)
+    db.add(fx)
+    await db.flush()                                        # fx.id → each ledger slice links to its expense (reconciliation / a later undo)
+    for inv, a in split:
+        if a > 0:
+            _log_investor_ledger(db, inv.id, "EXPENSE", a, nav, 0.0, note=f"Fund expense #{fx.id} · {cat}" + (f" · {note}" if note else ""))
+    await db.flush()
+    if paper:
+        try:
+            await trading_engine._recalculate_paper_balance(db)   # the paper account drops now
+            _paper_book_invalidate()                              # the dashboard reads the new balance at once
+        except Exception as _e:
+            logger.warning(f"[FUND_EXPENSE] paper balance refresh failed (next sync applies it): {str(_e)[:100]}")
+    binance_service.invalidate_flow_caches()
+    try:   # (486 review) today's NAV row now, so a statement never books the add-back on a day whose NAV did not drop yet
+        await _nav_snapshot_once(db)
+    except Exception as _e:
+        logger.warning(f"[FUND_EXPENSE] NAV snapshot refresh failed (the hourly loop writes it): {str(_e)[:100]}")
+    logger.info(f"[FUND_EXPENSE] ${amt:,.2f} {cat} ({'paper' if paper else 'live'}) at NAV {nav:.6f} → {nav_after:.6f}: "
+                + ", ".join(f"{x['investor']} ${x['amount']:.2f}" for x in out))
+    return {"ok": True, "paper": paper, "nav": round(nav, 6), "nav_after": round(nav_after, 6), "split": out}
 
 
 class FundDeposit(BaseModel):

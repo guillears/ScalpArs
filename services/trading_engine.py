@@ -21,7 +21,7 @@ from sqlalchemy import inspect as sa_inspect   # ➕ (324 round-3 #5)
 from sqlalchemy.orm.base import NO_VALUE   # ➕ (324 round-4)
 
 from models import Order, Transaction, BotState, PairData, BnbSwapLog, FundExpense, PhantomFlip, MonitorPeriod, BearMonitorPeriod, SurgeTrigger, FrenzyBreak, FrenzyFlag, WillyHoldBlock, FlatbaseEpisode, MatchedLongRefusal
-from database import AsyncSessionLocal, locked_commit, locked_execute_commit
+from database import AsyncSessionLocal, locked_commit, locked_execute_commit, locked_write_commit
 import config
 from config import save_trading_config, TradingConfig
 from services.binance_service import binance_service, is_leverage_blocked
@@ -10329,11 +10329,19 @@ class TradingEngine:
             if _frenzy_status.get('persisted') == _want:
                 return
             from sqlalchemy import delete as _sa_delete
+            _now = datetime.utcnow()
+            _rows = [FrenzyFlag(pair=k, spike_at=(datetime.utcfromtimestamp(ts / 1000) if ts else None), updated_at=_now)
+                     for k, ts in _want.items()]          # built BEFORE the lock — the hold is only the delete + insert + commit
+
+            async def _rewrite(_s):
+                await _s.execute(_sa_delete(FrenzyFlag))
+                _s.add_all(_rows)
+
+            # (DECISION_LOG 492) lock FIRST: the old execute(DELETE) → locked_commit order took SQLite's file lock at the
+            # DELETE, then queued for the fair lock while holding it — the 5.0 s [TXN_HOLD] "first write: DELETE FROM
+            # frenzy_flags" that starved the MONITOR stamp commit ("database is locked", 11-06 11:13 / 15:31 / 18:45 UTC)
             async with AsyncSessionLocal() as _ls:
-                await _ls.execute(_sa_delete(FrenzyFlag))
-                for k, ts in _want.items():
-                    _ls.add(FrenzyFlag(pair=k, spike_at=(datetime.utcfromtimestamp(ts / 1000) if ts else None), updated_at=datetime.utcnow()))
-                await locked_commit(_ls)
+                await locked_write_commit(_ls, _rewrite)
             _frenzy_status['persisted'] = _want
         except Exception as e:
             logger.warning(f"[FRENZY] flag list not persisted ({str(e)[:100]})")
@@ -11459,13 +11467,16 @@ class TradingEngine:
         try:
             todo = [(k, dict(v)) for k, v in ev.items() if isinstance(k[0], int) and int(v.get('flushed') or 0) >= 1 and int(v['repeats']) > int(v['flushed'])]
             if todo:
-                async with AsyncSessionLocal() as _ws:
+                async def _wh_write(_s):
                     for k, v in todo:
-                        await _ws.execute(update(WillyHoldBlock).where(and_(
+                        await _s.execute(update(WillyHoldBlock).where(and_(
                             WillyHoldBlock.willy_order_id == k[0], WillyHoldBlock.pair == k[1], WillyHoldBlock.direction == k[2],
                             WillyHoldBlock.sleeve == k[3], WillyHoldBlock.is_paper == self.is_paper_mode)).values(
                             repeats=WillyHoldBlock.repeats + (int(v['repeats']) - int(v['flushed'])), last_at=v['last_at']))   # INCREMENT (a restart mid-hold keeps the stored count)
-                    await asyncio.wait_for(locked_commit(_ws), 10.0)
+
+                async with AsyncSessionLocal() as _ws:
+                    # (DECISION_LOG 492) lock FIRST: the UPDATEs used to run before the queue, holding SQLite's file lock up to 10 s
+                    await asyncio.wait_for(locked_write_commit(_ws, _wh_write), 10.0)
                 for k, v in todo:
                     if k in ev:
                         ev[k]['flushed'] = int(v['repeats'])
@@ -17741,7 +17752,8 @@ class TradingEngine:
         # contention — acceptable given the protection it provides.
         for attempt in range(1, 6):
             try:
-                await db.execute(
+                # (DECISION_LOG 492) lock FIRST — execute + commit in one fair-lock hold (was execute → queue → commit)
+                await locked_execute_commit(db,
                     update(Order)
                     .where(and_(Order.id == order_id, Order.status == "OPEN"))
                     .values(
@@ -17749,7 +17761,6 @@ class TradingEngine:
                         close_initiated_at=datetime.utcnow(),
                     )
                 )
-                await locked_commit(db)
                 return True
             except Exception as _e:
                 try:
@@ -18802,9 +18813,14 @@ class TradingEngine:
 
             pd = None
             try:
-                pair_data_result = await db.execute(
-                    select(PairData).where(PairData.pair == order.pair)
-                )
+                # (DECISION_LOG 492) no autoflush: this read used to flush the ~40 attributes set above, taking SQLite's file
+                # lock HERE and holding it through the Binance get_ohlcv below until the locked_commit — the 5 s [TXN_HOLD]
+                # "first write: UPDATE orders SET first_cross_ema13_at / phantom_be_aggr_triggered_at" class. Everything now
+                # flushes inside locked_commit (lock-first). PairData is a different table — the read result is unchanged.
+                with db.no_autoflush:
+                    pair_data_result = await db.execute(
+                        select(PairData).where(PairData.pair == order.pair)
+                    )
                 pd = pair_data_result.scalar_one_or_none()
                 if pd:
                     order.signal_active_at_close = is_signal_direction_active(

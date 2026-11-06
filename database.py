@@ -34,6 +34,31 @@ async def locked_execute_commit(session, statement):
         await session.commit()
         return _res   # ⏪ Oct-6: the result (rowcount) for callers that check a write landed; existing callers ignore it
 
+
+async def locked_write_commit(session, work):
+    """Lock-first for a MULTI-statement write (DECISION_LOG 492): take the fair lock, THEN run
+    `await work(session)` (every execute / add) and commit — the same no-inversion rule as
+    locked_execute_commit, for writes that are more than one statement (e.g. delete-all + re-insert).
+    Keep `work` DB-only and short (no network, no sleeps): it runs while every other writer waits.
+    On an exception the session is rolled back INSIDE the lock (the file lock is released before the
+    next writer starts) and the exception is re-raised. NEVER call while holding db_write_lock."""
+    import time as _t
+    _w0 = _t.monotonic()
+    async with db_write_lock:
+        _w = _t.monotonic() - _w0
+        if _w > 1.0:
+            import logging
+            logging.getLogger(__name__).warning(f"[DB_QUEUE_SLOW] write+commit waited {_w:.2f}s in the fair write queue")
+        try:
+            await work(session)
+            await session.commit()
+        except BaseException:
+            try:
+                await session.rollback()
+            except Exception:
+                pass
+            raise
+
 async def locked_commit(session) -> None:
     """Commit under the process-wide fair write lock. Use for EVERY commit on the SQLite DB."""
     import time as _t

@@ -26,6 +26,7 @@
   "mcap_refresh_minutes": 30.0,
   "entry_zone_stamps_enabled": true,
   "app_trade_record_enabled": true,
+  "mkt_up4h_enabled": true,
   "backup_enabled": true,
   "backup_s3_bucket": "",
   "exchange_record_enabled": true,

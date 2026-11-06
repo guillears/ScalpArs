@@ -250,11 +250,11 @@ def test_confound_note_scores_mkt_hot_once_when_market_on(tmp_path, monkeypatch)
     df = _rows([("FRENZY_WILLY", True, 1.0, "CLOSED"), ("FRENZY_WILLY_HT", True, 2.0, "CLOSED"), ("FRENZY_LITE", True, -3.0, "CLOSED")])
     df["entry_adx"], df["entry_ema_gap_8_13"] = 30.0, 2.0
     calls = []
-    monkeypatch.setattr(W, "market_hot", lambda o, now: calls.append(len(o)) or np.array(["zone"] * len(o), dtype=object))
+    monkeypatch.setattr(W, "market_hot", lambda o, now, *a: calls.append(len(o)) or np.array(["zone"] * len(o), dtype=object))
     out = "\n".join(W.run(now_ms=0, paths=_write(tmp_path, df), state_path=None, since_ms=0, market=True))
     assert calls == [2]                                                               # one read for WILLY + HT, none for LITE
     assert "FRENZY_WILLY +1.00 % → MKT_HOT" in out and "FRENZY_WILLY_HT +2.00 % → MKT_HOT" in out
-    monkeypatch.setattr(W, "market_hot", lambda o, now: None)                          # incomplete read → not scored, never 'outside'
+    monkeypatch.setattr(W, "market_hot", lambda o, now, *a: None)                          # incomplete read → not scored, never 'outside'
     out = "\n".join(W.run(now_ms=0, paths=_write(tmp_path, df), state_path=None, since_ms=0, market=True))
     assert "| FRENZY_WILLY | 0 | 1 · 100% · +1.00 % · $+10 | MKT_HOT |" in out
 

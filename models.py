@@ -636,6 +636,12 @@ class Order(Base):
     # the median alt beta to BTC over the same bars (> 1.372). Computed once per 5m close; NULL on any error / missing data / a value > 2 bars old.
     entry_alt_corr24 = Column(Float, nullable=True)
     entry_alt_beta24 = Column(Float, nullable=True)
+    # 🌡 (DECISION_LOG 489) MARKET-HOT, % of the ROLLING top-100 up over 4 h (V2) — OBSERVE-ONLY, every fill (all sleeves + MANUAL), paper = live
+    # (services/mkt_up4h.py): entry_mkt_up4h_pct = the share of the day's top-100 USDT perpetuals (previous UTC day's quote volume; BTC /
+    # ETH / stables out) whose last CLOSED 1h close is above the close 4 h earlier (ML_MKT_HOT: hot = > 0.50) · entry_mkt_up4h_n = members
+    # with both closes (NULL share with an n = < 30 members). Replaced the frozen 108-coin list 2026-11-06. NULL on fills before the deploy.
+    entry_mkt_up4h_pct = Column(Float, nullable=True)
+    entry_mkt_up4h_n = Column(Integer, nullable=True)
 
     # Premium Multiplier (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3 design).
     # cell_multiplier = the INVESTMENT multiplier ACTUALLY applied to this trade after hard-cap clamping.
@@ -1533,6 +1539,18 @@ class AltCorrUniverse(Base):
     day_ms = Column(BigInteger, primary_key=True, autoincrement=False)
     pairs_json = Column(Text, nullable=False)                      # JSON list, rank order
     listed_json = Column(Text, nullable=False, default="{}")       # JSON {pair: onboard ms}
+    built_at = Column(DateTime, nullable=False, default=func.now())
+
+
+class MktUp4hUniverse(Base):
+    """🌡 (DECISION_LOG 489) the Market-hot (top-100 up over 4 h) list (rolling top-100, V2), FROZEN per UTC day: the first build of a day is stored and
+    every later read that day — a restart, the 🩹 stamp repair — uses it. day_ms = the UTC day the list applies to (ranked on the day before).
+    Kept 30 days (main.mkt_up4h_loop prunes)."""
+    __tablename__ = "mkt_up4h_universes"
+
+    day_ms = Column(BigInteger, primary_key=True, autoincrement=False)
+    members_json = Column(Text, nullable=False)                    # JSON list, rank order
+    how = Column(String(20), nullable=True)                        # ticker-24h / 1d-exact
     built_at = Column(DateTime, nullable=False, default=func.now())
 
 

@@ -150,6 +150,46 @@ def alt_corr_stamp(now_ms=None) -> dict:
     except Exception:
         c, b = None, None
     return {'entry_alt_corr24': c, 'entry_alt_beta24': b}
+
+
+from services.mkt_up4h import MktUp4hTracker   # 🌡 (DECISION_LOG 489) Market-hot (top-100 up over 4 h), rolling top-100 (observe-only)
+
+
+async def _mkt_universe_load(day_ms):
+    """🌡 (DECISION_LOG 489) the stored (frozen) Market-hot top-100 list of UTC day `day_ms` → members list or None."""
+    from models import MktUp4hUniverse
+    async with AsyncSessionLocal() as db:
+        r = (await db.execute(select(MktUp4hUniverse).where(MktUp4hUniverse.day_ms == int(day_ms)))).scalar_one_or_none()
+    return list(json.loads(r.members_json)) if r is not None else None
+
+
+async def _mkt_universe_save(day_ms, members, how):
+    """🌡 (489) store a day's first list (INSERT OR IGNORE: an earlier row for the day wins) → the stored list."""
+    from sqlalchemy import insert
+    from models import MktUp4hUniverse
+    async with AsyncSessionLocal() as db:
+        await locked_execute_commit(db, insert(MktUp4hUniverse).prefix_with("OR IGNORE").values(
+            day_ms=int(day_ms), members_json=json.dumps(list(members)), how=str(how or "")[:20], built_at=datetime.utcnow()))
+    return await _mkt_universe_load(day_ms)
+
+
+# 🌡 (DECISION_LOG 489) ONE process-wide tracker: refreshed once per hour by main.mkt_up4h_loop (own task, the regime public client);
+# read at every Order build by mkt_up4h_stamp() — a pure memory read, mode-agnostic (paper = live), NULL on any error / other hour.
+mkt_up4h_tracker = MktUp4hTracker(fetch_klines=binance_service.fetch_regime_klines,
+                                        fetch_universe=binance_service.fetch_up4h_universe_inputs,
+                                        is_limited=binance_service.regime_limited,
+                                        load_universe=_mkt_universe_load, save_universe=_mkt_universe_save,
+                                        used_weight=binance_service.ip_used_weight_1m,   # 🔒 IP weight > 600 → no read starts
+                                        enabled=lambda: bool(getattr(config.trading_config, 'mkt_up4h_enabled', True)))   # 🔒 kill switch
+
+
+def mkt_up4h_stamp(now_ms=None) -> dict:
+    """🌡 (DECISION_LOG 489) {'entry_mkt_up4h_pct', 'entry_mkt_up4h_n'} for a fill now (None / None on any failure). Never raises."""
+    try:
+        b, n = mkt_up4h_tracker.stamp(now_ms)
+    except Exception:
+        b, n = None, None
+    return {'entry_mkt_up4h_pct': b, 'entry_mkt_up4h_n': n}
 from services.websocket_tracker import websocket_tracker
 
 
@@ -4296,6 +4336,7 @@ class TradingEngine:
         'entry_gap_expand_marginal', 'entry_gap_5_20_signed_pct', 'entry_gap_5_20_prev_signed_pct', 'entry_gap_5_8_signed_pct',
         'entry_quality_score', 'entry_funding_rate', 'entry_pair_1d_ndi', 'entry_pair_age_days', 'entry_pair_alpha', 'entry_pair_volume_24h_usd',
         'entry_pair_1h_ema20_200_gap_pct', 'entry_mcap_usd', 'entry_cmc_rank', 'entry_vol_mcap_ratio', 'entry_alt_corr24', 'entry_alt_beta24',
+        'entry_mkt_up4h_pct', 'entry_mkt_up4h_n',   # 🌡 (DECISION_LOG 489) Market-hot (top-100 up over 4 h), rolling top-100
         # market (market_entry_stamps / monitor_entry_stamps / zone)
         'entry_btc_adx', 'entry_btc_adx_prev', 'entry_btc_rsi', 'entry_btc_rsi_prev', 'entry_btc_rsi_prev6', 'entry_btc_atr_pct',
         'entry_btc_rsi_1h', 'entry_btc_rsi_1h_prev', 'entry_btc_ema20_slope', 'entry_btc_1h_slope', 'entry_btc_trend_gap_pct',
@@ -4316,12 +4357,15 @@ class TradingEngine:
     STAMP_LEGACY = ('entry_btc_regime_started_at',)   # no code path writes it (0 % on every sleeve) — kept for old CSVs, never required
     STAMP_BEST_EFFORT = ('entry_mcap_usd', 'entry_cmc_rank', 'entry_vol_mcap_ratio', 'entry_pair_1d_ndi', 'entry_funding_rate',
                          'entry_pair_1h_ema20_200_gap_pct',   # external source can be missing for a small / new coin: alert bar 60 %, not 90 %
-                         'entry_btc_4h_ema50_200_gap_pct')    # its global refreshes only while the fade laggard gate is on (spike_fade_lag_ndi_min > 0)
+                         'entry_btc_4h_ema50_200_gap_pct',    # its global refreshes only while the fade laggard gate is on (spike_fade_lag_ndi_min > 0)
+                         'entry_mkt_up4h_pct', 'entry_mkt_up4h_n')   # 🌡 (489 safety review) observe-only: NULL before HH:01:30 / when off / on a skipped hour (repaired)
     # (column, entry_strategy prefixes where NULL is BY DESIGN) — the coverage alert skips these pairs
     STAMP_NULL_BY_DESIGN = {}
     # 🅰️ (DECISION_LOG 464 review) a universal column added later is REQUIRED only on fills opened from its deploy on (naive UTC) — older
     # fills carry NULL by construction and must not raise stamp-gap alarms (dashboard banner, scout_stamp_coverage)
-    STAMP_SINCE = {'entry_pair_alpha': datetime(2026, 11, 4, 23, 0)}
+    STAMP_SINCE = {'entry_pair_alpha': datetime(2026, 11, 4, 23, 0),
+                   # 🌡 (DECISION_LOG 489) set to the deploy (+ the first hourly refresh) when committed — earlier fills are NULL by construction
+                   'entry_mkt_up4h_pct': datetime(2026, 11, 6, 19, 0), 'entry_mkt_up4h_n': datetime(2026, 11, 6, 19, 0)}   # deploy ≈ 17:40 UTC → first full hour after
 
     @classmethod
     def stamp_class(cls, col) -> str:
@@ -14972,6 +15016,7 @@ class TradingEngine:
             logger.info(f"[FRENZY_LITE_C] {pair}: vol {entry_frenzy_vol_mult}× · BTC 1h slope {entry_btc_1h_slope} → "
                         f"{'ZONE' if _lc_zone else 'outside'} · TP {('+' + str(_lc_tp_used) + '% (stored)') if _lc_tp_used is not None else 'config (LITE C off)'}")
         _ac_stamp = alt_corr_stamp()   # 📈 (DECISION_LOG 383) observe-only regime stamp — memory read, NULL on any failure, never blocks
+        _mb_stamp = mkt_up4h_stamp()   # 🌡 (DECISION_LOG 489) Market-hot (top-100 up over 4 h) (rolling top-100) — memory read, NULL on any failure, never blocks
         order = Order(
             binance_order_id=binance_order_id,
             backstop_algo_id=_bk_algo_id,
@@ -15098,6 +15143,7 @@ class TradingEngine:
             frenzy_willy_tp_target_pct=_wv2_tp,   # 🎲² (356) the WILLY TP decided at entry (NULL = pre-V2 row → config TP)
             entry_willy_ht_size_frac=_ht_frac_stamp,   # 📈 (365) HT only: the size fraction it opened at (the HT re-size ladder)
             entry_alt_corr24=_ac_stamp.get('entry_alt_corr24'), entry_alt_beta24=_ac_stamp.get('entry_alt_beta24'),   # 📈 (DECISION_LOG 383) OBS-R1 / R1b
+            entry_mkt_up4h_pct=_mb_stamp.get('entry_mkt_up4h_pct'), entry_mkt_up4h_n=_mb_stamp.get('entry_mkt_up4h_n'),   # 🌡 (489)
             entry_book_drift_pct=_eb_m.get('entry_book_drift_pct'), entry_book_spread_pct=_eb_m.get('entry_book_spread_pct'),   # 📏 (295)
             entry_fill_vs_book_pct=_eb_m.get('entry_fill_vs_book_pct'), entry_order_lag_s=_eb_m.get('entry_order_lag_s'),
             entry_fee=entry_fee,
@@ -17503,6 +17549,7 @@ class TradingEngine:
             st['entry_pair_alpha'] = None
         st['entry_vol_mcap_ratio'] = vol_mcap_ratio(st.get('entry_pair_volume_24h_usd'), st.get('entry_mcap_usd'))   # 🔄 (251) never raises
         st.update(alt_corr_stamp())   # 📈 (DECISION_LOG 383) the alt-correlation regime stamp (memory read; NULL on any failure)
+        st.update(mkt_up4h_stamp())   # 🌡 (DECISION_LOG 489) Market-hot (top-100 up over 4 h), rolling top-100 (memory read; NULL on any failure)
         st['entry_funding_rate'] = round(_fr, 6) if isinstance(_fr, (int, float)) else None
         # entry_slippage_pct stays NULL: a manual paper fill IS the clicked price (nothing to measure), and a 0.0 would enter
         # the account-level slippage averages (deep review)

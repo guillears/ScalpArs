@@ -160,7 +160,7 @@ CTOR_ALWAYS = {
     'entry_pattern_w1_match', 'entry_pattern_w2_match', 'entry_pattern_w3_match', 'entry_pattern_w4_match', 'entry_pattern_w5_match',
     'entry_pattern_w6_match', 'entry_pattern_w_any_match', 'entry_slippage_pct', 'entry_desired_notional', 'entry_liquidity_cap_notional',
     'entry_bracket_max_leverage', 'entry_bracket_cap_notional', 'entry_mcap_usd', 'entry_cmc_rank', 'entry_vol_mcap_ratio',
-    'entry_alt_corr24', 'entry_alt_beta24', 'entry_btc_off30d_high_pct', 'entry_pair_1h_ema20_200_gap_pct', 'entry_pair_volume_24h_usd',
+    'entry_alt_corr24', 'entry_alt_beta24', 'entry_mkt_up4h_pct', 'entry_mkt_up4h_n', 'entry_btc_off30d_high_pct', 'entry_pair_1h_ema20_200_gap_pct', 'entry_pair_volume_24h_usd',
     'entry_atr_pct', 'entry_btc_regime', 'entry_btc_rsi_closed', 'entry_btc_r72_pct', 'entry_btc_eff72',   # the never-backfilled five
 }
 BACKFILL_EXPLICIT = {'entry_funding_rate', 'entry_pair_1d_ndi', 'entry_quality_score', 'entry_pair_age_days', 'entry_pair_alpha', 'entry_btc_price',

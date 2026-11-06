@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """👁 Scout — ML_LEAD_A multiplier watch (registered 2026-11-06, DECISION_LOG 481; OBSERVE ONLY — never changes config or size, no bot API; public 1h
-klines only for the ML_MKT_HOT breadth of fills the best-case zones.csv does not score, through the budgeted cache of scripts/scout_ml_mkt_hot_watch.py).
+klines only for the ML_MKT_HOT Market-hot (% of the rolling top-100 up over 4 h) — 🌡 V2, DECISION_LOG 489, replaced the frozen 108 on 2026-11-06 — of fills with no engine stamp past the 11-06 study cache, through the budgeted cache of scripts/scout_ml_mkt_hot_watch.py).
 
 QUESTION   Inside the momentum longs ML_MKT_HOT keeps (market NOT hot), is the 2D winner cell "coin EMA20 slope > 0.1481 ∧ coin RSI prev ≤ 60.9" a
            real winner cell worth a SIZE MULTIPLIER (caps for losers, multipliers for winners — never a block on the rest)? Lead from the 11-04 not-hot
@@ -17,7 +17,7 @@ VERDICT    (operator 11-06: "i dont think is correct not to consider all the tra
            P(cell avg > rest avg) ≥ 0.95 (4,000, seed 7) ∧ no day / pair ≥ 50 % of the cell's gain ∧ the NEWEST trades do not contradict (B25 + FORWARD
            cell ≥ 5 fills → its avg must be above the B25 + FORWARD rest) · else KEEP OBSERVING. Built-on caveat: the cell was the best of a 3,280-cell
            2D search that did NOT beat luck (p 0.57) and the bootstrap is not search-corrected — a live multiplier carries the 30–50 % haircut, first
-           step 1.5×, a pre-committed tight revert, and needs the engine to score market breadth (the cell on the HOT side loses).
+           step 1.5×, a pre-committed tight revert, and needs the engine Market-hot stamp (built, DL 489) (the cell on the HOT side loses).
 Usage: venv/bin/python -I scripts/scout_ml_lead_a_watch.py
 """
 import os
@@ -30,8 +30,8 @@ import pandas as pd
 _D = os.path.dirname(os.path.abspath(__file__))
 _D in sys.path or sys.path.insert(0, _D)
 import scout_gatekit as _GK                # noqa: E402  (operator-closed fills out · the DL commit time)
-import scout_ml_fixed_tp_watch as FT       # noqa: E402  (export loader + breadth scoring of unscored fills, reused unchanged)
-import study_ml_fixed_tp_recorded as RT    # noqa: E402  (master cohort keys, ML_MKT_HOT from zones.csv)
+import scout_ml_fixed_tp_watch as FT       # noqa: E402  (export loader + Market-hot scoring of unscored fills, reused unchanged)
+import study_ml_fixed_tp_recorded as RT    # noqa: E402  (master cohort keys, ML_MKT_HOT on the V2 stamp / rebuild — DL 489)
 import sweep_separators as SW              # noqa: E402  (probe flags)
 
 DL = 481
@@ -74,7 +74,7 @@ def cohort(paths=None, since=None, master=None):
         E["block"] = "B25"
         if since is not None:
             E.loc[pd.to_datetime(E.opened_at, format="mixed") >= since, "block"] = "FORWARD"
-    cols = ["block", "opened_at", "pair", "pct", "entry_ema20_slope", "entry_rsi_prev"]
+    cols = ["block", "opened_at", "pair", "pct", "entry_ema20_slope", "entry_rsi_prev", "entry_mkt_up4h_pct"]   # 🌡 (489) the V2 stamp
     F = pd.concat([M.reindex(columns=cols), E.reindex(columns=cols)], ignore_index=True)
     F = F[F.pct.notna()].reset_index(drop=True)
     F["day"] = pd.to_datetime(F.opened_at, format="mixed").dt.strftime("%Y-%m-%d")
@@ -155,7 +155,7 @@ def run(now_ms=None, paths=None, since_ms=None, breadth_fn=None, master=None):
     hot = F.mkt_hot
     unscored = hot.isna() | F.cell.isna()
     if not complete:
-        L += [f"⚠ breadth fetch incomplete this run: {int(hot.isna().sum())} fills unscored (never counted on either side).", ""]
+        L += [f"⚠ Market-hot read incomplete this run: {int(hot.isna().sum())} fills unscored (never counted on either side).", ""]
     nh = F[~unscored & hot.map(lambda v: not _truthy(v) if pd.notna(v) else False).astype(bool)]
     L += ["| Block · group | N | days | WR | avg % | Σ % |", "|---|---|---|---|---|---|"]
     for b in BLOCKS + ("ALL",):
@@ -165,13 +165,13 @@ def run(now_ms=None, paths=None, since_ms=None, breadth_fn=None, master=None):
         L += [_row(f"**{b}** · cell (not hot)", g[g.cell == True]), _row(f"{b} · rest of not-hot", g[g.cell == False])]   # noqa: E712
     hh = F[~unscored & hot.map(lambda v: _truthy(v) if pd.notna(v) else False).astype(bool)]
     L += [_row("_hot side (ML_MKT_HOT zone), cell — display only_", hh[hh.cell == True]),   # noqa: E712
-          f"| _unscored (breadth or a cell leg missing) — never counted_ | {int(unscored.sum())} | | | | |", ""]
+          f"| _unscored (Market-hot or a cell leg missing) — never counted_ | {int(unscored.sum())} | | | | |", ""]
     st, det = verdict(nh)
     L += [f"- **{st}** — {det}", "",
           f"VERDICT rule (DL {DL}, history + B25 + forward pooled, re-read every run): RETIRE if the pooled cell avg ≤ the rest · {CANDIDATE} iff the "
           f"pooled cell meets Pattern W (N ≥ {W_N}, WR ≥ {W_WR:.0%}, avg ≥ +{W_AVG:.2f} %, Σ > 0) ∧ day-bootstrap P(cell > rest) ≥ {P_MIN} ∧ no day / pair "
           f"≥ {SHARE_MAX:.0%} of the gain ∧ the newest trades (B25 + forward, ≥ {NEWEST_MIN} cell fills) above their rest · else KEEP OBSERVING. "
-          "Built on a 2D search that did not beat luck (p 0.57): a live step = 1.5× first, haircut, tight revert, engine breadth scoring.", ""]
+          "Built on a 2D search that did not beat luck (p 0.57): a live step = 1.5× first, haircut, tight revert, engine Market-hot stamp (DL 489).", ""]
     return L
 
 

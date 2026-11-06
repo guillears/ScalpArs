@@ -1596,6 +1596,7 @@
                                     <th class="px-3 py-2 font-medium text-center">Duration</th>
                                     <th class="px-3 py-2 font-medium text-right text-rose-300" title="📈 AltCorr (DECISION_LOG 383, observe-only): average OBS-R1 at entry — the mean pairwise correlation of 5m log returns over the trailing 288 closed bars among the top-20 alts (previous UTC day's top-50 by quote volume, ex BTC / stables). Frozen loser-regime line: > 0.3164. Blank = not stamped (fills before DL 383 / data unreadable).">AltCorr</th>
                                     <th class="px-3 py-2 font-medium text-right text-rose-300" title="📈 AltBeta (DECISION_LOG 383, observe-only): average R1b at entry — the median alt beta to BTC over the same 288 closed 5m bars. Frozen line: > 1.372.">AltBeta</th>
+                                    <th class="px-3 py-2 font-medium text-right text-rose-300" title="Market-hot: % of the rolling top-100 USDT perps above their price 4 h earlier at entry (hot > 50 %), DECISION_LOG 489. Average over the row's fills (0–1); blank = not stamped (fills before the deploy)">Up4h</th>
                                 </tr>
                             </thead>
                             <tbody id="entry-conditions-outcome-body" class="divide-y divide-white/5">
@@ -4657,20 +4658,38 @@
                 <div id="investor-form-add" class="space-y-4 hidden">
                     <div>
                         <label class="block text-sm text-gray-400 mb-1">Name</label>
-                        <input type="text" id="investor-add-name" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white" placeholder="Investor name">
+                        <input type="text" id="investor-add-name" oninput="_addBackdatePreview()" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white" placeholder="Investor name">
                     </div>
                     <div>
                         <label class="block text-sm text-gray-400 mb-1">ETH Wallet <span class="text-gray-600">(optional — can be added later)</span></label>
                         <input type="text" id="investor-add-wallet" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white font-mono text-xs" placeholder="0x…">
                     </div>
                     <div>
+                        <label class="block text-sm text-gray-400 mb-1">Date joined <span class="text-gray-600">(today by default — or pick the day they joined)</span></label>
+                        <input type="date" id="investor-add-joined" onchange="_addBackdatePreview()" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white [color-scheme:dark]" title="🗓 (DECISION_LOG 488) the JOINED date shown for this investor (Argentina day, UTC-3). It is a label: an amount below is still booked today at today's NAV, and the monthly statement starts at that deposit.">
+                    </div>
+                    <div>
                         <label class="block text-sm text-gray-400 mb-1">Amount invested (USD) <span class="text-gray-600">(optional — at current NAV, or at 1.0 if dividing existing capital below)</span></label>
-                        <input type="number" step="0.01" id="investor-add-amount" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white" placeholder="0.00">
+                        <input type="number" step="0.01" id="investor-add-amount" oninput="_addBackdatePreview()" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white" placeholder="0.00">
                         <label class="flex items-start gap-2 mt-2 cursor-pointer" title="Tick when this investor is taking a share of capital the fund ALREADY holds (a founding split), not wiring new money. Founding shares are issued at NAV 1.0 so every founder is priced identically no matter what order they are added in — routed through the normal deposit path, three equal $1,000 shares of an existing fund bought 59% / 18% / 23%. Paper mode only; limited to the unallocated capital seed.">
-                            <input type="checkbox" id="investor-add-founding" class="mt-0.5 accent-amber-400">
+                            <input type="checkbox" id="investor-add-founding" onchange="_addBackdatePreview()" class="mt-0.5 accent-amber-400">
                             <span class="text-xs text-amber-300/90">Dividing existing capital <span class="text-gray-500">(founding share at NAV 1.0 — not new money)</span></span>
                         </label>
                     </div>
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-1">Where the capital comes from</label>
+                        <select id="investor-add-source" onchange="_addSourceChanged()" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm">
+                            <option value="new">New money (booked today at today's NAV)</option>
+                            <option value="share">Part of an existing investor's capital — no new money</option>
+                            <option value="all">Part of ALL existing investors' capital, pro rata by ownership — no new money</option>
+                        </select>
+                        <p class="text-[11px] text-gray-500 mt-1 hidden" id="investor-add-source-note">Pro rata among today's holders, by the shares each held on the joined date. Past statements of the givers change from that date.</p>
+                        <div id="investor-add-giver-row" class="hidden mt-2">
+                            <label class="block text-xs text-gray-400 mb-1">From whose capital <span class="text-gray-600">(the amount above = its value on the joined date, priced at that day's NAV; nothing enters the fund)</span></label>
+                            <select id="investor-add-giver" onchange="_addBackdatePreview()" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm"></select>
+                        </div>
+                    </div>
+                    <div id="investor-add-backdate" class="hidden text-xs rounded-lg border border-white/10 bg-white/5 p-3"></div>
                     <div class="flex gap-3 justify-end">
                         <button onclick="closeInvestorModal()" class="px-4 py-2 bg-white/10 hover:bg-white/20 text-gray-300 rounded-lg text-sm transition">Cancel</button>
                         <button onclick="_investorSubmitOnce(submitAddInvestor)" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm transition">Add</button>
@@ -6068,6 +6087,8 @@
                                         <input type="checkbox" id="config-entry-zone-stamps-enabled" class="accent-violet-500"></label>
                                     <label class="flex items-center gap-1 text-xs text-sky-300" title="🧾 (DECISION_LOG 329) AUTO-RECORD BINANCE-APP TRADES: live only, every 5 min (the first run backfills from the first live trade, bot-stopped periods included). Reads Binance's income history + your fills and books every COMPLETED trade you made in the Binance app as a closed 🖐 MANUAL row marked 📱 (Binance's real fills, P&L and fees; funding kept apart like every row). Never an open row, never in the Bot view or any systematic table. An episode it cannot explain exactly is NOT recorded ([APP_TRADE_AMBIGUOUS] in the log). Check: /api/app_trades/reconcile. Off = the job does nothing.">📱 Record app trades
                                         <input type="checkbox" id="config-app-trade-record-enabled" class="accent-sky-500"></label>
+                                    <label class="flex items-center gap-1 text-xs text-rose-300" title="Market-hot tracker (DECISION_LOG 489): once per hour (HH:00:05) the % of the day's rolling top-100 USDT perps (previous UTC day's quote volume; BTC / ETH / stables out) above their price 4 h earlier — stamped on every fill (entry_mkt_up4h_pct / entry_mkt_up4h_n; the ML_MKT_HOT watch line, hot > 50 %). Observe-only: no trading rule reads it. ≈ 100 Binance weight / hour, never while banned / rate-limited or while the IP's used weight is above 600. Off = no reads, every stamp NULL.">🌡 Market-hot tracker (top-100 coins up over 4 h)
+                                        <input type="checkbox" id="config-mkt-up4h-enabled" class="accent-rose-500"></label>
                                 <span class="text-xs text-gray-500">(crowded entry → sized down to these; ratio 0 = off; ship 0.90 / 1.0 / 1.0; sub-1× allowed — the PVR≥0.93 read may earn it; ≤0 coerced to 1.0)</span>
                             </div>
                         </div>
@@ -10498,7 +10519,7 @@
 
             lines.push(`\n${hr2}`);
             lines.push('## Entry Conditions by Outcome (Winners vs Losers)\n');
-            lines.push(`${'Outcome'.padEnd(14)} ${'#'.padEnd(5)} ${'Conf'.padEnd(14)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'ADXDir'.padEnd(8)} ${'RSIDir'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Gap8-13'.padEnd(9)} ${'FanR'.padEnd(6)} ${'Stretch'.padEnd(9)} ${'EMA20Slp'.padEnd(10)} ${'BTCSlp'.padEnd(9)} ${'BTCRSI'.padEnd(8)} ${'BTCADX'.padEnd(8)} ${'BTCADXDir'.padEnd(10)} ${'BTCRSIDir'.padEnd(10)} ${'ADXΔ'.padEnd(8)} ${'RngPos'.padEnd(8)} ${'Breadth'.padEnd(9)} ${'ATR%'.padEnd(8)} ${'BTCTrend'.padEnd(10)} ${'BTCTrend(exit)'.padEnd(15)} ${'GlobalVol'.padEnd(10)} ${'PairVol$'.padEnd(10)} ${'AvgExt%'.padEnd(9)} ${'AvgBTCExt%'.padEnd(11)} ${'Avg1hSlope'.padEnd(11)} ${'AvgPeak%'.padEnd(10)} ${'AvgTrough%'.padEnd(11)} ${'WorstTrough%'.padEnd(13)} ${'SLProf'.padEnd(14)} ${'Duration'.padEnd(9)} ${'AltCorr'.padEnd(8)} ${'AltBeta'}`);
+            lines.push(`${'Outcome'.padEnd(14)} ${'#'.padEnd(5)} ${'Conf'.padEnd(14)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'ADXDir'.padEnd(8)} ${'RSIDir'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Gap8-13'.padEnd(9)} ${'FanR'.padEnd(6)} ${'Stretch'.padEnd(9)} ${'EMA20Slp'.padEnd(10)} ${'BTCSlp'.padEnd(9)} ${'BTCRSI'.padEnd(8)} ${'BTCADX'.padEnd(8)} ${'BTCADXDir'.padEnd(10)} ${'BTCRSIDir'.padEnd(10)} ${'ADXΔ'.padEnd(8)} ${'RngPos'.padEnd(8)} ${'Breadth'.padEnd(9)} ${'ATR%'.padEnd(8)} ${'BTCTrend'.padEnd(10)} ${'BTCTrend(exit)'.padEnd(15)} ${'GlobalVol'.padEnd(10)} ${'PairVol$'.padEnd(10)} ${'AvgExt%'.padEnd(9)} ${'AvgBTCExt%'.padEnd(11)} ${'Avg1hSlope'.padEnd(11)} ${'AvgPeak%'.padEnd(10)} ${'AvgTrough%'.padEnd(11)} ${'WorstTrough%'.padEnd(13)} ${'SLProf'.padEnd(14)} ${'Duration'.padEnd(9)} ${'AltCorr'.padEnd(8)} ${'AltBeta'.padEnd(8)} ${'Up4h'}`);
             const _ecoOrder = (a, b) => {
                 const dirRank = (r) => r.direction === 'LONG' ? 0 : 1;
                 const outRank = (r) => r.outcome === 'Winners' ? 0 : (r.outcome === 'Losers' ? 1 : 2);
@@ -10539,17 +10560,17 @@
                 const slProfStr = (_isWinner || _isAborted || (_slP + _slN + _slBE) === 0) ? '-' : (`P:${_slP} N:${_slN}` + (_slBE > 0 ? ` BE:${_slBE}` : ''));
                 const _gvolStrO = r.avg_global_vol_ratio != null ? r.avg_global_vol_ratio.toFixed(2) : '-';
                 const _pvolStrO = _fmtVolUSDexp(r.avg_pair_vol_usd);
-                lines.push(`${(r.outcome + dirSuffix).padEnd(14)} ${String(r.trades).padEnd(5)} ${confStr.padEnd(14)} ${pnlStr.padEnd(10)} ${totalUsdStr.padEnd(12)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${adxDirStr.padEnd(8)} ${rsiDirStr.padEnd(8)} ${gapStr.padEnd(8)} ${gap58Str.padEnd(8)} ${gap813Str.padEnd(9)} ${fanStr.padEnd(6)} ${stretchStr.padEnd(9)} ${slopeStr.padEnd(10)} ${btcSlopeStr.padEnd(9)} ${btcRsiStr.padEnd(8)} ${btcAdxStr.padEnd(8)} ${btcAdxDirStr.padEnd(10)} ${btcRsiDirStr.padEnd(10)} ${adxDeltaStr.padEnd(8)} ${rngPosStr.padEnd(8)} ${breadthStr.padEnd(9)} ${atrStr.padEnd(8)} ${btcTrendStr.padEnd(10)} ${exitBtcStr.padEnd(15)} ${_gvolStrO.padEnd(10)} ${_pvolStrO.padEnd(10)} ${(r.avg_ext_pct != null ? ((r.avg_ext_pct >= 0 ? '+' : '') + r.avg_ext_pct.toFixed(3) + '%') : '-').padEnd(9)} ${(r.avg_btc_ext_pct != null ? ((r.avg_btc_ext_pct >= 0 ? '+' : '') + r.avg_btc_ext_pct.toFixed(3) + '%') : '-').padEnd(11)} ${(r.avg_btc_1h_slope != null ? ((r.avg_btc_1h_slope >= 0 ? '+' : '') + r.avg_btc_1h_slope.toFixed(3) + '%') : '-').padEnd(11)} ${peakStr.padEnd(10)} ${troughStr.padEnd(11)} ${worstTroughStr.padEnd(13)} ${slProfStr.padEnd(14)} ${(r.avg_duration || '-').padEnd(9)} ${(r.avg_alt_corr24 != null ? r.avg_alt_corr24.toFixed(3) : '-').padEnd(8)} ${r.avg_alt_beta24 != null ? r.avg_alt_beta24.toFixed(3) : '-'}`);
+                lines.push(`${(r.outcome + dirSuffix).padEnd(14)} ${String(r.trades).padEnd(5)} ${confStr.padEnd(14)} ${pnlStr.padEnd(10)} ${totalUsdStr.padEnd(12)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${adxDirStr.padEnd(8)} ${rsiDirStr.padEnd(8)} ${gapStr.padEnd(8)} ${gap58Str.padEnd(8)} ${gap813Str.padEnd(9)} ${fanStr.padEnd(6)} ${stretchStr.padEnd(9)} ${slopeStr.padEnd(10)} ${btcSlopeStr.padEnd(9)} ${btcRsiStr.padEnd(8)} ${btcAdxStr.padEnd(8)} ${btcAdxDirStr.padEnd(10)} ${btcRsiDirStr.padEnd(10)} ${adxDeltaStr.padEnd(8)} ${rngPosStr.padEnd(8)} ${breadthStr.padEnd(9)} ${atrStr.padEnd(8)} ${btcTrendStr.padEnd(10)} ${exitBtcStr.padEnd(15)} ${_gvolStrO.padEnd(10)} ${_pvolStrO.padEnd(10)} ${(r.avg_ext_pct != null ? ((r.avg_ext_pct >= 0 ? '+' : '') + r.avg_ext_pct.toFixed(3) + '%') : '-').padEnd(9)} ${(r.avg_btc_ext_pct != null ? ((r.avg_btc_ext_pct >= 0 ? '+' : '') + r.avg_btc_ext_pct.toFixed(3) + '%') : '-').padEnd(11)} ${(r.avg_btc_1h_slope != null ? ((r.avg_btc_1h_slope >= 0 ? '+' : '') + r.avg_btc_1h_slope.toFixed(3) + '%') : '-').padEnd(11)} ${peakStr.padEnd(10)} ${troughStr.padEnd(11)} ${worstTroughStr.padEnd(13)} ${slProfStr.padEnd(14)} ${(r.avg_duration || '-').padEnd(9)} ${(r.avg_alt_corr24 != null ? r.avg_alt_corr24.toFixed(3) : '-').padEnd(8)} ${(r.avg_alt_beta24 != null ? r.avg_alt_beta24.toFixed(3) : '-').padEnd(8)} ${r.avg_mkt_up4h_pct != null ? r.avg_mkt_up4h_pct.toFixed(3) : '-'}`);
             }
 
             // Entry Conditions by Strategy + by Strategy×Outcome (Jun 23) — same column set, grouped by sleeve
-            const _ecStratHdr = (first) => `${first.padEnd(26)} ${'#'.padEnd(5)} ${'Conf'.padEnd(14)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'ADXDir'.padEnd(8)} ${'RSIDir'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Gap8-13'.padEnd(9)} ${'FanR'.padEnd(6)} ${'Stretch'.padEnd(9)} ${'EMA20Slp'.padEnd(10)} ${'BTCSlp'.padEnd(9)} ${'BTCRSI'.padEnd(8)} ${'BTCADX'.padEnd(8)} ${'BTCADXDir'.padEnd(10)} ${'BTCRSIDir'.padEnd(10)} ${'ADXΔ'.padEnd(8)} ${'RngPos'.padEnd(8)} ${'Breadth'.padEnd(9)} ${'ATR%'.padEnd(8)} ${'BTCTrend'.padEnd(10)} ${'BTCTrend(exit)'.padEnd(15)} ${'GlobalVol'.padEnd(10)} ${'PairVol$'.padEnd(10)} ${'AvgExt%'.padEnd(9)} ${'AvgBTCExt%'.padEnd(11)} ${'Avg1hSlope'.padEnd(11)} ${'AvgPeak%'.padEnd(10)} ${'AvgTrough%'.padEnd(11)} ${'WorstTrough%'.padEnd(13)} ${'SLProf'.padEnd(14)} ${'Duration'.padEnd(9)} ${'AltCorr'.padEnd(8)} ${'AltBeta'}`;
+            const _ecStratHdr = (first) => `${first.padEnd(26)} ${'#'.padEnd(5)} ${'Conf'.padEnd(14)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'ADXDir'.padEnd(8)} ${'RSIDir'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Gap8-13'.padEnd(9)} ${'FanR'.padEnd(6)} ${'Stretch'.padEnd(9)} ${'EMA20Slp'.padEnd(10)} ${'BTCSlp'.padEnd(9)} ${'BTCRSI'.padEnd(8)} ${'BTCADX'.padEnd(8)} ${'BTCADXDir'.padEnd(10)} ${'BTCRSIDir'.padEnd(10)} ${'ADXΔ'.padEnd(8)} ${'RngPos'.padEnd(8)} ${'Breadth'.padEnd(9)} ${'ATR%'.padEnd(8)} ${'BTCTrend'.padEnd(10)} ${'BTCTrend(exit)'.padEnd(15)} ${'GlobalVol'.padEnd(10)} ${'PairVol$'.padEnd(10)} ${'AvgExt%'.padEnd(9)} ${'AvgBTCExt%'.padEnd(11)} ${'Avg1hSlope'.padEnd(11)} ${'AvgPeak%'.padEnd(10)} ${'AvgTrough%'.padEnd(11)} ${'WorstTrough%'.padEnd(13)} ${'SLProf'.padEnd(14)} ${'Duration'.padEnd(9)} ${'AltCorr'.padEnd(8)} ${'AltBeta'.padEnd(8)} ${'Up4h'}`;
             const _ecStratLine = (r, label, isWinnerRow) => {
                 const confStr = Object.entries(r.by_confidence || {}).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`${c[0]}:${n}`).join(' ');
                 const g = (v,nd,pct,sign) => v==null?'-':((sign&&v>=0?'+':'')+v.toFixed(nd)+(pct?'%':''));
                 const _slP=r.sl_positive_no_be||0,_slN=r.sl_never_positive||0,_slBE=r.sl_be_was_active||0;
                 const slProfStr=(isWinnerRow||(_slP+_slN+_slBE)===0)?'-':(`P:${_slP} N:${_slN}`+(_slBE>0?` BE:${_slBE}`:''));
-                return `${label.padEnd(26)} ${String(r.trades).padEnd(5)} ${confStr.padEnd(14)} ${g(r.avg_pnl_pct,4,1,1).padEnd(10)} ${('$'+(r.total_pnl_usd||0).toFixed(2)).padEnd(12)} ${g(r.avg_rsi,1).padEnd(8)} ${g(r.avg_adx,1).padEnd(8)} ${(r.adx_rising+'R/'+r.adx_falling+'F').padEnd(8)} ${((r.rsi_rising||0)+'R/'+(r.rsi_falling||0)+'F').padEnd(8)} ${g(r.avg_gap,2,1).padEnd(8)} ${g(r.avg_gap58,2,1).padEnd(8)} ${g(r.avg_gap813,2,1).padEnd(9)} ${g(r.avg_fan_ratio,2).padEnd(6)} ${g(r.avg_stretch,2,1).padEnd(9)} ${g(r.avg_ema20_slope,2,1).padEnd(10)} ${g(r.avg_btc_slope,2,1).padEnd(9)} ${g(r.avg_btc_rsi,1).padEnd(8)} ${g(r.avg_btc_adx,1).padEnd(8)} ${(r.btc_adx_rising+'R/'+r.btc_adx_falling+'F').padEnd(10)} ${((r.btc_rsi_rising||0)+'R/'+(r.btc_rsi_falling||0)+'F').padEnd(10)} ${g(r.avg_adx_delta,2,0,1).padEnd(8)} ${g(r.avg_range_position,0,1).padEnd(8)} ${g(r.avg_breadth,1,1).padEnd(9)} ${g(r.avg_atr_pct,2,1).padEnd(8)} ${g(r.avg_btc_trend_gap,2,1,1).padEnd(10)} ${g(r.avg_exit_btc_trend_gap,2,1,1).padEnd(15)} ${g(r.avg_global_vol_ratio,2).padEnd(10)} ${_fmtVolUSDexp(r.avg_pair_vol_usd).padEnd(10)} ${g(r.avg_ext_pct,3,1,1).padEnd(9)} ${g(r.avg_btc_ext_pct,3,1,1).padEnd(11)} ${g(r.avg_btc_1h_slope,3,1,1).padEnd(11)} ${g(r.avg_peak_pct,4,1,1).padEnd(10)} ${g(r.avg_trough_pct,4,1,1).padEnd(11)} ${g(r.worst_trough_pct,4,1,1).padEnd(13)} ${slProfStr.padEnd(14)} ${(r.avg_duration||'-').padEnd(9)} ${g(r.avg_alt_corr24,3).padEnd(8)} ${g(r.avg_alt_beta24,3)}`;
+                return `${label.padEnd(26)} ${String(r.trades).padEnd(5)} ${confStr.padEnd(14)} ${g(r.avg_pnl_pct,4,1,1).padEnd(10)} ${('$'+(r.total_pnl_usd||0).toFixed(2)).padEnd(12)} ${g(r.avg_rsi,1).padEnd(8)} ${g(r.avg_adx,1).padEnd(8)} ${(r.adx_rising+'R/'+r.adx_falling+'F').padEnd(8)} ${((r.rsi_rising||0)+'R/'+(r.rsi_falling||0)+'F').padEnd(8)} ${g(r.avg_gap,2,1).padEnd(8)} ${g(r.avg_gap58,2,1).padEnd(8)} ${g(r.avg_gap813,2,1).padEnd(9)} ${g(r.avg_fan_ratio,2).padEnd(6)} ${g(r.avg_stretch,2,1).padEnd(9)} ${g(r.avg_ema20_slope,2,1).padEnd(10)} ${g(r.avg_btc_slope,2,1).padEnd(9)} ${g(r.avg_btc_rsi,1).padEnd(8)} ${g(r.avg_btc_adx,1).padEnd(8)} ${(r.btc_adx_rising+'R/'+r.btc_adx_falling+'F').padEnd(10)} ${((r.btc_rsi_rising||0)+'R/'+(r.btc_rsi_falling||0)+'F').padEnd(10)} ${g(r.avg_adx_delta,2,0,1).padEnd(8)} ${g(r.avg_range_position,0,1).padEnd(8)} ${g(r.avg_breadth,1,1).padEnd(9)} ${g(r.avg_atr_pct,2,1).padEnd(8)} ${g(r.avg_btc_trend_gap,2,1,1).padEnd(10)} ${g(r.avg_exit_btc_trend_gap,2,1,1).padEnd(15)} ${g(r.avg_global_vol_ratio,2).padEnd(10)} ${_fmtVolUSDexp(r.avg_pair_vol_usd).padEnd(10)} ${g(r.avg_ext_pct,3,1,1).padEnd(9)} ${g(r.avg_btc_ext_pct,3,1,1).padEnd(11)} ${g(r.avg_btc_1h_slope,3,1,1).padEnd(11)} ${g(r.avg_peak_pct,4,1,1).padEnd(10)} ${g(r.avg_trough_pct,4,1,1).padEnd(11)} ${g(r.worst_trough_pct,4,1,1).padEnd(13)} ${slProfStr.padEnd(14)} ${(r.avg_duration||'-').padEnd(9)} ${g(r.avg_alt_corr24,3).padEnd(8)} ${g(r.avg_alt_beta24,3).padEnd(8)} ${g(r.avg_mkt_up4h_pct,3)}`;
             };
             lines.push(`\n${hr2}`);
             lines.push('## Entry Conditions by Strategy\n');
@@ -12406,7 +12427,7 @@
                 // --- ENTRY CONDITIONS BY OUTCOME (Winners vs Losers, May 2) ---
                 lines.push(`\n${hr2}`);
                 lines.push('## Entry Conditions by Outcome (Winners vs Losers)\n');
-                lines.push(`${'Outcome'.padEnd(14)} ${'#'.padEnd(5)} ${'Conf'.padEnd(14)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'ADXDir'.padEnd(8)} ${'RSIDir'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Gap8-13'.padEnd(9)} ${'FanR'.padEnd(6)} ${'Stretch'.padEnd(9)} ${'EMA20Slp'.padEnd(10)} ${'BTCSlp'.padEnd(9)} ${'BTCRSI'.padEnd(8)} ${'BTCADX'.padEnd(8)} ${'BTCADXDir'.padEnd(10)} ${'BTCRSIDir'.padEnd(10)} ${'ADXΔ'.padEnd(8)} ${'RngPos'.padEnd(8)} ${'Breadth'.padEnd(9)} ${'ATR%'.padEnd(8)} ${'BTCTrend'.padEnd(10)} ${'BTCTrend(exit)'.padEnd(15)} ${'GlobalVol'.padEnd(10)} ${'PairVol$'.padEnd(10)} ${'AvgExt%'.padEnd(9)} ${'AvgBTCExt%'.padEnd(11)} ${'Avg1hSlope'.padEnd(11)} ${'AvgPeak%'.padEnd(10)} ${'AvgTrough%'.padEnd(11)} ${'WorstTrough%'.padEnd(13)} ${'SLProf'.padEnd(14)} ${'Duration'.padEnd(9)} ${'AltCorr'.padEnd(8)} ${'AltBeta'}`);
+                lines.push(`${'Outcome'.padEnd(14)} ${'#'.padEnd(5)} ${'Conf'.padEnd(14)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'ADXDir'.padEnd(8)} ${'RSIDir'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Gap8-13'.padEnd(9)} ${'FanR'.padEnd(6)} ${'Stretch'.padEnd(9)} ${'EMA20Slp'.padEnd(10)} ${'BTCSlp'.padEnd(9)} ${'BTCRSI'.padEnd(8)} ${'BTCADX'.padEnd(8)} ${'BTCADXDir'.padEnd(10)} ${'BTCRSIDir'.padEnd(10)} ${'ADXΔ'.padEnd(8)} ${'RngPos'.padEnd(8)} ${'Breadth'.padEnd(9)} ${'ATR%'.padEnd(8)} ${'BTCTrend'.padEnd(10)} ${'BTCTrend(exit)'.padEnd(15)} ${'GlobalVol'.padEnd(10)} ${'PairVol$'.padEnd(10)} ${'AvgExt%'.padEnd(9)} ${'AvgBTCExt%'.padEnd(11)} ${'Avg1hSlope'.padEnd(11)} ${'AvgPeak%'.padEnd(10)} ${'AvgTrough%'.padEnd(11)} ${'WorstTrough%'.padEnd(13)} ${'SLProf'.padEnd(14)} ${'Duration'.padEnd(9)} ${'AltCorr'.padEnd(8)} ${'AltBeta'.padEnd(8)} ${'Up4h'}`);
                 const _ecoOrder2 = (a, b) => {
                     const dirRank = (r) => r.direction === 'LONG' ? 0 : 1;
                     const outRank = (r) => r.outcome === 'Winners' ? 0 : (r.outcome === 'Losers' ? 1 : 2);
@@ -12447,17 +12468,17 @@
                     const slProfStr = (_isWinner || _isAborted || (_slP + _slN + _slBE) === 0) ? '-' : (`P:${_slP} N:${_slN}` + (_slBE > 0 ? ` BE:${_slBE}` : ''));
                     const _gvolStrO = r.avg_global_vol_ratio != null ? r.avg_global_vol_ratio.toFixed(2) : '-';
                     const _pvolStrO = _fmtVolUSDexp2(r.avg_pair_vol_usd);
-                    lines.push(`${(r.outcome + dirSuffix).padEnd(14)} ${String(r.trades).padEnd(5)} ${confStr.padEnd(14)} ${pnlStr.padEnd(10)} ${totalUsdStr.padEnd(12)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${adxDirStr.padEnd(8)} ${rsiDirStr.padEnd(8)} ${gapStr.padEnd(8)} ${gap58Str.padEnd(8)} ${gap813Str.padEnd(9)} ${fanStr.padEnd(6)} ${stretchStr.padEnd(9)} ${slopeStr.padEnd(10)} ${btcSlopeStr.padEnd(9)} ${btcRsiStr.padEnd(8)} ${btcAdxStr.padEnd(8)} ${btcAdxDirStr.padEnd(10)} ${btcRsiDirStr.padEnd(10)} ${adxDeltaStr.padEnd(8)} ${rngPosStr.padEnd(8)} ${breadthStr.padEnd(9)} ${atrStr.padEnd(8)} ${btcTrendStr.padEnd(10)} ${exitBtcStr.padEnd(15)} ${_gvolStrO.padEnd(10)} ${_pvolStrO.padEnd(10)} ${(r.avg_ext_pct != null ? ((r.avg_ext_pct >= 0 ? '+' : '') + r.avg_ext_pct.toFixed(3) + '%') : '-').padEnd(9)} ${(r.avg_btc_ext_pct != null ? ((r.avg_btc_ext_pct >= 0 ? '+' : '') + r.avg_btc_ext_pct.toFixed(3) + '%') : '-').padEnd(11)} ${(r.avg_btc_1h_slope != null ? ((r.avg_btc_1h_slope >= 0 ? '+' : '') + r.avg_btc_1h_slope.toFixed(3) + '%') : '-').padEnd(11)} ${peakStr.padEnd(10)} ${troughStr.padEnd(11)} ${worstTroughStr.padEnd(13)} ${slProfStr.padEnd(14)} ${(r.avg_duration || '-').padEnd(9)} ${(r.avg_alt_corr24 != null ? r.avg_alt_corr24.toFixed(3) : '-').padEnd(8)} ${r.avg_alt_beta24 != null ? r.avg_alt_beta24.toFixed(3) : '-'}`);
+                    lines.push(`${(r.outcome + dirSuffix).padEnd(14)} ${String(r.trades).padEnd(5)} ${confStr.padEnd(14)} ${pnlStr.padEnd(10)} ${totalUsdStr.padEnd(12)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${adxDirStr.padEnd(8)} ${rsiDirStr.padEnd(8)} ${gapStr.padEnd(8)} ${gap58Str.padEnd(8)} ${gap813Str.padEnd(9)} ${fanStr.padEnd(6)} ${stretchStr.padEnd(9)} ${slopeStr.padEnd(10)} ${btcSlopeStr.padEnd(9)} ${btcRsiStr.padEnd(8)} ${btcAdxStr.padEnd(8)} ${btcAdxDirStr.padEnd(10)} ${btcRsiDirStr.padEnd(10)} ${adxDeltaStr.padEnd(8)} ${rngPosStr.padEnd(8)} ${breadthStr.padEnd(9)} ${atrStr.padEnd(8)} ${btcTrendStr.padEnd(10)} ${exitBtcStr.padEnd(15)} ${_gvolStrO.padEnd(10)} ${_pvolStrO.padEnd(10)} ${(r.avg_ext_pct != null ? ((r.avg_ext_pct >= 0 ? '+' : '') + r.avg_ext_pct.toFixed(3) + '%') : '-').padEnd(9)} ${(r.avg_btc_ext_pct != null ? ((r.avg_btc_ext_pct >= 0 ? '+' : '') + r.avg_btc_ext_pct.toFixed(3) + '%') : '-').padEnd(11)} ${(r.avg_btc_1h_slope != null ? ((r.avg_btc_1h_slope >= 0 ? '+' : '') + r.avg_btc_1h_slope.toFixed(3) + '%') : '-').padEnd(11)} ${peakStr.padEnd(10)} ${troughStr.padEnd(11)} ${worstTroughStr.padEnd(13)} ${slProfStr.padEnd(14)} ${(r.avg_duration || '-').padEnd(9)} ${(r.avg_alt_corr24 != null ? r.avg_alt_corr24.toFixed(3) : '-').padEnd(8)} ${(r.avg_alt_beta24 != null ? r.avg_alt_beta24.toFixed(3) : '-').padEnd(8)} ${r.avg_mkt_up4h_pct != null ? r.avg_mkt_up4h_pct.toFixed(3) : '-'}`);
                 }
 
                 // Entry Conditions by Strategy + by Strategy×Outcome (Jun 23) — same column set, grouped by sleeve
-                const _ecStratHdr2 = (first) => `${first.padEnd(26)} ${'#'.padEnd(5)} ${'Conf'.padEnd(14)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'ADXDir'.padEnd(8)} ${'RSIDir'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Gap8-13'.padEnd(9)} ${'FanR'.padEnd(6)} ${'Stretch'.padEnd(9)} ${'EMA20Slp'.padEnd(10)} ${'BTCSlp'.padEnd(9)} ${'BTCRSI'.padEnd(8)} ${'BTCADX'.padEnd(8)} ${'BTCADXDir'.padEnd(10)} ${'BTCRSIDir'.padEnd(10)} ${'ADXΔ'.padEnd(8)} ${'RngPos'.padEnd(8)} ${'Breadth'.padEnd(9)} ${'ATR%'.padEnd(8)} ${'BTCTrend'.padEnd(10)} ${'BTCTrend(exit)'.padEnd(15)} ${'GlobalVol'.padEnd(10)} ${'PairVol$'.padEnd(10)} ${'AvgExt%'.padEnd(9)} ${'AvgBTCExt%'.padEnd(11)} ${'Avg1hSlope'.padEnd(11)} ${'AvgPeak%'.padEnd(10)} ${'AvgTrough%'.padEnd(11)} ${'WorstTrough%'.padEnd(13)} ${'SLProf'.padEnd(14)} ${'Duration'.padEnd(9)} ${'AltCorr'.padEnd(8)} ${'AltBeta'}`;
+                const _ecStratHdr2 = (first) => `${first.padEnd(26)} ${'#'.padEnd(5)} ${'Conf'.padEnd(14)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'ADXDir'.padEnd(8)} ${'RSIDir'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Gap8-13'.padEnd(9)} ${'FanR'.padEnd(6)} ${'Stretch'.padEnd(9)} ${'EMA20Slp'.padEnd(10)} ${'BTCSlp'.padEnd(9)} ${'BTCRSI'.padEnd(8)} ${'BTCADX'.padEnd(8)} ${'BTCADXDir'.padEnd(10)} ${'BTCRSIDir'.padEnd(10)} ${'ADXΔ'.padEnd(8)} ${'RngPos'.padEnd(8)} ${'Breadth'.padEnd(9)} ${'ATR%'.padEnd(8)} ${'BTCTrend'.padEnd(10)} ${'BTCTrend(exit)'.padEnd(15)} ${'GlobalVol'.padEnd(10)} ${'PairVol$'.padEnd(10)} ${'AvgExt%'.padEnd(9)} ${'AvgBTCExt%'.padEnd(11)} ${'Avg1hSlope'.padEnd(11)} ${'AvgPeak%'.padEnd(10)} ${'AvgTrough%'.padEnd(11)} ${'WorstTrough%'.padEnd(13)} ${'SLProf'.padEnd(14)} ${'Duration'.padEnd(9)} ${'AltCorr'.padEnd(8)} ${'AltBeta'.padEnd(8)} ${'Up4h'}`;
                 const _ecStratLine2 = (r, label, isWinnerRow) => {
                     const confStr = Object.entries(r.by_confidence || {}).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`${c[0]}:${n}`).join(' ');
                     const g = (v,nd,pct,sign) => v==null?'-':((sign&&v>=0?'+':'')+v.toFixed(nd)+(pct?'%':''));
                     const _slP=r.sl_positive_no_be||0,_slN=r.sl_never_positive||0,_slBE=r.sl_be_was_active||0;
                     const slProfStr=(isWinnerRow||(_slP+_slN+_slBE)===0)?'-':(`P:${_slP} N:${_slN}`+(_slBE>0?` BE:${_slBE}`:''));
-                    return `${label.padEnd(26)} ${String(r.trades).padEnd(5)} ${confStr.padEnd(14)} ${g(r.avg_pnl_pct,4,1,1).padEnd(10)} ${('$'+(r.total_pnl_usd||0).toFixed(2)).padEnd(12)} ${g(r.avg_rsi,1).padEnd(8)} ${g(r.avg_adx,1).padEnd(8)} ${(r.adx_rising+'R/'+r.adx_falling+'F').padEnd(8)} ${((r.rsi_rising||0)+'R/'+(r.rsi_falling||0)+'F').padEnd(8)} ${g(r.avg_gap,2,1).padEnd(8)} ${g(r.avg_gap58,2,1).padEnd(8)} ${g(r.avg_gap813,2,1).padEnd(9)} ${g(r.avg_fan_ratio,2).padEnd(6)} ${g(r.avg_stretch,2,1).padEnd(9)} ${g(r.avg_ema20_slope,2,1).padEnd(10)} ${g(r.avg_btc_slope,2,1).padEnd(9)} ${g(r.avg_btc_rsi,1).padEnd(8)} ${g(r.avg_btc_adx,1).padEnd(8)} ${(r.btc_adx_rising+'R/'+r.btc_adx_falling+'F').padEnd(10)} ${((r.btc_rsi_rising||0)+'R/'+(r.btc_rsi_falling||0)+'F').padEnd(10)} ${g(r.avg_adx_delta,2,0,1).padEnd(8)} ${g(r.avg_range_position,0,1).padEnd(8)} ${g(r.avg_breadth,1,1).padEnd(9)} ${g(r.avg_atr_pct,2,1).padEnd(8)} ${g(r.avg_btc_trend_gap,2,1,1).padEnd(10)} ${g(r.avg_exit_btc_trend_gap,2,1,1).padEnd(15)} ${g(r.avg_global_vol_ratio,2).padEnd(10)} ${_fmtVolUSDexp2(r.avg_pair_vol_usd).padEnd(10)} ${g(r.avg_ext_pct,3,1,1).padEnd(9)} ${g(r.avg_btc_ext_pct,3,1,1).padEnd(11)} ${g(r.avg_btc_1h_slope,3,1,1).padEnd(11)} ${g(r.avg_peak_pct,4,1,1).padEnd(10)} ${g(r.avg_trough_pct,4,1,1).padEnd(11)} ${g(r.worst_trough_pct,4,1,1).padEnd(13)} ${slProfStr.padEnd(14)} ${(r.avg_duration||'-').padEnd(9)} ${g(r.avg_alt_corr24,3).padEnd(8)} ${g(r.avg_alt_beta24,3)}`;
+                    return `${label.padEnd(26)} ${String(r.trades).padEnd(5)} ${confStr.padEnd(14)} ${g(r.avg_pnl_pct,4,1,1).padEnd(10)} ${('$'+(r.total_pnl_usd||0).toFixed(2)).padEnd(12)} ${g(r.avg_rsi,1).padEnd(8)} ${g(r.avg_adx,1).padEnd(8)} ${(r.adx_rising+'R/'+r.adx_falling+'F').padEnd(8)} ${((r.rsi_rising||0)+'R/'+(r.rsi_falling||0)+'F').padEnd(8)} ${g(r.avg_gap,2,1).padEnd(8)} ${g(r.avg_gap58,2,1).padEnd(8)} ${g(r.avg_gap813,2,1).padEnd(9)} ${g(r.avg_fan_ratio,2).padEnd(6)} ${g(r.avg_stretch,2,1).padEnd(9)} ${g(r.avg_ema20_slope,2,1).padEnd(10)} ${g(r.avg_btc_slope,2,1).padEnd(9)} ${g(r.avg_btc_rsi,1).padEnd(8)} ${g(r.avg_btc_adx,1).padEnd(8)} ${(r.btc_adx_rising+'R/'+r.btc_adx_falling+'F').padEnd(10)} ${((r.btc_rsi_rising||0)+'R/'+(r.btc_rsi_falling||0)+'F').padEnd(10)} ${g(r.avg_adx_delta,2,0,1).padEnd(8)} ${g(r.avg_range_position,0,1).padEnd(8)} ${g(r.avg_breadth,1,1).padEnd(9)} ${g(r.avg_atr_pct,2,1).padEnd(8)} ${g(r.avg_btc_trend_gap,2,1,1).padEnd(10)} ${g(r.avg_exit_btc_trend_gap,2,1,1).padEnd(15)} ${g(r.avg_global_vol_ratio,2).padEnd(10)} ${_fmtVolUSDexp2(r.avg_pair_vol_usd).padEnd(10)} ${g(r.avg_ext_pct,3,1,1).padEnd(9)} ${g(r.avg_btc_ext_pct,3,1,1).padEnd(11)} ${g(r.avg_btc_1h_slope,3,1,1).padEnd(11)} ${g(r.avg_peak_pct,4,1,1).padEnd(10)} ${g(r.avg_trough_pct,4,1,1).padEnd(11)} ${g(r.worst_trough_pct,4,1,1).padEnd(13)} ${slProfStr.padEnd(14)} ${(r.avg_duration||'-').padEnd(9)} ${g(r.avg_alt_corr24,3).padEnd(8)} ${g(r.avg_alt_beta24,3).padEnd(8)} ${g(r.avg_mkt_up4h_pct,3)}`;
                 };
                 lines.push(`\n${hr2}`);
                 lines.push('## Entry Conditions by Strategy\n');
@@ -14659,6 +14680,7 @@
                                 <td class="px-3 py-2 text-center text-gray-400 text-xs">${r.avg_duration || '-'}</td>
                                 <td class="px-3 py-2 text-right text-rose-300">${r.avg_alt_corr24 != null ? safe(r.avg_alt_corr24).toFixed(3) : '-'}</td>
                                 <td class="px-3 py-2 text-right text-rose-300">${r.avg_alt_beta24 != null ? safe(r.avg_alt_beta24).toFixed(3) : '-'}</td>
+                                <td class="px-3 py-2 text-right text-rose-300">${r.avg_mkt_up4h_pct != null ? safe(r.avg_mkt_up4h_pct).toFixed(3) : '-'}</td>
                             </tr>`;
                         }).join('');
                 } else {
@@ -14721,6 +14743,7 @@
                             <td class="px-3 py-2 text-center text-gray-400 text-xs">${r.avg_duration||'-'}</td>
                             <td class="px-3 py-2 text-right text-rose-300">${r.avg_alt_corr24!=null?safe(r.avg_alt_corr24).toFixed(3):'-'}</td>
                             <td class="px-3 py-2 text-right text-rose-300">${r.avg_alt_beta24!=null?safe(r.avg_alt_beta24).toFixed(3):'-'}</td>
+                            <td class="px-3 py-2 text-right text-rose-300">${r.avg_mkt_up4h_pct!=null?safe(r.avg_mkt_up4h_pct).toFixed(3):'-'}</td>
                         </tr>`;
                     };
                     // Clone the by-Outcome header into both strategy tables (swap first label)
@@ -22113,6 +22136,13 @@
             } else if (mode === 'add') {
                 title.textContent = 'Add Investor';
                 document.getElementById('investor-add-name').value = '';
+                { const _jEl = document.getElementById('investor-add-joined');   // 🗓 (488) today (UTC-3) by default, never a future day
+                  if (_jEl) { const _t3 = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10); _jEl.value = _t3; _jEl.max = _t3; _jEl.dataset.def = _t3; }
+                  const _bdBox = document.getElementById('investor-add-backdate'); if (_bdBox) _bdBox.classList.add('hidden');
+                  clearTimeout(_addBdTimer); _addBdSeq++;
+                  const _src = document.getElementById('investor-add-source'); if (_src) _src.value = 'new';
+                  document.getElementById('investor-add-giver-row')?.classList.add('hidden');
+                  const _fd = document.getElementById('investor-add-founding'); if (_fd) _fd.disabled = false; }   // a timer / answer from the previous opening never shows here
                 const _w = document.getElementById('investor-add-wallet'); if (_w) _w.value = '';
                 { const _a = document.getElementById('investor-add-amount'); if (_a) _a.value = ''; }
                 // Sep-21 deep review: the founding checkbox was STICKY across dialog opens — add a
@@ -22181,13 +22211,103 @@
             try { await fn(); } finally { _investorSubmitBusy = false; }
         }
 
+        // 🗓 (DECISION_LOG 488, operator option 1) INFORMATION ONLY: when the joined day is before today and an amount is entered, show
+        // what pricing that NEW money at the joined day's NAV would do — for the new investor and every existing one. Never applied:
+        // the deposit is booked today at today's NAV (P&L $0, nobody else changes).
+        let _addBdTimer = null, _addBdSeq = 0;
+        // 🗓 (DECISION_LOG 490) the capital source: new money (488) or a dated share of an existing investor's capital (no new money)
+        function _addSourceChanged(){
+            const src = document.getElementById('investor-add-source')?.value || 'new';
+            const share = src === 'share';
+            document.getElementById('investor-add-giver-row')?.classList.toggle('hidden', !share);
+            document.getElementById('investor-add-source-note')?.classList.toggle('hidden', src === 'new');
+            const f = document.getElementById('investor-add-founding');
+            if (f) { if (src !== 'new') f.checked = false; f.disabled = src !== 'new'; }
+            if (share) {
+                const sel = document.getElementById('investor-add-giver');
+                const cur = sel.value;
+                sel.innerHTML = (_investorsCache || []).filter(i => (i.shares || 0) > 0)
+                    .map(i => `<option value="${i.id}">${_escHtml(i.name)} — $${Number(i.value_usd || 0).toLocaleString(undefined, {maximumFractionDigits: 2})} today</option>`).join('');
+                if (cur) sel.value = cur;
+            }
+            _addBackdatePreview();
+        }
+        async function _addSharePreview(box, seq){
+            const jEl = document.getElementById('investor-add-joined');
+            const amt = safeFloat(document.getElementById('investor-add-amount')?.value);
+            const all = document.getElementById('investor-add-source')?.value === 'all';
+            const giver = parseInt(document.getElementById('investor-add-giver')?.value);
+            if (!(amt > 0) || (!all && !giver)) { box.classList.add('hidden'); return; }
+            const name = document.getElementById('investor-add-name').value.trim() || 'New investor';
+            const r = await fetch(`${API_BASE}/api/investors`, { method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ name: name + ' (preview)', joined: (jEl && jEl.value) || null, deposit_amount: amt, capital_source: all ? 'all' : 'share', from_investor_id: all ? null : giver, from_all_prorata: all, preview: true }) });
+            const j = await r.json();
+            if (seq !== _addBdSeq) return;
+            const usd = v => (v < 0 ? '−$' : '$') + Math.abs(v).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            const sgn = v => (v > 0 ? '+' : '') + usd(v);
+            if (!r.ok) { box.innerHTML = `<div class="text-red-400">${_escHtml(Array.isArray(j.detail) ? j.detail.map(d => d.msg).join('; ') : (j.detail || 'Preview failed'))}</div>`; box.classList.remove('hidden'); return; }
+            const who = _escHtml(name), n = j.new, gs = j.givers || [];
+            const from = j.prorata ? 'all existing investors, pro rata by ownership' : _escHtml(gs[0] ? gs[0].name : '') + "'s capital";
+            const grows = gs.map(g => `<tr><td class="pr-3 py-0.5 text-gray-300">${_escHtml(g.name)}${j.prorata ? ' <span class="text-gray-500">gives ' + usd(g.amount) + '</span>' : ''}</td><td class="pr-3 text-right text-gray-400">${usd(g.value_before)} → ${usd(g.value_after)}</td><td class="text-right ${g.pnl_change >= 0 ? 'text-emerald-400' : 'text-red-400'}">P&L ${sgn(g.pnl_change)}</td></tr>`).join('');
+            box.innerHTML = `<div class="text-gray-300 mb-1"><b>${who}</b> receives ${usd(amt)} from ${from} ${j.nav_day === 'now' ? 'today' : 'from ' + _escHtml(j.joined)} — at NAV ${Number(j.nav_then).toFixed(4)}${j.nav_day === 'now' ? '' : ' (close of ' + _escHtml(j.nav_day) + ')'} → ${Number(n.shares).toFixed(2)} shares. No money enters or leaves the fund.</div>
+                <table class="w-full mt-1"><tbody>
+                <tr><td class="pr-3 py-0.5 text-gray-300">${who}</td><td class="pr-3 text-right text-gray-400">value today ${usd(n.value_now)}</td><td class="text-right ${n.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}">P&L ${sgn(n.pnl)}</td></tr>
+                ${grows}
+                </tbody></table>
+                <div class="text-gray-500 mt-1">The fund total and NAV do not change; nobody else moves. Both ledgers show the transfer dated ${_escHtml(j.joined)}.</div>`;
+            box.classList.remove('hidden');
+        }
+        function _addBackdatePreview(){
+            clearTimeout(_addBdTimer);
+            _addBdTimer = setTimeout(async () => {
+                const box = document.getElementById('investor-add-backdate');
+                const jEl = document.getElementById('investor-add-joined');
+                const amt = safeFloat(document.getElementById('investor-add-amount')?.value);
+                const fnd = !!document.getElementById('investor-add-founding')?.checked;
+                if (!box) return;
+                if (['share', 'all'].includes(document.getElementById('investor-add-source')?.value)) {   // (490) the dated share has its own preview
+                    const seq2 = ++_addBdSeq;
+                    try { await _addSharePreview(box, seq2); } catch (e) { box.classList.add('hidden'); }
+                    return;
+                }
+                if (!jEl || !jEl.value || jEl.value === jEl.dataset.def || !(amt > 0) || fnd) { ++_addBdSeq; box.classList.add('hidden'); return; }   // an in-flight answer can no longer re-show it
+                const seq = ++_addBdSeq;
+                try {
+                    const name = document.getElementById('investor-add-name').value.trim() || 'New investor';
+                    const r = await fetch(`${API_BASE}/api/investors`, { method: 'POST', headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ name: name + ' (preview)', joined: jEl.value, deposit_amount: amt, preview: true }) });
+                    const j = await r.json();
+                    if (seq !== _addBdSeq) return;                                   // a newer input already asked
+                    const b = j && j.backdate;
+                    if (!r.ok || !b) { box.classList.add('hidden'); return; }
+                    const usd = v => (v < 0 ? '−$' : '$') + Math.abs(v).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                    const sgn = v => (v > 0 ? '+' : '') + usd(v);
+                    const who = _escHtml(name);
+                    if (b.unavailable) { box.innerHTML = `<div class="text-gray-400">If priced at ${_escHtml(jEl.value)}: ${_escHtml(b.unavailable)}.</div>`; box.classList.remove('hidden'); return; }
+                    const rows = b.others.map(o => `<tr><td class="pr-3 py-0.5 text-gray-300">${_escHtml(o.name)}</td><td class="pr-3 text-right text-gray-400">${usd(o.before)} → ${usd(o.after)}</td><td class="text-right ${o.delta >= 0 ? 'text-emerald-400' : 'text-red-400'}">${sgn(o.delta)}</td></tr>`).join('');
+                    box.innerHTML = `<div class="text-gray-300 mb-1"><b>What will happen:</b> ${who} is booked <b>today</b> at today's NAV ${Number(j.nav).toFixed(4)} — P&L $0.00 today, nobody else changes. The joined date is a label.</div>
+                        <div class="text-amber-300/90 mt-2 mb-1"><b>If priced at the joined date instead</b> (information only — NOT applied): NAV ${Number(b.nav_then).toFixed(4)} (close of ${_escHtml(b.nav_day)}) → ${Number(b.new_shares).toFixed(2)} shares · ${who} value today ${usd(b.value)} · P&L <span class="${b.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}">${sgn(b.pnl)}</span></div>
+                        <table class="w-full"><thead><tr class="text-gray-500"><th class="text-left font-normal">Existing investor</th><th class="text-right font-normal pr-3">value today → if backdated</th><th class="text-right font-normal">change</th></tr></thead><tbody>${rows}</tbody></table>
+                        <div class="text-gray-500 mt-1">The fund total is the same either way (${usd(b.fund_after)}): backdating new money only moves P&L between investors. (Assumes the money is not on the account yet — as the deposit itself.)</div>`;
+                    box.classList.remove('hidden');
+                } catch (e) { box.classList.add('hidden'); }
+            }, 400);
+        }
+
         async function submitAddInvestor() {
             const name = document.getElementById('investor-add-name').value.trim();
             if (!name) { showToast('Name is required', 'error'); return; }
             const eth_wallet = (document.getElementById('investor-add-wallet')?.value || '').trim();
             if (eth_wallet && !/^0x[0-9a-fA-F]{40}$/.test(eth_wallet)) { showToast('Invalid ETH address (0x + 40 hex chars)', 'error'); return; }
             try {
-                const _addBody = {name, eth_wallet: eth_wallet || null, deposit_amount: (function(){ const v = safeFloat(document.getElementById('investor-add-amount')?.value); return isNaN(v) || v <= 0 ? null : v; })(), founding: !!document.getElementById('investor-add-founding')?.checked};
+                const _jEl = document.getElementById('investor-add-joined');
+                const _srcV = document.getElementById('investor-add-source')?.value || 'new';   // (490) a dated share of existing capital
+                const _share = _srcV !== 'new';
+                if (_srcV === 'share' && !(parseInt(document.getElementById('investor-add-giver')?.value) > 0)) { showToast('Pick whose capital this share comes from', 'error'); return; }
+                const _addBody = {capital_source: _srcV, from_investor_id: _srcV === 'share' ? (parseInt(document.getElementById('investor-add-giver')?.value) || null) : null,
+                 from_all_prorata: _srcV === 'all',
+                 joined: (_jEl && _jEl.value && (_share || _jEl.value !== _jEl.dataset.def)) ? _jEl.value : null, name,   // the untouched default = now (a modal left open past midnight never backdates)
+                 eth_wallet: eth_wallet || null, deposit_amount: (function(){ const v = safeFloat(document.getElementById('investor-add-amount')?.value); return isNaN(v) || v <= 0 ? null : v; })(), founding: !!document.getElementById('investor-add-founding')?.checked};
                 if (!(await _confirmNavStart(`${API_BASE}/api/investors`, _addBody))) return;
                 const res = await fetch(`${API_BASE}/api/investors`, {
                     method: 'POST',
@@ -22527,6 +22647,7 @@
                 { const _e = document.getElementById('config-mcap-refresh-minutes'); if (_e && config.mcap_refresh_minutes !== undefined) _e.value = config.mcap_refresh_minutes; }
                 { const _e = document.getElementById('config-entry-zone-stamps-enabled'); if (_e) _e.checked = config.entry_zone_stamps_enabled !== false; }
                 { const _e = document.getElementById('config-app-trade-record-enabled'); if (_e) _e.checked = config.app_trade_record_enabled !== false; }   // 🧾 (329)
+                { const _e = document.getElementById('config-mkt-up4h-enabled'); if (_e) _e.checked = config.mkt_up4h_enabled !== false; }   // 🌡 (489)
                 { const _e = document.getElementById('config-backup-enabled'); if (_e) _e.checked = config.backup_enabled !== false; }   // 🗄 (436)
                 { const _e = document.getElementById('config-backup-s3-bucket'); if (_e) _e.value = config.backup_s3_bucket || ''; }
                 { const _e = document.getElementById('config-exchange-record-enabled'); if (_e) _e.checked = config.exchange_record_enabled !== false; }
@@ -24160,6 +24281,7 @@
                 mcap_refresh_minutes: (() => { const _v = parseFloat(document.getElementById('config-mcap-refresh-minutes')?.value); return (isFinite(_v) && _v >= 5) ? _v : 30; })(),
                 entry_zone_stamps_enabled: (document.getElementById('config-entry-zone-stamps-enabled')?.checked ?? true),
                 app_trade_record_enabled: (document.getElementById('config-app-trade-record-enabled')?.checked ?? true),   // 🧾 (DECISION_LOG 329)
+                mkt_up4h_enabled: (document.getElementById('config-mkt-up4h-enabled')?.checked ?? true),   // 🌡 (DECISION_LOG 489) kill switch
                 backup_enabled: (document.getElementById('config-backup-enabled')?.checked ?? true),   // 🗄 (DECISION_LOG 436)
                 backup_s3_bucket: (document.getElementById('config-backup-s3-bucket')?.value || '').trim().replace(/^s3:\/\//, '').replace(/\/.*$/, ''),
                 exchange_record_enabled: (document.getElementById('config-exchange-record-enabled')?.checked ?? true),

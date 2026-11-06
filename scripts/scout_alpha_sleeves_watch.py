@@ -24,7 +24,7 @@ CONFOUND   (operator 11-04: "is the problem the Alpha pair, or the watchlist ite
            zone, that line is judged instead. 🧭 (DECISION_LOG 471) the run prints it: per sleeve, ALPHA fills inside any of the sleeve's block
            lines (scripts/watch_zones.py — the best-case set) vs outside every one, and each closed ALPHA fill with the lines it sits in. Every
            ALPHA fill also counts in its sleeve's own lines like any other fill — this table is an extra view, never a separate bucket.
-           MKT_HOT needs market breadth (budgeted public 1h klines, cached — scout_ml_mkt_hot_watch): read only with run(market=True), as the
+           MKT_HOT needs Market-hot — % of the rolling top-100 up over 4 h (budgeted public 1h klines, cached — scout_ml_mkt_hot_watch): read only with run(market=True), as the
            hourly scout calls it; an incomplete read → NOT SCORED, never 'outside'. STOP_COOLDOWN (MOMENTUM_LONG) and OBS-F1 (SPIKE_FADE)
            are never scored here (listed under 'Lines not scored') — both groups keep Alpha blocked today.
 STATE      reports/SCOUT_ALPHA_SLEEVES.json (gitignored).
@@ -51,7 +51,7 @@ _ROOT = os.path.dirname(_D)
 STATE = os.path.join(_ROOT, "reports", "SCOUT_ALPHA_SLEEVES.json")
 EXPORT_GLOB = os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")
 COLS = ("opened_at", "closed_at", "pair", "direction", "entry_strategy", "status", "pnl_percentage", "pnl", "close_reason",
-        "cell_multiplier_source", "entry_pair_alpha") + WZ.ZONE_COLS
+        "cell_multiplier_source", "entry_pair_alpha", "entry_mkt_up4h_pct") + WZ.ZONE_COLS   # 🌡 (DL 489) the V2 Market-hot stamp
 REBLOCK = "RE-BLOCK CANDIDATE (operator decides after the 2D confound check; never automatic)"
 
 
@@ -130,17 +130,29 @@ def _row(sleeve, a, c, u, frozen):
     return f"| {sleeve} | `{group_of(sleeve)}` | {cell(a)} | {cell(c)} | {len(u)} | {frozen} |"
 
 
-HOT_SLEEVES = ("FRENZY_WILLY", "FRENZY_WILLY_HT", "MOMENTUM_LONG")   # sleeves with a market-breadth (MKT_HOT) line
+HOT_SLEEVES = ("FRENZY_WILLY", "FRENZY_WILLY_HT", "MOMENTUM_LONG")   # sleeves with a Market-hot (MKT_HOT) line
 
 
-def market_hot(o, now_ms):
-    """entry times (naive UTC) → ML_MKT_HOT zone labels ('zone' / 'rest' / 'unscored'), or None on an incomplete breadth read. Network
-    (budgeted, cached public 1h klines — the same read as scout_ml_mkt_hot_watch); never raises."""
+def market_hot(o, now_ms, stamps=None):
+    """entry times (naive UTC) [+ the fills' own V2 stamps entry_mkt_up4h_pct] → ML_MKT_HOT zone labels ('zone' / 'rest' / 'unscored'),
+    or None on an incomplete Market-hot read. 🌡 V2 rolling top-100 (DL 489): a stamped fill reads its stamp; the others are rebuilt (budgeted,
+    cached public 1h klines — the same read as scout_ml_mkt_hot_watch); never raises."""
     try:
         import scout_ml_mkt_hot_watch as MH
         if not len(o):
             return np.array([], dtype=object)
-        closes, complete = MH.fetch_closes(int(pd.Timestamp(min(o)).value // 10 ** 6), int(now_ms))
+        if stamps is not None:
+            st = pd.to_numeric(pd.Series(list(stamps)), errors="coerce")
+            if st.notna().all():
+                return MH.score(pd.DataFrame({"o": list(o), MH.STAMP: st.values}), None).zone.values
+            miss = [x for x, v in zip(o, st) if pd.isna(v)]
+            closes, complete = MH.fetch_closes(int(pd.Timestamp(min(miss)).value // 10 ** 6), int(now_ms),
+                                               days=sorted({pd.Timestamp(x).normalize() for x in miss}))
+            if not complete:
+                return None
+            return MH.score(pd.DataFrame({"o": list(o), MH.STAMP: st.values}), MH.breadth_series(closes)).zone.values
+        closes, complete = MH.fetch_closes(int(pd.Timestamp(min(o)).value // 10 ** 6), int(now_ms),
+                                           days=sorted({pd.Timestamp(x).normalize() for x in o}))   # 🌡 V2 rolling top-100 (DL 489)
         if not complete:
             return None
         return MH.score(pd.DataFrame({"o": list(o)}), MH.breadth_series(closes)).zone.values
@@ -176,8 +188,8 @@ def confound_lines(keep, now_ms, market=False):
     cl = keep[keep.closed & keep.pct.notna() & (keep.alpha == True)] if len(keep) else keep   # noqa: E712
     detail, hot_all = [], None
     need = cl[cl.zsleeve.isin(HOT_SLEEVES)] if len(cl) else cl
-    if market and len(need):   # ONE breadth read per run for every sleeve that needs it
-        h = market_hot(need.o.values, now_ms)
+    if market and len(need):   # ONE Market-hot read per run for every sleeve that needs it
+        h = market_hot(need.o.values, now_ms, need["entry_mkt_up4h_pct"].values if "entry_mkt_up4h_pct" in need else None)
         hot_all = None if h is None else pd.Series(h, index=need.index)
     for sl in sorted(cl.zsleeve.unique()) if len(cl) else []:
         a = cl[cl.zsleeve == sl]
@@ -199,7 +211,7 @@ def confound_lines(keep, now_ms, market=False):
 
 def run(now_ms=None, paths=None, state_path=STATE, since_ms=None, market=False):
     """→ markdown lines. since_ms None → the DECISION_LOG 464 commit + 10 min (not in git → NOT EVALUABLE). state_path None → no write.
-    market True → MKT_HOT scored from the budgeted breadth read (the hourly scout); False → listed as not scored (tests, offline)."""
+    market True → MKT_HOT scored from the budgeted Market-hot read (the hourly scout); False → listed as not scored (tests, offline)."""
     now_ms = int(time.time() * 1000) if now_ms is None else int(now_ms)
     L = [f"## 👁🅰️ ALPHA_SLEEVES — every sleeve on Binance \"Alpha\" coins (tag at entry), per-sleeve frozen re-block gate "
          f"(pre-registered 2026-11-04, DECISION_LOG {DL}, OBSERVE only)", ""]

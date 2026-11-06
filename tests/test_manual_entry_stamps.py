@@ -146,6 +146,7 @@ def test_manual_fill_records_every_field_a_momentum_fill_records(monkeypatch):
     for k, v in dict(off24lo=1.9, updated_at=now).items():
         monkeypatch.setitem(T._bearrun_monitor, k, v)
     monkeypatch.setattr(T.alt_corr_tracker, "value", dict(bar_close_ms=int(time.time() * 1000) // 300_000 * 300_000, corr=0.41, beta=1.3, n=20, at=0))   # 📈 (383)
+    monkeypatch.setattr(T.mkt_up4h_tracker, "value", dict(bar_close_ms=int(time.time() * 1000) // 3_600_000 * 3_600_000, pct=0.55, n=96))   # 🌡 (489)
     eng = T.TradingEngine.__new__(T.TradingEngine); eng.is_paper_mode = True
     eng._scan_pair_meta = {"QNTUSDT": (2.5e8, 17, 900.0)}; eng._scan_pair_meta_at = time.time()
     monkeypatch.setattr(T.binance_service.public_exchange, "markets",

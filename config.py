@@ -3170,6 +3170,12 @@ class TradingConfig(BaseModel):
     # Evidence: the operator's app trades (BTW, IOST ×6+, COMP on Oct-20) sat in the balance but in no table / calendar / win rate.
     # Record-keeping only — no trading rule reads these rows (every systematic table excludes MANUAL). False = the job does nothing.
     app_trade_record_enabled: bool = True
+    # 🌡 (DECISION_LOG 489, operator 2026-11-06 "V2 only, build it") MARKET-HOT TRACKER (top-100 coins up over 4 h) — services/mkt_up4h.py: once per hour the
+    # share of the day's rolling top-100 USDT perps above their close 4 h earlier is stamped on every fill (entry_mkt_up4h_pct / _n).
+    # Evidence: the ML_MKT_HOT split holds on V2 (master blocked 71 · +0.01 vs kept 87 · +0.22; B25 15 · −0.19 vs 24 · +0.44 — reports/
+    # ML_MKT_HOT_ROLLING_2026-11-06.md). Observe-only (no trading rule reads it); ≈ 100 weight / hour, never while banned / IP weight > 600.
+    # KILL SWITCH: False = the loop reads nothing and every stamp is NULL.
+    mkt_up4h_enabled: bool = True
     # 🗄 (DECISION_LOG 436, operator 2026-11-02 "build 1, 2 and 3") TRACK RECORD — services/track_record.py, daily after 00:10 UTC:
     # backup_enabled → a consistent SQLite snapshot (gzip) to s3://backup_s3_bucket/scalpars/… (SSE, the instance role; empty bucket =
     # snapshot kept on the server only, LOCAL_ONLY) · exchange_record_enabled → Binance's balance + every raw income row + the daily

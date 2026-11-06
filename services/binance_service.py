@@ -1045,6 +1045,59 @@ class BinanceService:
             logger.warning(f"[BINANCE] regime universe read failed: {str(e)[:120]}")
             return None
 
+    def ip_used_weight_1m(self) -> Optional[int]:
+        """🌡 (DECISION_LOG 489) the highest X-MBX-USED-WEIGHT-1M (an IP-wide counter) among the last answers of the trading, public and regime
+        clients — the shared budget the observe-only Market-hot reads defer to. None when no client has a header yet. Never raises."""
+        best = None
+        _now_ms = time.time() * 1000
+        for cl in (getattr(self, 'exchange', None), getattr(self, 'public_exchange', None), getattr(self, 'regime_exchange', None)):
+            try:
+                _last = getattr(cl, 'lastRestRequestTimestamp', None)
+                if _last and _now_ms - float(_last) > 60_000:
+                    continue                                 # (489 safety review) a stale header from a quiet client never blocks the tracker
+                for k, v in dict(getattr(cl, 'last_response_headers', None) or {}).items():
+                    if str(k).lower() == 'x-mbx-used-weight-1m':
+                        w = int(float(v))
+                        best = w if best is None or w > best else best
+            except (TypeError, ValueError, AttributeError):
+                continue
+        return best
+
+    async def fetch_up4h_universe_inputs(self) -> Optional[Dict[str, Dict]]:
+        """🌡 (DECISION_LOG 489) once per UTC day, for the Market-hot (top-100 up over 4 h) list (services.mkt_up4h): every USDT-margined PERPETUAL's
+        exchangeInfo status + baseAsset (weight 1) and its ticker/24hr quoteVolume + lastPrice (weight 40), on the regime client.
+        → dict(vols, statuses, bases, prices) or None on any error / ban / back-off (never raises)."""
+        if self.regime_limited():
+            return None
+        try:
+            cl = self._regime_client()
+            info = await cl.fapiPublicGetExchangeInfo()
+            self._regime_after_ok()
+            if self.regime_limited():
+                return None
+            statuses, bases = {}, {}
+            for s in (info or {}).get('symbols') or []:
+                sym = str(s.get('symbol') or '')
+                if s.get('quoteAsset') == 'USDT' and s.get('contractType') == 'PERPETUAL':
+                    statuses[sym] = str(s.get('status') or '')
+                    bases[sym] = str(s.get('baseAsset') or '')
+            tick = await cl.fapiPublicGetTicker24hr()
+            self._regime_after_ok()
+            vols, prices = {}, {}
+            for t in tick or []:
+                sym = str(t.get('symbol') or '')
+                if sym in statuses:
+                    try:
+                        vols[sym] = float(t.get('quoteVolume') or 0)
+                        prices[sym] = float(t.get('lastPrice') or 0)
+                    except (TypeError, ValueError):
+                        continue
+            return dict(vols=vols, statuses=statuses, bases=bases, prices=prices) if vols else None
+        except Exception as e:
+            self._regime_on_error(e)
+            logger.warning(f"[BINANCE] Market-hot (top-100) universe read failed: {str(e)[:120]}")
+            return None
+
     async def get_current_price(self, symbol: str) -> float:
         """Get current price for a symbol"""
         try:

@@ -18,6 +18,7 @@ import argparse
 import glob
 import os
 import sys
+import time
 
 import numpy as np
 import pandas as pd
@@ -37,7 +38,6 @@ B25_START, B25_FLOWS = 2900.0, [("2026-10-26T13:50:00", 7100.0)]          # DECI
 TPS = (0.5, 1.0, 2.0, 3.0)
 STOP = -0.70                                                               # today's momentum-long L1 stop, net % at 1× (B25 stops −0.69…−0.75)
 PROFIT_EXITS = ("RUNNER_TRAIL", "HARD_TP_LADDER", "HARD_TP", "TRAILING_STOP")
-ZONES = os.path.join(ROOT, "reports", "best_case", "zones.csv")             # ML_MKT_HOT per fill (rebuilt from public klines, DL 416)
 KNOWN_FULL_MASTER = 158                                                    # memory 11-04: momentum-long master full-size kept
 
 
@@ -60,7 +60,7 @@ def _ml(d):
 
 COLS = ["block", "era", "opened_at", "closed_at", "pair", "close_reason", "peak_reached_at", "trough_reached_at", "before", "peak_pnl",
         "trough_pnl", "post_exit_peak_pnl", "post_exit_trough_pnl", "post_exit_peak_minutes", "post_exit_trough_minutes", "post_exit_final_pnl",
-        "notional_value"]
+        "notional_value", "entry_mkt_up4h_pct"]   # 🌡 (DL 489) the engine's V2 Market-hot stamp (NULL before the deploy → rebuilt)
 
 
 def load_master():
@@ -84,7 +84,7 @@ def batch_rows(E, master_keys, block="B25", era="B25"):
 
 
 def finish(F):
-    """numeric columns + the per-fill flags every read needs (stop before peak, day, exit kind, ML_MKT_HOT from zones.csv)."""
+    """numeric columns + the per-fill flags every read needs (stop before peak, day, exit kind, ML_MKT_HOT on the V2 stamp / rebuild — DL 489)."""
     F = F.reset_index(drop=True)
     for c in COLS[8:]:
         F[c] = pd.to_numeric(F[c], errors="coerce")
@@ -111,15 +111,23 @@ def load(export):
     return F, dict(master=int((F.block == "MASTER").sum()), b25=int((F.block == "B25").sum()), probes_master=probes_m, probes_b25=probes_b)
 
 
-def attach_mkt_hot(F):
-    """the ML_MKT_HOT watch line per fill (True = in the hot zone = the fills the candidate filter would BLOCK; NaN = not scored)."""
-    if not os.path.exists(ZONES):
-        return pd.Series(np.nan, index=F.index, dtype=object)
-    Z = pd.read_csv(ZONES)
-    Z = Z[Z.sl == "MOMENTUM_LONG"]
-    mp = dict(zip(_key(Z.o) + "|" + Z.pair, Z.ML_MKT_HOT))
-    v = (_key(F.opened_at) + "|" + F.pair).map(mp)
-    return v.map(lambda x: np.nan if pd.isna(x) else str(x).lower() in ("true", "1", "1.0")).astype(object)
+def attach_mkt_hot(F, now_ms=None):
+    """the ML_MKT_HOT watch line per fill (True = in the hot zone = the fills the candidate filter would BLOCK; NaN = not scored) on the 🌡 V2
+    rolling top-100 (DECISION_LOG 489; replaced the frozen 108 and the best-case zones.csv read on 2026-11-06): the fill's own engine stamp
+    entry_mkt_up4h_pct when present, else rebuilt by scripts/scout_ml_mkt_hot_watch.py from the 11-06 study cache — NO network here (fills
+    past the cache stay NaN; scout_ml_fixed_tp_watch.score_missing reads those through the budgeted public klines)."""
+    import scout_ml_mkt_hot_watch as MH
+    o = pd.to_datetime(F.opened_at.astype(str).str.replace(" ", "T").str[:19], format="ISO8601", errors="coerce")
+    c = pd.DataFrame({"o": o.values, MH.STAMP: pd.to_numeric(F.get(MH.STAMP, pd.Series(np.nan, index=F.index)), errors="coerce").values},
+                     index=F.index)
+    miss = MH.needs_rebuild(c) & c.o.notna()
+    br = pd.Series(dtype=float)
+    if miss.any():
+        now_ms = int(time.time() * 1000) if now_ms is None else int(now_ms)
+        closes, _ok = MH.fetch_closes(int(c.o[miss].min().value // 10**6), now_ms, days=sorted(set(c.o[miss].dt.normalize())), fetch=False)
+        br = MH.breadth_series(closes) if len(closes) else br
+    z = MH.score(c[c.o.notna()], br).zone.reindex(F.index)
+    return z.map(lambda x: np.nan if (pd.isna(x) or x == "unscored") else x == "zone").astype(object)
 
 
 def stop_before_peak(F, stop=STOP):
@@ -285,7 +293,7 @@ def report(F, T, PB, N, dcr, export, H=None, dcr_hot=None):
     L += ["", "A gain in the last column is not a take-profit: it is the trade held 45 min longer than today's exit, marked where it stood.", ""]
     if H is not None:
         L += ["## Entry filter ML_MKT_HOT (watch line, DL 416) × fixed TP — master and B25, before → after", "",
-              "Kept = fills NOT in the hot zone (≤ 50 % of 108 coins above their 4 h-earlier close at entry) — the fills the candidate "
+              "Kept = fills NOT in the hot zone (≤ 50 % of the rolling top-100 above their 4 h-earlier close at entry — V2, DL 489) — the fills the candidate "
               "filter would let through. Blocked = the hot-zone fills it would refuse. Unscored fills (no market data) are in neither.", ""]
         for name, _ in _blk(F):
             S = H[H.block == name]

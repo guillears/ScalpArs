@@ -492,9 +492,9 @@ def test_d12_grep_ui_header_and_both_text_exports():
     assert html.count(">AltCorr</th>") == 1 and html.count(">AltBeta</th>") == 1                  # the by-Outcome thead (cloned into both strategy tables)
     assert html.count("${r.avg_alt_corr24 != null ? safe(r.avg_alt_corr24).toFixed(3) : '-'}") == 1   # by-Outcome UI row
     assert html.count("${r.avg_alt_corr24!=null?safe(r.avg_alt_corr24).toFixed(3):'-'}") == 1      # by-Strategy UI row renderer
-    assert html.count("${'AltCorr'.padEnd(8)} ${'AltBeta'}") == 4                                 # headers: outcome + strategy × BOTH exports
+    assert html.count("${'AltCorr'.padEnd(8)} ${'AltBeta'.padEnd(8)} ${'Up4h'}") == 4         # headers: outcome + strategy × BOTH exports (+ 🌡 489)
     assert html.count("r.avg_alt_corr24 != null ? r.avg_alt_corr24.toFixed(3) : '-'") == 2        # outcome rows × BOTH exports
-    assert html.count("${g(r.avg_alt_corr24,3).padEnd(8)} ${g(r.avg_alt_beta24,3)}") == 2         # strategy rows × BOTH exports
+    assert html.count("${g(r.avg_alt_corr24,3).padEnd(8)} ${g(r.avg_alt_beta24,3).padEnd(8)}") == 2         # strategy rows × BOTH exports
     i1 = html.index("## Entry Conditions by Outcome (Winners vs Losers)\\n")
     i2 = html.index("## Entry Conditions by Outcome (Winners vs Losers)\\n", i1 + 10)
     assert "AltCorr" in html[i1:i1 + 6000] and "AltCorr" in html[i2:i2 + 6000]                  # one per export function

@@ -51,11 +51,12 @@ def test_verdict_reads_history_and_batch_pooled():
 
 
 def test_run_end_to_end_with_unscored_breadth(tmp_path):
-    rows = [dict(opened_at="2026-10-25T10:00:00", closed_at="2026-10-25T10:30:00", pair="ZZZUSDT", pnl_percentage=0.4)]
+    # 🌡 (DL 489) a fill past the 11-06 study cache with no engine stamp: the cache-only rebuild cannot score it → the injected (failed) read decides
+    rows = [dict(opened_at="2027-01-10T10:00:00", closed_at="2027-01-10T10:30:00", pair="ZZZUSDT", pnl_percentage=0.4)]
     M = pd.DataFrame(columns=["opened_at", "pair", "pct", "entry_ema20_slope", "entry_rsi_prev"])
     out = "\n".join(W.run(now_ms=1_800_000_000_000, paths=[_export(tmp_path, rows)], since_ms=1_790_000_000_000,
                           breadth_fn=lambda t, n: (pd.Series(dtype=float), False), master=M))
-    assert "breadth fetch incomplete" in out and "| _unscored (breadth or a cell leg missing) — never counted_ | 1 |" in out
+    assert "Market-hot read incomplete" in out and "| _unscored (Market-hot or a cell leg missing) — never counted_ | 1 |" in out
 
 
 def test_hook_and_registry():

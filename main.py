@@ -75,6 +75,7 @@ _frenzy_task = None
 _orderbook_task = None
 _app_trade_task = None   # 🧾 (DECISION_LOG 329) Binance-app trade recorder
 _alt_corr_task = None   # 📈 (DECISION_LOG 383) alt-correlation regime stamp refresher
+_mkt_up4h_task = None   # 🌡 (DECISION_LOG 489) Market-hot (top-100 up over 4 h) (rolling top-100) stamp refresher
 should_stop = False
 _scan_lock = asyncio.Lock()
 # 💰 Sep-21 — investor/NAV writes are read-modify-write across separate sessions, so two concurrent
@@ -441,6 +442,135 @@ async def alt_corr_loop():
             _repair_task.cancel()
 
 
+MKT_UP4H_OFFSET_S = 90.0       # 🌡 (DECISION_LOG 489, safety review) the hourly refresh starts at HH:01:30 — off the HH:00 5m-close scan burst (fills before it: NULL → repaired); was HH:00:05 (the closed 1h bar is final on REST klines by then) …
+MKT_UP4H_DAY_OFFSET_S = 30.0   # … and at 00:00:30 UTC at the day turn (the new day's list: the 24 h ticker = the previous UTC day)
+MKT_UP4H_BOOT_S = 90.0            # 🔒 the first pass 90 s after start — never in front of the boot's first scan / reads
+MKT_UP4H_RETRY_S = 60.0        # a failed hour is retried every minute …
+MKT_UP4H_RETRY_UNTIL_S = 900   # … for its first 15 min (fills meanwhile stamp NULL → the 🩹 repair)
+MKT_UP4H_REPAIR_WINDOW_H = 48  # 🩹 bot fills of the last 48 h with a NULL Market-hot stamp (the stamp-gap banner's window)
+MKT_UP4H_REPAIR_GRACE_MIN = 10
+MKT_UP4H_REPAIR_MAX_HOURS = 3  # distinct entry hours per pass (≤ 3 × 100 reads × weight 1, only when something is NULL)
+MKT_UP4H_REPAIR_TRIES = 3
+MKT_UP4H_REPAIR_DELAY_S = 1500 # a pass starts at ≈ HH:25, away from the hourly refresh and the 5m closes' bursts
+_mb_repair_tries: Dict[int, int] = {}   # entry-hour bar close ms → tries
+
+
+async def mkt_up4h_repair_pass(tracker=None, now=None, delay_s=0.0) -> int:
+    """🩹 (DECISION_LOG 489) recompute the Market-hot (top-100 up over 4 h) stamp of recent BOT fills that carry NULL (entry_mkt_up4h_pct AND
+    entry_mkt_up4h_n both NULL = never computed — a NULL share WITH an n is a real < 30 reading and stays) from the day's stored list +
+    historical 1h klines — services.mkt_up4h's same functions. Fills ONLY the NULL columns. Pre-deploy fills have no stored list and stay
+    NULL. → fills repaired. Never raises (except cancellation)."""
+    from services.trading_engine import mkt_up4h_tracker
+    from services.origin_view import order_origin
+    from services.mkt_up4h import last_closed_bar_ms
+    tracker = tracker or mkt_up4h_tracker
+    fixed = 0
+    try:
+        if delay_s:
+            await asyncio.sleep(delay_s)
+        now = now or datetime.utcnow()
+        async with AsyncSessionLocal() as db:
+            rows = (await db.execute(select(Order.id, Order.pair, Order.opened_at, Order.entry_strategy, Order.confidence).where(and_(
+                Order.status.in_(("OPEN", "CLOSED")),
+                Order.opened_at >= now - timedelta(hours=MKT_UP4H_REPAIR_WINDOW_H),
+                Order.opened_at <= now - timedelta(minutes=MKT_UP4H_REPAIR_GRACE_MIN),
+                Order.entry_mkt_up4h_pct.is_(None), Order.entry_mkt_up4h_n.is_(None))).order_by(Order.opened_at))).all()
+        rows = [r for r in rows if order_origin(str(r.entry_strategy or ""), r.confidence) == "BOT"]   # the operator's rows are never repaired
+        by_hour = {}
+        for r in rows:
+            ms = int(r.opened_at.replace(tzinfo=timezone.utc).timestamp() * 1000)
+            by_hour.setdefault(last_closed_bar_ms(ms), []).append((r, ms))
+        todo = [h for h in sorted(by_hour) if _mb_repair_tries.get(h, 0) < MKT_UP4H_REPAIR_TRIES][:MKT_UP4H_REPAIR_MAX_HOURS]
+        for h in todo:
+            if not _alt_repair_room(tracker):   # limited / heavy IP weight / a 5m close is near → stop, no try spent
+                logger.info("[MKT_UP4H_REPAIR] pass paused (limited, weight or the next close) — next pass")
+                break
+            _mb_repair_tries[h] = _mb_repair_tries.get(h, 0) + 1
+            r0, ms0 = by_hour[h][0]             # ONE read set per entry hour: same last closed bar + same day list → the same value for every fill in it
+            res, why = await tracker.repair(ms0)
+            if res is None:
+                logger.info(f"[MKT_UP4H_REPAIR] {len(by_hour[h])} fill(s) of the {time.strftime('%Y-%m-%d %H:%M', time.gmtime(h / 1000))} UTC hour "
+                            f"(first {r0.pair} #{r0.id}): not repaired (try {_mb_repair_tries[h]}/{MKT_UP4H_REPAIR_TRIES}) — {why}")
+                continue
+            ids = [r.id for r, _ms in by_hour[h]]
+            async with AsyncSessionLocal() as db:   # ONE tiny write per entry hour, after the reads (no lock across network I/O); only while still NULL
+                await locked_execute_commit(db, update(Order).where(and_(Order.id.in_(ids), Order.entry_mkt_up4h_pct.is_(None),
+                                                                         Order.entry_mkt_up4h_n.is_(None)))
+                                            .values(entry_mkt_up4h_pct=res['pct'], entry_mkt_up4h_n=res['n']))
+            fixed += len(ids)
+            logger.info(f"[MKT_UP4H_REPAIR] {len(ids)} fill(s) of the {time.strftime('%Y-%m-%d %H:%M', time.gmtime(h / 1000))} UTC hour: "
+                        f"up4h={res['pct']} n={res['n']} (bar {time.strftime('%H:%M', time.gmtime(res['bar_close_ms'] / 1000))} UTC)")
+        lo = int((now - timedelta(hours=MKT_UP4H_REPAIR_WINDOW_H + 2)).replace(tzinfo=timezone.utc).timestamp() * 1000)
+        for k in [k for k in _mb_repair_tries if k < lo]:
+            _mb_repair_tries.pop(k, None)
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        logger.warning(f"[MKT_UP4H_REPAIR] pass failed (observe-only, trading unaffected): {str(e)[:160]}")
+    return fixed
+
+
+def _mkt_up4h_next_wake(now_s: float) -> float:
+    """seconds until the next hourly refresh: HH:00:05, or 00:00:30 UTC at the day turn. Pure."""
+    nxt = (int(now_s // 3600) + 1) * 3600
+    return max(1.0, nxt + (MKT_UP4H_DAY_OFFSET_S if nxt % 86400 == 0 else MKT_UP4H_OFFSET_S) - now_s)
+
+
+def _mkt_up4h_on() -> bool:
+    """the mkt_up4h_enabled kill switch (DECISION_LOG 489). Never raises (an unreadable config = off)."""
+    try:
+        return bool(getattr(config.trading_config, 'mkt_up4h_enabled', True))
+    except Exception:
+        return False
+
+
+async def mkt_up4h_loop():
+    """🌡 (DECISION_LOG 489) OBSERVE-ONLY, ZERO-RISK: once per hour (HH:00:05; 00:00:30 UTC at the day turn, when the day's rolling top-100 list
+    is built) the Market-hot share (% of the rolling top-100 up over 4 h, services.mkt_up4h) is computed for the 1h bar that just closed — its
+    own task on the regime public client (≈ 100 weight / hour + 41 / day, 3 reads in flight), so the scan / FRENZY / order paths never wait on
+    it; no read starts while banned / rate-limited, while the IP's used weight is above 600 or while `mkt_up4h_enabled` is off (then the loop
+    only sleeps and every stamp is NULL). First pass MKT_UP4H_BOOT_S after start (never in front of the boot's first scan). A failed hour is
+    retried each minute for 15 min. Hourly (≈ HH:25) the 🩹 repair runs as its own task; once a day the stored day lists are pruned to 30
+    days. Every iteration is wrapped: an error is logged, never propagated."""
+    from services.trading_engine import mkt_up4h_tracker
+    from models import MktUp4hUniverse
+    await asyncio.sleep(MKT_UP4H_BOOT_S)
+    _last_prune = 0.0
+    _repair_task = None
+    try:
+        while not should_stop:
+            ok = None
+            try:
+                if not _mkt_up4h_on():
+                    await asyncio.sleep(_mkt_up4h_next_wake(time.time()))
+                    continue
+                ok = await mkt_up4h_tracker.refresh()
+                if _repair_task is None or _repair_task.done():
+                    _repair_task = asyncio.create_task(mkt_up4h_repair_pass(mkt_up4h_tracker, delay_s=MKT_UP4H_REPAIR_DELAY_S))
+                if time.time() - _last_prune > 86400:
+                    _last_prune = time.time()
+                    async with AsyncSessionLocal() as db:
+                        await locked_execute_commit(db, delete(MktUp4hUniverse).where(
+                            MktUp4hUniverse.day_ms < int((time.time() - 30 * 86400) * 1000)))
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.warning(f"[MKT_UP4H] loop error (observe-only, trading unaffected): {str(e)[:120]}")
+            try:
+                _now = time.time()
+                if ok is None and _mkt_up4h_on() and (_now % 3600) < MKT_UP4H_RETRY_UNTIL_S:
+                    await asyncio.sleep(MKT_UP4H_RETRY_S)
+                else:
+                    await asyncio.sleep(_mkt_up4h_next_wake(_now))
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                await asyncio.sleep(60)
+    finally:
+        if _repair_task is not None and not _repair_task.done():
+            _repair_task.cancel()
+
+
 async def bnb_swap_loop():
     """Periodic loop to check BNB balance and auto-swap USDT to BNB for fee coverage."""
     global should_stop
@@ -521,7 +651,7 @@ async def nav_snapshot_loop():
 
 async def start_background_tasks():
     """Start background trading tasks"""
-    global _scan_task, _monitor_task, _bnb_swap_task, _nav_task, _frenzy_task, _orderbook_task, _app_trade_task, _alt_corr_task, should_stop
+    global _scan_task, _monitor_task, _bnb_swap_task, _nav_task, _frenzy_task, _orderbook_task, _app_trade_task, _alt_corr_task, _mkt_up4h_task, should_stop
     should_stop = False
     
     # Start WebSocket tracker for real-time price tracking
@@ -547,6 +677,7 @@ async def start_background_tasks():
     _frenzy_task = asyncio.create_task(frenzy_loop())   # 🔥 Oct-3: FRENZY at the bar close, not after the scan
     _orderbook_task = asyncio.create_task(orderbook_loop())   # 📖 Oct-3: order-book snapshots (research)
     _alt_corr_task = asyncio.create_task(alt_corr_loop())   # 📈 (DECISION_LOG 383) alt-correlation stamp, once per 5m close (observe-only)
+    _mkt_up4h_task = asyncio.create_task(mkt_up4h_loop())   # 🌡 (DECISION_LOG 489) Market-hot (top-100 up over 4 h) stamp, once per hour (observe-only)
     # 🧾 (DECISION_LOG 329) Binance-app trade recorder: own task + own sessions, LIVE only and app_trade_record_enabled checked every pass
     # (the task idles in paper / switched off); runs while the bot is stopped too — the operator's app trades happen then as well
     from services.app_trades import app_trade_loop as _app_trade_loop
@@ -565,7 +696,7 @@ async def start_background_tasks():
 
 async def stop_background_tasks():
     """Stop background trading tasks"""
-    global _scan_task, _monitor_task, _bnb_swap_task, _nav_task, _frenzy_task, _orderbook_task, _app_trade_task, _alt_corr_task, should_stop
+    global _scan_task, _monitor_task, _bnb_swap_task, _nav_task, _frenzy_task, _orderbook_task, _app_trade_task, _alt_corr_task, _mkt_up4h_task, should_stop
     should_stop = True
 
     # Stop WebSocket tracker
@@ -600,6 +731,12 @@ async def stop_background_tasks():
         _alt_corr_task.cancel()
         try:
             await _alt_corr_task
+        except (asyncio.CancelledError, Exception):
+            pass
+    if _mkt_up4h_task:   # 🌡 (DECISION_LOG 489) the Market-hot (top-100 up over 4 h) refresher (observe-only)
+        _mkt_up4h_task.cancel()
+        try:
+            await _mkt_up4h_task
         except (asyncio.CancelledError, Exception):
             pass
     if _app_trade_task:   # 🧾 (DECISION_LOG 329) the Binance-app trade recorder (cancelled mid-pass: rows already written stay; cursor kept)
@@ -865,6 +1002,7 @@ class ConfigUpdate(BaseModel):
     mcap_refresh_minutes: Optional[float] = None
     entry_zone_stamps_enabled: Optional[bool] = None   # 🧭 Sep-29 zone stamps kill switch
     app_trade_record_enabled: Optional[bool] = None    # 🧾 (DECISION_LOG 329) Binance-app trade recorder kill switch
+    mkt_up4h_enabled: Optional[bool] = None         # 🌡 (DECISION_LOG 489) Market-hot (top-100 up over 4 h) stamp kill switch
     backup_enabled: Optional[bool] = None              # 🗄 (DECISION_LOG 436) daily DB backup
     backup_s3_bucket: Optional[str] = None
     exchange_record_enabled: Optional[bool] = None     # 🏦 (DECISION_LOG 436) daily Binance record
@@ -8912,6 +9050,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             btc_1h_slopes_eco = [getattr(o, 'entry_btc_1h_slope', None) for o in group if getattr(o, 'entry_btc_1h_slope', None) is not None]
             alt_corrs_eco = [o.entry_alt_corr24 for o in group if getattr(o, 'entry_alt_corr24', None) is not None]   # 📈 (DECISION_LOG 383)
             alt_betas_eco = [o.entry_alt_beta24 for o in group if getattr(o, 'entry_alt_beta24', None) is not None]
+            mkt_up_eco = [o.entry_mkt_up4h_pct for o in group if getattr(o, 'entry_mkt_up4h_pct', None) is not None]   # 🌡 (DECISION_LOG 489)
             if direction == "LONG":
                 breadths = [o.entry_bull_pct for o in group if o.entry_bull_pct is not None]
             else:
@@ -9013,6 +9152,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 # 📈 (DECISION_LOG 383) alt-correlation regime stamp (OBS-R1 corr > 0.3164 / R1b beta > 1.372 = the frozen loser-regime line)
                 "avg_alt_corr24": round(sum(alt_corrs_eco) / len(alt_corrs_eco), 4) if alt_corrs_eco else None,
                 "avg_alt_beta24": round(sum(alt_betas_eco) / len(alt_betas_eco), 4) if alt_betas_eco else None,
+                "avg_mkt_up4h_pct": round(sum(mkt_up_eco) / len(mkt_up_eco), 4) if mkt_up_eco else None,   # 🌡 (489) Market-hot (top-100 up over 4 h)
                 "avg_peak_pct": round(sum(peaks) / count, 4),
                 "avg_trough_pct": round(sum(troughs) / len(troughs), 4) if troughs else None,
                 "worst_trough_pct": round(min(troughs), 4) if troughs else None,
@@ -9077,6 +9217,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         btc_1h_slopes = [getattr(o, 'entry_btc_1h_slope', None) for o in group if getattr(o, 'entry_btc_1h_slope', None) is not None]
         alt_corrs = [o.entry_alt_corr24 for o in group if getattr(o, 'entry_alt_corr24', None) is not None]   # 📈 (DECISION_LOG 383)
         alt_betas = [o.entry_alt_beta24 for o in group if getattr(o, 'entry_alt_beta24', None) is not None]
+        mkt_ups = [o.entry_mkt_up4h_pct for o in group if getattr(o, 'entry_mkt_up4h_pct', None) is not None]   # 🌡 (DECISION_LOG 489)
         breadths = [o.entry_bull_pct for o in group if o.entry_bull_pct is not None] if direction == 'LONG' else [o.entry_bear_pct for o in group if o.entry_bear_pct is not None]
         peaks = [o.peak_pnl or 0 for o in group]
         troughs = [o.trough_pnl for o in group if o.trough_pnl is not None]
@@ -9109,6 +9250,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "avg_exit_btc_trend_gap": _avg(exit_btc_trend_gaps, 4), "avg_pair_vol_usd": (round(sum(pair_vol_usds) / len(pair_vol_usds), 0) if pair_vol_usds else None),
             "avg_ext_pct": _avg(ext_vals, 4), "avg_btc_ext_pct": _avg(btc_ext_vals, 4), "avg_btc_1h_slope": _avg(btc_1h_slopes, 4),
             "avg_alt_corr24": _avg(alt_corrs, 4), "avg_alt_beta24": _avg(alt_betas, 4),   # 📈 (DECISION_LOG 383) OBS-R1 / R1b
+            "avg_mkt_up4h_pct": _avg(mkt_ups, 4),   # 🌡 (DECISION_LOG 489) Market-hot (top-100 up over 4 h), rolling top-100
             "avg_peak_pct": round(sum(peaks) / count, 4) if count else None, "avg_trough_pct": _avg(troughs, 4),
             "worst_trough_pct": round(min(troughs), 4) if troughs else None,
             "avg_pnl_pct": round(sum(pnls) / count, 4) if count else None, "total_pnl_usd": round(sum(o.pnl or 0 for o in group), 2),
@@ -13479,6 +13621,68 @@ class InvestorCreate(BaseModel):
     deposit_amount: Optional[float] = None   # Aug-24: optional initial deposit at creation (same NAV math as /deposit)
     founding: bool = False                   # Sep-21: this share DIVIDES pre-existing capital (NAV 1.0), it is not new money
     preview: bool = False                    # 📈 (337 I4) dry run: the price + nav_start_warning, nothing written (no lock taken)
+    joined: Optional[str] = None             # 🗓 (DECISION_LOG 488) the JOINED date (YYYY-MM-DD, UTC-3 day) — blank / today = now
+    from_investor_id: Optional[int] = None   # 🗓 (DECISION_LOG 490) NO new money: deposit_amount = the value taken from this investor's capital
+                                             # ON the joined day, priced at that day's opening NAV (a dated transfer — nothing enters the fund)
+    from_all_prorata: bool = False           # 🗓 (490) … or from ALL current holders, pro rata by the shares they held that day
+    capital_source: Optional[str] = None     # 🗓 (490 review) "new" | "share" | "all" — explicit, so a missing giver is a 400, never a deposit
+
+
+def add_joined_at(joined: Optional[str], today_utc3, prior_times) -> Optional[datetime]:
+    """🗓 (DECISION_LOG 488) the Add-Investor JOINED date → the naive-UTC created_at to store (00:00 UTC-3 = 03:00 UTC of that day), or
+    None = keep "now" (blank or today). prior_times = created_at of ledger rows ALREADY under this id before the new investor (a recycled
+    id from the pre-AUTOINCREMENT era): a date at or before one of them would pull that old holder's rows into the new investor's ledger
+    and statements (the same scope rule as investor_joined_change, DL 478). Raises ValueError (operator-readable). PURE."""
+    if joined is None or not str(joined).strip():
+        return None
+    try:
+        d = datetime.strptime(str(joined).strip(), "%Y-%m-%d").date()
+    except ValueError:
+        raise ValueError("Joined date must be YYYY-MM-DD")
+    if d > today_utc3:
+        raise ValueError("The joined date cannot be in the future")
+    if d == today_utc3:
+        return None
+    at = datetime(d.year, d.month, d.day, 3, 0, 0)
+    if any(t is not None and t >= at - _JOIN_GRACE for t in prior_times):
+        raise ValueError("An older ledger entry under this investor id would join the new investor's history — choose a later date")
+    return at
+
+
+def dated_share_transfer(amount: float, nav_then: float, nav_now: float, src_shares_now: float, src_shares_then: float,
+                         src_deposited: float, src_value_pnl_now: float = None) -> dict:
+    """🗓 (DECISION_LOG 490) a share of an EXISTING investor's capital given to a new investor FROM the joined day — no money enters or
+    leaves, NAV unchanged. Shares = amount ÷ the joined day's opening NAV (the transfer core prices it: shares + the moved deposit basis,
+    investor_transfer_split — the recipient's basis = amount, so her P&L = the move since that day). Refused when the giver did not hold
+    those shares on that day or does not hold them now. → {shares, basis, value_now, pnl, src_value_before, src_value_after,
+    src_pnl_change}. src_pnl_change = −pnl when the whole amount carries basis. PURE."""
+    if not (nav_then and float(nav_then) > 0):
+        raise ValueError("No NAV for that day")
+    if float(src_shares_then) + 1e-9 < float(amount) / float(nav_then):
+        raise ValueError(f"On that day the giver held {float(src_shares_then):,.4f} shares (${float(src_shares_then) * float(nav_then or 0):,.2f}) — "
+                         f"less than ${float(amount):,.2f}")
+    mv = investor_transfer_split(amount, nav_then, src_shares_now, src_deposited)
+    value_now = mv["shares"] * float(nav_now)
+    before = float(src_shares_now) * float(nav_now)
+    after = (float(src_shares_now) - mv["shares"]) * float(nav_now)
+    return dict(shares=mv["shares"], basis=mv["basis"], value_now=round(value_now, 2), pnl=round(value_now - mv["basis"], 2),
+                src_value_before=round(before, 2), src_value_after=round(after, 2), src_pnl_change=round((after - before) + mv["basis"], 2))
+
+
+def backdate_preview(dep: float, nav_now: float, nav_then: float, holdings: list) -> dict:
+    """🗓 (DECISION_LOG 488, operator option 1) INFORMATION ONLY — what pricing a NEW deposit at the joined date's NAV would do, never
+    applied: the money arrives today, so equity grows by `dep`; shares issued at the old NAV change the NAV for everyone. holdings =
+    [(name, shares)] of the existing investors. → {nav_then, new_shares, nav_after, value, pnl, others: [{name, before, after, delta}],
+    fund_before, fund_after}. Σ deltas = −pnl (a transfer between investors, no new profit). PURE."""
+    S = sum(sh for _, sh in holdings)
+    E = nav_now * S
+    sh_new = dep / nav_then
+    nav_after = (E + dep) / (S + sh_new) if (S + sh_new) > 0 else nav_now
+    others = [dict(name=n, before=round(sh * nav_now, 2), after=round(sh * nav_after, 2), delta=round(sh * (nav_after - nav_now), 2))
+              for n, sh in holdings]
+    value = sh_new * nav_after
+    return dict(nav_then=round(nav_then, 6), new_shares=round(sh_new, 6), nav_after=round(nav_after, 6), value=round(value, 2),
+                pnl=round(value - dep, 2), others=others, fund_before=round(E, 2), fund_after=round(E + dep, 2))
 
 
 _ETH_ADDR_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
@@ -14071,7 +14275,7 @@ def founding_allocation_shares(amount, already_allocated, initial_capital):
 
 
 def _log_investor_ledger(db: AsyncSession, investor_id: int, type_: str, amount: float,
-                         nav: float = None, shares_delta: float = None, note: str = None):
+                         nav: float = None, shares_delta: float = None, note: str = None, created_at: datetime = None):
     """Append a dated cash-flow row. Fail-open — a ledger error must NEVER break
     the underlying deposit/withdrawal (the shares/NAV math is the source of truth)."""
     try:
@@ -14080,6 +14284,7 @@ def _log_investor_ledger(db: AsyncSession, investor_id: int, type_: str, amount:
             nav_at_time=round(nav, 6) if nav is not None else None,
             shares_delta=round(shares_delta, 6) if shares_delta is not None else None,
             note=note,
+            **({"created_at": created_at} if created_at is not None else {}),   # 🗓 (490) a dated share transfer
         ))
     except Exception as e:
         logger.warning(f"[INVESTOR_LEDGER] failed to log {type_} for investor {investor_id}: {e}")
@@ -14276,6 +14481,22 @@ async def add_investor(body: InvestorCreate, db: AsyncSession = Depends(get_db))
     name = body.name.strip()
     if not name:
         raise HTTPException(400, "Name is required")
+    _today3 = (datetime.now(timezone.utc) - timedelta(hours=3)).date()
+    try:
+        add_joined_at(body.joined, _today3, [])          # 🗓 (488) format / future checked before anything is priced or written
+    except ValueError as _je:
+        raise HTTPException(400, str(_je))
+    _cs = (getattr(body, "capital_source", None) or "").strip().lower() or None
+    if _cs not in (None, "new", "share", "all"):
+        raise HTTPException(400, "capital_source must be new, share or all")
+    if body.from_investor_id is not None and getattr(body, "from_all_prorata", False):
+        raise HTTPException(400, "Choose ONE investor or ALL investors pro rata, not both")
+    if _cs == "share" and body.from_investor_id is None:
+        raise HTTPException(400, "Pick whose capital this share comes from")
+    if _cs == "all" and not getattr(body, "from_all_prorata", False):
+        body.from_all_prorata = True
+    if _cs in ("share", "all") or body.from_investor_id is not None or getattr(body, "from_all_prorata", False):   # 🗓 (490) no new money
+        return await _add_investor_from_capital(body, name, _today3, db)
 
     existing = await db.execute(select(Investor).where(Investor.name == name))
     if existing.scalar():
@@ -14308,14 +14529,46 @@ async def add_investor(body: InvestorCreate, db: AsyncSession = Depends(get_db))
         nav = await _get_nav_per_share(db)
         if nav <= 0:
             raise HTTPException(503, "NAV unavailable — retry shortly (nothing was created)")
+    _bd = None
+    if getattr(body, "preview", False) and _dep > 0 and not _founding and body.joined and str(body.joined).strip():
+        # 🗓 (488) information only: the NAV at the START of the joined day = the close of the day before (UTC-3 rows, current epoch)
+        try:
+            _jd = datetime.strptime(str(body.joined).strip(), "%Y-%m-%d").date()
+            if _jd < _today3:
+                _ep_day, _ep_at = await _get_nav_epoch(db)
+                _q = select(NavSnapshot).where(NavSnapshot.date < _jd.isoformat())
+                _ec = _nav_epoch_clause(_ep_day, _ep_at)
+                if _ec is not None:
+                    _q = _q.where(_ec)
+                _snap = (await db.execute(_q.order_by(NavSnapshot.date.desc()).limit(1))).scalar_one_or_none()
+                _hold = [(i.name, float(i.shares)) for i in (await db.execute(
+                    select(Investor).where(Investor.shares > 0).order_by(Investor.id))).scalars().all()]
+                if not _hold:
+                    _bd = {"unavailable": "no existing investors — backdating moves nothing between investors"}
+                elif _snap is not None and _snap.nav_per_share and _snap.nav_per_share > 0:
+                    _bd = backdate_preview(_dep, nav, float(_snap.nav_per_share), _hold)
+                    _bd["nav_day"] = _snap.date
+                else:
+                    _bd = {"unavailable": "no NAV history before that day in the current NAV history"}
+        except Exception as _bde:
+            _bd = {"unavailable": f"preview failed ({str(_bde)[:60]})"}
     if getattr(body, "preview", False):          # 📈 (337 I4) dry run — nothing created
-        return {"ok": True, "preview": True, "nav": round(nav, 6) if nav else None,
+        return {"ok": True, "preview": True, "nav": round(nav, 6) if nav else None, "backdate": _bd,
                 "new_shares": round((_founding_shares if _founding_shares is not None else _dep / nav), 6) if _dep > 0 else None,
                 "nav_start_warning": (await _nav_start_warning_for(db, _dep)) if (_dep > 0 and not _founding) else None}
     inv = Investor(name=name, shares=0.0, total_deposited=0.0, total_withdrawn=0.0,
                    eth_wallet=_clean_eth_wallet(body.eth_wallet))
     db.add(inv)
     await db.flush()
+    if body.joined and str(body.joined).strip():   # 🗓 (488) a chosen JOINED date — only after the id exists (recycled-id scope check)
+        _prior = [t for (t,) in (await db.execute(select(InvestorLedger.created_at).where(InvestorLedger.investor_id == inv.id))).all()]
+        try:
+            _jat = add_joined_at(body.joined, _today3, _prior)
+        except ValueError as _je:
+            raise HTTPException(400, str(_je))
+        if _jat is not None:
+            inv.created_at = _jat
+            await db.flush()
     if _dep > 0:  # Aug-24: optional initial deposit — identical NAV/share math + ledger as /api/investors/deposit
         _dep_shares = _founding_shares if _founding_shares is not None else (_dep / nav)
         inv.shares += _dep_shares
@@ -14332,7 +14585,144 @@ async def add_investor(body: InvestorCreate, db: AsyncSession = Depends(get_db))
                                    if _founding else None))
     binance_service.invalidate_flow_caches()  # Sep-7 integration review: initial deposit path — same class
     return {"ok": True, "id": inv.id, "name": inv.name, "eth_wallet": inv.eth_wallet,
-            "deposited": _dep if _dep > 0 else None, "new_shares": round(_dep_shares, 6) if _dep_shares else None}
+            "deposited": _dep if _dep > 0 else None, "new_shares": round(_dep_shares, 6) if _dep_shares else None,
+            "joined": ((inv.created_at - timedelta(hours=3)).date().isoformat() if inv.created_at else None)}   # the day actually stored (UTC-3)
+
+
+async def _add_investor_from_capital(body, name: str, today3, db: AsyncSession):
+    """🗓 (DECISION_LOG 490, operator 11-06: "maybe i dont get new money in, but i give part of what i already had in") the new investor
+    receives `deposit_amount` of EXISTING capital as of the joined day — from ONE investor (`from_investor_id`) or from ALL existing
+    investors PRO RATA by the shares they held that day (`from_all_prorata`, operator: "All existing investors, pro rata by ownership").
+    Shares at that day's OPENING NAV (the prior close in the current NAV epoch; today → the live NAV) move from each giver, each giver's
+    deposit basis moves with its slice (the transfer core), and every ledger row (one TRANSFER_OUT per giver, one TRANSFER_IN) is DATED
+    that day. Nothing enters or leaves the fund: portfolio value and NAV are untouched; only the givers move. preview → the numbers."""
+    if getattr(body, "founding", False):
+        raise HTTPException(400, "A share of existing capital cannot also be a founding allocation")
+    amt = float(body.deposit_amount or 0)
+    import math as _m
+    if not _m.isfinite(amt) or amt <= 0:
+        raise HTTPException(400, "Enter the value (USD) to take from existing capital")
+    amt = round(amt, 2)                                  # (490 review) cents, as fund_expense — slices and rows add up exactly
+    if (await db.execute(select(Investor).where(Investor.name == name))).scalar():
+        raise HTTPException(409, f"Investor '{name}' already exists")
+    prorata = bool(getattr(body, "from_all_prorata", False))
+    if prorata:
+        givers = (await db.execute(select(Investor).where(Investor.shares > 0).order_by(Investor.id))).scalars().all()
+        if not givers:
+            raise HTTPException(400, "No existing investors hold shares")
+    else:
+        src = await db.get(Investor, int(body.from_investor_id))
+        if src is None or float(src.shares or 0) <= 0:
+            raise HTTPException(404, "The giving investor was not found or holds no shares")
+        givers = [src]
+    jd = None
+    if body.joined and str(body.joined).strip():
+        jd = datetime.strptime(str(body.joined).strip(), "%Y-%m-%d").date()
+    nav_now = await _get_nav_per_share(db)
+    if nav_now <= 0:
+        raise HTTPException(503, "NAV unavailable — retry shortly (nothing was created)")
+    if jd is None or jd >= today3:
+        jd, at, nav_then, nav_day = today3, None, nav_now, "now"
+    else:
+        at = datetime(jd.year, jd.month, jd.day, 3, 0, 0)
+        _ep_day, _ep_at = await _get_nav_epoch(db)
+        _q = select(NavSnapshot).where(NavSnapshot.date < jd.isoformat())
+        _ec = _nav_epoch_clause(_ep_day, _ep_at)
+        if _ec is not None:
+            _q = _q.where(_ec)
+        _snap = (await db.execute(_q.order_by(NavSnapshot.date.desc()).limit(1))).scalar_one_or_none()
+        if _snap is None or not _snap.nav_per_share or _snap.nav_per_share <= 0:
+            raise HTTPException(400, f"No NAV history before {jd:%b %d, %Y} in the current NAV history — pick a later day")
+        nav_then, nav_day = float(_snap.nav_per_share), _snap.date
+
+    from services import investor_statement as _IS
+
+    async def _held_then(inv):
+        """(490 review 🔴×2) the shares the giver can give AS OF that day = the LOWEST running share count from that moment to now on his
+        NORMALISED ledger (the statement's own history — the DL 422 rebuild rows moved to their real times), rows at the moment included:
+        a later withdrawal / earlier dated share never leaves his history negative. Refused when his ledger does not reconcile with his
+        shares now (pre-ledger legacy) or when fund expenses were booked after that day (their slices are not re-split). Today → shares now."""
+        if at is None:
+            return float(inv.shares)
+        if inv.created_at is not None and inv.created_at > at + _JOIN_GRACE:
+            return 0.0                                   # joined after that day: held nothing then
+        rs = (await db.execute(select(InvestorLedger).where(InvestorLedger.investor_id == inv.id))).scalars().all()
+        c = inv.created_at
+        led = _IS.normalize_ledger([dict(type=r.type, amount=r.amount, shares_delta=r.shares_delta, nav_at_time=r.nav_at_time,
+                                         note=r.note, created_at=r.created_at) for r in rs
+                                    if r.created_at is not None and (c is None or r.created_at >= c - _JOIN_GRACE)])
+        led.sort(key=lambda r: r["created_at"])
+        total = sum(float(r.get("shares_delta") or 0) for r in led)
+        if abs(total - float(inv.shares)) > 1e-3:
+            raise HTTPException(400, f"{inv.name}'s ledger ({total:,.4f} shares) does not match his shares now ({float(inv.shares):,.4f}) — "
+                                     f"a dated share cannot be priced on it; use today's date")
+        if any(str(r.get("type") or "").upper() == "EXPENSE" and r["created_at"] >= at for r in led):
+            raise HTTPException(400, f"Fund expenses were booked after {jd:%b %d, %Y} — a dated share cannot re-split them; pick a day after the last expense")
+        run = sum(float(r.get("shares_delta") or 0) for r in led if r["created_at"] < at)
+        low = run
+        for r in led:
+            if r["created_at"] >= at:
+                run += float(r.get("shares_delta") or 0)
+                low = min(low, run)
+        return max(0.0, low)
+
+    held = [(g, await _held_then(g)) for g in givers]
+    if prorata:
+        held = [(g, h) for g, h in held if h > 1e-9]     # only investors who held shares that day give (pro rata by those shares)
+        if not held:
+            raise HTTPException(400, f"No investor held shares on {jd:%b %d, %Y}")
+        slices = expense_split(amt, [(g, h) for g, h in held])          # cents, remainder on the last, never negative (DL 486)
+    else:
+        if held[0][1] <= 1e-9:
+            raise HTTPException(400, f"{givers[0].name} held no shares on {jd:%b %d, %Y} — pick a day on or after they joined")
+        slices = [(givers[0], amt)]
+    plan, tot_sh, tot_basis = [], 0.0, 0.0
+    for g, a in slices:
+        if a <= 0:
+            continue
+        h = dict(held)[g]
+        try:
+            pv = dated_share_transfer(a, nav_then, nav_now, float(g.shares), h, float(g.total_deposited or 0))
+        except ValueError as _ve:
+            raise HTTPException(400, f"{g.name}: {_ve}")
+        plan.append((g, a, pv))
+        tot_sh += pv["shares"]
+        tot_basis += pv["basis"]
+    value_now = tot_sh * nav_now
+    out = {"ok": True, "prorata": prorata, "nav_then": round(nav_then, 6), "nav_day": nav_day, "nav_now": round(nav_now, 6),
+           "joined": jd.isoformat(),
+           "new": {"name": name, "shares": round(tot_sh, 6), "basis": round(tot_basis, 2), "value_now": round(value_now, 2),
+                   "pnl": round(value_now - tot_basis, 2)},
+           "givers": [{"id": g.id, "name": g.name, "amount": round(a, 2), "value_before": pv["src_value_before"],
+                       "value_after": pv["src_value_after"], "pnl_change": pv["src_pnl_change"]} for g, a, pv in plan]}
+    out["giver"] = out["givers"][0]                     # the one-giver view (single source)
+    if getattr(body, "preview", False):
+        return dict(out, preview=True)
+    inv = Investor(name=name, shares=0.0, total_deposited=0.0, total_withdrawn=0.0, eth_wallet=_clean_eth_wallet(body.eth_wallet))
+    db.add(inv)
+    await db.flush()
+    if at is not None:
+        _prior = [t for (t,) in (await db.execute(select(InvestorLedger.created_at).where(InvestorLedger.investor_id == inv.id))).all()]
+        try:
+            add_joined_at(jd.isoformat(), today3, _prior)                  # (490 review) the DL 488 recycled-id scope check
+        except ValueError as _je:
+            raise HTTPException(400, str(_je))
+        inv.created_at = at
+    who = "all current holders pro rata" if prorata else plan[0][0].name
+    for g, a, pv in plan:
+        g.shares = float(g.shares) - pv["shares"]
+        if abs(g.shares) < 1e-9:
+            g.shares = 0.0
+        g.total_deposited = float(g.total_deposited or 0.0) - pv["basis"]
+        _log_investor_ledger(db, g.id, "TRANSFER_OUT", a, nav_then, -pv["shares"], created_at=at,
+                             note=f"Share of capital ${a:,.2f} — {g.name} → {name} from {jd:%b %d, %Y} at NAV {nav_then:.4f}"
+                                  + (" (pro rata)" if prorata else "") + " (no money entered or left the fund)")
+    inv.shares = tot_sh
+    inv.total_deposited = tot_basis
+    _log_investor_ledger(db, inv.id, "TRANSFER_IN", amt, nav_then, tot_sh, created_at=at,
+                         note=f"Share of capital ${amt:,.2f} from {who} → {name} from {jd:%b %d, %Y} at NAV {nav_then:.4f} (no money entered or left the fund)")
+    await db.flush()
+    return dict(out, id=inv.id, name=inv.name)
 
 
 @app.post("/api/investors/deposit")

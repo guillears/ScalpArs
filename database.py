@@ -267,6 +267,9 @@ async def init_db():
                 for _ac_col in ('entry_alt_corr24', 'entry_alt_beta24'):   # 📈 (DECISION_LOG 383) alt-correlation regime stamp (observe-only)
                     if _ac_col not in columns:
                         connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_ac_col} FLOAT"))
+                for _mb_col, _mb_type in (('entry_mkt_up4h_pct', 'FLOAT'), ('entry_mkt_up4h_n', 'INTEGER')):   # 🌡 (DECISION_LOG 489) Market-hot (top-100 up over 4 h) stamp
+                    if _mb_col not in columns:
+                        connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_mb_col} {_mb_type}"))
                 for _fb_col in ('entry_flatbase_flat14_pct', 'entry_flatbase_flat_cov_pct', 'entry_flatbase_off_peak_pct',
                                 'entry_flatbase_peak_age_h'):   # 🩳 (DECISION_LOG 348) FLATBASE_SHORT stamps · ⏱ (401) hours since the peak
                     if _fb_col not in columns:

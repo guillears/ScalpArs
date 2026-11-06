@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """👁 Scout — ML_FIXED_TP watch line (registered 2026-11-05, DECISION_LOG 479; OBSERVE ONLY — never changes config, no bot API; public 1h klines only for the
-ML_MKT_HOT breadth of fills the best-case zones.csv does not score, through the budgeted cache of scripts/scout_ml_mkt_hot_watch.py).
+ML_MKT_HOT Market-hot (% of the rolling top-100 up over 4 h) — 🌡 V2, DECISION_LOG 489, replaced the frozen 108 on 2026-11-06 — of fills that carry no engine stamp and lie past the 11-06 study cache, through the budgeted cache of scripts/scout_ml_mkt_hot_watch.py).
 
 QUESTION   Would a plain fixed take-profit (+0.5 / +1 / +2 / +3 %) beat today's momentum-long exit (runner trail + ladder), on every full-size fill and on the
            fills the ML_MKT_HOT candidate filter keeps? Operator 11-05: "i find it very important … make sure in scout we are tracking this for momentum longs".
@@ -29,7 +29,7 @@ _D = os.path.dirname(os.path.abspath(__file__))
 _D in sys.path or sys.path.insert(0, _D)
 import export_glob as _EG                  # noqa: E402  (Downloads + exports_archive/, DL 409)
 import scout_gatekit as _GK                # noqa: E402  (operator-closed fills out · the DL commit time)
-import scout_ml_mkt_hot_watch as MH        # noqa: E402  (the registered breadth measure, budgeted + cached)
+import scout_ml_mkt_hot_watch as MH        # noqa: E402  (the Market-hot measure — % of the rolling top-100 up over 4 h, DL 489 — budgeted + cached)
 import study_ml_fixed_tp_recorded as RT    # noqa: E402  (cohort + rule of the registration read, reused unchanged)
 import review_math as RM                   # noqa: E402
 
@@ -94,7 +94,8 @@ def cohort(paths=None, since=None, master=None):
 
 
 def score_missing(F, now_ms, breadth_fn=None):
-    """ML_MKT_HOT for fills zones.csv does not score (the newest ones) — the registered breadth measure. → (F, complete?)."""
+    """ML_MKT_HOT for fills RT.attach_mkt_hot left unscored (no engine stamp, past the study cache) — the 🌡 V2 measure (DL 489), budgeted
+    public klines for those fills' days only. → (F, complete?)."""
     miss = F.mkt_hot.isna()
     if not miss.any():
         return F, True
@@ -103,7 +104,7 @@ def score_missing(F, now_ms, breadth_fn=None):
         return F, False
     t_min = int(o.min().value // 10**6)
     if breadth_fn is None:
-        closes, complete = MH.fetch_closes(t_min, now_ms)
+        closes, complete = MH.fetch_closes(t_min, now_ms, days=sorted(set(o.dropna().dt.normalize())))
         br = MH.breadth_series(closes) if len(closes) and complete else pd.Series(dtype=float)
     else:
         br, complete = breadth_fn(t_min, now_ms)
@@ -180,7 +181,7 @@ def run(now_ms=None, paths=None, since_ms=None, breadth_fn=None, master=None):
             if since is not None else f"Cohort: MASTER {n['MASTER']} · B25 {n['B25']} full-size momentum longs (DL {DL} commit not in git: no FORWARD split yet)")
     L += [head + f" · {waiting} wait for their 45-min post-exit record · {_GK.operator_closed_line(ox)}.", ""]
     if not complete:
-        L += [f"⚠ breadth fetch incomplete this run: {int(F.mkt_hot.isna().sum())} fills are unscored for line B (never counted on either side).", ""]
+        L += [f"⚠ Market-hot read incomplete this run: {int(F.mkt_hot.isna().sum())} fills are unscored for line B (never counted on either side).", ""]
     priced = F[F[[f"TP{x:g}" for x in TPS]].notna().all(axis=1) & F.before.notna()]
     hot = priced.mkt_hot
     is_hot = hot.map(lambda v: bool(v) if pd.notna(v) else False).astype(bool)

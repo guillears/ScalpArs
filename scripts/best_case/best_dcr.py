@@ -27,23 +27,27 @@ SLEEVES = sorted(A.sl.unique())
 M = M[M.sl.isin(SLEEVES)]
 # ── zone inputs
 k1d, _ = LW.load_btc_1d(NOW, fetch=True)
-need = pd.concat([A[A.sl.isin(["MOMENTUM_LONG", "FRENZY_WILLY", "FRENZY_WILLY_HT"])].o, M[M.sl.isin(["MOMENTUM_LONG", "FRENZY_WILLY", "FRENZY_WILLY_HT"])].o])
+_hot_sl = ["MOMENTUM_LONG", "FRENZY_WILLY", "FRENZY_WILLY_HT"]   # 🌡 (DL 489) Market-hot = V2 rolling top-100; a fill's own stamp wins, only the others are rebuilt
+need = pd.concat([d[d.sl.isin(_hot_sl) & MH.needs_rebuild(d)].o for d in (A, M)])
 for _try in range(6):   # the earlier pipeline steps can leave the shared per-minute Binance weight high: wait it out, never read a partial set
     _now = int(time.time() * 1000)   # fresh each try: a fixed NOW never lets a cooldown expire (deep review DL 448)
-    closes, complete = MH.fetch_closes(int(need.min().value // 10**6), _now)
+    if not len(need):
+        closes, complete = pd.DataFrame(), True
+        break
+    closes, complete = MH.fetch_closes(int(need.min().value // 10**6), _now, days=sorted(set(need.dt.normalize())))
     if complete:
         break
     _cool = MH.LS._cooling(_now + 5 * 60_000)   # a 429 / 418 ban longer than 5 min: stop now, never wait it out here
     if _cool:
         sys.exit("Binance cooldown active (429 / 418) — re-run once it has expired")
-    print(f"market breadth incomplete (try {_try + 1} / 6) — waiting 65 s for the Binance per-minute weight", file=sys.stderr)
+    print(f"Market-hot read incomplete (try {_try + 1} / 6) — waiting 65 s for the Binance per-minute weight", file=sys.stderr)
     time.sleep(65)
 if not complete:   # a partial coin set scores market-hot zones differently run to run — never flatter / move a line on a broken read
-    sys.exit("market breadth read incomplete (Binance error or rate-limit cooldown) — re-run in a few minutes")
+    sys.exit("Market-hot read incomplete (Binance error or rate-limit cooldown) — re-run in a few minutes")
 br = MH.breadth_series(closes) if len(closes) else pd.Series(dtype=float)
 def add_flags(d):
     d = d.copy()
-    d["hot"] = MH.score(d[["o"]], br).zone.values
+    d["hot"] = MH.score(d[["o"] + ([MH.STAMP] if MH.STAMP in d else [])], br).zone.values
     d["late"] = LW.late_gap(k1d, d.opened_at.astype(str).str.replace(" ", "T").str[:19])
     # ML stop cooldown: a momentum long opened < 30 min after a momentum-long stop closed (same batch)
     d["cool"] = False
@@ -136,7 +140,7 @@ def m_dcr(sl_list, drop_idx=frozenset(), repl=None):
 def stat(g): return f"{len(g)} · {(g>0).mean():.0%} · {g.mean():+.2f}" if len(g) else "0"
 rows = []
 SCEN = {"A": ({}, set(), {}), "B": ({}, set(), {})}
-print(f"breadth complete={complete} · X (notional/account) = " + ", ".join(f"{k} {v:.2f}" for k, v in X.items()))
+print(f"Market-hot read complete={complete} · X (notional/account) = " + ", ".join(f"{k} {v:.2f}" for k, v in X.items()))
 for sl in SLEEVES:
     msk = A.sl == sl
     before = b25_dcr(msk, {})

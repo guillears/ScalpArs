@@ -1535,6 +1535,14 @@ def run():
     except Exception as _mft_e:
         log(f"ML_FIXED_TP line failed: {_mft_e}")
         _rg_sec += ["## 👁 ML_FIXED_TP", "", f"Unavailable this run ({str(_mft_e)[:120]}).", ""]
+    try:                                               # 👁 Nov-6 ML_LEAD_A — not-hot winner cell (EMA20 slope > 0.1481 ∧ RSI prev ≤ 60.9), multiplier watch, history + forward (DECISION_LOG 481)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_ml_lead_a_watch as _mla
+        _rg_sec += _mla.run(now_ms)
+    except Exception as _mla_e:
+        log(f"ML_LEAD_A line failed: {_mla_e}")
+        _rg_sec += ["## 👁 ML_LEAD_A", "", f"Unavailable this run ({str(_mla_e)[:120]}).", ""]
     try:                                               # 👁 Oct-30 RETRY_BTC1H — FRENZY_LITE_RETRY with BTC 1 h slope ≤ 0, frozen expectancy bar (DECISION_LOG 415; forward)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

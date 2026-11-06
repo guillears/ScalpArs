@@ -170,6 +170,7 @@ the review must beat the null, not just pass both eras.
 ②n **👁 ML_MKT_HOT (DECISION_LOG 416)** — run scripts/scout_ml_mkt_hot_watch.py at the momentum-long step (frozen read at 15 zone fills on 8 days → OPERATOR CALL on the operator's own bar; before → after with the daily compound in the line); also WILLY and WILLY_HT, decided apart, and LITE display only. A FILTER CANDIDATE redoes the daily compound on real sizing (review_math.dcr_account) + leave-one-out before the operator call.
 ②o **📏 MOMENTUM LONG RE-SIZE ON ML_MKT_HOT (operator 10-30, DECISION_LOG 416)** — when ML_MKT_HOT freezes, price full-size momentum longs sized up in the rest side (market not hot) against the Pattern W multiplier bar (N ≥ 30, WR ≥ 70 %, avg ≥ +0.10 %, Total $ > 0; first step 1.5×), before → after with the daily compound on real account sizes, worst-loss check, exchange / liquidity caps that may already bind.
 ②o2 **🎯 MOMENTUM LONG FIXED TAKE-PROFITS × ML_MKT_HOT (DECISION_LOG 479, operator 2026-11-05: "i find it very important")** — at the momentum-long step read `scripts/scout_ml_fixed_tp_watch.py` (HISTORY + FORWARD, operator: "the decision will be based on forward + history") and re-run `scripts/study_ml_fixed_tp_recorded.py <export>` → reports/ML_FIXED_TP_RECORDED.md. Show BEFORE → AFTER for fixed TP +0.5 / +1 / +2 / +3 % vs today's exit, ① master per batch · ② current batch · ③ all — each for ALL fills and for the fills ML_MKT_HOT KEEPS (and the blocked side), with WR, avg %, Σ %, the B25 daily compound on the real account path, new stops, fills still open at 45 min (holding longer ≠ a TP), luck p after the 4-level search, leave-one-out by fill AND by day. Registration read (11-05, after the deep-review fixes; in-sample): all fills avg +0.12 → +0.02 / +0.13 / +0.14 / +0.15 (master) · +0.17 → +0.02 / +0.21 / +0.32 / +0.42 (B25), B25 DCR +0.159 %/day → +0.340 at +3 (kept by MKT_HOT +0.207 → +0.375); kept by MKT_HOT today +0.23 (master) / +0.43 (B25) → TP +3 +0.18 / +0.81; master never beats today's exit on kept fills, B25's gain is mostly fills still open at 45 min (10-26, 11-04). Also re-read the replica joint table (reports/ML_ENTRY_EXIT_JOINT.md, DL 477: ≤ 180-min paths, tick split) — the two reads disagree on +1 %; a ship needs both + the joint entry × exit check + the 30–50 % haircut + a pre-committed revert.
+②o3 **👁 ML_LEAD_A — not-hot winner cell, MULTIPLIER (DECISION_LOG 481, operator 2026-11-06: "here there is a massive multiplier opportunity … not correct … to do it forward looking")** — read `scripts/scout_ml_lead_a_watch.py` at the momentum-long step: cell = `entry_ema20_slope` > 0.1481 ∧ `entry_rsi_prev` ≤ 60.9 inside the fills ML_MKT_HOT keeps (frozen at the 11-04 read). Verdict on HISTORY + B25 + FORWARD pooled, every run (Pattern W + day-bootstrap P ≥ 0.95 + no day / pair ≥ 50 % + newest not contradicting). At registration: **MULTIPLIER CANDIDATE** — 30 · 90 % · +0.81 on 22 d vs rest 76 · 71 % · +0.06, P 1.000, biggest day / pair 19–21 %; ×1.5 / ×2 compound master +0.016 → +0.028 / +0.040, B25 +0.194 → +0.262 / +0.330. Caveats: best cell of a 2D search not above luck (p 0.57), 7 of 11 batches positive, the same cell on the hot side loses (30 · −0.13) → a live multiplier needs the engine to score market breadth first (a build: operator call), first step 1.5×, haircut, tight revert. Never a block on the rest.
 ②m **👁 RETRY_BTC1H (DECISION_LOG 415, re-based DL 420)** — run scripts/scout_retry_btc1h_watch.py at the LITE_RETRY step (counts from DL 420, breakeven 50 %; frozen read at 15 zone fills on 8 days → OPERATOR CALL); LITE_LATE_BTCFALL is read per sleeve since DL 415.
 ②m2 **👁 LITE_BTC1H_RISING (DECISION_LOG 437)** — run scripts/scout_lite_btc1h_rising_watch.py at the LITE step (counts from DL 437, breakeven 50 %; frozen read at 20 zone fills on 8 days → OPERATOR CALL); read beside LITE_BTC1H_FALLING (same split, each decides its own side).
 ②j **🎲²ᵇ WILLY EXIT V2b (DECISION_LOG 358 — the DL 356 floor REMOVED; target at the spike high kept; frozen revert gates)** — run
@@ -287,7 +288,7 @@ winner / loser patterns in FRENZY (LONG / WIDE / LITE / WILLY), MOMENTUM LONG / 
 - Regime first: read every sleeve by regime (bull / bear / chop) — a sleeve that only works in one regime is an on / off switch (window
   units), not a per-trade filter.
 - Then the usual bars (expectancy bar for filters, Pattern W for size), three blocks (① live batch · ② master per batch · ③ yr6), the
-  30–50 % haircut, observe-first, frozen revert gates. Re-test every open observe line (BTC24H_DOWN, WILLY_BTC1H / DIP_SUB, LITE stretch,
+  30–50 % haircut, observe-first, frozen revert gates. Re-test every open observe line (WILLY_BTC1H / DIP_SUB, LITE stretch,
   GVOL, LITE-after-LONG, …) on yr6 before any arm decision.
 - Exit questions to settle on yr6 (operator 2026-10-12, waiting on purpose): LITE TP +1.25 vs +3 and 10× vs 8× (year study: +3 wins by
   ≈ 0.3 %/trade under every entry-slip assumption — reports/B19_LITE_TP125 check in DECISION_LOG context) · WILLY TP +1.25 vs +1.5 / +2
@@ -609,10 +610,7 @@ new fills (opened after the 271 deploy, 2026-10-12) as their own line — they a
 - [ ] **🌐 ML regime lines (DECISION_LOG 382):** read the Scout section ML_REGIME_LINES — OBS-R1 / R1b / R2 on fills ≥ 2026-10-27 (frozen
       reads at N 15 / 30, ≥ 3 episodes for a switch candidate) read jointly with the DL 289 kill gate · OBS-C1 (R1 zone ∧ corr15 > 0.365)
       scored with study_ml_impulse_fetch.py + _features.py on the R1-zone fills the scout lists (each fill counted once with PREP P6).
-- [ ] **Observe lines registered 2026-10-12 (DECISION_LOG 273), arm decision deferred by the operator:** BTC24H_DOWN (block ML when BTC
-      24-h ≤ 0) and ML_ADX_RISING_IN_REGIME (step 2: keep only rising closed-bar ADX on the fills step 1 keeps). Re-read both on the new
-      fills in all three blocks (① batch · ② master per batch · ③ backtest) against their frozen bar in CURRENT_STATE; then bring the
-      arm / observe question back to the operator.
+- [x] ~~Observe lines registered 2026-10-12 (DECISION_LOG 273): BTC24H_DOWN + ML_ADX_RISING_IN_REGIME~~ — **RETIRED 2026-11-06 (DECISION_LOG 481)**: fresh fills since 10-12, zone 38 on 12 d · 79 % · +0.24 vs kept 26 · 42 % · −0.22 (own RETIRE bar: zone mean ≥ kept mean); step 2 retired with its base.
 - [ ] Entry strategy in detail vs CURRENT_STATE + Scout watchlist (ML_B1H_NEGFLANK, NEG_DAILYUP_WEAKPAIR, PAIR_1H_DOWNTREND,
       TREND_ALIGNED, heat lines (heat block × BTC regime, heat re-scope / revert gates), LOADX, LONG_CHOP_BURST, mega-cap, ML cooldown): winners vs losers in current batch, master (per batch) and
       backtest. Start from the MOMENTUM-LONG ANALYSIS PIN in CURRENT_STATE; per DL 204 the master-kept ML figure is in-sample —
@@ -780,7 +778,7 @@ at once.
   fill on a coin a LONG / WIDE held in the prior 12 h (the block's failure mode). Three blocks (batch · master per batch · backtest). Separately: are LONG / WIDE fills
   opening at the expected ~0.2 × slot (or the $100 floor below ≈ $2,050 equity)? A `[FRENZY_LONG]` refusal for size = bug.
 - **MOMENTUM LONG at 1× (`momentum_long_lev_mult` 0.05):** count fills since the deploy. At 30: avg % with a day-bootstrap 90 % CI; if the
-  CI is < 0 and no ML observe line (BTC24H_DOWN, ADX_RISING_IN_REGIME, TREND_ALIGNED / PAIR_1H_DOWNTREND, BTC-CHOP, BURST) has reached its
+  CI is < 0 and no ML observe line (TREND_ALIGNED / PAIR_1H_DOWNTREND, BTC-CHOP, BURST) has reached its
   candidate bar → momentum longs OFF (sleeve-kill ①–④ already run, DL 289); a line passes → arm it and restore 0.5 (10×). Compare in % only
   ($ is 1/10 of the pre-289 fills).
 
@@ -808,10 +806,7 @@ Extend the impulse grid, then `venv/bin/python scripts/scout_lite_z3.py`; descri
 ### 👁 LITE_OB_THIN (DECISION_LOG 302, long shot)
 `venv/bin/python scripts/scout_lite_ob_thin.py` — needs the Decisions exports covering the batch (BOOK rows; each export carries only 3 days — check there is no gap). Report THIN vs not: N, DIED / RAN, precision vs the 38 % bar, gap + P, verdict.
 
-### 🔁 ML ADX-falling + BTC24H_DOWN formal re-read (DECISION_LOG 304)
-The ML regime study found both DL 273 lines consistent in all three backtest eras with no regime split (ADX falling −0.07/−0.07/−0.12, pooled p 0.001;
-BTC24H_DOWN p 0.05). At the next batch: read both against their FROZEN gates (expectancy bar, window units, three blocks, before/after per batch,
-note live PEPE +1.16 would have been refused by ADX-falling). Re-read only — no new thresholds.
+### 🔁 ~~ML ADX-falling + BTC24H_DOWN formal re-read (DECISION_LOG 304)~~ — RETIRED 2026-11-06 (DECISION_LOG 481), nothing to read.
 
 ### 👁 LONG_STOP4 + LITE_GREEN_RETRY (DECISION_LOG 315)
 `venv/bin/python scripts/scout_long_stop4.py` — FRENZY_LONG fills ≥ 2026-10-19 17:00: −3 vs −4 walker per fill, live-stopped / saved / deeper,

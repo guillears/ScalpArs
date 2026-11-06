@@ -92,6 +92,8 @@ BOOKED = {   # booked P&L — `era` = drops fills by WILLY exit era (registered 
     "scout_frenzy_entry_lines.py": {**_FZ_STOP3}, "scout_frenzy_wl_lines.py": {**_FZ_STOP3, **_NO_LITE_C}, "scout_lite_late_btcfall.py": {"frenzy_lite_c_enabled": False, "frenzy_lite_tp_pct": 3.0, "frenzy_stop_pct": 3.0}, "scout_lite_ob_thin.py": None, "scout_lite_off30.py": None,
     "scout_lite_z3.py": None, "scout_liquidity_capacity.py": None, "scout_alpha_sleeves_watch.py": None, "scout_long_resize.py": None, "scout_ml_cooldown.py": None, "scout_ml_regime_lines.py": None,
     "scout_ml_trend_lines.py": None, "scout_ml_w4_watch.py": None, "scout_ml_mkt_hot_watch.py": None,
+    # (481) ML_LEAD_A judges booked WR / avg against the Pattern W bar → pinned to today's momentum-long exit keys (as ML_FIXED_TP)
+    "scout_ml_lead_a_watch.py": {**EXIT["scout_ml_fixed_tp_watch.py"]["walks"]},
     # (413) FADE_NOSTRETCH judges booked WR against the frozen breakeven of today's fade exit (72.1 %) → pinned to its keys
     "scout_fade_nostretch_watch.py": {"hard_tp_enabled": True, "runner_trail_short_enabled": True, "runner_trail_short_use_atr": True, "runner_trail_short_be_ratchet_enabled": False,
                                       "runner_trail_short_be_lock_pct": 0.1, "runner_trail_short_atr_min": 0.0, "spike_lock_exempt_fade": True, "spike_fade_sl_pct": -1.5, "runner_trail_short_arm_peak": 0.4, "runner_trail_short_atr_mult": 0.5,

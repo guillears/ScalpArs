@@ -37,7 +37,7 @@ NAMES = {"FRENZY_WILLY": "WILLY", "SPIKE_FADE": "Spike Fade", "FLATBASE_SHORT": 
 LABELS = {"EXIT TP1.5": "Exit TP +1.5", "EXIT TP2": "Exit TP +2", "EXIT TP3": "Exit TP +3", "SURGE_BTC_HOT": "BTC RSI ≥ 78",
           "MKT_HOT": "Market-hot", "FB_CONFIRM": "FB_CONFIRM (live)"}
 NUM = r"([-+]?(?:\d+\.?\d*|nan|inf))"
-SCEN = [("TOTAL B", "Watch lines only"), ("C1", "+ WILLY at 8×"), ("C2", "+ WILLY at 10×"),
+SCEN = [("TOTAL B", "Watch lines only"), ("C1", "+ WILLY at 8× (½ margin)"), ("C2", "+ WILLY at 10× (½ margin)"),
         ("C3", "+ WILLY 10×, FRENZY_LONG ×5, Flatbase 0.5"), ("C4", "+ WILLY 8×, FRENZY_LONG ×5, Flatbase 0.5"),
         ("C5", "+ WILLY 10×, FRENZY_LONG ×5, Flatbase 0.5, Momentum Long ×5"), ("C6", "+ WILLY 10×, FRENZY_LONG ×5, Flatbase 0.5, Momentum Long ×10")]
 

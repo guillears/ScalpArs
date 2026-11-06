@@ -106,6 +106,8 @@ def b25_after(sl, lines, fbconf=False, ex=None):
             out[i] = float(fxb[A.loc[i, "kk"]][ex])   # KeyError = an unpriced flip: never silently kept as booked
     return out
 # ── master intended size per era
+import json as _json
+_WILLY_INV = float(_json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"].get("frenzy_willy_invest_mult", 1.0) or 1.0)   # (487) ½ margin
 X = {}
 for sl in SLEEVES:
     g = A[A.sl == sl]
@@ -113,6 +115,7 @@ for sl in SLEEVES:
     x = num(g, "notional_value") / eq
     if sl == "FRENZY_WILLY":
         x = x * np.where(num(g, "leverage") >= 10, 0.5, 1.0)   # today's 5×
+        x = x * _WILLY_INV / num(g, "cell_multiplier").fillna(1.0).replace(0, 1.0)   # (487) today's margin ÷ the margin it traded at
     X[sl] = float(np.nanmedian(x))
 def m_dcr(sl_list, drop_idx=frozenset(), repl=None):
     vals = []

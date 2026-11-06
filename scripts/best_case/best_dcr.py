@@ -107,6 +107,8 @@ def b25_after(sl, lines, fbconf=False, ex=None):
             out[i] = float(fxb[A.loc[i, "kk"]][ex])   # KeyError = an unpriced flip: never silently kept as booked
     return out
 # ── master intended size per era
+import json as _json
+_WILLY_INV = float(_json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"].get("frenzy_willy_invest_mult", 1.0) or 1.0)   # (487) ½ margin
 X = {}
 for sl in SLEEVES:
     g = A[A.sl == sl]
@@ -114,6 +116,7 @@ for sl in SLEEVES:
     x = num(g, "notional_value") / eq
     if sl == "FRENZY_WILLY":
         x = x * np.where(num(g, "leverage") >= 10, 0.5, 1.0)   # today's 5×
+        x = x * _WILLY_INV / num(g, "cell_multiplier").fillna(1.0).replace(0, 1.0)   # (487) today's margin ÷ the margin it traded at
     X[sl] = float(np.nanmedian(x))
 def m_dcr(sl_list, drop_idx=frozenset(), repl=None):
     vals = []
@@ -238,8 +241,8 @@ def b25_sized(after, size):
         acc.loc[i, "ua"] = 0.0 if v is None else v / 100 * float(acc.loc[i, "notional_value"])
     for sl, f in size.items():
         m = acc.sl == sl
-        if sl == "FRENZY_WILLY":   # f = target leverage; each fill re-scaled from its own leverage
-            acc.loc[m, "ua"] = acc.loc[m, "ua"] * f / num(acc[m], "leverage")
+        if sl == "FRENZY_WILLY":   # f = target leverage at TODAY's margin (487: ½); each fill re-scaled from its own leverage and margin
+            acc.loc[m, "ua"] = acc.loc[m, "ua"] * f / num(acc[m], "leverage") * _WILLY_INV / num(acc[m], "cell_multiplier").fillna(1.0).replace(0, 1.0)
         else:
             acc.loc[m, "ua"] = acc.loc[m, "ua"] * f
     return acc

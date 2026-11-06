@@ -635,6 +635,17 @@ new fills (opened after the 271 deploy, 2026-10-12) as their own line — they a
       has none yet. Also answer the fade STOP-SIZE question: at 2× each −1.5 % stop ≈ $305 ≈ 10–12 % of the paper account (B25 RAYSOL
       −$304, 1000LUNC −$308) — price the stop width / size per fill vs the ≈ 72 % breakeven WR, two-sided, live-stopped cohort only. At today's $7.75k book a full-size (uncapped) fade stop = $1,133 ≈ 14.6 % of the account (Sleeve Sizing card, 11-02) — show each size option's daily compound return and 1-stop % (②y rule).
 - [ ] **👁 WILLY_GAP (DECISION_LOG 414)** — re-read `scripts/scout_willy_gap_watch.py` beside WILLY_ADX55 at the WILLY step, WILLY and HT apart (frozen read at 15 zone fills on 8 days → OPERATOR CALL; luck search and backtest were against it at registration).
+- [ ] **📐 WILLY ADX CUT: 52, 54 or 55? (operator 2026-11-06, DECISION_LOG 487)** — decide at the WILLY step which ADX cut WILLY_GAP / WILLY_ADX55 use.
+      Re-run the dose-response (cut 45 → 65, WILLY_GAP = ADX > cut ∨ EMA 8/13 gap ≤ 0.90) on master + every B25 WILLY fill, three blocks
+      (master · batch · clean fills since the 10-30 freeze), blocked vs kept N · WR · avg % + daily compound before → after per cut.
+      Registration read (export 11-06 15:57, master 38 + B25 29): plateau 52–56 — blocked 38 / 35 / 34 · −1.11 / −1.32 / −1.24 vs kept
+      +0.95 / +0.98 / +0.83 at 52 / 54 / 55; 54 beats 55 by EXACTLY ONE trade = ICNT 11-06 (ADX 54.47, −4.01, the trade that prompted the
+      question); ≤ 50 blocks master winners (+0.31 / +0.61); master blocked side ≈ breakeven (−0.24) — the edge lives in B25.
+      🔒 Rule fixed NOW (before the review's data): 55 stays unless the fills with ADX in (52, 55] that are NOT already blocked by the gap
+      leg — counting ONLY fills opened after 2026-11-06 16:00 UTC (never ICNT, never the registration fills) — reach ≥ 5 on ≥ 3 days with
+      avg < 0 ∧ WR < WILLY's V2b breakeven 69 % → then lowering to 52 is registered as a NEW line with its own checkpoint (15 fills on 8 days)
+      and the 30–50 % haircut; fewer fills or avg ≥ 0 → keep 55. 54 is never chosen on its own (a one-trade refit). Show the (52, 55] band
+      fills one by one.
 - [ ] **👁 FADE_NOSTRETCH (DECISION_LOG 413)** — re-read `scripts/scout_fade_nostretch_watch.py` (round-number zone ≤ 50 / 45 / 2: frozen read at 15 zone fades on 8 days → OPERATOR CALL; filter definition ≤ 47.15 / 45.91 / 1.65 read beside it; backtest and luck test were against it at registration).
 - [ ] **🩸🌙 OBS-F1 LATE-TAPE WEAK SPIKE (DECISION_LOG 384, CURRENT_STATE 41q)** — re-read `scripts/scout_fade_late_weak.py` (zone / control / early / unscored; frozen read at 15 zone fades on 8 days → OPERATOR CALL; gate = fades after the study's 10-26 15:12 cutoff, the in-sample B25 registration block shown beside it, DL 385). Three blocks: master (`reports/FADE_REGIME_WL_2026-10-26_obs_per_batch.csv`), the batch, the backtest (refuted 3 / 3 at registration — caveat, master leads). Also re-read the 41h zone (16 · 69 % · −0.18 at registration) and the uniform-degradation table (`_uniform.csv`) on the new batch: if fades recover while the tape stays late, the degradation was the tape.
 - [ ] **SPIKE_FADE vs FRENZY on the same pump** (Claude): the engine never holds both on one pair — open_position refuses any second

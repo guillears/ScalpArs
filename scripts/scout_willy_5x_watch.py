@@ -8,6 +8,8 @@ COHORT     CLOSED FRENZY_WILLY fills, from the orders exports (export_glob), ded
 FROZEN BAR (operator-approved with the change, never re-fit): at the first 15 counted fills, decided ONCE — avg < 0 → SLEEVE REVIEW (full kill checklist, no auto-off) · WR ≥ 69.0 % (the
            frozen V2b breakeven, DL 412) ∧ avg > 0 → RESTORE 10× CANDIDATE (operator decides; never automatic) · else STAY AT 5×. A filter passing its own gate and shipping also opens the
            10× question, at the operator's call. Deferred until the newest export is ≥ the 15th fill + WILLY's max hold. Pinned to lev 0.25 + the V2b exit keys (a change → ⚠ STALE).
+NOTE (DL 487)  since 11-06 WILLY also runs at HALF margin (frenzy_willy_invest_mult 0.5) — "RESTORE 10×" means the LEVERAGE knob; the margin
+           returns to 1.0 first, by DL 487's own revert gate (WILLY_GAP checkpoint). % results are size-free, so this read is unaffected.
 REGISTRATION (never counted) B25 WILLY 19 · 42 % · −1.54 %/fill, daily compound on the real account path 10× −6.84 → 5× −3.16 %/day · master 38 · 82 % · +0.71, today's size model +3.66 → +1.90.
 STATE      reports/SCOUT_WILLY_5X.json (gitignored).
 Usage: venv/bin/python -I scripts/scout_willy_5x_watch.py

@@ -1535,7 +1535,7 @@ class SignalThresholds(BaseModel):
     # Oct-8 (operator, DECISION_LOG 256): trading_config.json turns entry B OFF — tick year (reports/FRENZY_TP3_VS_TP4_TICKS_2026-10-08.md):
     # B −0.244 %/trade with no stop, −0.325 [−0.59, −0.07] with the live ≈ −2.2 % backstop (it buys exactly the setups the FRENZY filters reject);
     # A +0.135 / +0.004. Code default unchanged (the json value wins).
-    frenzy_willy_invest_mult: float = 1.0         # absolute-assign (never the strong bump)
+    frenzy_willy_invest_mult: float = 0.5         # absolute-assign (never the strong bump). DL 487 (operator 11-06, "reduce size of frenzy willy, to reach Nov 30 without risk of running out of paper money"): 1.0 → 0.5 = HALF the notional at the same 5× (= "2.5×": 20 × 0.125 would round to 2× — leverage is an integer), a −4 stop ≈ −$150 instead of ≈ −$300 (≈ 2.4 % of the account). % results unchanged → every WILLY watch line keeps counting. Revert gate in CURRENT_STATE (WILLY_GAP checkpoint). default = live
     frenzy_willy_lev_mult: float = 0.25           # DL 425: 5× at the 20× base (operator, bridge while WILLY win vs loss is open; DL 280 was 0.5 = 10×); default = live so a missing key never re-arms more. HT follows it. Gate: scripts/scout_willy_5x_watch.py
     frenzy_willy_tp_pct: float = 1.25             # DL 281: +1.25 (was 1.0); fixed take profit, net % (≤ 0 / blank → 1.0 used by frenzy_willy_levels)
     frenzy_willy_stop_pct: float = 4.0            # stop, % (DECISION_LOG 271: −4, same in paper and live) — must be > 0: 0 / blank is refused on save and reset to 4.0 on load (DECISION_LOG 292 ⑤)
@@ -1576,7 +1576,7 @@ class SignalThresholds(BaseModel):
     # ≥ 10 days vs full-size WILLY same period: HT ≥ WILLY → recommend turnover ratio 0 + HT off · HT ≤ WILLY − 0.20 → filter confirmed,
     # HT off · else re-read at 60. Code default ON (operator).
     frenzy_willy_ht_enabled: bool = True
-    frenzy_willy_ht_size_frac: float = 0.25       # × WILLY's margin at WILLY's leverage (0 < f ≤ 1; else 0.25 used)
+    frenzy_willy_ht_size_frac: float = 0.5        # × WILLY's margin at WILLY's leverage (0 < f ≤ 1; else 0.25 used). DL 487: 0.25 → 0.5 with WILLY's margin halved — HT's $ size UNCHANGED (operator: HT left alone); on the DL 365 ladder this reads as rung 0.5 of a half-size WILLY = the same notional as rung 0.25 before
     frenzy_willy_ht_max_slots: int = 1            # FRENZY_WILLY_HT open at once (its OWN slot; WILLY's slot never counts HT)
     # 🩳 2026-10-22 FLATBASE_SHORT (DECISION_LOG 348 — operator DISCIPLINE OVERRIDE: the study FAILED its ship bars; alert-only gates, no
     # auto-off). Short a FRENZY episode whose coin was FLAT for the 14 days before the spike (14-d close range ≤ flatbase_flat_max at the base

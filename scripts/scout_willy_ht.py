@@ -43,6 +43,8 @@ LADDER_TOL = 0.005
 STEP_GAP = 0.10                              # step up iff HT ≥ full-size WILLY avg − 0.10 on the frozen sample …
 STEP_MIN_AVG, STEP_MIN_WR = 0.10, 0.70       # … AND the locked Pattern-W multiplier gate (CLAUDE.md: WR ≥ 70 % ∧ avg ≥ +0.10 % ∧ Σ > 0)
 PRE_STAMP_FRAC = 0.25                        # every HT fill before the DL 365 stamp opened at 0.25 (the only value since DL 341)
+DL_HALF = 487                                # ⚖️ WILLY's margin 1.0 → 0.5 (HT frac 0.25 → 0.5, HT $ unchanged): rungs are in FULL-WILLY units =
+                                             # stamp × WILLY's invest mult when the fill opened (1.0 before the DL 487 deploy) — 0.25 stays 0.25
 
 
 def _frozen_sample(f):
@@ -55,20 +57,26 @@ def _frozen_sample(f):
     return None
 
 
-def resize_lines(a, v2b_ms, stamp_ms, frac_now=None):
+def resize_lines(a, v2b_ms, stamp_ms, frac_now=None, invest_now=None, half_ms=None):
     """📈 (DECISION_LOG 365) the frozen WILLY_HT re-size ladder → printed lines. a = the shared loader frame; v2b_ms / stamp_ms = the DL 358 /
-    DL 365 deploy floors (ms, None = not deployed). Never raises."""
+    DL 365 deploy floors (ms, None = not deployed). (487) rungs in FULL-WILLY units: frac × WILLY's invest mult (invest_now = today's,
+    half_ms = the DL 487 deploy — fills before it opened at invest 1.0; None = not deployed → every fill at 1.0). Never raises."""
     try:
         if v2b_ms is None:
             return ["📈 HT re-size ladder: NOT evaluable — the DECISION_LOG 358 deploy is not in git"]
         if a is None or not len(a) or "o" not in a:
             return ["📈 HT re-size ladder: no exports"]
-        if frac_now is None:
+        if frac_now is None or invest_now is None:
             import json as _j
             from types import SimpleNamespace as _NS
             with open(os.path.join(_R, "trading_config.json"), encoding="utf-8") as fh:
-                frac_now = frenzy_willy_ht_frac(_NS(**_j.load(fh)["thresholds"]))   # the engine's own reading
-        frac_now = float(frac_now)
+                _th = _j.load(fh)["thresholds"]
+            if frac_now is None:
+                frac_now = frenzy_willy_ht_frac(_NS(**_th))   # the engine's own reading
+                if invest_now is None:
+                    invest_now = float(_th.get("frenzy_willy_invest_mult", 1.0) or 1.0)
+        invest_now = 1.0 if invest_now is None else float(invest_now)
+        frac_now = float(frac_now) * invest_now                                              # (487) full-WILLY units
         lvl = min(range(len(LADDER)), key=lambda i: abs(LADDER[i] - frac_now))
         nxt = LADDER[lvl + 1] if lvl + 1 < len(LADDER) else None
         since = pd.Timestamp(int(v2b_ms), unit="ms")
@@ -80,6 +88,9 @@ def resize_lines(a, v2b_ms, stamp_ms, frac_now=None):
         if len(ht):
             pre = ht.o < pd.Timestamp(int(stamp_ms), unit="ms") if stamp_ms is not None else pd.Series(True, index=ht.index)
             sz = sz.where(sz.notna() | ~pre, PRE_STAMP_FRAC)
+        if len(ht):   # (487) the stamp is a fraction of WILLY's margin AT THE TIME → full-WILLY units
+            _inv = np.where((ht.o >= pd.Timestamp(int(half_ms), unit="ms")) if half_ms is not None else np.zeros(len(ht), bool), invest_now, 1.0)
+            sz = sz * _inv
         ht = ht.assign(_sz=sz.values if len(ht) else [])
         n_unk = int(ht._sz.isna().sum()) if len(ht) else 0
         known = ht[ht._sz.notna()] if len(ht) else ht
@@ -89,7 +100,7 @@ def resize_lines(a, v2b_ms, stamp_ms, frac_now=None):
             at = at[at.o > other.o.max()]
         at = at[np.isfinite(pd.to_numeric(at.pct, errors="coerce"))]                     # the gate drops non-finite pct — the frozen sample must be the gate's own prefix
         days = at.o.dt.date.nunique() if len(at) else 0
-        L = [f"📈 HT re-size ladder (DECISION_LOG 365, frozen, under today's V2b exit): {' → '.join(f'{x:g}' for x in LADDER)} of WILLY's margin · "
+        L = [f"📈 HT re-size ladder (DECISION_LOG 365, frozen, under today's V2b exit): {' → '.join(f'{x:g}' for x in LADDER)} of a full-size WILLY margin · "
              f"now {frac_now:g} · current run at this size: {len(at)} fills on {days} days" + (f" · avg {at.pct.mean():+.3f} %" if len(at) else "")
              + (f" · ⚠ {n_unk} HT fill(s) with unknown size not counted" if n_unk else "")]
         if len(known) and abs(float(known._sz.iloc[-1]) - frac_now) > LADDER_TOL:
@@ -183,7 +194,8 @@ def run(now_ms=None, paths=None, since_ms=None):
                                   f"Σ {g.pct.sum():+.2f} pts · ${g.usd.sum():+.2f}" if len(g) else "N 0"))
     v, txt = frenzy_willy_ht_gate([(r.o.to_pydatetime(), r.pct) for r in ht.itertuples()], [(r.o.to_pydatetime(), r.pct) for r in w.itertuples()])
     L.append(f"Gate verdict: {v} — {txt}")
-    L += resize_lines(a, _GK.dl_deploy_ms(DL_V2B, lag_min=10, label="WILLY_HT ladder"), _GK.dl_deploy_ms(DL_STAMP, lag_min=0, label="WILLY_HT size stamp"))
+    L += resize_lines(a, _GK.dl_deploy_ms(DL_V2B, lag_min=10, label="WILLY_HT ladder"), _GK.dl_deploy_ms(DL_STAMP, lag_min=0, label="WILLY_HT size stamp"),
+                      half_ms=_GK.dl_deploy_ms(DL_HALF, lag_min=0, label="WILLY half margin"))
     return L + [""]
 
 

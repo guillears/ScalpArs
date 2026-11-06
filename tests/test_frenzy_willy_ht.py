@@ -177,7 +177,14 @@ def _open(monkeypatch, pair, open_rows=(), hold_on=False, tiers=None, **kw):
     return asyncio.run(go())
 
 
+def _pin_quarter(monkeypatch):
+    """the mechanics tests read HT at a quarter of WILLY (DL 341 rule); the LIVE fraction moved to 0.5 with WILLY's half margin (DL 487)."""
+    import config as C
+    monkeypatch.setattr(C.trading_config.thresholds, "frenzy_willy_ht_size_frac", 0.25, raising=False)
+
+
 def test_ht_is_a_quarter_of_willy_at_the_same_leverage(monkeypatch):
+    _pin_quarter(monkeypatch)
     r1, _, w = _open(monkeypatch, "FOOUSDT", frenzy_willy=True)
     r2, _, h = _open(monkeypatch, "FOOUSDT", frenzy_willy=True, frenzy_willy_ht=True)
     assert r1 is not None and r2 is not None
@@ -249,14 +256,14 @@ def test_ht_exit_closes_like_willy():
 def test_config_json_ui_and_exports():
     import config as C
     mf = type(C.trading_config.thresholds).model_fields
-    assert mf["frenzy_willy_ht_enabled"].default is True and mf["frenzy_willy_ht_size_frac"].default == 0.25 and mf["frenzy_willy_ht_max_slots"].default == 1
+    assert mf["frenzy_willy_ht_enabled"].default is True and mf["frenzy_willy_ht_size_frac"].default == 0.5 and mf["frenzy_willy_ht_max_slots"].default == 1
     cfg = json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
-    assert cfg["frenzy_willy_ht_enabled"] is True and cfg["frenzy_willy_ht_size_frac"] == 0.25 and cfg["frenzy_willy_ht_max_slots"] == 1
+    assert cfg["frenzy_willy_ht_enabled"] is True and cfg["frenzy_willy_ht_size_frac"] == 0.5 and cfg["frenzy_willy_ht_max_slots"] == 1
     assert "DECISION_LOG 341" in open(os.path.join(ROOT, "config.py"), encoding="utf-8").read()
     html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
     for _id in ("config-fz-willy-ht-enabled", "config-fz-willy-ht-size-frac", "config-fz-willy-ht-slots"):
         assert html.count(f'id="{_id}"') == 1, _id
-    assert "['config-fz-willy-ht-size-frac', 'frenzy_willy_ht_size_frac', 0.25]" in html and "['config-fz-willy-ht-slots', 'frenzy_willy_ht_max_slots', 1]" in html
+    assert "['config-fz-willy-ht-size-frac', 'frenzy_willy_ht_size_frac', 0.5]" in html and "['config-fz-willy-ht-slots', 'frenzy_willy_ht_max_slots', 1]" in html
     assert "(_key === 'frenzy_willy_ht_max_slots' || _key === 'frenzy_max_slots'" in html                 # an int on save
     assert "getElementById('config-fz-willy-ht-enabled'); if (_e) _e.checked = config.thresholds.frenzy_willy_ht_enabled !== false;" in html
     assert "frenzy_willy_ht_enabled: document.getElementById('config-fz-willy-ht-enabled')?.checked ?? true," in html
@@ -272,14 +279,14 @@ def test_config_json_ui_and_exports():
 def test_monitor_payload_runs():
     import main as M
     p = M._frenzy_monitor_payload()
-    assert p.get("willy_ht_enabled") is True and p.get("willy_ht_size_frac") == 0.25 and p.get("willy_ht_max_slots") == 1
+    assert p.get("willy_ht_enabled") is True and p.get("willy_ht_size_frac") == 0.5 and p.get("willy_ht_max_slots") == 1
 
 
 def test_size_frac_reader_and_gate():
     from services.frenzy import frenzy_willy_ht_frac, frenzy_willy_ht_gate
-    for v, want in ((0.25, 0.25), (0.5, 0.5), (0, 0.25), (-1, 0.25), (1.5, 0.25), ("x", 0.25), (None, 0.25)):
+    for v, want in ((0.25, 0.25), (0.5, 0.5), (0, 0.5), (-1, 0.5), (1.5, 0.5), ("x", 0.5), (None, 0.5)):   # DL 487: the fallback = 0.5
         assert frenzy_willy_ht_frac(NS(frenzy_willy_ht_size_frac=v)) == want, v
-    assert frenzy_willy_ht_frac(NS()) == 0.25
+    assert frenzy_willy_ht_frac(NS()) == 0.5
     d0 = dt.datetime(2026, 10, 22)
     day = lambda k: d0 + dt.timedelta(days=k // 3, hours=k % 3)
     assert frenzy_willy_ht_gate([], [])[0] == "COLLECTING"
@@ -366,6 +373,7 @@ def test_api_performance_has_the_ht_row_and_rows_sum_to_total():
 def test_bracket_cap_never_restores_ht_to_a_full_margin(monkeypatch):
     """(341 review) DL 298's bracket keep (full margin at a lower leverage) must never apply to HT: when the brackets bind, HT's margin
     stays ≤ ¼ of WILLY's and its leverage ≤ WILLY's."""
+    _pin_quarter(monkeypatch)
     _, _, w = _open(monkeypatch, "FOOUSDT", frenzy_willy=True)
     winv, wlev, wnot = w[0][2], w[0][3], w[0][4]
     cap = 0.6 * wnot / 4 / 0.95                                   # the HT notional does not fit at WILLY's leverage (5 % headroom undone)
@@ -391,7 +399,7 @@ def test_gate_review_fixes_and_config_validation():
         assert ce(NS(frenzy_willy_ht_enabled=True, frenzy_willy_ht_size_frac=bad, frenzy_willy_ht_max_slots=1)), bad
     assert ce(NS(frenzy_willy_ht_enabled=True, frenzy_willy_ht_size_frac=0.25, frenzy_willy_ht_max_slots=0))
     html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
-    assert "if (!(Number.isFinite(_hx) && _hx > 0 && _hx <= 1)) { _hf.value = '0.25'; showToast(" in html
+    assert "if (!(Number.isFinite(_hx) && _hx > 0 && _hx <= 1)) { _hf.value = '0.5'; showToast(" in html
     assert html.count('data-ss="fzyht"') == 1 and "S.fzyht = { info:" in html
     main = open(os.path.join(ROOT, "main.py"), encoding="utf-8").read()
     assert "_cfg_errs.extend(_ht_cfg_errors(new_config.thresholds))" in main

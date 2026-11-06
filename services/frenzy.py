@@ -839,7 +839,7 @@ FRENZY_WILLY = "FRENZY_WILLY"
 # rule). Purpose: real-fill evidence on the turnover filter instead of shadow-only.
 FRENZY_WILLY_HT = "FRENZY_WILLY_HT"
 WILLY_EXIT_CLASS = (FRENZY_WILLY, FRENZY_WILLY_HT)   # every exit / protection site: run WILLY's exit
-WILLY_HT_FRAC_DEF = 0.25
+WILLY_HT_FRAC_DEF = 0.5   # DL 487: 0.5 of the half-size WILLY = HT's unchanged $ (was 0.25 of the full one)
 WILLY_HT_KILL_SUM, WILLY_HT_FIRST_N, WILLY_HT_MAIN_N, WILLY_HT_MAIN_DAYS, WILLY_HT_REREAD_N, WILLY_HT_CONFIRM_GAP = -8.0, 10, 30, 10, 60, 0.20
 WILLY_HT_MIN_WILLY = 10   # (341 review) the main read needs ≥ 10 full-size WILLY comparator fills in the same period, else REREAD
 

@@ -879,7 +879,7 @@ def test_ema13_exit_excluded():
 def test_sizing_1x_1_0():
     import config as C
     mf = C.SignalThresholds.model_fields
-    assert mf["frenzy_willy_invest_mult"].default == 1.0 and mf["frenzy_willy_lev_mult"].default == 0.25
+    assert mf["frenzy_willy_invest_mult"].default == 0.5 and mf["frenzy_willy_lev_mult"].default == 0.25   # DL 487: half size at 5×
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
     assert '_fz_es = ("FRENZY_WILLY" if (_frenzy and frenzy_willy)' in eng
     assert "_frenzy = bool(frenzy_long or frenzy_wide or frenzy_lite or frenzy_willy)" in eng
@@ -888,7 +888,7 @@ def test_sizing_1x_1_0():
 
 # ── config / UI / exports (D11 · D12) ──────────────────────────────────────────────────────────────────────────────────────────────
 
-FIELDS = {"frenzy_willy_enabled": True, "frenzy_willy_entry_a": True, "frenzy_willy_entry_b": False, "frenzy_willy_invest_mult": 1.0,
+FIELDS = {"frenzy_willy_enabled": True, "frenzy_willy_entry_a": True, "frenzy_willy_entry_b": False, "frenzy_willy_invest_mult": 0.5,
           "frenzy_willy_lev_mult": 0.25, "frenzy_willy_tp_pct": 1.25, "frenzy_willy_stop_pct": 4.0, "frenzy_willy_max_hold_minutes": 90,
           "frenzy_willy_max_slots": 1, "frenzy_willy_red_max_wait_minutes": 60, "frenzy_willy_a_cold_max_bars": 3}
 
@@ -916,7 +916,7 @@ def test_ui_inputs_load_save_and_both_exports():
                 "config-fz-willy-tp", "config-fz-willy-stop", "config-fz-willy-max-hold", "config-fz-willy-slots", "config-fz-willy-red-wait",
                 "config-fz-willy-a-cold"):
         assert html.count(f'id="{_id}"') == 1, _id
-    for row in ("['config-fz-willy-invest-mult', 'frenzy_willy_invest_mult', 1.0]", "['config-fz-willy-lev-mult', 'frenzy_willy_lev_mult', 0.25]",
+    for row in ("['config-fz-willy-invest-mult', 'frenzy_willy_invest_mult', 0.5]", "['config-fz-willy-lev-mult', 'frenzy_willy_lev_mult', 0.25]",
                 "['config-fz-willy-tp', 'frenzy_willy_tp_pct', 1.25]", "['config-fz-willy-stop', 'frenzy_willy_stop_pct', 4.0]",
                 "['config-fz-willy-max-hold', 'frenzy_willy_max_hold_minutes', 90]", "['config-fz-willy-slots', 'frenzy_willy_max_slots', 1]",
                 "['config-fz-willy-red-wait', 'frenzy_willy_red_max_wait_minutes', 60]", "['config-fz-willy-a-cold', 'frenzy_willy_a_cold_max_bars', 3]"):
@@ -986,7 +986,7 @@ def test_columns_migration_and_hold_table():
 def test_master_builder_tags_willy_as_frenzy_sleeve():
     src = open(os.path.join(ROOT, "scripts", "build_master_pool.py"), encoding="utf-8").read()
     assert "elif strat in ('FRENZY_LONG', 'FRENZY_LITE', 'FRENZY_WILLY'):" in src   # WIDE refused first since 10-14b (FRENZY_WIDE_OFF, DL 291)
-    assert "frenzy_willy_invest_mult=1.0, frenzy_willy_lev_mult=0.25" in src and 'if strat == "FRENZY_WILLY":' in src
+    assert "frenzy_willy_invest_mult=0.5, frenzy_willy_lev_mult=0.25" in src and 'if strat == "FRENZY_WILLY":' in src
     assert re.search(r'FRENZY3 = \("FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE"\)', src)
 
 

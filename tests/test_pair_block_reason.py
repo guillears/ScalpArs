@@ -118,7 +118,7 @@ def test_dashboard_analytics_never_include_manual_rows():
                      "total_investment_short_notional", "total_investment_short_value", "total_fees", "avg_duration", "avg_duration_long",
                      "avg_duration_short", "avg_leverage", "return_multiple", "daily_compound_return", "runtime_days",
                      "avg_win_pct", "avg_win_long_pct", "avg_win_short_pct", "avg_loss_pct", "avg_loss_long_pct", "avg_loss_short_pct", "expectancy",
-                     "period_performance", "equity_curve", "sleeve_performance", "strategy_performance", "hourly_performance", "daily_performance",
+                     "period_performance", "equity_curve", "equity_curve_stats", "sleeve_performance", "strategy_performance", "hourly_performance", "daily_performance",
                      "day_time_heatmap", "performance_over_time", "pair_performance"}
 
     def order(i, strat, direction, pnl_pct, **kw):

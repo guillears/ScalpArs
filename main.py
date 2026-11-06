@@ -2654,7 +2654,8 @@ async def get_pnl_calendar(tz_offset_min: int = 0, origin: str = None, db: Async
     await trading_engine.initialize(db)
 
     result = await db.execute(
-        select(Order.closed_at, Order.pnl, Order.pnl_percentage, Order.entry_strategy, Order.confidence)
+        select(Order.closed_at, Order.pnl, Order.pnl_percentage, Order.entry_strategy, Order.confidence,
+               Order.direction, Order.import_source)
         .where(and_(
             Order.status == "CLOSED",
             Order.is_paper == trading_engine.is_paper_mode,
@@ -2670,7 +2671,7 @@ async def get_pnl_calendar(tz_offset_min: int = 0, origin: str = None, db: Async
     trades_by_day: Dict[str, list] = {}   # (386) local close time + pnl — the exact time-weighted day return on a day with a flow
     _hours_from = (datetime.utcnow() - timedelta(days=8)).replace(minute=0, second=0, microsecond=0)   # the client's window starts on this hour
     _origin_out_pnl = 0.0   # (323) realized P&L of the side the view leaves out — removed from the equity below
-    for closed_at, pnl, pnl_pct, _es, _conf in rows:
+    for closed_at, pnl, pnl_pct, _es, _conf, _dir, _isrc in rows:
         if not origin_keep(_es, _conf, _origin):
             _origin_out_pnl += (pnl or 0.0)
             continue
@@ -2682,6 +2683,9 @@ async def get_pnl_calendar(tz_offset_min: int = 0, origin: str = None, db: Async
         d = (closed_at + offset).date().isoformat()
         trades_by_day.setdefault(d, []).append((closed_at + offset, pnl or 0.0))
         e = days.setdefault(d, {"pnl": 0.0, "trades": 0, "wins": 0})
+        _sl = e.setdefault("sleeves", {})                      # 📈 (493) the day's realized P&L per sleeve — the chart's sleeve view
+        _sk = _sleeve_label(_es, _dir, _isrc)
+        _sl[_sk] = _sl.get(_sk, 0.0) + (pnl or 0.0)
         e["pnl"] += (pnl or 0.0)
         e["trades"] += 1
         if (pnl or 0.0) > 0:
@@ -2806,11 +2810,36 @@ async def get_pnl_calendar(tz_offset_min: int = 0, origin: str = None, db: Async
                     _g = (_g * _eq / _sb) if _sb > 0 else None
                 day_growth[d] = _g if (_g is not None and _g > 0) else None   # a wiped-out day never flips the month chain's sign
                 e["day_return_pct"] = round((_g - 1.0) * 100.0, 2) if _g is not None else None
+                # 📈 (DECISION_LOG 493) the daily-compound chart chains the UNROUNDED growth (a 2-decimal % drifts over a batch) and
+                # reads a sleeve's day return as its day P&L ÷ this start-of-day base (Modified-Dietz: flows weighted by time present)
+                e["g"] = round(_g, 10) if _g is not None else None
+                e["base"] = round(_base, 2) if _base > 0 else None
             running = start
 
     for e in days.values():
         e["pnl"] = round(e["pnl"], 2)
         e["wr"] = round(100.0 * e["wins"] / e["trades"], 0) if e["trades"] else 0.0
+        if "sleeves" in e:
+            e["sleeves"] = {k: round(v, 4) for k, v in e["sleeves"].items()}
+    # 📈 (DECISION_LOG 493) the daily-compound chart's frame: the batch's first local day (first order of this mode — every
+    # calendar day from it counts, 0 % on a day with no close) and the settings changes in the batch, per local day (markers)
+    batch_start_day = None; config_marks = []
+    try:
+        _era0 = (await db.execute(select(func.min(Order.opened_at)).where(Order.is_paper == trading_engine.is_paper_mode))).scalar()
+        if _era0 is not None:
+            batch_start_day = (_era0 + offset).date().isoformat()
+            _cm = {}
+            for _ct, _fld in (await db.execute(select(ConfigChangeLog.changed_at, ConfigChangeLog.field)
+                                               .where(ConfigChangeLog.changed_at >= _era0)
+                                               .order_by(ConfigChangeLog.changed_at))).all():
+                if _ct is None or not _fld or _fld in ("paper_balance", "paper_bnb_initial_usd"):   # top-ups are flows, not settings (review)
+                    continue
+                _lst = _cm.setdefault((_ct + offset).date().isoformat(), [])
+                if _fld not in _lst:
+                    _lst.append(_fld)
+            config_marks = [{"day": k, "fields": v} for k, v in sorted(_cm.items())]
+    except Exception as _dcm_err:
+        logger.warning(f"[PNL_CAL] daily-compound frame read failed ({str(_dcm_err)[:60]})")
 
     # ── EOM Projection Revisions (Aug-4, operator design): back-compute, for every day of
     # the CURRENT month, what the fixed-date EOM projection said at that day's close —
@@ -2876,6 +2905,7 @@ async def get_pnl_calendar(tz_offset_min: int = 0, origin: str = None, db: Async
         revisions = revisions_by_month.get(_cur_mk, [])
         avg7 = avg7_by_month.get(_cur_mk, [])
     return {"days": days, "portfolio_now": round(portfolio_now, 2) if portfolio_now is not None else None,
+            "batch_start_day": batch_start_day, "config_marks": config_marks,   # 📈 (493) the daily-compound chart
             "portfolio_real": round(portfolio_real, 2) if portfolio_real is not None else None,
             "origin": _origin, "origin_out_pnl": round(_origin_out_pnl, 2),
             # 🎨 (386) sparkline inputs: hourly realized P&L (UTC hour start ms, last 8 days), external flows / paper top-ups, and the
@@ -4607,14 +4637,34 @@ def _compute_equity_curve(orders):
             "cum_short": round(cum_short, 2),
             "direction": o.direction,
             "timestamp": local_time.strftime("%m/%d %H:%M"),
+            "ts": int(ct.timestamp() * 1000),   # 📊 (DECISION_LOG 494) the chart's real-time x axis
         })
     return result
+
+
+def _equity_curve_stats(curve, start_balance=None):
+    """📊 (DECISION_LOG 494) the Equity Curve strip, one source for the UI and BOTH exports: peak / max drawdown / final in $
+    (the run starts at 0, so an opening loss is drawdown too) and max drawdown as % of the account at that peak = start balance +
+    peak realised P&L. `start_balance` None (a filtered view: window / regime / direction / origin …) → no %, the base is unknown."""
+    if not curve:
+        return None
+    peak = 0.0; dd = 0.0; dd_pct = None
+    for p in curve:
+        v = float(p.get("cumulative") or 0.0)
+        peak = max(peak, v)
+        dd = min(dd, v - peak)
+        if start_balance is not None and (start_balance + peak) > 0:
+            x = (v - peak) / (start_balance + peak) * 100.0
+            dd_pct = x if dd_pct is None else min(dd_pct, x)
+    return {"peak": round(peak, 2), "max_dd": round(dd, 2), "max_dd_pct": (round(dd_pct, 2) if dd_pct is not None else None),
+            "final": round(float(curve[-1].get("cumulative") or 0.0), 2), "trades": len(curve)}
 
 
 def _compute_pnl_distribution(orders):
     """Histogram of trade P&L%.
 
     Jul 1, 2026 rewrite (quant review of the chart):
+      • (DECISION_LOG 494: now UNIFORM 0.5 % bins over a FIXED −5 … +8 % frame — see the edges below)
       • UNIFORM 0.25%-wide bins (was mixed 0.25/0.50 → equal-width bars distorted density).
       • FIXED -2.0%..+3.0% frame so the axis is stable batch-to-batch (comparability). Cross-batch
         the losses bottom near -1.24% and the runners reach +2.8%, so this frame contains the body
@@ -4627,7 +4677,9 @@ def _compute_pnl_distribution(orders):
     closed = [o for o in orders if o.pnl_percentage is not None]
     if not closed:
         return []
-    lo_edge, hi_edge, width = -2.0, 3.0, 0.25
+    # 📊 (DECISION_LOG 494) −5 … +8 in 0.5 % bins (was −2 … +3 in 0.25): 27 % of B25's fills (WILLY −4, LITE −3, Flatbase −10 / −15,
+    # TPs at +5 / +8) sat in the two overflow bars — the frame now holds every sleeve's stop and target except Flatbase's widest
+    lo_edge, hi_edge, width = -5.0, 8.0, 0.5
     n_bins = int(round((hi_edge - lo_edge) / width))
     edges = [round(lo_edge + i * width, 2) for i in range(n_bins + 1)]
 
@@ -4686,6 +4738,9 @@ def _compute_pnl_distribution_stats(orders):
         "avg_win": round(avg_win, 3) if avg_win is not None else None,
         "avg_loss": round(avg_loss, 3) if avg_loss is not None else None,
         "payoff": round(payoff, 2) if payoff is not None else None,
+        # 📊 (DECISION_LOG 494) the WR this payoff needs to break even = |avg loss| / (avg win + |avg loss|)
+        "breakeven_wr": (round(100.0 * abs(avg_loss) / (avg_win + abs(avg_loss)), 1)
+                         if (avg_win is not None and avg_loss is not None and (avg_win + abs(avg_loss)) > 0) else None),
     }
 
 
@@ -5084,6 +5139,39 @@ async def _bearrun_periods_rows(db, limit=50):
         return []
 
 
+def _sleeve_label(entry_strategy, direction, import_source=None) -> str:
+    """The sleeve name of one trade (one rule for the sleeve table AND the daily-compound chart, DECISION_LOG 493). Pure."""
+    if (entry_strategy or '') == 'MANUAL':
+        if (import_source or '') == 'BINANCE_APP_HISTORY':
+            return 'App'     # 🧾 (DECISION_LOG 329) trades made in the Binance app, auto-recorded — own row next to 🖐 Manual
+        return 'Manual'  # 🖐 Sep-29: operator-opened positions — own row, never a systematic sleeve
+    if (entry_strategy or '') == 'BULLRUN_LONG':
+        return 'BullRun-Long'  # Aug 21 gate 57: own row — must NOT contaminate Mom-Long
+    if (entry_strategy or '') == 'BEARRUN_SHORT':
+        return 'BearRun-Short'  # Sep 15 gate 60: own row — must NOT contaminate Mom-Short (1× probe fills)
+    if (entry_strategy or '') == 'SURGE_LONG':
+        return 'Surge-Long'    # ⚡ Sep-30: own rows — BTC spike / dump sleeves never blend into momentum
+    if (entry_strategy or '') == 'SURGE_SHORT':
+        return 'Surge-Short'
+    if (entry_strategy or '') == 'FRENZY_LONG':
+        return 'Frenzy-Long'   # 🔥 Oct-2: own row — volume-frenzy longs never blend into momentum
+    if (entry_strategy or '') == 'FRENZY_WIDE':
+        return 'Frenzy-Wide'   # 🔥🌐 Oct-3: own row — FRENZY's ATR / green-candle refusals, never blended into FRENZY_LONG
+    if (entry_strategy or '') == 'FRENZY_LITE_RETRY':
+        return 'Frenzy-Lite-Retry'   # 🔁 (316): own row — LITE green-bar retry (declared override), never blended into Frenzy-Lite
+    if (entry_strategy or '') == 'FRENZY_LITE':
+        return 'Frenzy-Lite'   # 🪶 Oct-7 (243): own row — held above, volume below FRENZY's, first ~17 h
+    if (entry_strategy or '') == 'FRENZY_WILLY_HT':
+        return 'Frenzy-Willy-HT'   # 🎲¼ (341): own row — quarter-size, turnover-blocked WILLY setups (a reduced-size line, never blended into Frenzy-Willy)
+    if (entry_strategy or '') == 'FLATBASE_SHORT':
+        return 'Flatbase-Short'   # 🩳 (DECISION_LOG 348): own row — FLAT-base FRENZY episode short (S4 · −8 / +15 / 72 h · discipline override), never blended into Mom-Short
+    if (entry_strategy or '') == 'FRENZY_WILLY':
+        return 'Frenzy-Willy'   # 🎲 Oct-8 (251): own row — declared exception (new flag + ON not taken, red-candle entry, turnover filter, TP +1 / no SL / 120 min, global hold)
+    if 'FLIP' in (entry_strategy or ''):
+        return 'Flip-Short' if direction == 'SHORT' else 'Flip-Long'
+    return 'Mom-Long' if direction == 'LONG' else 'Mom-Short'
+
+
 def _compute_sleeve_performance(orders, start_balance=None, window_days=None):
     """Per-sleeve performance rollup (Jul 1, 2026, operator-requested) — the exact split used in
     every batch analysis: MOM-long / MOM-short / FLIP-short (+ Total). Sleeve is derived from
@@ -5092,35 +5180,7 @@ def _compute_sleeve_performance(orders, start_balance=None, window_days=None):
     the canonical cross-batch metric) · Net $ (as-sized) · PF (gross wins/|gross losses|) ·
     Worst % (fat-tail visibility)."""
     def sleeve(o):
-        if (o.entry_strategy or '') == 'MANUAL':
-            if (getattr(o, 'import_source', None) or '') == 'BINANCE_APP_HISTORY':
-                return 'App'     # 🧾 (DECISION_LOG 329) trades made in the Binance app, auto-recorded — own row next to 🖐 Manual
-            return 'Manual'  # 🖐 Sep-29: operator-opened positions — own row, never a systematic sleeve
-        if (o.entry_strategy or '') == 'BULLRUN_LONG':
-            return 'BullRun-Long'  # Aug 21 gate 57: own row — must NOT contaminate Mom-Long
-        if (o.entry_strategy or '') == 'BEARRUN_SHORT':
-            return 'BearRun-Short'  # Sep 15 gate 60: own row — must NOT contaminate Mom-Short (1× probe fills)
-        if (o.entry_strategy or '') == 'SURGE_LONG':
-            return 'Surge-Long'    # ⚡ Sep-30: own rows — BTC spike / dump sleeves never blend into momentum
-        if (o.entry_strategy or '') == 'SURGE_SHORT':
-            return 'Surge-Short'
-        if (o.entry_strategy or '') == 'FRENZY_LONG':
-            return 'Frenzy-Long'   # 🔥 Oct-2: own row — volume-frenzy longs never blend into momentum
-        if (o.entry_strategy or '') == 'FRENZY_WIDE':
-            return 'Frenzy-Wide'   # 🔥🌐 Oct-3: own row — FRENZY's ATR / green-candle refusals, never blended into FRENZY_LONG
-        if (o.entry_strategy or '') == 'FRENZY_LITE_RETRY':
-            return 'Frenzy-Lite-Retry'   # 🔁 (316): own row — LITE green-bar retry (declared override), never blended into Frenzy-Lite
-        if (o.entry_strategy or '') == 'FRENZY_LITE':
-            return 'Frenzy-Lite'   # 🪶 Oct-7 (243): own row — held above, volume below FRENZY's, first ~17 h
-        if (o.entry_strategy or '') == 'FRENZY_WILLY_HT':
-            return 'Frenzy-Willy-HT'   # 🎲¼ (341): own row — quarter-size, turnover-blocked WILLY setups (a reduced-size line, never blended into Frenzy-Willy)
-        if (o.entry_strategy or '') == 'FLATBASE_SHORT':
-            return 'Flatbase-Short'   # 🩳 (DECISION_LOG 348): own row — FLAT-base FRENZY episode short (S4 · −8 / +15 / 72 h · discipline override), never blended into Mom-Short
-        if (o.entry_strategy or '') == 'FRENZY_WILLY':
-            return 'Frenzy-Willy'   # 🎲 Oct-8 (251): own row — declared exception (new flag + ON not taken, red-candle entry, turnover filter, TP +1 / no SL / 120 min, global hold)
-        if 'FLIP' in (o.entry_strategy or ''):
-            return 'Flip-Short' if o.direction == 'SHORT' else 'Flip-Long'
-        return 'Mom-Long' if o.direction == 'LONG' else 'Mom-Short'
+        return _sleeve_label(o.entry_strategy, o.direction, getattr(o, 'import_source', None))
     groups = {}
     for o in orders:
         if o.pnl_percentage is None:
@@ -5256,12 +5316,14 @@ def _compute_hourly_performance(orders):
     from datetime import timezone
     UTC_MINUS_3 = timezone(timedelta(hours=-3))
     hourly = {h: [] for h in range(24)}
+    _hdays = {}   # 📊 (494) distinct local dates per hour — market-wide effects count in days, not trades
     for o in orders:
         if o.closed_at is None:
             continue
         ct = o.closed_at.replace(tzinfo=timezone.utc) if o.closed_at.tzinfo is None else o.closed_at
         hour = ct.astimezone(UTC_MINUS_3).hour
         hourly[hour].append(o)
+        _hdays.setdefault(hour, set()).add(ct.astimezone(UTC_MINUS_3).date())
     result = []
     for h in range(24):
         trades = hourly[h]
@@ -5269,14 +5331,14 @@ def _compute_hourly_performance(orders):
         if count == 0:
             # Jul 1, 2026: null (not 0) for no-trade hours so the chart draws a GAP instead of a
             # fabricated 0%-avg / mid-height point that reads like a real breakeven bucket.
-            result.append({"hour": h, "label": f"{h:02d}:00", "trades": 0, "wins": 0,
+            result.append({"hour": h, "label": f"{h:02d}:00", "trades": 0, "wins": 0, "days": 0,
                            "win_rate": None, "avg_pnl_pct": None, "longs": 0, "shorts": 0})
             continue
         wins = sum(1 for o in trades if (o.pnl or 0) > 0)
         longs = sum(1 for o in trades if o.direction == "LONG")
         avg_pnl = round(sum(o.pnl_percentage or 0 for o in trades) / count, 4)
         result.append({
-            "hour": h, "label": f"{h:02d}:00", "trades": count, "wins": wins,
+            "hour": h, "label": f"{h:02d}:00", "trades": count, "wins": wins, "days": len(_hdays.get(h, ())),
             "win_rate": round(wins / count * 100, 1),
             "avg_pnl_pct": avg_pnl,
             "longs": longs, "shorts": count - longs,
@@ -5291,26 +5353,28 @@ def _compute_daily_performance(orders):
     from datetime import timezone
     UTC_MINUS_3 = timezone(timedelta(hours=-3))
     daily = {d: [] for d in range(7)}
+    _ddays = {}   # 📊 (494) distinct local dates per weekday — a 2-week batch has 2 Saturdays, not 30 independent trades
     for o in orders:
         if o.closed_at is None:
             continue
         ct = o.closed_at.replace(tzinfo=timezone.utc) if o.closed_at.tzinfo is None else o.closed_at
         weekday = ct.astimezone(UTC_MINUS_3).weekday()
         daily[weekday].append(o)
+        _ddays.setdefault(weekday, set()).add(ct.astimezone(UTC_MINUS_3).date())
     result = []
     for d in range(7):
         trades = daily[d]
         count = len(trades)
         if count == 0:
             # Jul 1, 2026: null (not 0) for no-trade days — draw a gap, not a fake breakeven point.
-            result.append({"day": d, "label": _DAY_LABELS[d], "trades": 0, "wins": 0,
+            result.append({"day": d, "label": _DAY_LABELS[d], "trades": 0, "wins": 0, "days": 0,
                            "win_rate": None, "avg_pnl_pct": None, "longs": 0, "shorts": 0})
             continue
         wins = sum(1 for o in trades if (o.pnl or 0) > 0)
         longs = sum(1 for o in trades if o.direction == "LONG")
         avg_pnl = round(sum(o.pnl_percentage or 0 for o in trades) / count, 4)
         result.append({
-            "day": d, "label": _DAY_LABELS[d], "trades": count, "wins": wins,
+            "day": d, "label": _DAY_LABELS[d], "trades": count, "wins": wins, "days": len(_ddays.get(d, ())),
             "win_rate": round(wins / count * 100, 1),
             "avg_pnl_pct": avg_pnl,
             "longs": longs, "shorts": count - longs,
@@ -6028,7 +6092,7 @@ def _compute_day_time_heatmap(orders):
             if count == 0:
                 result.append({"day": d, "day_label": _DAY_LABELS[d],
                                "block": b, "block_label": _TIME_BLOCK_LABELS[b],
-                               "trades": 0, "wins": 0, "win_rate": 0, "avg_pnl_pct": 0})
+                               "trades": 0, "wins": 0, "win_rate": 0, "avg_pnl_pct": 0, "pnl": 0.0})
                 continue
             wins = sum(1 for o in trades if (o.pnl or 0) > 0)
             avg_pnl = round(sum(o.pnl_percentage or 0 for o in trades) / count, 4)
@@ -6038,11 +6102,12 @@ def _compute_day_time_heatmap(orders):
                 "trades": count, "wins": wins,
                 "win_rate": round(wins / count * 100, 1),
                 "avg_pnl_pct": avg_pnl,
+                "pnl": round(sum(o.pnl or 0 for o in trades), 2),   # 📊 (494) the cell's realised $
             })
     return result
 
 
-def _compute_time_buckets(orders, bucket_minutes=15):
+def _compute_time_buckets(orders, bucket_minutes=None):
     """Group closed trades into CLOCK-ALIGNED time buckets and compute per-bucket stats.
 
     Jul 1, 2026 rewrite (chart review): buckets are floored to clock quarters (:00/:15/:30/:45)
@@ -6055,18 +6120,24 @@ def _compute_time_buckets(orders, bucket_minutes=15):
     """
     from datetime import timezone
     UTC_MINUS_3 = timezone(timedelta(hours=-3))
-    MAX_BUCKETS = 192  # 48h at 15-min granularity
+    MAX_BUCKETS = 192  # the fill cap: 15 min ≤ 1 day (97) · 1 h ≤ 3 days (73) · 4 h ≤ 30 days (181) · 1 day ≤ 192 days; beyond → active-only
     try:
         timed = [(o, o.closed_at.replace(tzinfo=timezone.utc) if o.closed_at and o.closed_at.tzinfo is None else o.closed_at)
                  for o in orders if o.closed_at is not None]
         if not timed:
             return []
         timed.sort(key=lambda x: x[1])
+        if bucket_minutes is None:
+            # 📊 (DECISION_LOG 494) bucket size follows the span: 15 min ≤ 1 day · 1 h ≤ 3 days · 4 h ≤ 30 days · 1 day beyond — a
+            # 2-week batch at 15 min was ~1,300 slots (past MAX_BUCKETS → the active-only fallback, so the axis was NOT linear time)
+            _span_h = (timed[-1][1] - timed[0][1]).total_seconds() / 3600.0
+            bucket_minutes = 15 if _span_h <= 24 else (60 if _span_h <= 72 else (240 if _span_h <= 720 else 1440))
 
         def _floor(ct):
-            # clock-align to the bucket boundary within the hour (0/15/30/45 for 15-min buckets)
-            return ct.replace(second=0, microsecond=0,
-                              minute=(ct.minute // bucket_minutes) * bucket_minutes)
+            # clock-align in LOCAL time (UTC-3, the chart's clock): 15-min → :00/:15/:30/:45, 4 h → 00/04/08…, 1 day → midnight
+            lt = ct.astimezone(UTC_MINUS_3)
+            _m = ((lt.hour * 60 + lt.minute) // bucket_minutes) * bucket_minutes
+            return lt.replace(hour=_m // 60, minute=_m % 60, second=0, microsecond=0)
 
         buckets = {}
         for o, ct in timed:
@@ -6079,7 +6150,7 @@ def _compute_time_buckets(orders, bucket_minutes=15):
         else:
             keys = sorted(buckets.keys())  # too long to fill — active-only fallback
         # cross-day labels when the span exceeds a day, else compact HH:MM
-        _fmt = "%m/%d %H:%M" if span > (24 * 60 // bucket_minutes) else "%H:%M"
+        _fmt = "%m/%d" if bucket_minutes >= 1440 else ("%m/%d %H:%M" if span > (24 * 60 // bucket_minutes) else "%H:%M")
 
         result = []
         cumulative_pnl = 0
@@ -6103,6 +6174,7 @@ def _compute_time_buckets(orders, bucket_minutes=15):
             result.append({
                 "time": local_time.strftime(_fmt),
                 "trades": count,
+                "bucket_min": bucket_minutes,   # 📊 (494) the chart caption names the bucket size
                 "longs": longs,
                 "shorts": shorts,
                 "wins": wins,
@@ -6295,6 +6367,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                                 direction: str = None, cell_source: str = None, origin: str = None, alpha: str = None):
     from services.origin_view import norm_origin, origin_keep, touched_summary
     _origin = norm_origin(origin)
+    # 📊 (494) captured HERE: `regime` / `direction` are re-used as loop variables further down, so the request's filters must be read now
+    _unfiltered_view = (not any((regime, window_hours, from_date, to_date, flip_source, direction, cell_source, alpha))) and _origin == 'ALL'
     result = await db.execute(
         select(Order)
         .where(and_(Order.status == "CLOSED", Order.is_paper == trading_engine.is_paper_mode))
@@ -10950,6 +11024,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "entry_conditions_by_strategy_outcome": entry_conditions_by_strategy_outcome,
         "period_performance": _compute_period_performance(_all_orders),
         "equity_curve": _compute_equity_curve(_all_orders),
+        # 📊 (494) % only on the unfiltered account view (a window / regime / direction / origin … view has no known base)
+        "equity_curve_stats": _equity_curve_stats(_compute_equity_curve(_all_orders),
+                                                  initial_balance if _unfiltered_view else None),
         "pnl_distribution": _compute_pnl_distribution(orders),
         "pnl_distribution_stats": _compute_pnl_distribution_stats(orders),
         "mae_mfe": _compute_mae_mfe(orders),

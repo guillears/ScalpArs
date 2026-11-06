@@ -4492,7 +4492,7 @@
                 <!-- Performance Over Time -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance Over Time</h3>
-                    <p class="text-xs text-gray-500 mb-3">P&L grouped by clock-aligned 15-minute windows on a real linear-time axis (empty windows shown as gaps) — identify when market conditions shifted</p>
+                    <p id="performance-over-time-caption" class="text-xs text-gray-500 mb-3">P&L grouped by clock-aligned windows on a real linear-time axis (empty windows shown as gaps) — identify when market conditions shifted. Window size follows the span: 15 min up to 1 day · 1 h up to 3 days · 4 h up to 30 days · 1 day beyond.</p>
                     <div style="height: 320px; position: relative;">
                         <canvas id="performance-over-time-chart"></canvas>
                     </div>
@@ -4502,7 +4502,7 @@
                 <!-- Cumulative P&L (Equity Curve) -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Cumulative P&L (Equity Curve)</h3>
-                    <p class="text-xs text-gray-500 mb-2">Running total P&L trade by trade — separate lines for LONG and SHORT</p>
+                    <p class="text-xs text-gray-500 mb-2">Running total P&L on a real time axis (each step = a closed trade) — separate lines for LONG and SHORT. Max DD = the deepest fall from a peak, in $ and as % of the account at that peak.</p>
                     <!-- Jul 1, 2026 — peak / max-drawdown / final strip: an equity curve exists to show DD depth -->
                     <p id="equity-curve-stats" class="text-xs mb-3 text-gray-300" style="display:none;"></p>
                     <div style="height: 320px; position: relative;">
@@ -4511,10 +4511,21 @@
                     <p id="equity-curve-empty" class="text-center text-gray-500 text-sm py-8">No data</p>
                 </div>
 
+                <!-- 📈 Daily Compound Return over time (DECISION_LOG 493) -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-2">Daily Compound Return — day by day</h3>
+                    <p class="text-xs text-gray-500 mb-2">Each day's realised P&amp;L ÷ the account value at the start of that day (deposits / top-ups / expenses split out; a day with no close counts as 0 %). <span class="text-blue-300">Solid line</span> = the batch's daily compound rate up to that day · <span class="text-amber-300">dashed</span> = the last 7 days only · bars = each day's return. The shaded first 5 days are too early to read. ⚙ = settings changed that day (hover for which). Calendar days in your local time; resets with the paper reset.</p>
+                    <p id="dcr-chart-stats" class="text-xs mb-3 text-gray-300" style="display:none;"></p>
+                    <div style="height: 320px; position: relative;">
+                        <canvas id="dcr-chart"></canvas>
+                    </div>
+                    <p id="dcr-chart-empty" class="text-center text-gray-500 text-sm py-8">No data</p>
+                </div>
+
                 <!-- P&L Distribution -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">P&L Distribution</h3>
-                    <p class="text-xs text-gray-500 mb-2">Histogram of trade P&L % — right tail longer than left = asymmetric payoff. Uniform 0.25%-wide bins over a fixed −2%…+3% frame (lower edge labeled; hover for the exact range). Loss/win zones tinted around the dashed 0% line.</p>
+                    <p class="text-xs text-gray-500 mb-2">Histogram of trade P&L % — right tail longer than left = asymmetric payoff. Uniform 0.5%-wide bins over a fixed −5%…+8% frame that holds every sleeve's stop and target (lower edge labeled; hover for the exact range); the two end bars collect anything beyond, with their count printed on top. Loss/win zones tinted around the dashed 0% line. Breakeven WR = the win rate this payoff needs to break even.</p>
                     <!-- Jul 1, 2026 — summary strip substantiates the "asymmetric payoff" claim -->
                     <p id="pnl-distribution-stats" class="text-xs mb-3 text-gray-300" style="display:none;"></p>
                     <div style="height: 320px; position: relative;">
@@ -4526,7 +4537,8 @@
                 <!-- MAE / MFE Scatter (Jul 1, 2026) — exit-optimization view -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Excursion Scatter (MAE vs MFE)</h3>
-                    <p class="text-xs text-gray-500 mb-3">One dot per trade — how far it went <span class="text-red-300">against</span> you (Max Adverse Excursion, x) vs <span class="text-emerald-300">for</span> you (Max Favorable Excursion, y) before closing. Green = win, red = loss. Reads exit placement: how deep winners dip (→ safe SL room) and how much losers give back from peak (→ where BE/TP should lock in).</p>
+                    <p class="text-xs text-gray-500 mb-3">One dot per trade — how far it went <span class="text-red-300">against</span> you (Max Adverse Excursion, x) vs <span class="text-emerald-300">for</span> you (Max Favorable Excursion, y) before closing. Green = win, red = loss. Reads exit placement: how deep winners dip (→ safe SL room) and how much losers give back from peak (→ where BE/TP should lock in). The x axis stops at −6 %: deeper trades sit on the left edge as ◀ (hover for the real value). "Gave back" = losers that were ≥ +1 % up first.</p>
+                    <p id="mae-mfe-stats" class="text-xs mb-3 text-gray-300" style="display:none;"></p>
                     <div style="height: 360px; position: relative;">
                         <canvas id="mae-mfe-chart"></canvas>
                     </div>
@@ -4536,7 +4548,7 @@
                 <!-- Performance by Hour -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by Hour (UTC-3)</h3>
-                    <p class="text-xs text-gray-500 mb-3">Win rate and avg P&L % by hour of day — identify best and worst trading windows. Each hour is an independent bucket (Avg P&L = dots, not a trend line). Bar opacity ∝ trade count (faint = low N = noise); no-trade hours show no marker, not a fake 0%.</p>
+                    <p class="text-xs text-gray-500 mb-3">Win rate and avg P&L % by hour of day — identify best and worst trading windows. Each hour is an independent bucket (Avg P&L = dots, not a trend line); the trade count sits under each hour. Bar opacity ∝ trade count and dots with fewer than 10 trades are faded (noise); no-trade hours show no marker, not a fake 0%.</p>
                     <div style="height: 320px; position: relative;">
                         <canvas id="hourly-performance-chart"></canvas>
                     </div>
@@ -4546,7 +4558,7 @@
                 <!-- Performance by Day of Week -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by Day of Week (UTC-3)</h3>
-                    <p class="text-xs text-gray-500 mb-3">Win rate and avg P&L % by day of week — spot your best and worst trading days. Each day is an independent bucket (Avg P&L = dots, not a trend line). Bar opacity ∝ trade count (faint = low N = noise); no-trade days show no marker, not a fake 0%.</p>
+                    <p class="text-xs text-gray-500 mb-3">Win rate and avg P&L % by day of week — spot your best and worst trading days. Each day is an independent bucket (Avg P&L = dots, not a trend line). Under each day: how many of those weekdays the batch has seen (d) and the trades (t) — a weekday seen fewer than 4 times is grey: market-wide effects count in days, not trades. Bar opacity ∝ trade count; no-trade days show no marker, not a fake 0%.</p>
                     <div style="height: 320px; position: relative;">
                         <canvas id="daily-performance-chart"></canvas>
                     </div>
@@ -4556,7 +4568,7 @@
                 <!-- Day x Time Heatmap -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Day x Time Heatmap (UTC-3)</h3>
-                    <p class="text-xs text-gray-500 mb-3">Performance by day of week crossed with 4-hour time blocks — find your optimal trading windows. Cell opacity ∝ trade count (a 1-trade cell is faded vs a 5-trade one).</p>
+                    <p class="text-xs text-gray-500 mb-3">Performance by day of week crossed with 4-hour time blocks — find your optimal trading windows. Each cell: avg P&L % · trades and win rate · realised $. Cells with fewer than 5 trades are grey (numbers kept, no colour verdict).</p>
                     <div class="overflow-x-auto">
                         <table id="day-time-heatmap-table" class="w-full text-xs">
                             <thead>
@@ -8503,23 +8515,32 @@
         // Day x Time Heatmap: trade-weighted aggregate of a set of cells (marginal totals).
         // Weighted by N so a 1-trade cell doesn't count like a 5-trade one.
         function dtHeatmapAgg(cells) {
-            let trades = 0, wins = 0, pnlSum = 0;
+            let trades = 0, wins = 0, pnlSum = 0, usd = 0;
             for (const c of (cells || [])) {
                 if (!c || !c.trades) continue;
                 trades += c.trades;
                 wins += c.wins || 0;
                 pnlSum += (c.avg_pnl_pct || 0) * c.trades;
+                usd += c.pnl || 0;
             }
-            if (trades === 0) return { trades: 0, wins: 0, win_rate: 0, avg_pnl_pct: 0 };
-            return { trades, wins, win_rate: wins / trades * 100, avg_pnl_pct: pnlSum / trades };
+            if (trades === 0) return { trades: 0, wins: 0, win_rate: 0, avg_pnl_pct: 0, pnl: 0 };
+            return { trades, wins, win_rate: wins / trades * 100, avg_pnl_pct: pnlSum / trades, pnl: usd };
         }
+        // 📊 (DECISION_LOG 494) a round half-range for a symmetric axis: 1 / 2 / 2.5 / 5 × 10^k so the end ticks read $500 / $1,000, never $1,064
+        function niceHalfRange(h) {
+            if (!(h > 0)) return 1;
+            const raw = h / 4, p = Math.pow(10, Math.floor(Math.log10(raw)));
+            const step = [1, 2, 2.5, 5, 10].map(m => m * p).find(v => v >= raw) || 10 * p;
+            return Math.ceil(h / step) * step;
+        }
+        const _usd = v => `${v >= 0 ? '+' : '-'}$${Math.abs(v).toFixed(0)}`;
 
         // Text-export cell formatter for the heatmap — shared by BOTH report builders.
         // Width 16: marginal totals like "85t 68%W +0.35%" are 15 chars and sheared the
         // old 12-char columns (review I5).
-        function dtHeatmapCellStr(cell, w = 16) {
+        function dtHeatmapCellStr(cell, w = 24) {   // 📊 (494) + the cell's realised $
             if (!cell || cell.trades === 0) return '-'.padStart(w);
-            return `${cell.trades}t ${cell.win_rate.toFixed(0)}%W ${(cell.avg_pnl_pct >= 0 ? '+' : '') + cell.avg_pnl_pct.toFixed(2)}%`.padStart(w);
+            return `${cell.trades}t ${cell.win_rate.toFixed(0)}%W ${(cell.avg_pnl_pct >= 0 ? '+' : '') + cell.avg_pnl_pct.toFixed(2)}% ${_usd(cell.pnl || 0)}`.padStart(w);
         }
 
         // Initialize
@@ -8776,6 +8797,7 @@
                     }
                     pnlCalCurIdx = curIdx;
                     renderPnlCalendar();
+                    try { renderDcrChart(); } catch (_dcrErr) { console.warn('[DCR chart]', _dcrErr); }   // 📈 (493) same data, its own chart
                 })
                 .catch(() => {});
         }
@@ -9117,6 +9139,205 @@
             for (const r of months) out.push(row(r.key, r, (r.best ? `${r.best.day} ${_pnlCalFmt$(r.best.pnl)} · ${r.worst.day} ${_pnlCalFmt$(r.worst.pnl)}` : 'no trades') + (r.partial ? ' · partial' : '')));
             const t = pnlMonthlyTotal(months);
             out.push(row('Total', t, `${t.greenMonths} profitable · ${t.redMonths} loss month${t.redMonths === 1 ? '' : 's'}`));
+            return out;
+        }
+
+        // ── 📈 Daily Compound Return over time (DECISION_LOG 493) ───────────────────
+        // Every calendar day from the batch's first day to today (today only once it has a close — the monthly %/day rule):
+        // r_d = the day's flow-stripped account growth − 1 (ALL) or the sleeve's day P&L ÷ the start-of-day base (a sleeve view);
+        // 0 % on a day with no close. batch = (Π(1+r))^(1/days) − 1 up to that day · roll7 = the same over the last ≤ 7 days.
+        const DCR_EARLY_DAYS = 5;
+        function _dcrNextDay(k) {   // 'YYYY-MM-DD' + 1 calendar day (UTC arithmetic on the date only — no DST drift)
+            const t = new Date(Date.UTC(+k.slice(0, 4), +k.slice(5, 7) - 1, +k.slice(8, 10)) + 86400000);
+            return t.toISOString().slice(0, 10);
+        }
+        function dcrSeries(cal, sleeve, todayKey) {   // PURE → [{day, r, batch, roll7, pnl, trades, marks}] (r / batch / roll7 as fractions)
+            const days = (cal && cal.days) || {};
+            const keys = Object.keys(days).sort();
+            const start = (cal && cal.batch_start_day) || keys[0];
+            if (!start) return [];
+            const marks = {};
+            for (const m of ((cal && cal.config_marks) || [])) marks[m.day] = m.fields || [];
+            // (493 review) no day % anywhere (the account equity could not be read) → no series, never a fake flat 0 % line
+            if (keys.length && keys.every(k => (days[k].g === null || days[k].g === undefined) && (days[k].day_return_pct === null || days[k].day_return_pct === undefined))) return [];
+            const lastTraded = keys.length ? keys[keys.length - 1] : todayKey;   // (review) a start after today and no closes → no series
+            const end = lastTraded > todayKey ? lastTraded : todayKey;
+            const out = [];
+            let logSum = 0; const logs = [];
+            for (let k = start; k <= end; k = _dcrNextDay(k)) {
+                const e = days[k];
+                if (k === todayKey && !e) break;            // today counts once it has a close (same as the monthly %/day)
+                let r = 0, pnl = 0, trades = 0;
+                if (e) {
+                    if (!sleeve || sleeve === 'ALL') {
+                        r = (e.g !== null && e.g !== undefined) ? e.g - 1 : ((e.day_return_pct !== null && e.day_return_pct !== undefined) ? e.day_return_pct / 100 : 0);
+                        pnl = e.pnl || 0; trades = e.trades || 0;
+                    } else {
+                        pnl = (e.sleeves && e.sleeves[sleeve]) || 0;
+                        r = (e.base && e.base > 0) ? pnl / e.base : 0;
+                        trades = pnl !== 0 ? 1 : 0;              // per-sleeve trade counts are not in the calendar — "active" only
+                    }
+                }
+                const lg = Math.log(Math.max(1e-9, 1 + r));
+                logSum += lg; logs.push(lg);
+                const n = logs.length, w = Math.min(7, n);
+                let l7 = 0; for (let i = n - w; i < n; i++) l7 += logs[i];
+                out.push({ day: k, r, pnl, trades, marks: marks[k] || null,
+                           batch: Math.exp(logSum / n) - 1, roll7: Math.exp(l7 / w) - 1 });
+            }
+            return out;
+        }
+        function dcrSleeveOptions(cal) {   // PURE → the sleeves with any realised P&L in the batch, by |P&L| desc
+            const tot = {};
+            for (const e of Object.values((cal && cal.days) || {}))
+                for (const [s, v] of Object.entries(e.sleeves || {})) tot[s] = (tot[s] || 0) + Math.abs(v || 0);
+            return Object.keys(tot).filter(s => tot[s] > 0).sort((a, b) => tot[b] - tot[a]);
+        }
+        const _dcrPct = (x, d = 2) => (x === null || x === undefined || !isFinite(x)) ? '—' : `${x >= 0 ? '+' : ''}${(x * 100).toFixed(d)}%`;
+
+        function renderDcrChart() {
+            const canvas = document.getElementById('dcr-chart');
+            const empty = document.getElementById('dcr-chart-empty');
+            const stats = document.getElementById('dcr-chart-stats');
+            if (!canvas || !empty || typeof Chart === 'undefined') return;
+            const sleeve = 'ALL';   // the whole account — no per-sleeve filter on the chart (operator 11-06); per-sleeve rows live in the exports
+            const ser = dcrSeries(pnlCalData, sleeve, _pnlLocalTodayKey());
+            const hash = JSON.stringify([sleeve, ser]);
+            if (hash === window._dcrHash && window._dcrChart) return;
+            window._dcrHash = hash;
+            if (window._dcrChart) { window._dcrChart.destroy(); window._dcrChart = null; }
+            if (!ser.length) {
+                empty.textContent = (pnlCalData && pnlCalData.days && Object.keys(pnlCalData.days).length) ? 'Day % unavailable — the account value could not be read' : 'No data';
+                empty.style.display = 'block'; canvas.style.display = 'none';
+                if (stats) stats.style.display = 'none';
+                return;
+            }
+            empty.style.display = 'none'; canvas.style.display = 'block';
+            const last = ser[ser.length - 1];
+            const green = ser.filter(p => p.r > 0).length, red = ser.filter(p => p.r < 0).length;
+            if (stats) {
+                const c = v => v >= 0 ? 'text-emerald-400' : 'text-red-400';
+                const g = t => `<span class="text-gray-500">${t}</span>`;
+                stats.innerHTML = `${g(sleeve === 'ALL' ? 'Batch' : sleeve + ' · batch')} <span class="${c(last.batch)} font-semibold">${_dcrPct(last.batch)}/day</span> · ` +
+                    `${g('last 7 days')} <span class="${c(last.roll7)}">${_dcrPct(last.roll7)}/day</span> · ` +
+                    `${g('days')} ${ser.length} (${green} green · ${red} red · ${ser.length - green - red} flat)` +
+                    (ser.length <= DCR_EARLY_DAYS ? ` · <span class="text-amber-300">too early to read</span>` : '') +
+                    ` · ${g('view')} ${ORIGIN_LABELS[pnlCalDataView] || 'All trades'}`;
+                stats.style.display = '';
+            }
+            const earlyBand = {   // shade the first DCR_EARLY_DAYS days + draw the ⚙ settings-change marks
+                id: 'dcrMarks',
+                beforeDatasetsDraw(chart) {
+                    const { ctx, chartArea: a, scales: { x } } = chart;
+                    const nE = Math.min(DCR_EARLY_DAYS, ser.length);
+                    if (nE > 0) {
+                        const x0 = a.left, x1 = Math.min(a.right, x.getPixelForValue(nE - 1) + (x.getPixelForValue(1) - x.getPixelForValue(0)) / 2);
+                        ctx.save(); ctx.fillStyle = 'rgba(156,163,175,0.08)'; ctx.fillRect(x0, a.top, x1 - x0, a.bottom - a.top);
+                        ctx.fillStyle = 'rgba(156,163,175,0.6)'; ctx.font = '10px sans-serif'; ctx.fillText('early — noisy', x0 + 4, a.top + 12); ctx.restore();
+                    }
+                },
+                afterDatasetsDraw(chart) {
+                    const { ctx, chartArea: a, scales: { x } } = chart;
+                    ctx.save(); ctx.strokeStyle = 'rgba(167,139,250,0.55)'; ctx.setLineDash([3, 3]); ctx.fillStyle = 'rgba(196,181,253,0.9)'; ctx.font = '11px sans-serif';
+                    ser.forEach((p, i) => {
+                        if (!p.marks) return;
+                        const px = x.getPixelForValue(i);
+                        ctx.beginPath(); ctx.moveTo(px, a.top); ctx.lineTo(px, a.bottom); ctx.stroke();
+                        ctx.fillText('⚙', px - 5, a.top + 24);
+                    });
+                    ctx.restore();
+                }
+            };
+            window._dcrChart = new Chart(canvas, {
+                data: {
+                    labels: ser.map(p => ser.length > 300 ? p.day : p.day.slice(5)),   // (493 review) live history spans years → full dates
+                    datasets: [
+                        { type: 'line', label: 'Batch daily compound (to that day)', data: ser.map(p => p.batch * 100), yAxisID: 'y',
+                          borderColor: 'rgba(96,165,250,1)', backgroundColor: 'rgba(96,165,250,0.1)', borderWidth: 2, pointRadius: 2, tension: 0.25, order: 0 },
+                        { type: 'line', label: 'Last 7 days', data: ser.map(p => p.roll7 * 100), yAxisID: 'y',
+                          borderColor: 'rgba(252,211,77,0.9)', borderWidth: 1.5, borderDash: [5, 3], pointRadius: 0, tension: 0.25, order: 1 },
+                        { type: 'bar', label: 'Day return', data: ser.map(p => p.r * 100), yAxisID: 'yDay',
+                          backgroundColor: ser.map(p => p.r >= 0 ? 'rgba(52,211,153,0.35)' : 'rgba(248,113,113,0.35)'), borderWidth: 0, order: 2 },
+                    ]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { labels: { color: '#9ca3af', font: { size: 11 } } },
+                        tooltip: {
+                            backgroundColor: 'rgba(17, 24, 39, 0.95)', titleColor: '#e5e7eb', bodyColor: '#d1d5db', borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1,
+                            callbacks: {
+                                title: ctx => ser[ctx[0].dataIndex].day,
+                                label: c => `${c.dataset.label}: ${c.parsed.y >= 0 ? '+' : ''}${c.parsed.y.toFixed(2)}%${c.dataset.yAxisID === 'y' ? '/day' : ''}`,
+                                afterBody: ctx => {
+                                    const p = ser[ctx[0].dataIndex], o = [];
+                                    o.push(`Realised P&L: ${p.pnl >= 0 ? '+' : '-'}$${Math.abs(p.pnl).toFixed(2)}` + (sleeve === 'ALL' ? ` · ${p.trades} trade${p.trades === 1 ? '' : 's'}` : ''));
+                                    if (ctx[0].dataIndex < DCR_EARLY_DAYS) o.push('Early day — the batch line is still noisy');
+                                    if (p.marks) o.push(`⚙ Settings changed: ${p.marks.slice(0, 8).join(', ')}${p.marks.length > 8 ? ` +${p.marks.length - 8} more` : ''}`);
+                                    return o;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { ticks: { color: '#6b7280', font: { size: 9 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 31 }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                        y: { position: 'left', title: { display: true, text: 'Compound %/day', color: '#93c5fd', font: { size: 10 } },
+                             ticks: { color: '#93c5fd', font: { size: 10 }, callback: v => `${v.toFixed(1)}%` }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                        yDay: { position: 'right', title: { display: true, text: 'Day return %', color: '#9ca3af', font: { size: 10 } },
+                                ticks: { color: '#9ca3af', font: { size: 10 }, callback: v => `${v.toFixed(0)}%` }, grid: { drawOnChartArea: false } }
+                    }
+                },
+                plugins: [earlyBand]
+            });
+        }
+
+        function chartSummaryReportLines(perf, hr2) {   // 📊 (DECISION_LOG 494) — the chart strips' numbers, called by BOTH text exports
+            const out = [`\n${hr2}`, '## 📊 Chart summaries (DECISION_LOG 494 — the numbers printed above the charts)\n'];
+            const ds = perf && perf.pnl_distribution_stats;
+            if (ds && ds.n) {
+                const sg = v => v == null ? '—' : `${v >= 0 ? '+' : ''}${Number(v).toFixed(2)}%`;
+                out.push(`  P&L distribution: N ${ds.n} · WR ${ds.wr}% · mean ${sg(ds.mean)} · median ${sg(ds.median)} · avg win ${sg(ds.avg_win)} · avg loss ${sg(ds.avg_loss)} · payoff ${ds.payoff != null ? ds.payoff.toFixed(2) + '×' : '—'}` +
+                         (ds.breakeven_wr != null ? ` · breakeven WR ${ds.breakeven_wr.toFixed(1)}% (WR ${ds.wr >= ds.breakeven_wr ? 'above' : 'below'} it)` : ''));
+                const tails = (perf.pnl_distribution || []).filter(b => b.overflow && b.count);
+                if (tails.length) out.push(`  Beyond the −5 … +8 % frame: ${tails.map(b => `${b.label_range} ${b.count}`).join(' · ')}`);
+            }
+            const mm = (perf && perf.mae_mfe) || [];
+            if (mm.length) {
+                const L = mm.filter(t => !t.win), gave = L.filter(t => t.mfe >= 1);
+                out.push(`  Excursion scatter: gave back ${gave.length} of ${L.length} losers (≥ +1 % up first, ${L.length ? Math.round(100 * gave.length / L.length) : 0}%) · beyond −6 % MAE: ${mm.filter(t => t.mae < -6).length}`);
+            }
+            const pot = (perf && perf.performance_over_time) || [];
+            if (pot.length && pot[0].bucket_min) out.push(`  Performance over time: ${pot[0].bucket_min}-minute windows (size follows the span)`);
+            const es = perf && perf.equity_curve_stats;
+            if (es) out.push(`  Equity curve: peak ${_usd(es.peak)} · max drawdown ${_usd(es.max_dd)}` +
+                             (es.max_dd_pct != null ? ` (${es.max_dd_pct.toFixed(1)}% of the account at that peak)` : ' (% only on the unfiltered view)') + ` · final ${_usd(es.final)}`);
+            const hp = ((perf && perf.hourly_performance) || []).filter(h => h.trades > 0);
+            if (hp.length) {
+                out.push('  Hour of day (UTC-3): ' + hp.map(h => `${h.label} ${h.trades}t/${h.days || 0}d ${h.win_rate.toFixed(0)}%W ${(h.avg_pnl_pct >= 0 ? '+' : '') + h.avg_pnl_pct.toFixed(2)}%${h.trades < 10 ? '·n<10' : ''}`).join(' | '));
+            }
+            return out;
+        }
+
+        function dailyCompoundReportLines(hr2) {   // 📈 (DECISION_LOG 493) — called by BOTH text exports (clipboard + saved file)
+            const out = [`\n${hr2}`, `## 📈 Daily Compound Return — day by day (DECISION_LOG 493 — day P&L ÷ start-of-day account value, flows split out, 0 % on a no-close day; batch = compound rate up to that day, 7d = last 7 days; View: ${ORIGIN_LABELS[pnlCalDataView] || 'All trades'})\n`];
+            if (!pnlCalData || !pnlCalData.days) { out.push('  Not loaded yet — the calendar data had not arrived when this report was built.'); return out; }
+            const today = _pnlLocalTodayKey();
+            const ser = dcrSeries(pnlCalData, 'ALL', today);
+            if (!ser.length) { out.push('  No closed trades yet.'); return out; }
+            const DCR_EXPORT_DAYS = 60;   // (493 review) live = lifetime history → the day table shows the last 60 days; the summary covers all
+            if (ser.length > DCR_EXPORT_DAYS) out.push(`  (${ser.length} days in all — the table shows the last ${DCR_EXPORT_DAYS}; the per-sleeve summary below covers every day)`);
+            out.push(`  ${'Day'.padEnd(10)} ${'Day %'.padStart(8)} ${'Batch %/d'.padStart(10)} ${'7d %/d'.padStart(9)} ${'P&L $'.padStart(10)} ${'Trades'.padStart(6)}  Settings changed`);
+            const _off = Math.max(0, ser.length - DCR_EXPORT_DAYS);
+            ser.slice(_off).forEach((p, j) => { const i = j + _off; out.push(`  ${p.day.padEnd(10)} ${_dcrPct(p.r).padStart(8)} ${_dcrPct(p.batch).padStart(10)} ${_dcrPct(p.roll7).padStart(9)} ${((p.pnl >= 0 ? '+' : '-') + '$' + Math.abs(p.pnl).toFixed(2)).padStart(10)} ${String(p.trades).padStart(6)}  ` +
+                (p.marks ? p.marks.join(', ') : '') + (i < DCR_EARLY_DAYS ? (p.marks ? ' · ' : '') + 'early' : '')); });
+            out.push('', `  Per sleeve (its P&L on the same account base; rows do NOT add up to the account line):`);
+            out.push(`  ${'Sleeve'.padEnd(20)} ${'Batch %/d'.padStart(10)} ${'7d %/d'.padStart(9)} ${'Active days'.padStart(12)}`);
+            for (const s of dcrSleeveOptions(pnlCalData)) {
+                const ss = dcrSeries(pnlCalData, s, today); if (!ss.length) continue;
+                const l = ss[ss.length - 1];
+                out.push(`  ${s.padEnd(20)} ${_dcrPct(l.batch).padStart(10)} ${_dcrPct(l.roll7).padStart(9)} ${String(ss.filter(p => p.r !== 0).length + '/' + ss.length).padStart(12)}`);
+            }
             return out;
         }
 
@@ -11230,25 +11451,25 @@
 
             if (perf.performance_over_time && perf.performance_over_time.length > 0) {
                 lines.push(`\n${hr2}`);
-                lines.push('## Performance Over Time (15min buckets)\n');
-                lines.push(`${'Time'.padEnd(8)} ${'#'.padEnd(5)} ${'Dir'.padEnd(10)} ${'Win%'.padEnd(8)} ${'P&L'.padEnd(12)} ${'AvgP&L'.padEnd(10)} ${'Cumulative'.padEnd(12)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'EMA5-8'.padEnd(8)}`);
+                lines.push(`## Performance Over Time (${(b0 => b0 && b0.bucket_min ? (b0.bucket_min >= 1440 ? '1-day' : b0.bucket_min >= 60 ? (b0.bucket_min / 60) + 'h' : b0.bucket_min + 'min') : '15min')(perf.performance_over_time[0])} windows, UTC-3)\n`);
+                lines.push(`${'Time'.padEnd(11)} ${'#'.padEnd(5)} ${'Dir'.padEnd(10)} ${'Win%'.padEnd(8)} ${'P&L'.padEnd(12)} ${'AvgP&L'.padEnd(10)} ${'Cumulative'.padEnd(12)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'EMA5-8'.padEnd(8)}`);
                 for (const b of perf.performance_over_time) {
                     const dirStr = `${b.longs}L/${b.shorts}S`;
                     const gapStr = b.avg_gap != null ? b.avg_gap.toFixed(2) + '%' : '-';
                     const gap58Str = b.avg_gap58 != null ? b.avg_gap58.toFixed(4) + '%' : '-';
-                    lines.push(`${(b.time||'').padEnd(8)} ${String(b.trades).padEnd(5)} ${dirStr.padEnd(10)} ${(b.win_rate+'%').padEnd(8)} ${('$'+(b.pnl||0).toFixed(2)).padStart(11)} ${('$'+(b.avg_pnl||0).toFixed(2)).padStart(9)} ${('$'+(b.cumulative_pnl||0).toFixed(2)).padStart(11)} ${(b.avg_rsi!=null?b.avg_rsi.toFixed(1):'-').padStart(7)} ${(b.avg_adx!=null?b.avg_adx.toFixed(1):'-').padStart(7)} ${gapStr.padStart(7)} ${gap58Str.padStart(8)}`);
+                    lines.push(`${(b.time||'').padEnd(11)} ${String(b.trades).padEnd(5)} ${dirStr.padEnd(10)} ${(b.win_rate+'%').padEnd(8)} ${('$'+(b.pnl||0).toFixed(2)).padStart(11)} ${('$'+(b.avg_pnl||0).toFixed(2)).padStart(9)} ${('$'+(b.cumulative_pnl||0).toFixed(2)).padStart(11)} ${(b.avg_rsi!=null?b.avg_rsi.toFixed(1):'-').padStart(7)} ${(b.avg_adx!=null?b.avg_adx.toFixed(1):'-').padStart(7)} ${gapStr.padStart(7)} ${gap58Str.padStart(8)}`);
                 }
             }
 
             if (perf.daily_performance && perf.daily_performance.some(d => d.trades > 0)) {
                 lines.push(`\n${hr2}`);
                 lines.push('## Performance by Day of Week (UTC-3)\n');
-                lines.push(`${'Day'.padEnd(6)} ${'#'.padStart(4)} ${'Dir'.padEnd(8)} ${'Win%'.padStart(6)} ${'Avg P&L%'.padStart(11)}`);
+                lines.push(`${'Day'.padEnd(6)} ${'#'.padStart(4)} ${'Days'.padStart(5)} ${'Dir'.padEnd(8)} ${'Win%'.padStart(6)} ${'Avg P&L%'.padStart(11)}`);
                 for (const d of perf.daily_performance) {
                     if (d.trades === 0) continue;
                     const dirStr = `${d.longs}L/${d.shorts}S`;
                     const pnlStr = (d.avg_pnl_pct >= 0 ? '+' : '') + d.avg_pnl_pct.toFixed(4) + '%';
-                    lines.push(`${d.label.padEnd(6)} ${String(d.trades).padStart(4)} ${dirStr.padEnd(8)} ${(d.win_rate.toFixed(1) + '%').padStart(6)} ${pnlStr.padStart(11)}`);
+                    lines.push(`${d.label.padEnd(6)} ${String(d.trades).padStart(4)} ${String(d.days ?? '').padStart(5)} ${dirStr.padEnd(8)} ${(d.win_rate.toFixed(1) + '%').padStart(6)} ${pnlStr.padStart(11)}`);
                 }
             }
 
@@ -11256,7 +11477,7 @@
                 lines.push(`\n${hr2}`);
                 lines.push('## Day x Time Heatmap (UTC-3, 4h blocks)\n');
                 const blockLabels = ['00-04', '04-08', '08-12', '12-16', '16-20', '20-24'];
-                lines.push(`${'Day'.padEnd(6)} ${blockLabels.map(b => b.padStart(16)).join(' ')} ${'Total'.padStart(16)}`);
+                lines.push(`${'Day'.padEnd(6)} ${blockLabels.map(b => b.padStart(24)).join(' ')} ${'Total'.padStart(24)}`);
                 const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
                 for (let d = 0; d < 7; d++) {
                     let row = dayNames[d].padEnd(6);
@@ -11433,6 +11654,8 @@
             lines.push(...liteCReportLines(perf, hr2));   // 🎯 (DECISION_LOG 301) LITE C Tally
             lines.push(...manualBlockReportLines(perf, hr2));   // ⛔ (DECISION_LOG 343) Manual block state
             lines.push(...monthlyPnlReportLines(hr2));   // 📆 (DECISION_LOG 426) Monthly P&L
+            lines.push(...dailyCompoundReportLines(hr2));   // 📈 (DECISION_LOG 493) Daily Compound Return — day by day
+            lines.push(...chartSummaryReportLines(perf, hr2));   // 📊 (DECISION_LOG 494) chart strips — breakeven WR, gave-back, drawdown, hours
             lines.push(...trackRecordReportLines(hr2));   // 🗄 (DECISION_LOG 436) Track record
 
             if ((perf.surge_rows && perf.surge_rows.length > 0) || perf.surge_monitor) {
@@ -13137,13 +13360,13 @@
                 // --- PERFORMANCE OVER TIME ---
                 if (perf.performance_over_time && perf.performance_over_time.length > 0) {
                     lines.push(`\n${hr2}`);
-                    lines.push('## Performance Over Time (15min buckets)\n');
-                    lines.push(`${'Time'.padEnd(8)} ${'#'.padEnd(5)} ${'Dir'.padEnd(10)} ${'Win%'.padEnd(8)} ${'P&L'.padEnd(12)} ${'AvgP&L'.padEnd(10)} ${'Cumulative'.padEnd(12)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'EMA5-8'.padEnd(8)}`);
+                    lines.push(`## Performance Over Time (${(b0 => b0 && b0.bucket_min ? (b0.bucket_min >= 1440 ? '1-day' : b0.bucket_min >= 60 ? (b0.bucket_min / 60) + 'h' : b0.bucket_min + 'min') : '15min')(perf.performance_over_time[0])} windows, UTC-3)\n`);
+                    lines.push(`${'Time'.padEnd(11)} ${'#'.padEnd(5)} ${'Dir'.padEnd(10)} ${'Win%'.padEnd(8)} ${'P&L'.padEnd(12)} ${'AvgP&L'.padEnd(10)} ${'Cumulative'.padEnd(12)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'EMA5-8'.padEnd(8)}`);
                     for (const b of perf.performance_over_time) {
                         const dirStr = `${b.longs}L/${b.shorts}S`;
                         const gapStr = b.avg_gap != null ? b.avg_gap.toFixed(2) + '%' : '-';
                         const gap58Str = b.avg_gap58 != null ? b.avg_gap58.toFixed(4) + '%' : '-';
-                        lines.push(`${(b.time||'').padEnd(8)} ${String(b.trades).padEnd(5)} ${dirStr.padEnd(10)} ${(b.win_rate+'%').padEnd(8)} ${('$'+(b.pnl||0).toFixed(2)).padStart(11)} ${('$'+(b.avg_pnl||0).toFixed(2)).padStart(9)} ${('$'+(b.cumulative_pnl||0).toFixed(2)).padStart(11)} ${(b.avg_rsi!=null?b.avg_rsi.toFixed(1):'-').padStart(7)} ${(b.avg_adx!=null?b.avg_adx.toFixed(1):'-').padStart(7)} ${gapStr.padStart(7)} ${gap58Str.padStart(8)}`);
+                        lines.push(`${(b.time||'').padEnd(11)} ${String(b.trades).padEnd(5)} ${dirStr.padEnd(10)} ${(b.win_rate+'%').padEnd(8)} ${('$'+(b.pnl||0).toFixed(2)).padStart(11)} ${('$'+(b.avg_pnl||0).toFixed(2)).padStart(9)} ${('$'+(b.cumulative_pnl||0).toFixed(2)).padStart(11)} ${(b.avg_rsi!=null?b.avg_rsi.toFixed(1):'-').padStart(7)} ${(b.avg_adx!=null?b.avg_adx.toFixed(1):'-').padStart(7)} ${gapStr.padStart(7)} ${gap58Str.padStart(8)}`);
                     }
                 }
 
@@ -13151,12 +13374,12 @@
                 if (perf.daily_performance && perf.daily_performance.some(d => d.trades > 0)) {
                     lines.push(`\n${hr2}`);
                     lines.push('## Performance by Day of Week (UTC-3)\n');
-                    lines.push(`${'Day'.padEnd(6)} ${'#'.padStart(4)} ${'Dir'.padEnd(8)} ${'Win%'.padStart(6)} ${'Avg P&L%'.padStart(11)}`);
+                    lines.push(`${'Day'.padEnd(6)} ${'#'.padStart(4)} ${'Days'.padStart(5)} ${'Dir'.padEnd(8)} ${'Win%'.padStart(6)} ${'Avg P&L%'.padStart(11)}`);
                     for (const d of perf.daily_performance) {
                         if (d.trades === 0) continue;
                         const dirStr = `${d.longs}L/${d.shorts}S`;
                         const pnlStr = (d.avg_pnl_pct >= 0 ? '+' : '') + d.avg_pnl_pct.toFixed(4) + '%';
-                        lines.push(`${d.label.padEnd(6)} ${String(d.trades).padStart(4)} ${dirStr.padEnd(8)} ${(d.win_rate.toFixed(1) + '%').padStart(6)} ${pnlStr.padStart(11)}`);
+                        lines.push(`${d.label.padEnd(6)} ${String(d.trades).padStart(4)} ${String(d.days ?? '').padStart(5)} ${dirStr.padEnd(8)} ${(d.win_rate.toFixed(1) + '%').padStart(6)} ${pnlStr.padStart(11)}`);
                     }
                 }
 
@@ -13165,7 +13388,7 @@
                     lines.push(`\n${hr2}`);
                     lines.push('## Day x Time Heatmap (UTC-3, 4h blocks)\n');
                     const blockLabels = ['00-04', '04-08', '08-12', '12-16', '16-20', '20-24'];
-                    lines.push(`${'Day'.padEnd(6)} ${blockLabels.map(b => b.padStart(16)).join(' ')} ${'Total'.padStart(16)}`);
+                    lines.push(`${'Day'.padEnd(6)} ${blockLabels.map(b => b.padStart(24)).join(' ')} ${'Total'.padStart(24)}`);
                     const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
                     for (let d = 0; d < 7; d++) {
                         let row = dayNames[d].padEnd(6);
@@ -13637,6 +13860,8 @@
             lines.push(...liteCReportLines(perf, hr2));   // 🎯 (DECISION_LOG 301) LITE C Tally
             lines.push(...manualBlockReportLines(perf, hr2));   // ⛔ (DECISION_LOG 343) Manual block state
             lines.push(...monthlyPnlReportLines(hr2));   // 📆 (DECISION_LOG 426) Monthly P&L
+            lines.push(...dailyCompoundReportLines(hr2));   // 📈 (DECISION_LOG 493) Daily Compound Return — day by day
+            lines.push(...chartSummaryReportLines(perf, hr2));   // 📊 (DECISION_LOG 494) chart strips — breakeven WR, gave-back, drawdown, hours
             lines.push(...trackRecordReportLines(hr2));   // 🗄 (DECISION_LOG 436) Track record
 
             if ((perf.surge_rows && perf.surge_rows.length > 0) || perf.surge_monitor) {
@@ -17214,6 +17439,11 @@
                         potCanvas.style.display = 'block';
                         const labels = potData.map(b => b.time);
                         const pnlValues = potData.map(b => b.pnl || 0);
+                        const _potCap = document.getElementById('performance-over-time-caption');   // 📊 (494) name the window size
+                        if (_potCap && potData[0] && potData[0].bucket_min) {
+                            const bm = potData[0].bucket_min;
+                            _potCap.textContent = `P&L per ${bm >= 1440 ? '1-day' : bm >= 60 ? (bm / 60) + '-hour' : bm + '-minute'} window (clock-aligned, UTC-3) on a real linear-time axis — empty windows show as gaps; identify when market conditions shifted. Window size follows the span: 15 min up to 1 day · 1 h up to 3 days · 4 h up to 30 days · 1 day beyond.`;
+                        }
                         const cumValues = potData.map(b => b.cumulative_pnl || 0);
                         const barColors = pnlValues.map(v => v >= 0 ? 'rgba(52, 211, 153, 0.8)' : 'rgba(248, 113, 113, 0.8)');
 
@@ -17280,7 +17510,7 @@
                                 borderColor: 'rgba(96, 165, 250, 1)',
                                 backgroundColor: 'rgba(96, 165, 250, 0.1)',
                                 borderWidth: 2,
-                                pointRadius: 2,
+                                pointRadius: 0,          // 📊 (494) no dot per window — the line reads cleaner
                                 pointHoverRadius: 5,
                                 fill: true,
                                 tension: 0.3,
@@ -17298,11 +17528,11 @@
                         if (portfolioValues && portfolioValues.length) {
                             let H = 0;
                             for (const v of portfolioValues) H = Math.max(H, Math.abs(v - startingBalance));
-                            H = Math.max(H * 1.15, Math.abs(startingBalance) * 0.01, 5);
+                            H = niceHalfRange(Math.max(H * 1.15, Math.abs(startingBalance) * 0.01, 5));   // 📊 (494) round end ticks
                             potYMin = startingBalance - H; potYMax = startingBalance + H;
                             let Hb = 0;
                             for (const v of pnlValues) if (v != null) Hb = Math.max(Hb, Math.abs(v));
-                            Hb = Math.max(Hb * 1.15, 10);
+                            Hb = niceHalfRange(Math.max(Hb * 1.15, 10));
                             potY1Min = -Hb; potY1Max = Hb;
                         }
                         window._potChart = new Chart(potCanvas, {
@@ -17374,7 +17604,7 @@
                 const eqStatsEl = document.getElementById('equity-curve-stats');
                 if (eqStatsEl) {
                     if (eqData && eqData.length) {
-                        let peak = -Infinity, maxDD = 0, peakSoFar = -Infinity;
+                        let peak = 0, maxDD = 0, peakSoFar = 0, maxDDPct = null;   // 📊 (494) the run starts at 0 — a first-trade loss is drawdown too
                         for (const p of eqData) {
                             const v = p.cumulative || 0;
                             if (v > peakSoFar) peakSoFar = v;
@@ -17382,13 +17612,15 @@
                             const dd = v - peakSoFar;           // ≤ 0
                             if (dd < maxDD) maxDD = dd;
                         }
+                        // (review) the % comes from the server (one number for the strip and both exports), only on the unfiltered view
+                        if (data.equity_curve_stats && data.equity_curve_stats.max_dd_pct != null) maxDDPct = data.equity_curve_stats.max_dd_pct;
                         const final = eqData[eqData.length - 1].cumulative || 0;
                         const _f = v => (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
                         const g = t => `<span class="text-gray-500">${t}</span>`;
                         const finCls = final >= 0 ? 'text-emerald-400' : 'text-red-400';
                         eqStatsEl.innerHTML =
                             `${g('Peak')} <span class="text-emerald-400">${_f(peak)}</span> · ` +
-                            `${g('Max DD')} <span class="text-red-400">${_f(maxDD)}</span> · ` +
+                            `${g('Max DD')} <span class="text-red-400">${_f(maxDD)}${maxDDPct !== null ? ` (${maxDDPct.toFixed(1)}%)` : ''}</span> · ` +
                             `${g('Final')} <span class="${finCls} font-semibold">${_f(final)}</span> · ` +
                             `${g('trades')} ${eqData.length}`;
                         eqStatsEl.title = 'Max DD = deepest peak-to-trough decline in cumulative P&L over the run.';
@@ -17405,25 +17637,30 @@
                     if (eqData && eqData.length > 0) {
                         eqEmpty.style.display = 'none';
                         eqCanvas.style.display = 'block';
+                        const _eqHasTs = eqData.every(d => d.ts != null);   // 📊 (494) real time when the server sends it
+                        const _eqXY = key => _eqHasTs ? eqData.map(d => ({ x: d.ts, y: d[key] })) : eqData.map(d => d[key]);
+                        const _eqFmt = ms => { const t = new Date(ms - 3 * 3600e3); return `${String(t.getUTCMonth() + 1).padStart(2, '0')}/${String(t.getUTCDate()).padStart(2, '0')} ${String(t.getUTCHours()).padStart(2, '0')}:${String(t.getUTCMinutes()).padStart(2, '0')}`; };   // UTC-3, like the tooltip
                         window._eqChart = new Chart(eqCanvas, {
                             type: 'line',
                             data: {
-                                labels: eqData.map(d => d.timestamp),
+                                labels: _eqHasTs ? undefined : eqData.map(d => d.timestamp),
                                 datasets: [
                                     {
                                         label: 'Total P&L',
-                                        data: eqData.map(d => d.cumulative),
+                                        data: _eqXY('cumulative'),
                                         borderColor: 'rgba(96, 165, 250, 1)',
                                         backgroundColor: 'rgba(96, 165, 250, 0.1)',
                                         borderWidth: 2,
-                                        pointRadius: 2,
+                                        pointRadius: 0,
                                         pointHoverRadius: 5,
                                         fill: true,
-                                        tension: 0.3,
+                                        stepped: _eqHasTs ? 'before' : false,   // Chart.js 'before' = flat at the old value, then the jump AT this close (review-verified)
+                                        tension: _eqHasTs ? 0 : 0.3,
                                     },
                                     {
                                         label: 'LONG P&L',
-                                        data: eqData.map(d => d.cum_long),
+                                        data: _eqXY('cum_long'),
+                                        stepped: _eqHasTs ? 'before' : false,
                                         borderColor: 'rgba(52, 211, 153, 0.8)',
                                         borderWidth: 1.5,
                                         pointRadius: 0,
@@ -17434,7 +17671,8 @@
                                     },
                                     {
                                         label: 'SHORT P&L',
-                                        data: eqData.map(d => d.cum_short),
+                                        data: _eqXY('cum_short'),
+                                        stepped: _eqHasTs ? 'before' : false,
                                         borderColor: 'rgba(248, 113, 113, 0.8)',
                                         borderWidth: 1.5,
                                         pointRadius: 0,
@@ -17458,6 +17696,7 @@
                                         borderColor: 'rgba(255,255,255,0.1)',
                                         borderWidth: 1,
                                         callbacks: {
+                                            title: ctx => { const d = eqData[ctx[0].dataIndex]; return d ? d.timestamp : ''; },
                                             afterBody: function(ctx) {
                                                 const i = ctx[0].dataIndex;
                                                 const d = eqData[i];
@@ -17467,7 +17706,9 @@
                                     }
                                 },
                                 scales: {
-                                    x: { ticks: { color: '#6b7280', font: { size: 9 }, maxRotation: 45, maxTicksLimit: 20 }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                                    x: _eqHasTs
+                                        ? { type: 'linear', ticks: { color: '#6b7280', font: { size: 9 }, maxRotation: 45, maxTicksLimit: 16, callback: v => _eqFmt(v) }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                                        : { ticks: { color: '#6b7280', font: { size: 9 }, maxRotation: 45, maxTicksLimit: 20 }, grid: { color: 'rgba(255,255,255,0.05)' } },
                                     y: {
                                         title: { display: true, text: 'Cumulative P&L ($)', color: '#60a5fa', font: { size: 11 } },
                                         ticks: { color: '#9ca3af', callback: v => '$' + v.toFixed(0) },
@@ -17503,7 +17744,10 @@
                             `${g('median')} ${_sg(dStats.median)} · ` +
                             `${g('avg win')} <span class="text-emerald-400">${dStats.avg_win != null ? _sg(dStats.avg_win) : '—'}</span> · ` +
                             `${g('avg loss')} <span class="text-red-400">${dStats.avg_loss != null ? _sg(dStats.avg_loss) : '—'}</span> · ` +
-                            `${g('payoff')} <span class="${payCls} font-semibold">${dStats.payoff != null ? dStats.payoff.toFixed(2) + '×' : '—'}</span>`;
+                            `${g('payoff')} <span class="${payCls} font-semibold">${dStats.payoff != null ? dStats.payoff.toFixed(2) + '×' : '—'}</span>` +
+                            (dStats.breakeven_wr != null   // 📊 (494) the one line that says whether the WR is enough
+                                ? ` · ${g('breakeven WR')} <span class="${dStats.wr >= dStats.breakeven_wr ? 'text-emerald-400' : 'text-red-400'} font-semibold">${dStats.breakeven_wr.toFixed(1)}%</span> ${g(dStats.wr >= dStats.breakeven_wr ? '(WR above it)' : '(WR below it)')}`
+                                : '');
                         distStatsEl.title = 'payoff = avg win / |avg loss|; ≥1× means winners are bigger than losers. mean = per-trade expectancy in %.';
                         distStatsEl.style.display = '';
                     } else {
@@ -17521,7 +17765,7 @@
                         // zero boundary = first bin whose lower edge is ≥ 0 (win side). Captured in a
                         // closure so the tint/zero-line plugin can place the divider between bars.
                         // zero divider index. NOTE: correct as long as the histogram frame straddles 0
-                        // (current −2…+3 always has a lo:-999 overflow at idx 0 and lo:0 mid-array). If the
+                        // (current −5…+8 always has a lo:-999 overflow at idx 0 and lo:0 mid-array). If the
                         // backend frame in _compute_pnl_distribution is ever shifted so the lowest bin is ≥0,
                         // the `_zeroIdx <= 0 → area.left` branch below would mis-tint — keep the frame straddling 0.
                         const _zeroIdx = distData.findIndex(d => d.lo >= 0);
@@ -17553,9 +17797,22 @@
                                 ctx.restore();
                             }
                         };
+                        const overflowLabels = {   // 📊 (494) the end bars collect the tails — print their counts
+                            id: 'pnlDistOverflow',
+                            afterDatasetsDraw(chart) {
+                                const xs = chart.scales.x, ys = chart.scales.y, ctx = chart.ctx;
+                                if (!xs || !ys) return;
+                                ctx.save(); ctx.fillStyle = '#e5e7eb'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center';
+                                distData.forEach((d, i) => {
+                                    if (!d.overflow || !d.count) return;
+                                    ctx.fillText(`${d.count}`, xs.getPixelForValue(i), ys.getPixelForValue(d.count) - 4);
+                                });
+                                ctx.restore();
+                            }
+                        };
                         window._distChart = new Chart(distCanvas, {
                             type: 'bar',
-                            plugins: [zonesPlugin],
+                            plugins: [zonesPlugin, overflowLabels],
                             data: {
                                 labels: distData.map(d => d.label),
                                 datasets: [
@@ -17605,7 +17862,8 @@
                                     y: {
                                         stacked: true,
                                         title: { display: true, text: '# Trades', color: '#9ca3af', font: { size: 11 } },
-                                        ticks: { color: '#9ca3af', stepSize: 1 },
+                                        ticks: { color: '#9ca3af', precision: 0 },
+                                        grace: '8%',   // room for the overflow counts
                                         grid: { color: 'rgba(255,255,255,0.05)' }
                                     }
                                 }
@@ -17628,7 +17886,16 @@
                     if (mmData && mmData.length > 0) {
                         mmEmpty.style.display = 'none';
                         mmCanvas.style.display = 'block';
-                        const _mmPoint = t => ({ x: t.mae, y: t.mfe, _t: t });
+                        const MM_CLIP = -6;   // 📊 (494) a few very wide stops (Flatbase −10 / −15) squeezed every other dot into the corner
+                        const _mmPoint = t => ({ x: Math.max(t.mae, MM_CLIP), y: t.mfe, _t: t, _clip: t.mae < MM_CLIP });
+                        const _mmStats = document.getElementById('mae-mfe-stats');
+                        if (_mmStats) {
+                            const L = mmData.filter(t => !t.win), gave = L.filter(t => t.mfe >= 1), clipped = mmData.filter(t => t.mae < MM_CLIP);
+                            const g = x => `<span class="text-gray-500">${x}</span>`;
+                            _mmStats.innerHTML = `${g('Gave back')} <span class="text-amber-300 font-semibold">${gave.length} of ${L.length}</span> ${g('losers were ≥ +1 % up first')} (${L.length ? Math.round(100 * gave.length / L.length) : 0}%)` +
+                                ` · ${g('beyond −6 %')} ${clipped.length} ${g('(pinned at the left edge)')}`;
+                            _mmStats.style.display = '';
+                        }
                         const wins = mmData.filter(t => t.win).map(_mmPoint);
                         const losses = mmData.filter(t => !t.win).map(_mmPoint);
                         window._mmChart = new Chart(mmCanvas, {
@@ -17641,6 +17908,8 @@
                                         backgroundColor: 'rgba(52, 211, 153, 0.6)',
                                         borderColor: 'rgba(52, 211, 153, 0.9)',
                                         borderWidth: 1,
+                                        pointStyle: c => (c.raw && c.raw._clip) ? 'triangle' : 'circle',
+                                        rotation: c => (c.raw && c.raw._clip) ? -90 : 0,
                                         pointRadius: 4,
                                         pointHoverRadius: 6,
                                     },
@@ -17650,6 +17919,8 @@
                                         backgroundColor: 'rgba(248, 113, 113, 0.6)',
                                         borderColor: 'rgba(248, 113, 113, 0.9)',
                                         borderWidth: 1,
+                                        pointStyle: c => (c.raw && c.raw._clip) ? 'triangle' : 'circle',
+                                        rotation: c => (c.raw && c.raw._clip) ? -90 : 0,
                                         pointRadius: 4,
                                         pointHoverRadius: 6,
                                     }
@@ -17673,7 +17944,7 @@
                                                 const sg = v => (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
                                                 const out = [
                                                     `${t.pair} ${t.direction}`,
-                                                    `MAE (worst): ${sg(t.mae)}`,
+                                                    `MAE (worst): ${sg(t.mae)}${t.mae < -6 ? ' (beyond the −6 % edge)' : ''}`,
                                                     `MFE (best): ${sg(t.mfe)}`,
                                                     `Final P&L: ${sg(t.pnl_pct)}`,
                                                 ];
@@ -17686,6 +17957,7 @@
                                 scales: {
                                     x: {
                                         title: { display: true, text: 'Max Adverse Excursion (worst dip) %', color: '#f87171', font: { size: 11 } },
+                                        min: mmData.some(t => t.mae < MM_CLIP) ? -6.3 : undefined,   // (review) only when something is past the edge
                                         ticks: { color: '#9ca3af', callback: v => Number(v).toFixed(2) + '%' },
                                         grid: { color: 'rgba(255,255,255,0.05)' },
                                     },
@@ -17726,7 +17998,7 @@
                         window._hourChart = new Chart(hourCanvas, {
                             type: 'bar',
                             data: {
-                                labels: hourData.map(h => h.label),
+                                labels: hourData.map(h => [h.label, h.trades ? `${h.trades}t` : '']),   // 📊 (494) N under each hour
                                 datasets: [
                                     {
                                         label: 'Win Rate %',
@@ -17746,7 +18018,11 @@
                                         borderWidth: 2,
                                         pointRadius: 3,
                                         pointHoverRadius: 6,
-                                        pointBackgroundColor: hourData.map(h => h.avg_pnl_pct >= 0 ? 'rgba(52, 211, 153, 1)' : 'rgba(248, 113, 113, 1)'),
+                                        pointBackgroundColor: hourData.map(h => {   // 📊 (494) N < 10 = faded (noise), like the bars
+                                            const a = (h.trades || 0) < 10 ? 0.35 : 1;
+                                            return h.avg_pnl_pct >= 0 ? `rgba(52, 211, 153, ${a})` : `rgba(248, 113, 113, ${a})`;
+                                        }),
+                                        pointBorderColor: hourData.map(h => (h.trades || 0) < 10 ? 'rgba(96,165,250,0.35)' : 'rgba(96,165,250,1)'),
                                         fill: false,
                                         showLine: false,   // hour-of-day is categorical, not a timeline — markers only,
                                                            // no connecting segments that would imply a false intraday trend
@@ -17771,7 +18047,7 @@
                                             afterBody: function(ctx) {
                                                 const i = ctx[0].dataIndex;
                                                 const h = hourData[i];
-                                                return [`Trades: ${h.trades} (${h.longs}L/${h.shorts}S)`, `Wins: ${h.wins}/${h.trades}`];
+                                                return [`Trades: ${h.trades} (${h.longs}L/${h.shorts}S) on ${h.days || 0} day${h.days === 1 ? '' : 's'}`, `Wins: ${h.wins}/${h.trades}`].concat((h.trades || 0) < 10 ? ['N < 10 — mostly noise'] : []);
                                             }
                                         }
                                     }
@@ -17813,17 +18089,20 @@
                         dayEmpty.style.display = 'none';
                         dayCanvas.style.display = 'block';
                         const _dMaxN = Math.max(1, ...dayData.map(d => d.trades || 0));
+                        const DOW_MIN_DAYS = 4;   // 📊 (494) a weekday seen < 4 times gets no red / green verdict (market-wide = day units)
+                        const _dowThin = d => (d.days != null && d.days < DOW_MIN_DAYS);
                         const dayBarColors = dayData.map(d => {
                             if (d.trades === 0) return 'rgba(107, 114, 128, 0.15)';
+                            if (_dowThin(d)) return 'rgba(156, 163, 175, 0.30)';
                             const a = (0.30 + 0.55 * (d.trades / _dMaxN)).toFixed(2);
                             return d.win_rate >= 50 ? `rgba(52, 211, 153, ${a})` : `rgba(248, 113, 113, ${a})`;
                         });
                         const dayBarBorders = dayData.map(d => d.trades === 0 ? 'rgba(107,114,128,0.3)'
-                            : (d.win_rate >= 50 ? 'rgba(52,211,153,1)' : 'rgba(248,113,113,1)'));
+                            : (_dowThin(d) ? 'rgba(156,163,175,0.6)' : (d.win_rate >= 50 ? 'rgba(52,211,153,1)' : 'rgba(248,113,113,1)')));
                         window._dayChart = new Chart(dayCanvas, {
                             type: 'bar',
                             data: {
-                                labels: dayData.map(d => d.label),
+                                labels: dayData.map(d => [d.label, d.trades ? `${d.days != null ? d.days + 'd · ' : ''}${d.trades}t` : '']),   // 📊 (494) days + trades
                                 datasets: [
                                     {
                                         label: 'Win Rate %',
@@ -17843,7 +18122,7 @@
                                         borderWidth: 2,
                                         pointRadius: 4,
                                         pointHoverRadius: 7,
-                                        pointBackgroundColor: dayData.map(d => d.avg_pnl_pct >= 0 ? 'rgba(52, 211, 153, 1)' : 'rgba(248, 113, 113, 1)'),
+                                        pointBackgroundColor: dayData.map(d => _dowThin(d) ? 'rgba(156, 163, 175, 0.8)' : (d.avg_pnl_pct >= 0 ? 'rgba(52, 211, 153, 1)' : 'rgba(248, 113, 113, 1)')),
                                         fill: false,
                                         showLine: false,   // day-of-week is categorical — markers only, no Mon→Tue→Wed "trend"
                                         yAxisID: 'y1',
@@ -17867,7 +18146,7 @@
                                             afterBody: function(ctx) {
                                                 const i = ctx[0].dataIndex;
                                                 const d = dayData[i];
-                                                return [`Trades: ${d.trades} (${d.longs}L/${d.shorts}S)`, `Wins: ${d.wins}/${d.trades}`];
+                                                return [`Trades: ${d.trades} (${d.longs}L/${d.shorts}S) on ${d.days || 0} day${d.days === 1 ? '' : 's'}`, `Wins: ${d.wins}/${d.trades}`].concat(_dowThin(d) ? [`Only ${d.days} day${d.days === 1 ? '' : 's'} — no verdict below ${DOW_MIN_DAYS} (grey)`] : []);
                                             }
                                         }
                                     }
@@ -17904,7 +18183,8 @@
                 if (dtHash !== _lastDayTimeHash) {
                     _lastDayTimeHash = dtHash;
                     if (dtData && dtData.some(c => c.trades > 0)) {
-                        const pnls = dtData.filter(c => c.trades > 0).map(c => c.avg_pnl_pct);
+                        const _dtCol = dtData.filter(c => c.trades >= 5);   // (494 review) the colour scale from coloured (≥ 5-trade) cells only
+                        const pnls = (_dtCol.length ? _dtCol : dtData.filter(c => c.trades > 0)).map(c => c.avg_pnl_pct);
                         const maxAbs = Math.max(Math.abs(Math.min(...pnls)), Math.abs(Math.max(...pnls)), 0.0001);
                         const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
                         // shared cell painter for inner cells AND marginal totals (same opacity-by-N + color-by-avg%)
@@ -17914,18 +18194,19 @@
                                         <span class="text-gray-600 text-[10px]">-</span></td>`;
                             }
                             const intensity = Math.min(Math.abs(cell.avg_pnl_pct) / maxAbs, 1);
-                            // fade low-N cells: a 1-trade cell shouldn't glow like a 5-trade one (noise)
-                            const nf = Math.min(cell.trades / 5, 1);
-                            const alpha = 0.10 + intensity * 0.55 * nf;
-                            const bg = cell.avg_pnl_pct >= 0
+                            // 📊 (494) fewer than 5 trades → no colour verdict (grey cell, numbers kept); ≥ 5 → coloured by avg %
+                            const thin = cell.trades < 5;
+                            const alpha = 0.10 + intensity * 0.55;
+                            const bg = thin ? 'rgba(107, 114, 128, 0.12)' : (cell.avg_pnl_pct >= 0
                                 ? `rgba(52, 211, 153, ${alpha})`
-                                : `rgba(248, 113, 113, ${alpha})`;
-                            const pnlColor = cell.avg_pnl_pct >= 0 ? 'text-emerald-300' : 'text-red-300';
+                                : `rgba(248, 113, 113, ${alpha})`);
+                            const pnlColor = thin ? 'text-gray-300' : (cell.avg_pnl_pct >= 0 ? 'text-emerald-300' : 'text-red-300');
                             const wrColor = cell.win_rate >= 50 ? 'text-emerald-400' : 'text-red-400';
                             return `<td class="px-2 py-2 text-center" style="background: ${bg}; border: 1px solid rgba(255,255,255,0.08); ${extraStyle}"
-                                        title="${label} | ${cell.trades} trades | WR ${safe(cell.win_rate).toFixed(1)}% | Avg P&L ${safe(cell.avg_pnl_pct) >= 0 ? '+' : ''}${safe(cell.avg_pnl_pct).toFixed(4)}%">
+                                        title="${label} | ${cell.trades} trades | WR ${safe(cell.win_rate).toFixed(1)}% | Avg P&L ${safe(cell.avg_pnl_pct) >= 0 ? '+' : ''}${safe(cell.avg_pnl_pct).toFixed(4)}% | ${_usd(safe(cell.pnl))}${thin ? ' | fewer than 5 trades — no colour verdict' : ''}">
                                         <div class="font-bold ${pnlColor} text-xs">${safe(cell.avg_pnl_pct) >= 0 ? '+' : ''}${safe(cell.avg_pnl_pct).toFixed(2)}%</div>
                                         <div class="text-[10px] text-gray-400">${cell.trades}t <span class="${wrColor}">${safe(cell.win_rate).toFixed(0)}%W</span></div>
+                                        <div class="text-[10px] ${safe(cell.pnl) >= 0 ? 'text-emerald-400/80' : 'text-red-400/80'}">${_usd(safe(cell.pnl))}</div>
                                     </td>`;
                         };
                         const totalSep = 'border-left: 2px solid rgba(255,255,255,0.15);';

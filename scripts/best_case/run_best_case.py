@@ -161,6 +161,9 @@ def main(exp):
           "trades since it was frozen. The 30–50 % cut applies until the checkpoint; after it, the clean result stands with its 95 % range. "
           "Two trade counts (80 % chance of showing it at 95 % confidence): 'adds money' = the blocked trades really lose (or the change really gains); "
           "'blocked < kept' = the blocked trades really do worse than the ones kept, per side. "
+          "The DECIDING TEST is the one the line's own gate uses (DECISION_LOG 484): 'blocked < kept' for the Market-hot lines (their blocked trades "
+          "average ≈ 0, so 'adds money' never proves), 'adds money' for the rest. Pace = the line's trades per day over the WHOLE current batch; the "
+          "≈ dates project the checkpoint (N trades and D days) and the deciding test from it — zone trades come in bursts, dates move by days. "
           "N to prove it adds money (from the built-on spread, never below the "
           "checkpoint; still optimistic, because in-sample averages are inflated). 95 % range shown from 3 clean days. "
           "Flatbase's built-on = the current batch before the freeze (its history is short). Backtest = a cross-check, never a veto.", "", conf.strip()]

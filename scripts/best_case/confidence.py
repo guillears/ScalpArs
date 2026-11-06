@@ -12,6 +12,10 @@ Per best line (from best_dcr_noflip.csv, plus the FAN flips TP +2 exit):
             "never" = BUILT ON does not even point the line's way. A block line also shows N per side to prove the blocked fills do
             WORSE than the kept ones (two-sample) — a line whose blocked fills average ≈ 0 can be clearly worse than the rest (it lifts the
             average trade and frees slots) yet never provably ADD money (ML_MKT_HOT; operator 11-03 caught the 3,300). FB_CONFIRM's BUILT ON is the current batch before the freeze + 1 B24 fill.
+  deciding test (DECISION_LOG 484)  the count that decides THIS line, from its registered gate (YARD): "blocked < kept" per side at the
+            gate's own one-sided 90 % (P(zone < rest) ≥ 0.90; its avg ≤ +0.05 / day-pair legs are not modelled) for the Market-hot lines (their blocked fills average ≈ 0, so "adds money" never proves — the 3,306), "adds money" for the rest.
+  pace / ≈ dates  each line's trades per day over the WHOLE current batch (B25_START → the export's last fill), not since its freeze; the
+            checkpoint date needs its N trades AND D trading days; a projection — zone fills come in bursts, so dates move by days.
   clean 95 % range  day-clustered bootstrap of the clean mean (4,000 resamples, seed 7); "–" below 3 clean fills.
   backtest  what the backtest said at registration (its scout docstring) — a cross-check, never a veto (MASTER OVER BACKTEST).
   call      line_calls() — the DECISION_LOG 447 ladder on CLEAN fills (PASS / STRADDLE / AGAINST / PRE); best_dcr.py switches on only PASS
@@ -41,6 +45,11 @@ LINES = {
     "ML_MKT_HOT": (416, 15, 8, "agrees (3 / 3 seeds)"),
     "LONG_ADX35": (418, 15, 8, "disagrees (seed 1)"),
 }
+# (DECISION_LOG 484, operator 11-06 "why so long … maybe you are not considering trades you should") the test that DECIDES each line, from its own
+# registered gate: "rest" = blocked fills must do WORSE THAN THE KEPT ONES (ML_MKT_HOT's operator bar: P(zone < rest); WILLY_HT's Market-hot is
+# decided on the same bar, DL 416) · every other line = "money" (blocked fills must lose / the change must gain — the expectancy bar).
+YARD = {"ML_MKT_HOT": "rest", "MKT_HOT": "rest"}
+B25_START = pd.Timestamp("2026-10-23 18:30")   # the current batch's start (as best_dcr.B0) — the pace denominator; ⚠ update per batch
 # 🎲 (DECISION_LOG 473) was the line's theory written BEFORE its data were read? first = pre-registered (a real test) · after = a story fitted to
 # what the data showed (explains, never proves) · against = the theory frozen first predicted the opposite. Source: each line's DL entry.
 THEORY = {"WILLY_GAP": "after (EMA cut from the data, DL 414)", "OBS-F1 late weak spike": "after (W/L screen, DL 384)",
@@ -94,7 +103,7 @@ def n95(x, sign):
     return f"{int(np.ceil(((1.645 + 0.84) * x.std() / abs(m)) ** 2))}"
 
 
-def n95_vs_rest(z, r):
+def n95_vs_rest(z, r, zc=1.645):
     """trades needed PER SIDE to show the blocked fills do worse than the kept ones (two-sample, 80 % power, one-sided 95 %)."""
     z, r = pd.Series(z, dtype=float).dropna(), pd.Series(r, dtype=float).dropna()
     if len(z) < 3 or len(r) < 3:
@@ -103,7 +112,7 @@ def n95_vs_rest(z, r):
     if gap <= 0:
         return "never"
     sd = np.sqrt((z.var() + r.var()) / 2)
-    return f"{int(np.ceil(2 * ((1.645 + 0.84) * sd / gap) ** 2))}"
+    return f"{int(np.ceil(2 * ((zc + 0.84) * sd / gap) ** 2))}"
 
 
 def boot_range(x, days, seed=7, n=4000):
@@ -122,6 +131,36 @@ def boot_range(x, days, seed=7, n=4000):
 def boot(x, days, seed=7, n=4000):
     r = boot_range(x, days, seed, n)
     return "–" if r is None else f"{r[0]:+.2f} … {r[1]:+.2f}".replace("-", "−")
+
+
+def pace(o_all, end):
+    """the line's pace over the WHOLE current batch (DECISION_LOG 484 — not since its freeze, which can sit in a quiet stretch): (trades / day,
+    trading days / day) from every current-batch fill in its zone (or every signal / flip for FB_CONFIRM / TP +2). PURE."""
+    o = pd.to_datetime(pd.Series(o_all), format="mixed")
+    span = (end - B25_START).total_seconds() / 86400
+    if span <= 0 or not len(o):
+        return 0.0, 0.0
+    return len(o) / span, o.dt.strftime("%Y-%m-%d").nunique() / span
+
+
+def eta_days(n_more, d_more, p):
+    """days until n_more trades AND d_more trading days arrive at pace p = (trades / day, days / day); 0 = now, inf = no pace. PURE."""
+    tp, dp = p
+    need = []
+    if n_more > 0:
+        need.append(n_more / tp if tp > 0 else float("inf"))
+    if d_more > 0:
+        need.append(d_more / dp if dp > 0 else float("inf"))
+    return max(need) if need else 0.0
+
+
+def when(days, end):
+    """days from the export → 'now' / 'Nov 14' / '> 3 months' / 'no pace yet'. PURE."""
+    if days == 0:
+        return "now"
+    if days == float("inf"):
+        return "no pace yet"
+    return "> 3 months" if days > 90 else f"{end + pd.Timedelta(days=days):%b %d}"
 
 
 def ladder(clean, cdays, sign, n_min, d_min):
@@ -148,7 +187,7 @@ def fmt(x):
     return f"{x:+.2f}".replace("-", "−")
 
 
-def row(sleeve, line, built, clean, cdays, sign, fz, rest=None):
+def row(sleeve, line, built, clean, cdays, sign, fz, rest=None, p=(0.0, 0.0), end=None, clean_rest=0, p_rest=(0.0, 0.0)):
     spec, n_min, d_min, bt = LINES[line]
     b = pd.Series(built, dtype=float).dropna()
     c = pd.Series(clean, dtype=float)
@@ -163,9 +202,32 @@ def row(sleeve, line, built, clean, cdays, sign, fz, rest=None):
     gap = "–" if nd in ("–", "never") else f"{max(0, int(nd) - len(c))} more"
     nr = n95_vs_rest(b, rest) if rest is not None else "n/a"
     fzs = "not in git" if fz is None else f"{fz:%m-%d}"
+    # (484) the deciding test + when the checkpoint / that test arrive at the WHOLE-batch pace
+    yard = YARD.get(line, "money")
+    end = end if end is not None else pd.Timestamp.utcnow().tz_localize(None)   # naive UTC like the fills
+    if yard == "rest":   # the line's own operator bar is P(zone < rest) ≥ 0.90 → one-sided 90 % (z 1.282), 80 % power (deep review 484)
+        nr90 = n95_vs_rest(b, rest, zc=1.282) if rest is not None else "n/a"
+        need = None if nr90 in ("–", "never", "n/a") else max(int(nr90), n_min)
+        dec = ("blocked < kept: never" if nr90 == "never" else f"blocked < kept (90 %): {nr90}/side"
+               + ("" if need is None else f" ({max(0, need - len(c))} more blocked · {max(0, need - clean_rest)} more kept)"))
+        more = None if need is None else max(0, need - len(c))
+    else:
+        dec = f"adds money: {nd}" + ("" if gap == "–" else f" ({gap})")
+        more = None if gap == "–" else max(0, int(nd) - len(c))
+    d_cp = eta_days(n_min - len(c), d_min - len(set(cdays)), p)
+    if (nd == "never" and yard == "money") or (yard == "rest" and nr90 == "never"):
+        when_dec = "never (it does not point the line's way)"
+    elif more is None:
+        when_dec = "–"
+    else:
+        d_dec = eta_days(more, 0, p)
+        if yard == "rest":                                    # both sides must arrive: the kept side at its own pace
+            d_dec = max(d_dec, eta_days(max(0, need - clean_rest), 0, p_rest))
+        when_dec = when(max(d_dec, d_cp), end)                # a line is never decided before its checkpoint
+    when_cp = when(d_cp, end)
     return (f"| {SHOW.get(sleeve, sleeve)} | {LABEL.get(line, line)} | {measure} | {fzs} | {bs} | {cs} | {len(c)}/{n_min} trades, "
-            f"{len(set(cdays))}/{d_min} days | {boot(c.values, cdays.values)} | {nd} ({gap}) | {nr} | {bt} | {THEORY.get(line, '–')} | "
-            f"{luck_cell(sleeve, line)} |")
+            f"{len(set(cdays))}/{d_min} days | {boot(c.values, cdays.values)} | **{dec}** | {p[0]:.2f} trades/day | {when_cp} | {when_dec} | "
+            f"{nd} ({gap}) | {nr} | {bt} | {THEORY.get(line, '–')} | {luck_cell(sleeve, line)} |")
 
 
 def inputs():
@@ -221,15 +283,17 @@ def main():
     best = pd.read_csv(os.path.join(SC, "best_dcr_noflip.csv"))
     best = best[(best.scen == "B") & best.lines.notna() & (best.lines.astype(str) != "")]
     out = ["| Sleeve | Line | Measured on | Frozen | Built on: N · avg % | Clean since frozen: N · avg % | Checkpoint progress | Clean 95 % range "
+           "| Deciding test: trades needed (still needed) | Pace (whole batch) | Checkpoint ≈ | Deciding test ≈ "
            "| N to prove it adds money (still needed) | N to prove blocked < kept (per side) | Backtest | Theory written | Luck test (built-on trades) |",
-           "|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+           "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+    end = max(Z.o.max(), fb.o.max() if len(fb) else Z.o.max(), fx.o.max() if len(fx) else Z.o.max())   # the export's last fill
     rows = []
     for r in best.itertuples():
         for line in str(r.lines).split(" + "):
             if line == "FB_CONFIRM":
                 continue                                    # entry-timing line, read below from fb_combo
             if line not in LINES:
-                rows.append((0, f"| {SHOW.get(r.sleeve, r.sleeve)} | {line} | – | – | – | – | no freeze registered | – | – | – | – | – | {luck_cell(r.sleeve, line)} |"))
+                rows.append((0, f"| {SHOW.get(r.sleeve, r.sleeve)} | {line} | – | – | – | – | no freeze registered | – | – | – | – | – | – | – | – | – | {luck_cell(r.sleeve, line)} |"))
                 continue
             fz = freeze_ts(LINES[line][0])
             g = Z[(Z.sl == r.sleeve) & Z[line].fillna(False).astype(bool)]
@@ -240,18 +304,24 @@ def main():
             g_all = Z[Z.sl == r.sleeve]
             keep = g_all[~g_all[line].fillna(False).astype(bool)]
             keep = keep if fz is None else keep[(keep.src == "MASTER") | (keep.o < fz)]
-            rows.append((r.b25_best - r.b25_before, row(r.sleeve, line, pre.pct, cl.pct, cl.o.dt.strftime("%Y-%m-%d"), -1, fz, keep.pct)))
+            g25 = g[g.src == "B25"]
+            kc = 0 if fz is None else int(((g_all.src == "B25") & (g_all.o >= fz) & ~g_all[line].fillna(False).astype(bool)).sum())
+            k25 = g_all[(g_all.src == "B25") & ~g_all[line].fillna(False).astype(bool)]
+            rows.append((r.b25_best - r.b25_before, row(r.sleeve, line, pre.pct, cl.pct, cl.o.dt.strftime("%Y-%m-%d"), -1, fz, keep.pct,
+                                                        pace(g25.o, end), end, kc, pace(k25.o, end))))
     # FB_CONFIRM: Δ = confirm-entry result − today's-exit result, per signal (a skip books 0)
     fz = freeze_ts(LINES["FB_CONFIRM"][0])
     pre, cl = (fb, fb.iloc[0:0]) if fz is None else (fb[fb.o < fz], fb[fb.o >= fz])
-    rows.append((9, row("FLATBASE_SHORT", "FB_CONFIRM", pre.d, cl.d, cl.o.dt.strftime("%Y-%m-%d"), +1, fz)))
+    rows.append((9, row("FLATBASE_SHORT", "FB_CONFIRM", pre.d, cl.d, cl.o.dt.strftime("%Y-%m-%d"), +1, fz, None,
+                        pace(fb[(fb.o >= B25_START) & fb.d.notna()].o, end), end)))
     # FAN flips TP +2: Δ = TP2 − booked (current batch) / − stack (master)
     fz = freeze_ts(LINES["EXIT TP2"][0])
     if fz is None:
         pre, cl = fx, fx.iloc[0:0]
     else:
         pre, cl = fx[(fx.src == "MASTER") | (fx.o < fz)], fx[(fx.src == "B25") & (fx.o >= fz)]
-    rows.append((8, row("FLIP:FAN_RATIO_GATE", "EXIT TP2", pre.d, cl.d, cl.o.dt.strftime("%Y-%m-%d"), +1, fz)))
+    rows.append((8, row("FLIP:FAN_RATIO_GATE", "EXIT TP2", pre.d, cl.d, cl.o.dt.strftime("%Y-%m-%d"), +1, fz, None,
+                        pace(fx[fx.src == "B25"].o, end), end)))
     out += [x for _, x in sorted(rows, key=lambda t: -t[0])]
     print("\n".join(out))
 

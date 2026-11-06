@@ -131,6 +131,30 @@ def test_pdf_is_one_page_even_with_many_months_flows_and_a_long_name():
     assert S.file_name("Maximiliano Fernández", "2027-03") == "scalpars_statement_Maximiliano_Fern_ndez_2027-03.pdf"
 
 
+def test_tightest_layout_still_fits_one_page():
+    """(DECISION_LOG 483 review) the tallest statement: 6 month rows + a month in progress (short-period note + preliminary banner) + a
+    paper → live switch + a withdrawal — guards the blank line after the chart and any future ABOUT / DISCLAIMER growth."""
+    now = datetime(2026, 11, 6, 17)
+    sn, d, v, i = {}, date(2025, 12, 31), 1.0, 0
+    while d <= now.date():
+        sn[d] = v
+        v *= 1.003 if i % 4 else 0.995
+        d += timedelta(days=1)
+        i += 1
+    nv = sn[date(2026, 11, 2)]
+    led = [dict(type="DEPOSIT", amount=5000.0, nav_at_time=1.0, shares_delta=5000.0, created_at=datetime(2026, 1, 2, 15)),
+           dict(type="WITHDRAW", amount=500.0, nav_at_time=nv, shares_delta=-500.0 / nv, created_at=datetime(2026, 11, 3, 15)),
+           dict(type="DEPOSIT", amount=900.0, nav_at_time=nv, shares_delta=900.0 / nv, created_at=datetime(2026, 11, 4, 15))]
+    od, t, k = [], datetime(2026, 1, 2, 16), 0
+    while t < now:
+        od.append(dict(closed_at=t, pnl=4.0 if k % 3 else -6.0, pnl_percentage=0.6 if k % 3 else -0.9, is_paper=t < datetime(2026, 11, 3)))
+        t += timedelta(hours=2)
+        k += 1
+    st = S.compute_statement("Maximiliano Alejandro de la Torre Fernández", led, sn, od, "2026-11", now, False)
+    assert len(st.month_rows) == S.MAX_MONTH_ROWS
+    assert _pages(S.render_pdf(st)) == 1
+
+
 def test_fonts_ship_with_the_app():
     for _, fn in S._FONTS.values():
         assert os.path.getsize(os.path.join(S.FONT_DIR, fn)) > 100_000

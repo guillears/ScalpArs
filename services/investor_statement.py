@@ -704,7 +704,7 @@ def render_pdf(st: Statement) -> bytes:
     lx += 18 + width("Your balance", "R", 8) + 16
     c.setStrokeColor(col(C_MUTED)); c.setLineWidth(1); c.setDash(4, 3); c.line(lx, y + 3, lx + 14, y + 3); c.setDash()
     text(lx + 18, y, "Total deposited" if st.total_withdrawn < 0.005 else "Deposits minus withdrawals", "R", 8, C_SEC)
-    y -= 20
+    y -= 32                                                                        # one blank line between the chart legend and About (operator 11-06)
 
     # ⑧ about + disclaimer + generated stamp
     text(L, y, "About SCALPARS", "M", 10.5)

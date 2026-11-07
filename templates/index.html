@@ -51,6 +51,13 @@
             color: #e5e7eb; background: rgba(17, 24, 39, 0.97); border: 1px solid rgba(255,255,255,0.12);
             box-shadow: 0 8px 24px rgba(0,0,0,0.45); pointer-events: none; text-transform: none; letter-spacing: 0;
         }
+        /* 🪶 (DECISION_LOG 499) Closed Orders Performance = ~100 sections / ~39k elements / ~165k px on ONE page (Chrome "Aw, Snap"
+           code 5 = renderer out of memory). A section marked .cv-lazy is laid out and painted only near the screen; off-screen it is
+           a placeholder of its last rendered height (1,500 px ≈ the average section before its first render). DOM, data, refreshes and both text exports
+           are untouched (exports build from the API payload). Marked once at load by the script at the end of <body>: sections with
+           a heading and no chart (Chart.js needs a laid-out canvas); the unheaded filter rows stay normal (paint containment would
+           clip their 11 px overflow). Off-screen sections still update — the browser lays them out when they scroll in. */
+        .cv-lazy { content-visibility: auto; contain-intrinsic-size: auto 1500px; }
         body {
             background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
             min-height: 100vh;
@@ -1042,8 +1049,9 @@
 
         <!-- Performance Metrics -->
         <section>
+            <!-- 🪶 (DECISION_LOG 499) id = the lazy-render hook: its headed, chart-free sections skip layout + paint while off-screen -->
             <h2 class="text-lg font-semibold text-gray-300 mb-4">Closed Orders Performance <span id="origin-view-tag" class="hidden ml-2 text-xs font-normal px-2 py-0.5 rounded bg-sky-500/15 text-sky-300 cursor-pointer" onclick="document.getElementById('origin-switch').scrollIntoView({behavior: 'smooth', block: 'center'})" title="View set by the All · Bot · Manual switch above the calendar — click to go there"></span></h2>
-            <div class="glass rounded-xl p-6">
+            <div id="perf-sections" class="glass rounded-xl p-6">
                 <p class="text-xs text-gray-500 mb-4">All metrics below are calculated from closed orders only</p>
 
                 <!-- Filters (line 1) · Show switch + report / export buttons (line 2) · accounting (line 3), DECISION_LOG 472 -->
@@ -25891,7 +25899,17 @@
                     var sw = land ? Math.max(screen.width, screen.height) : Math.min(screen.width, screen.height);
                     var iw = window.innerWidth, cw = de.clientWidth, dw = de.scrollWidth;
                     if (iw <= sw + 8 && dw <= cw + 8) return;   // normal phone layout — nothing to report
+                    var vh = window.innerHeight, seen = [];   // 🪶 (DL 499) a rect read inside an off-screen .cv-lazy section would force its layout
+                    function offLazy(e) {
+                        var z = e.closest ? e.closest('.cv-lazy') : null;
+                        if (!z || z === e) return false;
+                        for (var k = 0; k < seen.length; k++) if (seen[k][0] === z) return seen[k][1];
+                        var zr = z.getBoundingClientRect(), off = zr.bottom < 0 || zr.top > vh;
+                        seen.push([z, off]);
+                        return off;
+                    }
                     var list = Array.prototype.slice.call(document.querySelectorAll('body *')).filter(function (e) {
+                        if (offLazy(e)) return false;   // skipped content is clipped to its section anyway (paint containment)
                         var r = e.getBoundingClientRect();
                         if (!(r.width > sw + 8)) return false;
                         for (var i = 0; i < e.children.length; i++) {   // the deepest wide element: no child is wider than the screen
@@ -25911,6 +25929,19 @@
                     else fetch('/__layout-diag?' + q, { method: 'POST', keepalive: true }).catch(function () {});
                 } catch (e) {}
             }, 6000);
+        } catch (e) {}
+    })();
+    // 🪶 (DECISION_LOG 499) lazy render: mark the Closed Orders Performance sections (see .cv-lazy). Runs once — the sections and their
+    // headings / canvases are static markup; only their tables' contents are rewritten later. A browser without content-visibility
+    // ignores the rule (old behaviour). Never throws.
+    (function () {
+        try {
+            var box = document.getElementById('perf-sections');
+            if (!box) return;
+            for (var i = 0; i < box.children.length; i++) {
+                var sec = box.children[i];
+                if (sec.tagName === 'DIV' && sec.querySelector('h3, h4') && !sec.querySelector('canvas')) sec.classList.add('cv-lazy');
+            }
         } catch (e) {}
     })();
     </script>

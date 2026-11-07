@@ -117,8 +117,8 @@ def test_best_dcr_and_runner_wire_the_section():
     src = open(os.path.join(ROOT, "scripts", "best_case", "best_dcr.py")).read()
     assert "frenzy_caps.csv" in src and "best_caps.csv" in src and "unpriced FRENZY fills" in src
     run = open(os.path.join(ROOT, "scripts", "best_case", "run_best_case.py")).read()
-    assert 'step("frenzy_caps.py", exp, "--fetch")' in run and "L += caps_section()" in run
-    assert "FCm.B0" in src and "FCm.PARITY_MIN" in src and "m_changed > 0" in src and "DLT[x] = da" in src
+    assert 'step("frenzy_caps.py", exp, "--fetch")' in run and "L += caps_section()" in run and "L += late_section()" in run
+    assert "FCm.B0" in src and "FCm.PARITY_MIN" in src and "m_changed > 0" in src and "DLT[col] = da" in src and "best_late.csv" in src
     assert run.index('step("frenzy_caps.py"') < run.index('step("best_dcr.py"')
 
 
@@ -147,3 +147,84 @@ def test_price_rows_real_walk_miss_and_known_exit(monkeypatch):
     assert ow[0]["status"] == "PRICED" and ow[0]["CAP15"] != ow[0]["base"]          # open past 15 min: the cap moves it
     ow = FC.price_rows(W, "MASTER", caps, False, {}, [], TE + 2000 * MIN, {k: (5.0, 12.0)})
     assert ow[0]["status"] == "PARITY MISS (kept as booked)"                           # walk exits at 90 vs a known 12 min → miss
+
+
+def test_late_variants_only_on_the_long_cap_and_below_the_tp(tmp_path):
+    import json
+    p = tmp_path / "c.json"
+    p.write_text(json.dumps({"thresholds": {"frenzy_stop_pct": 3, "frenzy_long_stop_pct": 4, "frenzy_lite_tp_pct": 3, "frenzy_tp_pct": 1.5}}))
+    lv = FC.late_variants("FRENZY_LITE", 720, str(p))
+    assert (60, 2.0) in lv and all(l_ < 3 for _, l_ in lv) and len(lv) == len(FC.LATE_XS) * 5
+    assert all(l_ < 1.5 for _, l_ in FC.late_variants("FRENZY_LONG", 720, str(p)))
+    assert FC.late_variants("FRENZY_WILLY", 720, str(p)) == [] and FC.late_variants("FRENZY_LITE", 90, str(p)) == []
+    assert FC.late_col(120, 2.0) == "LT120_2" and FC.late_col(60, 0.25) == "LT60_0.25"
+
+
+def test_late_real_books_the_lower_line_only_after_x_and_before_the_real_close():
+    l2 = px(2.0, FD.MAKER)
+    rows = [(100.1, 99.9, 100.0)] * 70 + [(l2 + 0.01, 99.9, 100.0)] + [(100.1, 99.9, 100.0)] * 300
+    b = bars(rows)                                                              # the +2 touch sits in the bar opening at minute 71
+    close = TE + 300 * MIN
+    assert FC.late_real(b, TE, close, 100.0, FEE, 3.0, 60, 2.0, -3.0) == 2.0    # armed at 60 → a loser rescued at +2
+    assert FC.late_real(b, TE, close, 100.0, FEE, 3.0, 120, 2.0, -3.0) == -3.0  # armed after the touch → booked
+    assert FC.late_real(b, TE, TE + 50 * MIN, 100.0, FEE, 3.0, 60, 2.0, 3.0) == 3.0   # closed before X → booked
+    assert FC.late_real(b, TE, TE + 71 * MIN, 100.0, FEE, 3.0, 60, 2.0, 0.4) == 0.4   # the touch bar not closed before the real exit
+    assert FC.late_real(b.drop(index=65), TE, close, 100.0, FEE, 3.0, 60, 2.0, 1.0) is None   # a hole in the span → unpriced
+    both = bars([(100.1, 99.9, 100.0)] * 70 + [(l2 + 0.01, px(-3.0, FD.TAKER) - 0.01, 100.0)] + [(100.1, 99.9, 100.0)] * 300)
+    assert FC.late_real(both, TE, close, 100.0, FEE, 3.0, 60, 2.0, 1.0) == 1.0      # live rode that wick: min(base, L), never the replica stop
+    assert FC.late_real(both, TE, close, 100.0, FEE, 3.0, 60, 2.0, 2.9) == 2.0
+
+
+def test_walk_late_line_rescues_a_capped_fill_and_cuts_a_later_full_tp():
+    l2, tp = px(2.0, FD.MAKER), px(3.0, FD.MAKER)
+    rows = [(100.1, 99.9, 100.0)] * 90 + [(l2 + 0.01, 99.9, 100.0)] + [(100.1, 99.9, 100.0)] * 50 + [(tp + 0.01, 99.9, 100.0)] + [(100.1, 99.9, 100.0)] * 700
+    b = bars(rows)
+    assert FC.walk(b, TE, 100.0, FEE, 3.0, 3.0, 720)[2] == "TP"
+    r = FC.walk(b, TE, 100.0, FEE, 3.0, 3.0, 720, 60, 2.0)
+    assert r[2] == "LATE_TP" and r[0] == 2.0                                    # the winner gives 1 point back
+
+
+def test_price_rows_late_columns_real_walk_miss_and_no_willy(monkeypatch):
+    """(review) price_rows end to end for LT<X>_<L>: REAL → late_real on the real path; WALK → base + (late walk − base walk); a parity miss
+    keeps base; WILLY rows get no LT column; a late hole sets late_status only (①c status stays PRICED)."""
+    import scout_willy_timecap as WT
+    l2 = px(2.0, FD.MAKER)
+    path = bars([(100.1, 99.9, 100.0)] * 70 + [(l2 + 0.01, 99.9, 100.0)] + [(100.1, 99.9, 100.0)] * 800)
+    monkeypatch.setattr(WT, "load_1m", lambda pair: path)
+    op = pd.Timestamp(TE, unit="ms")
+    def row(sl, method, base, hold_min):
+        return dict(sl=sl, method=method, pct=base, pair="AUSDT", direction="LONG", opened_at=op.isoformat(),
+                    closed_at=(op + pd.Timedelta(minutes=hold_min)).isoformat(), entry_price=100.0, fee_in=FEE)
+    caps = {s: 720 for s in FD.SLEEVES} | {"FRENZY_WILLY": 90, "FRENZY_WILLY_HT": 90}
+    ex = FC.exit_spec("FRENZY_LITE")
+    wb = FC.walk(path, TE, 100.0, FEE, ex["tp"], ex["sl"], 720)
+    F = pd.DataFrame([row("FRENZY_LITE", "REAL", -3.0, 300), row("FRENZY_LITE", "WALK", wb[0], 720), row("FRENZY_LITE", "WALK", 3.0, 30)])
+    out = FC.price_rows(F, "MASTER", caps, False, {}, [], TE + 2000 * MIN)
+    assert out[0]["LT60_2"] == 2.0 and out[0]["LT120_2"] == -3.0               # touch at minute ~71: armed at 60, not at 120
+    assert out[1]["status"] == "PRICED" and out[1]["LT60_2"] == pytest.approx(2.0) and out[1]["LT120_2"] == pytest.approx(wb[0])
+    assert out[2]["status"].startswith("PARITY MISS") and out[2]["LT60_2"] == 3.0
+    W = pd.DataFrame([row("FRENZY_WILLY", "REAL", 1.0, 20)])
+    assert not any(k.startswith("LT") for k in FC.price_rows(W, "MASTER", caps, False, {}, [], TE + 2000 * MIN)[0])
+    hole = path.drop(index=150)                                                # minute ~151: inside the X = 120 span, no cap bar
+    monkeypatch.setattr(WT, "load_1m", lambda pair: hole)
+    o = FC.price_rows(F.iloc[:1], "MASTER", caps, False, {}, [], TE + 2000 * MIN)[0]
+    assert o["status"] == "PRICED" and str(o.get("late_status", "")).startswith("UNPRICED")
+
+
+def test_late_real_exit_after_x_above_the_lower_line_books_it():
+    """(deep review) the exit bar is not read: a real TP (or cap close) after X above L means price crossed L on the way → L filled."""
+    flat = bars([(100.1, 99.9, 100.0)] * 400)
+    assert FC.late_real(flat, TE, TE + 100 * MIN, 100.0, FEE, 3.0, 60, 2.0, 3.0) == 2.0     # TP at minute 100, armed at 60
+    assert FC.late_real(flat, TE, TE + 100 * MIN, 100.0, FEE, 3.0, 120, 2.0, 3.0) == 3.0    # exited before X → booked
+    assert FC.late_real(flat, TE, TE + 100 * MIN, 100.0, FEE, 3.0, 60, 2.0, 1.7) == 1.7     # exited below L → booked
+    assert FC.late_real(flat, TE, TE + 60 * MIN + 30_000, 100.0, FEE, 3.0, 60, 2.0, 3.0) == 2.0   # no full bar after X, exit above L
+
+
+def test_late_section_renders_not_read_and_empty(tmp_path, monkeypatch):
+    import run_best_case as RB
+    monkeypatch.setattr(RB, "OUT", str(tmp_path))
+    (tmp_path / "best_late.csv").write_text("\n")
+    assert "nothing to read" in "\n".join(RB.late_section())
+    pd.DataFrame([dict(sleeve="FRENZY_LITE", line="", after=float("nan"), late_tp=float("nan"), tp=3.0, live_cap=720,
+                       b_read="not read (1m bars missing — re-run frenzy_caps.py --fetch)", m_read="–")]).to_csv(tmp_path / "best_late.csv", index=False)
+    assert "not read (1m bars missing" in "\n".join(RB.late_section())

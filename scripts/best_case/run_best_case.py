@@ -124,11 +124,52 @@ def caps_section():
     return L
 
 
+def late_section():
+    """①d ⏬ late TP on the best line (operator 11-07) — from best_dcr.py's best_late.csv; shown only, never in the totals."""
+    p = os.path.join(OUT, "best_late.csv")
+    if not os.path.exists(p):
+        sys.exit("best_late.csv missing — best_dcr.py did not write ①d")
+    try:
+        C = pd.read_csv(p)
+    except pd.errors.EmptyDataError:   # no sleeve on the long FRENZY cap (review)
+        C = pd.DataFrame()
+    L = ["", "## ①d ⏬ Lower the TP after X minutes, on top of each 12-hour FRENZY sleeve's best line", "",
+         "The sleeves on the 12-hour cap (LITE · RETRY · LONG): after X minutes the resting take-profit drops from today's target to the "
+         "lower one (maker fill); stop and 12-hour cap unchanged. Same reading as ①c: ALL = every trade · KEPT = best line → best line + "
+         "late TP; cut = kept trades it changes, winners (n, Δ points) vs losers (a trade that later hit the full TP gives the difference "
+         "back; a trade that later stopped or capped low is rescued). Current-batch trades on today's exit use their real path (the lower "
+         "line arms on minute bars that start after X and closed before the real exit — a bar touching it and the stop books the lower of the "
+         "two; a real exit after X above the lower TP books the lower TP, since price crossed it on the way); master and re-priced trades a paired 1m walk (a bar "
+         "touching both lines = the stop). 🎲 Luck = every X × TP tried for the sleeve on the current-batch kept "
+         "trades vs day-shuffled results. In-sample (30–50 % cut) · shown only · an exit change: entry × exit joint check + a pre-committed "
+         "revert gate before any ship.", "",
+         "| Sleeve | Best line | After | TP → | Current batch ALL | Current batch KEPT | Master ALL | Master KEPT | Cut: winners · losers "
+         "(current batch) | Cut: winners · losers (master) | P | Helps both | 🎲 Luck (sleeve's chosen variant) |",
+         "|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+    if not len(C):
+        return L + ["", "No FRENZY sleeve on the long cap — nothing to read."]
+    for r in C.itertuples():
+        if r.after != r.after:   # this sleeve's late-TP pricing has a hole → not read
+            L.append(f"| {NAMES.get(r.sleeve, r.sleeve)} | – | – | – | {r.b_read} | – | – | – | – | – | – | – | – |")
+            continue
+        ln = " + ".join(LABELS.get(x, x) for x in r.line.split(" + ")) if isinstance(r.line, str) and r.line else "no line"
+        mall = f"{f(r.m_all0)} → {f(r.m_all1)}" if r.m_read == "ok" else r.m_read
+        mk = f"{f(r.m_kept0)} → {f(r.m_kept1)}" if r.m_read == "ok" else "–"
+        cut = lambda wn, wd, ln_, ld: f"{wn:.0f} ({f(wd)}) · {ln_:.0f} ({f(ld)})"
+        cur_all = f"{f(r.b25_all0)} → {f(r.b25_all1)}" if r.b_read == "ok" else r.b_read
+        cur_k = f"{f(r.b25_kept0)} → **{f(r.b25_kept1)}**" if r.b_read == "ok" else "–"
+        L.append(f"| {NAMES.get(r.sleeve, r.sleeve)} | {ln} | {dur(r.after)} | +{r.tp:g} → +{r.late_tp:g} | {cur_all} | {cur_k} | {mall} | {mk} | "
+                 f"{cut(r.b25_w_cut, r.b25_w_d, r.b25_l_cut, r.b25_l_d)} | "
+                 f"{cut(r.m_w_cut, r.m_w_d, r.m_l_cut, r.m_l_d) if r.m_read == 'ok' else '–'} | {'–' if r.p_boot != r.p_boot else f'{r.p_boot:.2f}'} | "
+                 f"{f'✅ ({r.b25_w_cut + r.b25_l_cut:.0f} + {r.m_w_cut + r.m_l_cut:.0f} trades)' if r.helps_both else '—'} | {r.luck} |")
+    return L
+
+
 def main(exp, review=None):
     os.makedirs(OUT, exist_ok=True)
     step("fb_combo.py", exp)
     step("flip_exits.py", exp)
-    step("frenzy_caps.py", exp, "--fetch")   # ⏱ (DECISION_LOG 497) every FRENZY fill under a shorter time cap → ①c
+    step("frenzy_caps.py", exp, "--fetch")   # ⏱ (DECISION_LOG 497) every FRENZY fill under a shorter time cap → ①c · ⏬ late TP → ①d
     a, b = step("best_dcr.py", exp), step("best_dcr_noflip.py", exp)
     conf = step("confidence.py", exp, review or "")
     conf, _, tline = conf.partition("<!-- ④ checkpoint timeline -->")   # (485) ③ table · ④ checkpoint timeline
@@ -175,6 +216,7 @@ def main(exp, review=None):
     L += ["", f"All sleeves, trades/day: current batch {H.b25_n0.sum() / H.b25_days.iloc[0]:.2f} → **{H.b25_n1.sum() / H.b25_days.iloc[0]:.2f}** "
           f"({H.b25_n0.sum():.0f} → {H.b25_n1.sum():.0f} trades). Master per sleeve only (each sleeve traded a different set of batches)."]
     L += caps_section()
+    L += late_section()
     ta, tb, tc, tl = totals(a), totals(b), clean(a), clean(a, "LUCK")
     npass = tc["calls"].count(" PASS")
     L += ["", "## ② Total, all sleeves, with re-sizing on top", "",

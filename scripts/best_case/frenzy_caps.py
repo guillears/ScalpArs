@@ -27,6 +27,11 @@ TWO METHODS, never mixed inside one fill:
        booked base at every cap (Δ 0), is flagged and listed — never priced on a path that does not reproduce it. Where the fill's hold
        under today's exit is known (WILLY_EXIT_CF.csv cf_min), the base walk must also exit within 2 min of it. A sleeve whose walked
        fills match < 80 % (PARITY_MIN) → best_dcr.py prints that block as "not read (walk parity)" (current batch or master).
+⏬ LATE TP (DECISION_LOG 498, operator 11-07) — LT<X>_<L> on the sleeves on the long FRENZY cap (LITE · RETRY · LONG): today's exit and cap,
+the resting TP lowered to L after X minutes. REAL: late_real() on the real path (the lower line arms on 1m bars that start ≥ entry + X and
+closed before the real close; a bar touching it and the stop books min(base, L) — live rode that wick; a real exit after X above L → L).
+WALK: the same paired walk with
+late_min = X, late_tp = L. A late hole sets late_status (best_dcr.py shows that sleeve's ①d "not read"), never status (①c keeps running).
 A fill whose 1m minutes are missing → UNPRICED (status), never guessed; best_dcr.py stops on an unpriced FRENZY fill unless the sleeve
 is shown as "not read". --fetch fills missing minutes through path_labels' budgeted public fetcher (≤ 120 requests / 60 s per run).
 
@@ -57,6 +62,52 @@ PARITY_TOL, PARITY_MIN = 0.15, 0.80
 STOP_SLIP = 1.0                          # a booked stop within 1 pt of the stop line (fill slip / gap) matches a STOP walk
 FRENZY = FD.SLEEVES
 WILLY = ("FRENZY_WILLY", "FRENZY_WILLY_HT")
+# ⏬ LATE TP (operator 2026-11-07: "for the sleeves with 12h max duration, what happens if after X time we lower the TP? … only for the
+# winners in the best case filters") — the sleeves on the long FRENZY cap (≥ LATE_MIN_CAP: LITE · RETRY · LONG), after X minutes the
+# resting TP drops from today's target to L (only L below it). Column LT<X>_<L>. WILLY / HT already carry their own late line.
+LATE_XS = (60, 120, 240, 360)
+LATE_LS = (0.25, 0.5, 1.0, 1.5, 2.0)
+LATE_MIN_CAP = 480
+
+
+def late_variants(sleeve, cap, cfg_path=FD.CONFIG):
+    """[(X, L)] for a sleeve on the long cap: X below the cap, L below today's TP; [] for WILLY / HT or a short cap."""
+    if sleeve in WILLY or cap < LATE_MIN_CAP:
+        return []
+    tp = exit_spec(sleeve, cfg_path)["tp"]
+    return [(x, l_) for x in LATE_XS if x < cap for l_ in LATE_LS if l_ < tp]
+
+
+def late_col(x, l_):
+    return f"LT{int(x)}_{l_:g}"
+
+
+def late_real(bars, te, close_ms, entry, fee_in, sl, x, l_, base):
+    """a current-batch fill on today's exit, its REAL path: the late line arms for bars that START ≥ te + X min and closed before the real
+    close (the trade was live on them) → the first touch books L (resting maker); a bar touching the stop line too is ambiguous — live rode
+    that wick (the bar closed before the real exit), so it books min(base, L), never the replica stop (review: live-stopped rule); never
+    touched → base, EXCEPT a fill that really exited after X above L (base > L, a net %): the price crossed L by its exit, so the resting L
+    filled → L (deep review: the exit bar itself is not read, and a TP / cap close above L there would otherwise keep base). A missing
+    minute in that span → None (unpriced)."""
+    if close_ms is None:
+        return None
+    first = -(-(int(te) + int(x) * MIN) // MIN) * MIN
+    last = (int(close_ms) // MIN) * MIN - MIN
+    if last < first:
+        return float(l_) if float(base) > l_ and int(close_ms) >= int(te) + int(x) * MIN else float(base)   # no full bar: the exit itself
+    if bars is None or not len(bars):
+        return None
+    sub = bars[(bars.open_time >= first) & (bars.open_time <= last)].drop_duplicates("open_time", keep="last")
+    hl = dict(zip(sub.open_time.values.astype("int64").tolist(), zip(sub.h.values, sub.l.values)))
+    lt = entry * ratio_for(l_, fee_in, FD.MAKER)
+    dn = entry * ratio_for(-sl, fee_in, FD.TAKER)
+    for ot in range(first, last + 1, MIN):
+        if ot not in hl:
+            return None
+        h, l = hl[ot]
+        if h >= lt:
+            return min(float(base), float(l_)) if l <= dn else float(l_)
+    return float(l_) if float(base) > l_ and int(close_ms) >= int(te) + int(x) * MIN else float(base)   # exited after X above L → L filled
 
 
 def exit_spec(sleeve, cfg_path=FD.CONFIG):
@@ -187,8 +238,12 @@ def price_rows(F, src, caps, fetch, bud, notes, now_ms, wcf=None):
             out.append({**rec, "status": "UNPRICED (not a long / no time)"})
             continue
         hold = FD.hold_minutes(r["opened_at"], r["closed_at"])
-        span = float(cap) if r["method"] == "WALK" else min(float(hold or 0), float(max(xs) if xs else 0))
+        lv = late_variants(sl, cap)
+        span = float(cap) if r["method"] == "WALK" else min(float(hold or 0), float(max(xs + [x for x, _ in lv]) if xs or lv else 0))
+        if r["method"] == "REAL" and lv:
+            span = float(hold or 0)                     # the late line needs the real path up to the real close
         k = bars_for(str(r["pair"]), te, span, fetch, bud, attempts, now_ms, notes)
+        ex = exit_spec(sl)
         if r["method"] == "REAL":
             for x in xs:
                 px = FD.price_at(k, FD.cap_fires_ms(te, x)) if FD.open_at_cap(hold, x) else None
@@ -197,9 +252,13 @@ def price_rows(F, src, caps, fetch, bud, notes, now_ms, wcf=None):
                 rec[f"h_CAP{x}"] = min(float(hold), x) if hold is not None else np.nan
                 if v is None:
                     rec["status"] = "UNPRICED (1m bars missing)"
+            for x, l_ in lv:
+                v = late_real(k, te, FD.to_ms(r["closed_at"]), float(r["entry_price"]), float(r["fee_in"]), ex["sl"], x, l_, base)
+                rec[late_col(x, l_)] = np.nan if v is None else v
+                if v is None:
+                    rec["late_status"] = "UNPRICED (1m bars missing)"   # ①d only: never aborts ①c (review)
             out.append(rec)
             continue
-        ex = exit_spec(sl)
         ref_hold = None
         if ex["tp"] is not None:
             tp = ex["tp"]
@@ -219,6 +278,8 @@ def price_rows(F, src, caps, fetch, bud, notes, now_ms, wcf=None):
             for x in xs:
                 rec[f"CAP{x}"] = base
                 rec[f"h_CAP{x}"] = np.nan
+            for x, l_ in lv:
+                rec[late_col(x, l_)] = base
             out.append(rec)
             continue
         for x in xs:
@@ -232,6 +293,13 @@ def price_rows(F, src, caps, fetch, bud, notes, now_ms, wcf=None):
                 continue
             rec[f"CAP{x}"] = base + (w[0] - wb[0])
             rec[f"h_CAP{x}"] = w[1]
+        for x, l_ in lv:                                # ⏬ the same paired walk with the TP lowered to L after X (today's cap kept)
+            w = walk(k, *args, cap, x, l_)
+            if w is None:
+                rec["late_status"] = "UNPRICED (1m bars missing)"
+                rec[late_col(x, l_)] = np.nan
+                continue
+            rec[late_col(x, l_)] = base + (w[0] - wb[0])
         out.append(rec)
     return out
 

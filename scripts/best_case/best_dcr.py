@@ -228,6 +228,102 @@ for tag, sl, *_r, combo in [r for r in rows if r[0] == "B"]:
     HOLD.append(dict(sleeve=sl, b25_n0=len(g), b25_n1=len(kept), b25_h0=hb.mean(), b25_h1=ha.mean(), b25_days=B25_DAYS,
                      m_n0=len(gm), m_n1=len(keptm), m_h0=hmb.mean(), m_h1=hma.mean(), m_days=mdays))
 pd.DataFrame(HOLD).to_csv(os.path.join(SC, "best_hold.csv"), index=False)
+# ── ①c ⏱ TIME CAP ON THE BEST LINE (DECISION_LOG 497, operator 11-07: "study this in best case, like if it helps to winners on the filters")
+# Per FRENZY sleeve, per cap X below its live cap (frenzy_caps.py: REAL path for current-batch fills on today's exit, a paired walk for the
+# rest): does the shorter cap still pay on the fills the sleeve's best line KEEPS (scenario B), or only on fills a filter already blocks?
+# ALL = the cap on every fill · KEPT = best line before → best line + cap · cut = the kept fills the cap changes, winners vs losers (base > 0).
+# Shown only — never switched into the scenario totals. "helps both" = better on the current batch's kept fills AND never worse on master's,
+# with ≥ 1 master fill changed; a block whose walk parity failed (< frenzy_caps.PARITY_MIN) is "not read" and never "helps both". P = day-block
+# bootstrap on the kept fills (master only when read), by close day. 🎲 luck: the CURRENT-BATCH kept fills' Δ for every X tried vs the same
+# search on day-shuffled results (luck_test.gain_line) — the frame the cap is chosen on; only a cap that gains is a candidate.
+import scout_frenzy_duration as FD
+import luck_test as LT0
+import frenzy_caps as FCm
+if pd.Timestamp(FCm.B0) != B0:   # one batch start for both steps — a drift would silently mix cohorts
+    sys.exit(f"best_dcr B0 {B0} ≠ frenzy_caps B0 {FCm.B0} (sweep_separators.BATCH_START) — update both for the new batch")
+FC = pd.read_csv(os.path.join(SC, "frenzy_caps.csv"))
+FC["kk"] = FC.k.astype(str) + FC.pair.astype(str)
+if FC.status.astype(str).str.startswith("UNPRICED").any():   # an unpriced fill would count as booked — stop, never flatter a cap
+    sys.exit("unpriced FRENZY fills in frenzy_caps.csv — re-run frenzy_caps.py --fetch:\n"
+             + FC[FC.status.astype(str).str.startswith("UNPRICED")][["src", "sl", "k", "pair", "status"]].to_string())
+if FC.duplicated(["src", "kk"]).any():
+    sys.exit("duplicate fills in frenzy_caps.csv (src, opened_at, pair) — the cap join would be ambiguous")
+CMAP = {(s_, kk): r for (s_, kk), r in FC.set_index(["src", "kk"]).iterrows()}
+PAR = FC[FC.method == "WALK"].groupby(["src", "sl"]).apply(lambda g: float((g.status != "PARITY MISS (kept as booked)").mean())).to_dict()
+_CAPS = FD.caps()
+CROWS = []
+def _capv(src, kk, x):
+    r = CMAP.get((src, kk))
+    if r is None:
+        raise KeyError(f"{src} {kk} missing from frenzy_caps.csv — re-run frenzy_caps.py")
+    v = r.get(f"CAP{x}")
+    if v is None or v != v:
+        raise KeyError(f"{src} {kk} CAP{x} unpriced in frenzy_caps.csv")
+    return float(v)
+for sl in [x for x in SLEEVES if x in FD.SLEEVES]:
+    combo = next((r[6] for r in rows if r[0] == "B" and r[1] == sl), "")
+    blk = [c for c in (combo.split(" + ") if combo else []) if c != "FB_CONFIRM" and not c.startswith("EXIT ")]
+    msk = A.sl == sl
+    ia = list(A.index[msk]); im = list(M.index[M.sl == sl])
+    base_after = b25_after(sl, blk)                                   # blocked → None (scenario B's best line)
+    keep_a = [i for i in ia if not (i in base_after and base_after[i] is None)]
+    zm = pd.Series(False, index=M.index)
+    for ln in blk:
+        zm |= LM[sl][ln].fillna(False).astype(bool)
+    drop_m = frozenset(M.index[zm & (M.sl == sl)])
+    keep_m = [i for i in im if i not in drop_m]
+    m_ok = PAR.get(("MASTER", sl), 1.0) >= FCm.PARITY_MIN if im else False
+    b_ok = PAR.get(("B25", sl), 1.0) >= FCm.PARITY_MIN             # the current batch's walked (re-priced) fills too
+    b0 = b25_dcr(msk, {}); bk0 = b25_dcr(msk, base_after)
+    m0 = m_dcr([sl])[0] if im else float("nan"); mk0 = m_dcr([sl], drop_m)[0] if im else float("nan")
+    xs = [x for x in FD.XS if x < _CAPS[sl]]
+    DLT = {}
+    for x in xs:
+        ca = {i: _capv("B25", A.at[i, "kk"], x) for i in ia}
+        cm = {i: _capv("MASTER", M.at[i, "kk"], x) for i in im}
+        d_all = b25_dcr(msk, ca)
+        d_kept = b25_dcr(msk, {**base_after, **{i: ca[i] for i in keep_a}})
+        dm_all = m_dcr([sl], frozenset(), cm)[0] if im else float("nan")
+        dm_kept = m_dcr([sl], drop_m, {i: cm[i] for i in keep_m})[0] if im else float("nan")
+        da = pd.Series({i: ca[i] - float(A.at[i, "pct"]) for i in keep_a}, dtype=float)
+        dmm = pd.Series({i: cm[i] - float(M.at[i, "pct"]) for i in keep_m}, dtype=float)
+        def cut(dd, src):
+            ch = dd[dd.abs() > 1e-9]
+            bs = (A if src == "B25" else M).loc[ch.index, "pct"]
+            w, l_ = ch[bs > 0], ch[bs <= 0]
+            return len(w), float(w.sum()), len(l_), float(l_.sum())
+        _cd = lambda d_, i: str(pd.to_datetime(d_.at[i, "closed_at"], format="mixed", utc=True).date())   # close day (boot_p's unit)
+        pool = pd.concat([da, dmm.rename(lambda i: f"m{i}")]) if m_ok else da   # a master read that failed parity never enters P
+        days = [_cd(A, i) for i in da.index] + ([_cd(M, i) for i in dmm.index] if m_ok else [])
+        DLT[x] = da                                                           # 🎲 the luck test runs on the frame the cap is CHOSEN on
+        pb = FD.boot_p(pool.values, days) if (pool.abs() > 1e-9).any() else float("nan")
+        m_changed = int((dmm.abs() > 1e-9).sum())
+        both = (m_ok and b_ok and m_changed > 0 and d_kept > bk0 + 1e-9 and dm_kept >= mk0 - 1e-9)   # master must be read AND touched
+        CROWS.append(dict(sleeve=sl, line=combo, cap=x, live_cap=_CAPS[sl], b25_all0=b0, b25_all1=d_all, b25_kept0=bk0, b25_kept1=d_kept,
+                          m_all0=m0, m_all1=dm_all if m_ok else float("nan"), m_kept0=mk0, m_kept1=dm_kept if m_ok else float("nan"),
+                          m_read=("ok" if m_ok else ("no master trades" if not im else f"not read (walk parity {PAR.get(('MASTER', sl), 0):.0%})")),
+                          b_read=("ok" if b_ok else f"not read (walk parity {PAR.get(('B25', sl), 0):.0%})"), m_changed=m_changed,
+                          n_kept_b25=len(keep_a), n_kept_m=len(keep_m),
+                          **dict(zip(("b25_w_cut", "b25_w_d", "b25_l_cut", "b25_l_d"), cut(da, "B25"))),
+                          **dict(zip(("m_w_cut", "m_w_d", "m_l_cut", "m_l_d"), cut(dmm, "M"))),
+                          p_boot=pb, helps_both=bool(both), luck=""))
+        print(f"CAP {sl} {x} min (best line: {combo or 'none'}): B25 all {b0:+.3f} → {d_all:+.3f} · kept {bk0:+.3f} → {d_kept:+.3f} | "
+              f"master all {m0:+.3f} → {dm_all:+.3f} · kept {mk0:+.3f} → {dm_kept:+.3f} ({'ok' if m_ok else 'not read'}) · P {pb:.2f} · helps both {both}")
+    if xs and len(DLT):
+        dd = pd.DataFrame({f"CAP{x}": DLT[x] for x in xs})                   # current-batch kept trades (where the cap was chosen)
+        days = [str(pd.to_datetime(A.at[i, "closed_at"], format="mixed", utc=True).date()) for i in dd.index]
+        cand = [r for r in CROWS if r["sleeve"] == sl]
+        gain = [r for r in cand if r["b25_kept1"] > r["b25_kept0"] + 1e-9 and r["b_read"] == "ok"]   # only a cap that GAINS on the kept trades
+        if not gain:
+            for r in cand:
+                r["luck"] = "n/a — no cap gains on the kept trades"
+        else:
+            best = max(gain, key=lambda r: r["b25_kept1"])
+            lt = LT0.gain_line(dd, days, f"CAP{best['cap']}")
+            for r in cand:
+                r["luck"] = (f"{lt['verdict']} (chosen {best['cap']} min · p {lt['p_search']:.2f} · n {lt['n']})" if lt["verdict"] != LT0.FEW
+                             else f"too few ({lt['n']} trades)")
+pd.DataFrame(CROWS).to_csv(os.path.join(SC, "best_caps.csv"), index=False)
 allm = pd.Series(True, index=A.index)
 tb = b25_dcr(allm, {}); mt_b, n = m_dcr(SLEEVES)
 for tag in ("A", "B"):

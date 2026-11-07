@@ -89,10 +89,46 @@ def dur(m):
     return f"{m:.0f} min" if m < 90 else f"{m / 60:.1f} h"
 
 
+def caps_section():
+    """①c ⏱ time cap on the best line (DECISION_LOG 497) — from best_dcr.py's best_caps.csv; shown only, never in the totals."""
+    p = os.path.join(OUT, "best_caps.csv")
+    if not os.path.exists(p):
+        sys.exit("best_caps.csv missing — best_dcr.py did not write ①c")
+    C = pd.read_csv(p)
+    L = ["", "## ①c ⏱ Shorter time cap, on top of each FRENZY sleeve's best line", "",
+         "Does a shorter cap still pay on the trades the sleeve's best line KEEPS, or only on trades a filter already blocks? Daily compound "
+         "%/day: ALL = the cap on every trade · KEPT = best line → best line + cap. Cut = kept trades the cap changes: winners (n, Δ points) "
+         "vs losers. Current-batch trades on today's exit use their real path (closed before the cap = unchanged; open = a market close at "
+         "the cap, taker + 0.10 slip); master and re-priced trades a paired 1m walk of today's exit (only trades still open at the cap move). "
+         "P = day-block bootstrap P(Δ > 0) on the kept trades (current batch + master when read, by close day). ✅ helps both = better on the "
+         "current batch AND never worse on master, with at least one master trade changed (a read whose walk does not reproduce ≥ 80 % of "
+         "the booked results is not read). 🎲 Luck = the current-batch kept trades (where the cap is chosen), every cap tried vs "
+         "day-shuffled results; only a cap that gains is a candidate. Walked stops book the stop line exactly while a cap close pays "
+         "taker + 0.10 slip (a small bias against a cap that saves a loser). Not modelled: a capped trade's Δ is booked on its ORIGINAL close "
+         "day (a few move a day), and the slot a shorter cap frees is not refilled (WILLY / WILLY_HT hold 1 slot). Luck shows the sleeve's "
+         "chosen cap (one test per sleeve). In-sample (30–50 % cut) · shown only, not in ② · a cap is "
+         "an exit change: before any ship, the entry × exit joint check + a pre-committed revert gate.", "",
+         "| Sleeve | Best line | Cap | Current batch ALL | Current batch KEPT | Master ALL | Master KEPT | Cut: winners · losers (current batch) "
+         "| Cut: winners · losers (master) | P | Helps both | 🎲 Luck (sleeve's chosen cap) |", "|---|---|---|---|---|---|---|---|---|---|---|---|"]
+    for r in C.itertuples():
+        ln = " + ".join(LABELS.get(x, x) for x in r.line.split(" + ")) if isinstance(r.line, str) and r.line else "no line"
+        mall = f"{f(r.m_all0)} → {f(r.m_all1)}" if r.m_read == "ok" else r.m_read
+        mk = f"{f(r.m_kept0)} → {f(r.m_kept1)}" if r.m_read == "ok" else "–"
+        cut = lambda wn, wd, ln_, ld: f"{wn:.0f} ({f(wd)}) · {ln_:.0f} ({f(ld)})"
+        cur_all = f"{f(r.b25_all0)} → {f(r.b25_all1)}" if r.b_read == "ok" else r.b_read
+        cur_k = f"{f(r.b25_kept0)} → **{f(r.b25_kept1)}**" if r.b_read == "ok" else "–"
+        L.append(f"| {NAMES.get(r.sleeve, r.sleeve)} | {ln} | {dur(r.cap)} (now {dur(r.live_cap)}) | {cur_all} | "
+                 f"{cur_k} | {mall} | {mk} | {cut(r.b25_w_cut, r.b25_w_d, r.b25_l_cut, r.b25_l_d)} | "
+                 f"{cut(r.m_w_cut, r.m_w_d, r.m_l_cut, r.m_l_d) if r.m_read == 'ok' else '–'} | {'–' if r.p_boot != r.p_boot else f'{r.p_boot:.2f}'} | "
+                 f"{'✅' if r.helps_both else '—'} | {r.luck} |")
+    return L
+
+
 def main(exp, review=None):
     os.makedirs(OUT, exist_ok=True)
     step("fb_combo.py", exp)
     step("flip_exits.py", exp)
+    step("frenzy_caps.py", exp, "--fetch")   # ⏱ (DECISION_LOG 497) every FRENZY fill under a shorter time cap → ①c
     a, b = step("best_dcr.py", exp), step("best_dcr_noflip.py", exp)
     conf = step("confidence.py", exp, review or "")
     conf, _, tline = conf.partition("<!-- ④ checkpoint timeline -->")   # (485) ③ table · ④ checkpoint timeline
@@ -138,6 +174,7 @@ def main(exp, review=None):
         L.append(f"| {nm} | {ln} | {hc} | {hm} | {tc_} | {tm} |")
     L += ["", f"All sleeves, trades/day: current batch {H.b25_n0.sum() / H.b25_days.iloc[0]:.2f} → **{H.b25_n1.sum() / H.b25_days.iloc[0]:.2f}** "
           f"({H.b25_n0.sum():.0f} → {H.b25_n1.sum():.0f} trades). Master per sleeve only (each sleeve traded a different set of batches)."]
+    L += caps_section()
     ta, tb, tc, tl = totals(a), totals(b), clean(a), clean(a, "LUCK")
     npass = tc["calls"].count(" PASS")
     L += ["", "## ② Total, all sleeves, with re-sizing on top", "",

@@ -121,6 +121,12 @@ BOOKED = {   # booked P&L — `era` = drops fills by WILLY exit era (registered 
                                  "frenzy_willy_high_tp_max_pct": 8.0, "frenzy_willy_max_hold_minutes": 90,
                                  "frenzy_willy_late_tp_minutes": 30.0, "frenzy_willy_late_tp_pct": 0.25}, "scout_ml_turn.py": None, "scout_rebound.py": None, "scout_willy_hold_off.py": None,
     "scout_willy_ht.py": _OLD_WILLY, "scout_willy_nomiss.py": _OLD_WILLY,
+    # (496) FRENZY max-duration read: fills that closed before X keep their BOOKED % → the read is tied to today's FRENZY / WILLY TP + stop
+    # (caps are re-read live every run; LITE / RETRY are split at the DL 420 revert) → a TP / stop change makes it STALE
+    "scout_frenzy_duration.py": {"frenzy_lock_arm_pct": 0.0, "frenzy_tp_pct": 1.5, "frenzy_stop_pct": 3.0, "frenzy_long_stop_pct": 4.0,
+                                 "frenzy_lite_tp_pct": 3.0, "frenzy_lite_c_enabled": False, "frenzy_willy_high_target_enabled": True,
+                                 "frenzy_willy_stop_pct": 4.0, "frenzy_willy_high_k_pct": 1.0, "frenzy_willy_high_tp_max_pct": 8.0,
+                                 "frenzy_willy_late_tp_minutes": 30.0, "frenzy_willy_late_tp_pct": 0.25},
 }
 NONE = {"scout_features.py", "scout_features_parity.py", "scout_gatekit.py", "scout_gvol.py", "scout_staircase.py",
         "scout_stamp_coverage.py", "scout_sweep_all.py", "scout_path_decomposition.py"}

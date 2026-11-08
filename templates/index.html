@@ -8636,6 +8636,7 @@
                 window._rfInflight[key] = true;
                 Promise.resolve().then(fn).catch(() => {}).finally(() => { window._rfInflight[key] = false; });
             };
+            window._rfGuard = _rfGuard;   // 🗓 (DL 500 review) the calendar loader is global — its redraw hooks (495 / 500) need the guard
             let _perfDirty = false;
 
             // ⚡ Oct-5 refresh fix 2 (DECISION_LOG 212): the full closed list (and, through its signature, the analytics refresh)
@@ -8708,7 +8709,8 @@
                 _rfGuard('batch10', async () => {
                     await Promise.allSettled([loadBalance(), loadPairs(), loadClosedOrders(), loadInvestors(), loadStatus()]);
                 });
-                if (_perfDirty) { _perfDirty = false; _rfGuard('perf', loadPerformance); }
+                const _calP = loadPnlCalendar();   // 🗓 (DECISION_LOG 500) the calendar was the one panel left on its 2-min timer
+                if (_perfDirty) { _perfDirty = false; _afterPnlCal(_calP, () => _rfGuard('perf', loadPerformance)); }
             });
         });
 
@@ -8802,10 +8804,12 @@
             const tzOffsetMin = -new Date().getTimezoneOffset(); // e.g. UTC-3 -> -180
             const _calView = _originView();   // (426) the view this answer belongs to: an export after a failed or pending fetch names the data it prints
             const _calGen = (window._pnlCalGen = (window._pnlCalGen || 0) + 1);   // (323) a fast view toggle never paints the older answer
-            fetch(`${API_BASE}/api/pnl-calendar?tz_offset_min=${tzOffsetMin}${_originParam('&')}`)
+            const _calP = fetch(`${API_BASE}/api/pnl-calendar?tz_offset_min=${tzOffsetMin}${_originParam('&')}`)
                 .then(r => r.json())
                 .then(d => {
-                    if (_calGen !== window._pnlCalGen) return;
+                    // 🗓 (DL 500 review) a superseded answer settles with the NEWEST fetch, so a caller waiting through
+                    // _afterPnlCal never redraws the analytics on the old calendar
+                    if (_calGen !== window._pnlCalGen) return window._pnlCalP !== _calP ? window._pnlCalP : undefined;
                     pnlCalData = d;
                     pnlCalDataView = _calView;
                     const now = new Date();
@@ -8824,12 +8828,34 @@
                     pnlCalCurIdx = curIdx;
                     renderPnlCalendar();
                     try { renderDcrChart(); } catch (_dcrErr) { console.warn('[DCR chart]', _dcrErr); }   // 📈 (493) same data, its own chart
-                    if (window._potWantsCal && d && d.portfolio_now != null && _calView === 'ALL' && typeof _rfGuard === 'function') {
+                    if (window._potWantsCal && d && d.portfolio_now != null && _calView === 'ALL' && typeof window._rfGuard === 'function') {
                         window._potWantsCal = false;   // (495) the POT line was drawn on today's seed — redraw it on the real balance walk
-                        _rfGuard('perf', loadPerformance);
+                        window._rfGuard('perf', loadPerformance);   // (DL 500 review) was `_rfGuard`: out of scope here, so this never ran
+                    } else if (window._perfAfterCal && typeof window._rfGuard === 'function') {
+                        window._perfAfterCal = false;   // 🗓 (DL 500 review) the analytics gave up waiting (5 s) — redraw on this answer
+                        window._rfGuard('perf', loadPerformance);
                     }
                 })
                 .catch(() => {});
+            window._pnlCalP = _calP;
+            return _calP;   // 🗓 (DL 500) a caller can wait for the fresh calendar (never rejects: the catch above)
+        }
+
+        // 🗓 (DECISION_LOG 500) run fn once the calendar fetch p has answered (or failed), at the latest after 5 s — the analytics redraw
+        // reads pnlCalData (Performance Over Time's balance walk), so after a close it waits for the fresh calendar, never forever.
+        function _afterPnlCal(p, fn) {
+            let done = false;
+            const go = () => { if (done) return; done = true; try { fn(); } catch (e) { console.warn('[afterPnlCal]', e); } };
+            if (p && typeof p.finally === 'function') {
+                p.finally(() => { window._perfAfterCal = false; go(); });
+                setTimeout(() => { if (!done) window._perfAfterCal = true; go(); }, 5000);   // late answer → one redraw (above)
+            } else go();
+        }
+
+        // 🗓 (DECISION_LOG 500 review) money in / out of the fund changes the calendar's Portfolio now, its flows and the Performance
+        // Over Time balance walk — refresh them at once (they waited for the 2-min / 5-min timers before).
+        function _refreshAfterFlow() {
+            try { _afterPnlCal(loadPnlCalendar(), loadPerformance); } catch (e) {}
         }
 
         function pnlCalNav(delta) {
@@ -20217,8 +20243,12 @@
                 
                 const newSig = (data && data.length) ? `${data[0].id}|${data[0].closed_at || ''}|${data.length}` : 'empty';
                 if (newSig !== _lastClosedSig) {
+                    // 🗓 (DECISION_LOG 500) a close (not the first load: the page start loads the calendar itself) also refreshes the
+                    // calendar, monthly view, Portfolio-now panel and Daily Compound chart — they waited for the 2-min timer before.
+                    const _firstSig = _lastClosedSig === null;
                     _lastClosedSig = newSig;
-                    loadPerformance();
+                    if (_firstSig) loadPerformance();
+                    else _afterPnlCal(loadPnlCalendar(), loadPerformance);
                 }
                 
                 const tbody = document.getElementById('closed-orders-table-body');
@@ -22105,6 +22135,7 @@
                 showToast(`New NAV history started (${out.nav_epoch_start}) — earlier history kept`, 'success');
                 _navHistHash = '';
                 await loadInvestors();
+                _refreshAfterFlow();
             } catch (e) {
                 console.error('NAV epoch failed:', e);
                 showToast('Could not start a new NAV history', 'error');
@@ -22665,6 +22696,7 @@
                     showToast(`Investor "${name}" added`, 'success');
                     closeInvestorModal();
                     loadInvestors();
+                    _refreshAfterFlow();
                 } else {
                     showToast(data.detail || 'Error adding investor', 'error');
                 }
@@ -22714,6 +22746,7 @@
                     showToast(`Deposited $${amount.toFixed(2)} (${data.new_shares.toFixed(4)} shares @ NAV $${data.nav.toFixed(6)})`, 'success');
                     closeInvestorModal();
                     loadInvestors();
+                    _refreshAfterFlow();
                 } else {
                     showToast(data.detail || 'Error depositing', 'error');
                 }
@@ -22737,6 +22770,7 @@
                     showToast(`Withdrew $${amount.toFixed(2)} (${data.shares_removed.toFixed(4)} shares @ NAV $${data.nav.toFixed(6)})`, 'success');
                     closeInvestorModal();
                     loadInvestors();
+                    _refreshAfterFlow();
                 } else {
                     showToast(data.detail || 'Error withdrawing', 'error');
                 }
@@ -22754,6 +22788,7 @@
                     showToast('Investor removed', 'success');
                     closeInvestorModal();
                     loadInvestors();
+                    _refreshAfterFlow();
                 } else {
                     showToast(data.detail || 'Error removing investor', 'error');
                 }
@@ -25661,6 +25696,7 @@
                 btn.textContent = `Preview ${verbLabel}`;
                 document.getElementById(modalId).classList.add('hidden');
                 if (typeof loadInvestors === 'function') loadInvestors();
+                _refreshAfterFlow();
             } catch(e){ alert('Error: ' + e); }
             finally { btn.disabled = false; }
         }
@@ -25705,6 +25741,7 @@
                 btn.textContent = 'Preview expense';
                 document.getElementById('fund-expense-modal').classList.add('hidden');
                 if (typeof loadInvestors === 'function') loadInvestors();
+                _refreshAfterFlow();
             } catch(e){ alert('Error: ' + e); }
             finally { btn.disabled = false; }
         }

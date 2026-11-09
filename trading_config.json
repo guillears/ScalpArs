@@ -630,7 +630,7 @@
     "long_heat_btc_rsi_prev_min": 64.0,
     "long_heat_bull_pct_min": 80.0,
     "long_heat_exempt_off30d_max": -10.0,
-    "long_megacap_rank_max": 10,
+    "long_megacap_rank_max": 0,
     "long_chop_burst_block_enabled": true,
     "long_chop_burst_eff72_max": 0.007,
     "long_chop_burst_window_s": 120.0,

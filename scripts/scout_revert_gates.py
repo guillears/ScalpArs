@@ -2138,11 +2138,11 @@ DEFS = {
     "WIDE_CHOPPY": ("🌀 WIDE choppy-pump block (215)", "first 15 FRENZY_WIDE_CHOPPY refusals (one per pair-episode) re-priced as if WIDE had opened — "
                     "the live FRENZY exit on 1m klines, entry at the next minute's open: mean ≥ 0 → the block removed winners", "set frenzy_wide_above_share_min 0",
                     "frenzy_wide_above_share_min"),
-    "MEGACAP": ("🏦 Mega-cap exclusion (110)", "LONG_MEGACAP_BLOCK refusals re-priced: ≥ 60 % WR ∧ Σ > 0 on N ≥ 8 across ≥ 3 windows",
+    "MEGACAP": ("🏦 Mega-cap exclusion (110) — ⛔ OFF since DL 506 (operator override; the re-admitted fills are read by MEGACAP_READMIT)", "LONG_MEGACAP_BLOCK refusals re-priced: ≥ 60 % WR ∧ Σ > 0 on N ≥ 8 across ≥ 3 windows",
                 "set long_megacap_rank_max 0", "long_megacap_rank_max"),
 }
 GVOL_RESOLVED = "✅ RESOLVED by 263 (gate off) · tally frozen at the switch"
-RESOLVED_NO_ALERT = ("HEAT", "FRENZY_GVOL")   # resolved rows: shown for the record, never alert
+RESOLVED_NO_ALERT = ("HEAT", "FRENZY_GVOL", "MEGACAP")   # MEGACAP: block OFF since DL 506 — no new refusals, tally frozen   # resolved rows: shown for the record, never alert
 # operator 2026-10-09 (262): filter / entry gates first, the SIZING gates last
 ORDER = ["CHOP_BURST", "BEARISH_BLOCKED", "ATR_RAISE", "TP3_VS_LOCK", "FRENZY_LOCK", "FRENZY_GVOL", "WIDE_CHOPPY", "SURGE_LONG", "BEARRUN", "FADE_BRSI50", "LOADX", "FLIP_EMA13_BLOCKED", "FLIP_PADX_BLOCKED", "MS_PVR_BLOCKED", "HEAT", "HEAT_ADMIT", "HEAT_ORIG", "MEGACAP",
          "FRENZY_STRONG", "BEARRUN_5X", "FAN_10X"]

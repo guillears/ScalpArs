@@ -1575,6 +1575,14 @@ def run():
     except Exception as _lbr_e:
         log(f"LITE_BTC1H_RISING line failed: {_lbr_e}")
         _rg_sec += ["## 👁 LITE_BTC1H_RISING", "", f"Unavailable this run ({str(_lbr_e)[:120]}).", ""]
+    try:                                               # 🏦 Nov-9 MEGACAP_READMIT — top-10 momentum longs with the mega-cap block OFF, frozen bar (DECISION_LOG 506; forward)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_megacap_readmit_watch as _mcr
+        _rg_sec += _mcr.run(now_ms)
+    except Exception as _mcr_e:
+        log(f"MEGACAP_READMIT line failed: {_mcr_e}")
+        _rg_sec += ["## 🏦 MEGACAP_READMIT", "", f"Unavailable this run ({str(_mcr_e)[:120]}).", ""]
     try:                                               # 👁 Oct-30 WILLY_GAP — WILLY / HT with ADX > 55 or EMA8–13 gap ≤ 0.90, frozen expectancy bar per sleeve (DECISION_LOG 414; forward)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

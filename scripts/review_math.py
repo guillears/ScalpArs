@@ -8,6 +8,7 @@
                                sleeve's realised day $ ÷ start-of-day account equity (batch start + every sleeve's realised $ so far),
                                a flow day split at the flow, 0 % on no-fill days, every calendar day of the span. $ per fill = % × the
                                fill's ACTUAL notional (the leverage it really got after the exchange's bracket cap — never the intended one).
+                               📏 DL 503: shown as "as traded" only — before → after and line picks use ONE size (scripts/best_case/one_size.py).
   fill_usd(pct, notional)    — that $ conversion.
 """
 import math

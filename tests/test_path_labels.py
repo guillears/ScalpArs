@@ -259,7 +259,7 @@ def test_sweep_path_and_reach_targets(monkeypatch):
 
 def test_methodology_wired_everywhere():
     ck = open(os.path.join(ROOT, "scripts", "batch_review_checklist.py")).read()
-    for k in ("LOSER / WINNER DECOMPOSITION", "--label path", "JOINT CHECK", "STALE LINES", "LEAVE-ONE-OUT", "REAL sizing"):
+    for k in ("LOSER / WINNER DECOMPOSITION", "--label path", "JOINT CHECK", "STALE LINES", "LEAVE-ONE-OUT", "ONE size"):
         assert k in ck, k
     opp = open(os.path.join(ROOT, "scripts", "opportunity_scout.py")).read()
     assert "import observe_registry" in opp and "import scout_path_decomposition" in opp

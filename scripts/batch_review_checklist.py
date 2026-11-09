@@ -90,8 +90,8 @@ METHOD = [
     "verdict; each one → re-base (fresh count) or retire, operator decides",
     "🧮 LEAVE-ONE-OUT under every before → after (review_math.loo_text): the Δ with and without its biggest fill; ≥ 50 % from one fill = "
     "stated, never a ship on it alone",
-    "📈 DCR with REAL sizing: each fill's ACTUAL notional (the leverage the exchange bracket really gave), on the account path "
-    "(review_math.dcr_account: batch start + flows) — never the intended leverage",
+    "📏 DCR at ONE size (DL 503): every fill at today's intended size, current batch and master alike (scripts/best_case/one_size.py) "
+    "— the account-path DCR with each fill's ACTUAL notional (review_math.dcr_account: batch start + flows) shown beside as 'as traded', never alone",
 ]
 
 

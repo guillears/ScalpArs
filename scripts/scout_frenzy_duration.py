@@ -12,8 +12,9 @@ Per sleeve (FRENZY_LITE · FRENZY_LITE_RETRY · FRENZY_LONG · FRENZY_WILLY · F
      before the cap fired keeps its booked % (Δ 0). No replica stop, no replica TP: the path before X is the real one, so the
      live-stopped-cohort rule (CLAUDE.md) holds by construction — only fills still open at X change, winners and losers alike. Per X:
      N changed · WR · avg % · Σ pts · Δ Σ vs booked · day-block bootstrap P(Δ > 0) · 🧮 leave-one-out · the 30–50 % in-sample haircut
-     (favourable Δ only) · the CURRENT batch's daily compound return before → after on the real account path (review_math.dcr_account,
-     each fill's actual notional, B25 start $2,900 + the 10-26 13:50 top-up).
+     (favourable Δ only) · the CURRENT batch's daily compound return before → after at ONE size (📏 DECISION_LOG 503: every fill at the
+     sleeve's intended size, scripts/best_case/one_size.py) — the account path (review_math.dcr_account, each fill's actual notional,
+     B25 start $2,900 + the 10-26 13:50 top-up) beside it in brackets as "as traded", never alone.
   ③ LONG HOLDS — every fill held ≥ 4 h (operator 11-07: TAUSDT FRENZY_LITE #240 first), its exit and booked % vs a market close at 4 h.
   ④ PARITY — (a) the fee ruler re-books every market-closed fill from its own exit price, slip 0 · (b) the price ruler: each MAX_HOLD_TIME
      fill's own exit price vs this ruler's price at its real close. Either off → ② is not read.
@@ -43,6 +44,8 @@ import pandas as pd
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 import review_math as RM  # noqa: E402
+sys.path.insert(0, os.path.join(ROOT, "scripts", "best_case"))
+import one_size as OS  # noqa: E402  (📏 DL 503 one-size DCR + the shared X)
 
 CONFIG = os.path.join(ROOT, "trading_config.json")
 MASTER = os.path.join(ROOT, "reports", "MASTER_POOL_stacked.csv")
@@ -306,7 +309,8 @@ def parity_line(f):
 
 
 def sleeve_block(f, cap, title, account=None, priced=True):
-    """markdown lines for one sleeve in one block. account = (acc frame with k + usd, t0, t1, keys) for the DCR column, else None.
+    """markdown lines for one sleeve in one block. account = (acc frame with k + usd, t0, t1, keys, x = the sleeve's one-size X) for the
+    DCR column, else None (📏 DL 503: one size first, the account path in brackets).
     priced=False → the hold profile only (no ②, no 4 h price)."""
     L = [f"#### {title}", ""]
     if not len(f):
@@ -322,7 +326,7 @@ def sleeve_block(f, cap, title, account=None, priced=True):
         L += ["  " + ptxt, ""]
         days = pd.to_datetime(f.closed_at.astype(str).str.replace(" ", "T").str[:19], errors="coerce").dt.date.astype(str)
         lab = (f.pair.astype(str) + " " + f.opened_at.astype(str).str[5:16]).tolist()
-        L += ["| ② cap at | changed | WR | avg % | Σ pts | Δ Σ vs booked | P(Δ>0) day-boot | after 30–50 % haircut (avg Δ) | 🧮 leave-one-out | DCR %/day before → after | unpriced |",
+        L += ["| ② cap at | changed | WR | avg % | Σ pts | Δ Σ vs booked | P(Δ>0) day-boot | after 30–50 % haircut (avg Δ) | 🧮 leave-one-out | DCR %/day one size before → after (as traded) | unpriced |",
               "|---|---|---|---|---|---|---|---|---|---|---|"]
         base = f.pct.values
         dcr0 = None
@@ -335,7 +339,9 @@ def sleeve_block(f, cap, title, account=None, priced=True):
             pb = boot_p(d, days) if ch else float("nan")
             dcr = "–"
             if account is not None:
-                acc, t0, t1, keys = account
+                acc, t0, t1, keys, xs1 = account
+                if not (xs1 == xs1 and xs1 > 0):
+                    raise ValueError(f"{title}: one-size X is {xs1} — the DCR would read 0")
                 m = acc.k.isin(set(keys))
                 if not (int(m.sum()) == len(f) == len(set(keys))):   # a missed key would print after == before silently
                     raise ValueError(f"{title}: DCR join matched {int(m.sum())} of {len(f)} fills ({len(set(keys))} distinct keys)")
@@ -343,8 +349,10 @@ def sleeve_block(f, cap, title, account=None, priced=True):
                 dmap = dict(zip(keys, d / 100.0 * pd.to_numeric(f.notional_value, errors="coerce").fillna(0.0).values))
                 a["u1"] = a.usd + a.k.map(dmap).fillna(0.0)
                 if dcr0 is None:
-                    dcr0 = RM.dcr_account(a, m, "usd", B25_START, t0, t1, B25_FLOWS)
-                dcr = f"{dcr0:+.3f} → {RM.dcr_account(a, m, 'u1', B25_START, t0, t1, B25_FLOWS):+.3f}"
+                    one = np.ones(len(f), dtype=bool)
+                    dcr0 = (OS.dcr(f.closed_at, OS.frac(base, xs1), one, t0, t1), RM.dcr_account(a, m, "usd", B25_START, t0, t1, B25_FLOWS))
+                d1 = OS.dcr(f.closed_at, OS.frac(v, xs1), np.ones(len(f), dtype=bool), t0, t1)
+                dcr = f"{dcr0[0]:+.3f} → {d1:+.3f} ({dcr0[1]:+.3f} → {RM.dcr_account(a, m, 'u1', B25_START, t0, t1, B25_FLOWS):+.3f})"
             L.append(f"| {_m(x)} | {ch} | {(v > 0).mean():.0%} | {v.mean():+.2f} | {v.sum():+.2f} | {d.sum():+.2f} | "
                      f"{'–' if not np.isfinite(pb) else f'{pb:.2f}'} | {haircut_text(d.mean())} | "
                      f"{RM.loo_text(d, lab) if ch else '–'} | {dcr} | {unp} |")
@@ -396,13 +404,19 @@ def main(argv):
             acc = load_current(files[0], since, probes=True).copy()
             acc["k"] = fill_key(acc)
             acc["usd"] = pd.to_numeric(acc.pnl, errors="coerce").fillna(0.0)
-            t0 = pd.Timestamp(since)                      # every calendar day from the batch start counts (empty days too)
+            t0 = pd.to_datetime(acc.opened_at, format="mixed").min()   # (503 review) the first open, as best_dcr.py — the same day grid
             t1 = pd.to_datetime(acc.closed_at, format="mixed").max()
         else:
             notes.append(f"--since {since} is not the current batch start ({SW.BATCH_START}) — DCR not printed (the account path is B25's)")
         out += [f"## CURRENT BATCH — {os.path.basename(files[0])}, fills opened ≥ {since[:16]} UTC (closed fills only; open trades are not in the export)", ""]
+        _wi = float((json.load(open(CONFIG)).get("thresholds") or {}).get("frenzy_willy_invest_mult", 1.0) or 1.0)
         for s in SLEEVES:
-            f = _norm(cur[cur.entry_strategy.astype(str) == s], "pnl_percentage")
+            _cs = cur[cur.entry_strategy.astype(str) == s]
+            xs1 = float("nan")
+            if len(_cs) and acc is not None:   # 📏 (503) today's size on the account path: notional ÷ the equity when each fill opened
+                _eq = OS.equity_at_open(_cs.opened_at, acc.closed_at, acc.usd, B25_START, B25_FLOWS)
+                xs1 = OS.sleeve_x(_cs.notional_value, _eq, s, _cs.get("leverage"), _cs.get("cell_multiplier"), _wi)
+            f = _norm(_cs, "pnl_percentage")
             if f.pct.isna().any():
                 notes.append(f"{s}: {int(f.pct.isna().sum())} fill(s) without a booked % left out")
                 f = f[f.pct.notna()]
@@ -417,7 +431,7 @@ def main(argv):
                     parts = [(f"{s} — after the LITE C revert (opened ≥ {lbl}, today's +3 TP)", f[post.values].reset_index(drop=True)),
                              (f"{s} — BEFORE the LITE C revert (old +2 TP out of zone — another exit era, context only)", f[~post.values].reset_index(drop=True))]
             for title, part in parts:
-                out += sleeve_block(part, cap[s], title, (acc, t0, t1, fill_key(part)) if (len(part) and acc is not None) else None)
+                out += sleeve_block(part, cap[s], title, (acc, t0, t1, fill_key(part), xs1) if (len(part) and acc is not None) else None)
     else:
         out += ["## CURRENT BATCH — no orders export found", ""]
     if os.path.exists(MASTER):
@@ -440,7 +454,8 @@ def main(argv):
                                 + ", ".join(f"{k} {v}" for k, v in ms.era.astype(str).value_counts().items()), None, priced=False)
     out += ["---", "Not tested here (blind spots): funding over long holds · 1 s / tick paths (1m closes only) · a master shorter-cap read (needs a "
             "walk under today's exit) · a time-based TIGHTEN (not at TP by X → lower TP / tighter stop) · the entry × exit joint check with the "
-            "pending entry lines · in the DCR the cap's Δ$ lands on the fill's real close day, not the cap's (wrong day only on long holds)."]
+            "pending entry lines · in the DCR the cap's Δ lands on the fill's real close day, not the cap's (wrong day only on long holds) · one-size X = the "
+            "sleeve's median notional ÷ the account equity at each open (best case's X, DL 503)."]
     out += [f"- {n}" for n in notes]
     print("\n".join(out))
 

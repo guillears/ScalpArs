@@ -97,10 +97,12 @@ def test_sleeve_block_end_to_end_with_account_dcr():
     acc["k"] = D.fill_key(acc)
     acc["usd"] = acc.pnl
     keys = acc.k.tolist()
-    L = D.sleeve_block(f, 720, "FRENZY_LITE", (acc, pd.Timestamp(T0, unit="ms"), pd.Timestamp(T0, unit="ms") + pd.Timedelta(days=2), keys))
+    L = D.sleeve_block(f, 720, "FRENZY_LITE", (acc, pd.Timestamp(T0, unit="ms"), pd.Timestamp(T0, unit="ms") + pd.Timedelta(days=2), keys, 1.0))
     txt = "\n".join(L)
     assert "| 15 min | 2 |" in txt and "| 4.0 h | 1 |" in txt and "| 6.0 h | 0 |" in txt
-    assert "→" in txt and "nan" not in txt.lower()
+    assert "→" in txt and "nan" not in txt.lower() and "one size" in txt and ") |" in txt   # 📏 DL 503: one size, the account path in brackets
+    with pytest.raises(ValueError, match="one-size X"):
+        D.sleeve_block(f, 720, "X", (acc, pd.Timestamp(T0, unit="ms"), pd.Timestamp(T0, unit="ms") + pd.Timedelta(days=2), keys, float("nan")))
     assert "CUSDT #3" in txt and "market close at 4 h" in txt
     assert "parity — fee ruler on 2 market-closed fill(s), slip 0: median |Δ| 0.000" in txt and "RULER OFF" not in txt
 
@@ -136,7 +138,7 @@ def test_dcr_join_miss_raises_instead_of_printing_after_equals_before():
     acc["k"] = D.fill_key(acc)
     acc["usd"] = acc.pnl
     with pytest.raises(ValueError, match="DCR join matched"):
-        D.sleeve_block(f, 720, "X", (acc.iloc[:2], pd.Timestamp(T0, unit="ms"), pd.Timestamp(T0, unit="ms") + pd.Timedelta(days=2), D.fill_key(f)))
+        D.sleeve_block(f, 720, "X", (acc.iloc[:2], pd.Timestamp(T0, unit="ms"), pd.Timestamp(T0, unit="ms") + pd.Timedelta(days=2), D.fill_key(f), 1.0))
 
 
 def test_short_end_to_end_and_master_profile_only():

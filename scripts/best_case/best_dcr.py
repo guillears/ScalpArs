@@ -5,6 +5,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 sys.path.insert(0, os.path.join(ROOT, "scripts")); sys.path.insert(0, ROOT)
 import review_math as RM, scout_fade_late_weak as LW, scout_ml_mkt_hot_watch as MH, watch_zones as WZ
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import master_exits as MX
+import one_size as OS   # 📏 (DECISION_LOG 503) the one-size current-batch DCR
 EXP = sys.argv[1]; NOW = int(time.time() * 1000)
 B0, FLOWS = pd.Timestamp("2026-10-23 18:30"), [("2026-10-26T13:50:00", 7100.0)]
 num = lambda d, c: pd.to_numeric(d[c], errors="coerce") if c in d else pd.Series(np.nan, index=d.index)
@@ -15,6 +16,7 @@ A = A[(A.status == "CLOSED") & (pd.to_datetime(A.opened_at, format="mixed") >= B
 A["o"] = pd.to_datetime(A.opened_at, format="mixed", utc=True).dt.tz_convert(None)
 A["pct"] = num(A, "pnl_percentage"); A["u"] = num(A, "pnl"); A["sl"] = sleeve(A); A["src"] = "B25"; A["era"] = "B25"
 A["kk"] = A.opened_at.astype(str).str.replace(" ", "T").str[:19] + A.pair
+_A_RAW = A[["closed_at", "pnl"]].copy()   # 📏 (503 deep review) the REAL account path: raw closes + pnl, before the exit re-pricing below
 A, _b25_moved = MX.reprice_b25_exits(A, os.path.join(SC, "fb_combo.csv"))   # LITE C +2 closes → +3 · Flatbase → +5 / −10 (exits retired mid-batch)
 M = pd.read_csv(os.path.join(ROOT, "reports/MASTER_POOL_stacked.csv"), low_memory=False)
 span = M.assign(o=pd.to_datetime(M.opened_at, format="mixed", utc=True).dt.tz_convert(None),
@@ -88,10 +90,18 @@ if len(_bad):   # a PENDING / unpriced FB_CONFIRM would be booked as blocked ($0
 fxb = {kk: r for kk, r in FX[FX.src == "B25"].set_index("kk")[list(EXITS)].iterrows()}
 fxm = {kk: r for kk, r in FX[FX.src == "MASTER"].set_index("kk")[list(EXITS)].iterrows()}
 M["kk"] = M.opened_at.astype(str).str.replace(" ", "T").str[:19] + M.pair
-# ── B25 account path
+# ── B25: ONE size (📏 DL 503, the headline) + the as-traded account path beside it
 t0 = A.o.min(); t1 = pd.to_datetime(A.closed_at, format="mixed").max()
 def b25_dcr(mask_sleeve, after_pct):
-    acc = A.copy(); acc["ua"] = acc.u
+    """📏 (DECISION_LOG 503) ONE SIZE — every fill at today's intended size X; the headline and the line-picking number."""
+    f = pd.Series(OS.frac(A.pct, A.sl.map(X)), index=A.index)
+    for i, v in after_pct.items():
+        f[i] = 0.0 if v is None else float(v) * X[A.at[i, "sl"]] / 100.0
+    return OS.dcr(A.closed_at, f.values, np.asarray(mask_sleeve), t0, t1)
+def b25_dcr_real(mask_sleeve, after_pct):
+    """AS TRADED — the REAL account path (each fill's raw $ and close ÷ that morning's equity, the 10-26 top-up; a line's blocked fills
+    removed); shown beside, never picks a line (503 deep review: was today's exits on real sizes)."""
+    acc = A.copy(); acc["ua"] = pd.to_numeric(_A_RAW.pnl, errors="coerce").fillna(0.0); acc["closed_at"] = _A_RAW.closed_at
     for i, v in after_pct.items():
         acc.loc[i, "ua"] = 0.0 if v is None else v / 100 * float(acc.loc[i, "notional_value"])
     return RM.dcr_account(acc, mask_sleeve, "ua", 2900, t0, t1, FLOWS)
@@ -113,15 +123,15 @@ def b25_after(sl, lines, fbconf=False, ex=None):
 # ── master intended size per era
 import json as _json
 _WILLY_INV = float(_json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"].get("frenzy_willy_invest_mult", 1.0) or 1.0)   # (487) ½ margin
+# 📏 (503 deep review) today's size = notional ÷ the account equity when the fill opened (the bot sizes on current equity), not a fixed
+# 2,900 / 10,000 step (that understated sizes 8–37 %, differently per sleeve)
+_EQ_OPEN = pd.Series(OS.equity_at_open(A.opened_at, _A_RAW.closed_at, pd.to_numeric(_A_RAW.pnl, errors="coerce"), 2900.0, FLOWS), index=A.index)
 X = {}
 for sl in SLEEVES:
-    g = A[A.sl == sl]
-    eq = np.where(g.o < pd.Timestamp("2026-10-26 13:50"), 2900.0, 10000.0)
-    x = num(g, "notional_value") / eq
-    if sl == "FRENZY_WILLY":
-        x = x * np.where(num(g, "leverage") >= 10, 0.5, 1.0)   # today's 5×
-        x = x * _WILLY_INV / num(g, "cell_multiplier").fillna(1.0).replace(0, 1.0)   # (487) today's margin ÷ the margin it traded at
-    X[sl] = float(np.nanmedian(x))
+    g = A[A.sl == sl]   # 📏 (503) one definition of today's size, shared with scout_frenzy_duration.py
+    X[sl] = OS.sleeve_x(g.notional_value, _EQ_OPEN[g.index], sl, g.get("leverage"), g.get("cell_multiplier"), _WILLY_INV)
+    if not (X[sl] == X[sl] and X[sl] > 0):   # 📏 (503 review) a NaN / 0 size would silently read the sleeve at 0.000 %/day
+        sys.exit(f"one-size X for {sl} is {X[sl]} (notional_value missing?) — fix the export before reading the best case")
 def m_dcr(sl_list, drop_idx=frozenset(), repl=None):
     vals = []
     for era, (a, b) in span.iterrows():
@@ -145,6 +155,7 @@ SCEN = {"A": ({}, set(), {}), "B": ({}, set(), {})}
 # master + current batch POOLED (Σ % per fill over the kept fills of both, today's exits) instead — 2 master fills must not outvote 19.
 MASTER_MIN_CHANGED = 5
 BASIS, NCHG = {}, {}
+REAL, KSUM = {}, {}   # 📏 (503) per (scen, sleeve): as-traded DCR before / best · kept Σ % before / best / N
 print(f"Market-hot read complete={complete} · X (notional/account) = " + ", ".join(f"{k} {v:.2f}" for k, v in X.items()))
 for sl in SLEEVES:
     msk = A.sl == sl
@@ -193,7 +204,12 @@ for sl in SLEEVES:
         rows.append((tag, sl, before, d, mb, dm, " + ".join(combo)))
         exs = [c[5:] for c in combo if c.startswith("EXIT ")]; ex = exs[0] if exs else None
         blk = [c for c in combo if c != "FB_CONFIRM" and not c.startswith("EXIT ")]
-        SCEN[tag][0].update(b25_after(sl, blk, "FB_CONFIRM" in combo, ex))
+        _aft = b25_after(sl, blk, "FB_CONFIRM" in combo, ex)
+        SCEN[tag][0].update(_aft)
+        REAL[(tag, sl)] = (b25_dcr_real(msk, {}), b25_dcr_real(msk, _aft))
+        _k = [v for i, v in _aft.items() if v is not None] + [A.loc[i, "pct"] for i in A.index[msk] if i not in _aft]
+        _k = [v for v in _k if v == v]   # (503 review) an unpriced (NaN) fill counts neither in N nor in Σ
+        KSUM[(tag, sl)] = (float(np.nansum(A[msk].pct)), float(np.nansum(_k)), len(_k))
         if ex:
             SCEN[tag][2].update({i: float(fxm[M.loc[i, "kk"]][ex]) for i in M.index[M.sl == sl]})
         z = pd.Series(False, index=M.index)
@@ -366,52 +382,61 @@ for sl in [x for x in SLEEVES if x in FD.SLEEVES]:
 pd.DataFrame(LATE_ROWS).to_csv(os.path.join(SC, "best_late.csv"), index=False)
 allm = pd.Series(True, index=A.index)
 tb = b25_dcr(allm, {}); mt_b, n = m_dcr(SLEEVES)
+print(f"AS TRADED TODAY: B25 {b25_dcr_real(allm, {}):+.3f} %/day (account path, each fill's actual size — shown, never compared)")
 for tag in ("A", "B"):
     ta = b25_dcr(allm, SCEN[tag][0]); mt_a, _ = m_dcr(SLEEVES, frozenset(SCEN[tag][1]), SCEN[tag][2])
-    print(f"\nTOTAL {tag}: B25 real path {tb:+.3f} → {ta:+.3f} %/day · master intended size {mt_b:+.3f} → {mt_a:+.3f} %/day ({n} batches)")
+    print(f"\nTOTAL {tag}: B25 one size {tb:+.3f} → {ta:+.3f} %/day · master intended size {mt_b:+.3f} → {mt_a:+.3f} %/day ({n} batches)")
 # without WILLY's B25 (the biggest single driver): does the rest still move?
 nw = A.sl != "FRENZY_WILLY"
 print(f"TOTAL B ex-WILLY B25: {b25_dcr(nw, {}):+.3f} → {b25_dcr(nw, {i: v for i, v in SCEN['B'][0].items() if A.loc[i, 'sl'] != 'FRENZY_WILLY'}):+.3f}")
 pd.DataFrame(rows, columns=["scen", "sleeve", "b25_before", "b25_best", "m_before", "m_best", "lines"]).assign(
-    basis=[BASIS.get((r[0], r[1]), "") for r in rows], m_changed=[NCHG.get((r[0], r[1]), 0) for r in rows]).to_csv(os.path.join(SC, "best_dcr.csv"), index=False)
+    basis=[BASIS.get((r[0], r[1]), "") for r in rows], m_changed=[NCHG.get((r[0], r[1]), 0) for r in rows],
+    b25_before_real=[REAL[(r[0], r[1])][0] for r in rows], b25_best_real=[REAL[(r[0], r[1])][1] for r in rows],
+    b25_sum_before=[KSUM[(r[0], r[1])][0] for r in rows], b25_sum_best=[KSUM[(r[0], r[1])][1] for r in rows],
+    b25_n_best=[KSUM[(r[0], r[1])][2] for r in rows]).to_csv(os.path.join(SC, "best_dcr.csv"), index=False)
 
-# ── re-sizing on top of scenario B (operator 11-02): WILLY with GAP → 8× / 10× · FRENZY_LONG invest 0.2 → 1.0 (×5) · FLATBASE 0.2 → 0.5 (×2.5)
+# ── re-sizing on top of scenario B — the DL 502 5 % cap (📏 DL 503): RETRY / Flatbase up, LITE down; WILLY / FRENZY_LONG never sized up
 def b25_sized(after, size):
-    acc = A.copy(); acc["ua"] = acc.u
+    """📏 (DECISION_LOG 503) the re-sizes at ONE size: account fractions (% × X ÷ 100) × the size factor (WILLY: target × ÷ today's 5×)."""
+    acc = A.copy(); acc["ua"] = OS.frac(acc.pct, acc.sl.map(X))
     for i, v in after.items():
-        acc.loc[i, "ua"] = 0.0 if v is None else v / 100 * float(acc.loc[i, "notional_value"])
+        acc.loc[i, "ua"] = 0.0 if v is None else float(v) * X[acc.at[i, "sl"]] / 100.0
     for sl, f in size.items():
         m = acc.sl == sl
-        if sl == "FRENZY_WILLY":   # f = target leverage at TODAY's margin (487: ½); each fill re-scaled from its own leverage and margin
-            acc.loc[m, "ua"] = acc.loc[m, "ua"] * f / num(acc[m], "leverage") * _WILLY_INV / num(acc[m], "cell_multiplier").fillna(1.0).replace(0, 1.0)
-        else:
-            acc.loc[m, "ua"] = acc.loc[m, "ua"] * f
+        acc.loc[m, "ua"] = acc.loc[m, "ua"] * (f / 5.0 if sl == "FRENZY_WILLY" else f)   # X WILLY is at today's 5× (kept for a WILLY row; none today, DL 503) (as m_sized)
     return acc
+def acc_dcr(acc, mask):
+    return OS.dcr(acc.closed_at, acc.ua.values, np.asarray(mask), t0, t1)
 def m_sized(drop, repl, size):
     global X
     X0 = dict(X)
     for sl, f in size.items():
         X[sl] = X0[sl] * (f / 5.0 if sl == "FRENZY_WILLY" else f)   # master WILLY X is at 5×
-    r = m_dcr(SLEEVES, frozenset(drop), repl)[0]
-    X = X0
-    return r
+    try:
+        return m_dcr(SLEEVES, frozenset(drop), repl)[0]
+    finally:
+        X = X0
 B = SCEN["B"]
-RESIZES = (("C1 WILLY 8×", {"FRENZY_WILLY": 8}), ("C2 WILLY 10×", {"FRENZY_WILLY": 10}),
-                 ("C3 WILLY 10× + FRENZY_LONG ×5 + FLATBASE ×2.5", {"FRENZY_WILLY": 10, "FRENZY_LONG": 5, "FLATBASE_SHORT": 2.5}),
-                 ("C4 WILLY 8× + FRENZY_LONG ×5 + FLATBASE ×2.5", {"FRENZY_WILLY": 8, "FRENZY_LONG": 5, "FLATBASE_SHORT": 2.5}),
-                 # momentum longs (operator 11-04): today 1× notional (lev 0.25 × invest 0.2) → ×5 = invest 1.0 (5×) · ×10 = lev 0.5 + invest 1.0 (10×, the DL 289 restore)
-                 ("C5 C3 + MOMENTUM_LONG ×5", {"FRENZY_WILLY": 10, "FRENZY_LONG": 5, "FLATBASE_SHORT": 2.5, "MOMENTUM_LONG": 5}),
-                 ("C6 C3 + MOMENTUM_LONG ×10", {"FRENZY_WILLY": 10, "FRENZY_LONG": 5, "FLATBASE_SHORT": 2.5, "MOMENTUM_LONG": 10}))
+# 📏 (DECISION_LOG 503, operator 11-08: "maybe we should change all this, for the recently talked items") the re-size rows = the DL 502
+# 5 % cap: each sleeve sized so ONE stop costs 5 % of the account at today's size (factor = 5 ÷ (X × stop %)); only sleeves above their
+# breakeven WR step up (RETRY, Flatbase); LITE steps DOWN (its stop costs > 5 %). WILLY / FRENZY_LONG are below breakeven → never sized up.
+_TH = _json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
+_STOP = {"FRENZY_LITE_RETRY": float(_TH.get("frenzy_stop_pct", 3.0) or 3.0), "FRENZY_LITE": float(_TH.get("frenzy_stop_pct", 3.0) or 3.0),
+         "FLATBASE_SHORT": float(_TH.get("flatbase_stop_pct", 10.0) or 10.0)}
+CAP5 = {sl: round(OS.cap_factor(X[sl], st), 2) for sl, st in _STOP.items() if sl in X and X[sl] > 0}
+print("RESIZE FACTORS (5 % cap, one stop = 5 % of the account): " + " · ".join(f"{sl} ×{f:.2f} (stop now {X[sl] * _STOP[sl]:.1f} %)" for sl, f in CAP5.items()))
+RESIZES = (("C1 5 % cap: RETRY + Flatbase up, LITE down", dict(CAP5)),
+           ("C2 5 % cap: RETRY + Flatbase up only", {k: v for k, v in CAP5.items() if v > 1}))
 for nm, size in RESIZES:
     acc = b25_sized(B[0], size)
-    per = {sl: RM.dcr_account(acc, acc.sl == sl, "ua", 2900, t0, t1, FLOWS) for sl in size}
-    tot = RM.dcr_account(acc, pd.Series(True, index=acc.index), "ua", 2900, t0, t1, FLOWS)
+    per = {sl: acc_dcr(acc, acc.sl == sl) for sl in size}
+    tot = acc_dcr(acc, pd.Series(True, index=acc.index))
     print(f"{nm}: B25 total {tot:+.3f} %/day · " + " · ".join(f"{k} {v:+.3f}" for k, v in per.items()) + f" | master total {m_sized(B[1], B[2], size):+.3f}")
 # ── CLEAN-ONLY (operator 11-04: "build the clean-only column"): scenario B with ONLY the lines whose CLEAN fills pass the DECISION_LOG 447
 # ladder (past checkpoint ∧ 95 % day range on the line's side → no haircut); a re-size counts only when its gating line passed (FRENZY_LONG's
 # DL 317 stop read is not in this view → never on here). Grows toward the full number as lines pass; equals today while none has.
 import confidence as CF
-RESIZE_GATE = {"FRENZY_WILLY": "WILLY_GAP", "FLATBASE_SHORT": "FB_CONFIRM", "MOMENTUM_LONG": "ML_MKT_HOT", "FRENZY_LONG": None}
+RESIZE_GATE = {"FRENZY_LITE_RETRY": "RETRY_BTC1H", "FLATBASE_SHORT": "FB_CONFIRM"}   # a step UP waits for its line · a step DOWN (risk cap) always counts
 _best = [(r[1], r[6]) for r in rows if r[0] == "B" and r[6]]
 CALLS = CF.line_calls([(sl, ln) for sl, combo in _best for ln in combo.split(" + ")])
 CS = ({}, set(), {})
@@ -427,12 +452,12 @@ for sl, combo in _best:
         z |= LM[sl][ln].fillna(False).astype(bool)
     CS[1].update(set(M.index[z & (M.sl == sl)]))
 print("\nCLEAN CALLS: " + " · ".join(f"{sl}:{ln} {c}" for (sl, ln), c in CALLS.items()))
-print(f"CLEAN TOTAL B: B25 real path {tb:+.3f} → {b25_dcr(allm, CS[0]):+.3f} %/day · master intended size {mt_b:+.3f} → "
+print(f"CLEAN TOTAL B: B25 one size {tb:+.3f} → {b25_dcr(allm, CS[0]):+.3f} %/day · master intended size {mt_b:+.3f} → "
       f"{m_dcr(SLEEVES, frozenset(CS[1]), CS[2])[0]:+.3f}")
 for nm, size in RESIZES:
-    sz = {sl: f for sl, f in size.items() if RESIZE_GATE.get(sl) and CALLS.get((sl, RESIZE_GATE[sl])) == "PASS"}
+    sz = {sl: f for sl, f in size.items() if f < 1 or (RESIZE_GATE.get(sl) and CALLS.get((sl, RESIZE_GATE[sl])) == "PASS")}
     acc = b25_sized(CS[0], sz)
-    print(f"CLEAN {nm.split()[0]}: B25 total {RM.dcr_account(acc, pd.Series(True, index=acc.index), 'ua', 2900, t0, t1, FLOWS):+.3f} %/day"
+    print(f"CLEAN {nm.split()[0]}: B25 total {acc_dcr(acc, pd.Series(True, index=acc.index)):+.3f} %/day"
           f" | master total {m_sized(CS[1], CS[2], sz):+.3f} · re-sized: {', '.join(sz) or 'none'}")
 # ── 🎲 LUCK TEST (DECISION_LOG 473, operator 11-05: "why not doing for every rule in watchlist?"): each best line's BUILT-ON trades
 # (master + current batch before its freeze) against the same search run on day-shuffled results (luck_test.py). LUCK-CHECKED totals =
@@ -485,23 +510,23 @@ for sl, combo in _best:
         z |= LM[sl][ln].fillna(False).astype(bool)
     LS[1].update(set(M.index[z & (M.sl == sl)]))
 print("\nLUCK CALLS: " + " · ".join(f"{sl}:{ln} {c}" for (sl, ln), c in LCALL.items()))
-print(f"LUCK TOTAL B: B25 real path {tb:+.3f} → {b25_dcr(allm, LS[0]):+.3f} %/day · master intended size {mt_b:+.3f} → "
+print(f"LUCK TOTAL B: B25 one size {tb:+.3f} → {b25_dcr(allm, LS[0]):+.3f} %/day · master intended size {mt_b:+.3f} → "
       f"{m_dcr(SLEEVES, frozenset(LS[1]), LS[2])[0]:+.3f}")
 for nm, size in RESIZES:
-    sz = {sl: f for sl, f in size.items() if not any(c == LT.LUCK for (s_, _l), c in LCALL.items() if s_ == sl)}
+    sz = {sl: f for sl, f in size.items() if f < 1 or not any(c == LT.LUCK for (s_, _l), c in LCALL.items() if s_ == sl)}   # a cap down always counts
     acc = b25_sized(LS[0], sz)
-    print(f"LUCK {nm.split()[0]}: B25 total {RM.dcr_account(acc, pd.Series(True, index=acc.index), 'ua', 2900, t0, t1, FLOWS):+.3f} %/day"
+    print(f"LUCK {nm.split()[0]}: B25 total {acc_dcr(acc, pd.Series(True, index=acc.index)):+.3f} %/day"
           f" | master total {m_sized(LS[1], LS[2], sz):+.3f} · re-sized: {', '.join(sz) or 'none'}")
 # Spike Fade size line: HEALTHY_BEAR fades at 1× (traded 2×) — alone and on top of OBS-F1
 hbA = A.sl.eq("SPIKE_FADE") & A.entry_btc_regime.astype(str).eq("HEALTHY_BEAR")
 hbM = M.sl.eq("SPIKE_FADE") & M.entry_btc_regime.astype(str).eq("HEALTHY_BEAR")
 fm = A.sl == "SPIKE_FADE"
 def fade_case(block):
-    acc = A.copy(); acc["ua"] = acc.u
+    acc = A.copy(); acc["ua"] = OS.frac(acc.pct, acc.sl.map(X))   # 📏 (503) one size
     acc.loc[hbA, "ua"] = acc.loc[hbA, "ua"] * 0.5
     if block is not None:
         acc.loc[block & fm, "ua"] = 0.0
-    return RM.dcr_account(acc, fm, "ua", 2900, t0, t1, FLOWS)
+    return acc_dcr(acc, fm)
 def fade_m(block, half):
     repl = {i: M.loc[i, "pct"] * 0.5 for i in M.index[hbM]} if half else None
     drop = frozenset(M.index[block & M.sl.eq("SPIKE_FADE")]) if block is not None else frozenset()

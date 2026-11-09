@@ -89,7 +89,7 @@ def test_wiring_best_dcr_confidence_and_report():
     src = open(os.path.join(ROOT, "scripts", "best_case", "best_dcr.py"), encoding="utf-8").read()
     assert "import luck_test as LT" in src and 'luck.csv' in src and "LUCK TOTAL B:" in src and "LUCK CALLS:" in src
     assert "!= LT.LUCK" in src                                                    # only NOT ABOVE LUCK lines are switched off
-    assert "if not any(c == LT.LUCK for (s_, _l), c in LCALL.items() if s_ == sl)" in src   # a re-size is off when its sleeve has one
+    assert "if f < 1 or not any(c == LT.LUCK for (s_, _l), c in LCALL.items() if s_ == sl)" in src   # a step UP is off when its sleeve has one; a 5 % cap DOWN always counts (DL 503)
     assert LT.R >= 2000
     import confidence as CF
     CF.LUCK.clear()
@@ -105,7 +105,7 @@ def test_wiring_best_dcr_confidence_and_report():
     CF.LUCK.clear()
     import run_best_case as RB
     txt = "\n".join(["LUCK CALLS: FRENZY_WILLY:WILLY_GAP NOT ABOVE LUCK",
-                     "LUCK TOTAL B: B25 real path -3.850 → -1.000 %/day · master intended size 1.250 → 1.300"] +
+                     "LUCK TOTAL B: B25 one size -3.850 → -1.000 %/day · master intended size 1.250 → 1.300"] +
                     [f"LUCK {k}: B25 total 0.100 %/day | master total 0.200 · re-sized: none" for k, _ in RB.SCEN if k != "TOTAL B"])
     t = RB.clean(txt, "LUCK")
     assert t["today"] == (-3.85, 1.25) and t["TOTAL B"] == (-1.0, 1.3) and "WILLY_GAP" in t["calls"]

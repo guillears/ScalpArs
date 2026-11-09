@@ -38,9 +38,10 @@ NAMES = {"FRENZY_WILLY": "WILLY", "SPIKE_FADE": "Spike Fade", "FLATBASE_SHORT": 
 LABELS = {"EXIT TP1.5": "Exit TP +1.5", "EXIT TP2": "Exit TP +2", "EXIT TP3": "Exit TP +3", "SURGE_BTC_HOT": "BTC RSI ≥ 78",
           "MKT_HOT": "Market-hot", "FB_CONFIRM": "FB_CONFIRM (live)"}
 NUM = r"([-+]?(?:\d+\.?\d*|nan|inf))"
-SCEN = [("TOTAL B", "Watch lines only"), ("C1", "+ WILLY at 8× (½ margin)"), ("C2", "+ WILLY at 10× (½ margin)"),
-        ("C3", "+ WILLY 10×, FRENZY_LONG ×5, Flatbase 0.5"), ("C4", "+ WILLY 8×, FRENZY_LONG ×5, Flatbase 0.5"),
-        ("C5", "+ WILLY 10×, FRENZY_LONG ×5, Flatbase 0.5, Momentum Long ×5"), ("C6", "+ WILLY 10×, FRENZY_LONG ×5, Flatbase 0.5, Momentum Long ×10")]
+# 📏 (DECISION_LOG 503, operator 11-08) re-size rows = the DL 502 5 % cap (one stop = 5 % of the account): RETRY / Flatbase up (above
+# breakeven), LITE down; the old WILLY 8× / 10×, FRENZY_LONG ×5, Flatbase 0.5, Momentum Long ×5 / ×10 examples are retired (WILLY and
+# FRENZY_LONG lose below breakeven — sizing them up can only lose more; Flatbase 0.5 broke the 5 % limit)
+SCEN = [("TOTAL B", "Watch lines only"), ("C1", "+ 5 % cap sizes: RETRY ↑ · Flatbase ↑ · LITE ↓"), ("C2", "+ 5 % cap, step-ups only: RETRY ↑ · Flatbase ↑")]
 
 
 def step(script, exp, *extra):
@@ -51,7 +52,7 @@ def step(script, exp, *extra):
 
 
 def totals(txt):
-    m = re.search(rf"TOTAL B: B25 real path {NUM} → {NUM} %/day · master intended size {NUM} → {NUM}", txt)
+    m = re.search(rf"TOTAL B: B25 one size {NUM} → {NUM} %/day · master intended size {NUM} → {NUM}", txt)
     if not m:
         sys.exit("best_dcr output changed: the 'TOTAL B:' line was not found — update run_best_case.totals()")
     t = {"today": (float(m[1]), float(m[3])), "TOTAL B": (float(m[2]), float(m[4]))}
@@ -66,7 +67,7 @@ def totals(txt):
 def clean(txt, tag="CLEAN"):
     """CLEAN-ONLY totals (best_dcr.py): only lines past their checkpoint with the clean 95 % range on their side (DECISION_LOG 447).
     tag LUCK → the LUCK-CHECKED totals (DECISION_LOG 473): every line whose built-on history is NOT ABOVE LUCK switched off."""
-    m = re.search(rf"{tag} TOTAL B: B25 real path {NUM} → {NUM} %/day · master intended size {NUM} → {NUM}", txt)
+    m = re.search(rf"{tag} TOTAL B: B25 one size {NUM} → {NUM} %/day · master intended size {NUM} → {NUM}", txt)
     calls = re.search(rf"^{tag} CALLS: (.*)$", txt, re.M)
     if not m or not calls:
         sys.exit(f"best_dcr output changed: the {tag} lines were not found — update run_best_case.clean()")
@@ -184,14 +185,21 @@ def main(exp, review=None):
     L = [f"# 📊 Best-case view — export {stamp}", "",
          "In-sample upper bound: every current watch line switched on from the batch start. Daily compound return, %/day.", "",
          "## ① Each sleeve with its best watch line", "",
-         "| Sleeve | Line switched on | Current batch, before → best | Master, before → best |", "|---|---|---|---|"]
+         "📏 Daily compound at ONE size — every trade at today's size, current batch and master alike (DECISION_LOG 503: the account path let "
+         "the 10-26 top-up and mid-batch size changes flip WILLY's sign). Kept Σ % = the money check (sum of per-trade % on the kept trades); "
+         "As traded = the account path, what the account really did — shown, never used to pick a line.", "",
+         "| Sleeve | Line switched on | Current batch, before → best | Master, before → best | Kept Σ %, current batch (N) | As traded, current batch |",
+         "|---|---|---|---|---|---|"]
     for r in t.sort_values("gain", ascending=False).itertuples():
         nm = NAMES.get(r.sleeve, r.sleeve)
         ln = r.lines if isinstance(r.lines, str) and r.lines else "no line helps"
         ln = " + ".join(LABELS.get(x, x) for x in ln.split(" + "))
         cur = f"{f(r.b25_before)} → **{f(r.b25_best)}**" if ln != "no line helps" else f(r.b25_before)
         mas = "no master trades" if r.m_before != r.m_before else (f"{f(r.m_before)} → {f(r.m_best)}" if ln != "no line helps" else f(r.m_before))
-        L.append(f"| {nm} | {ln}{' ¹' if getattr(r, 'basis', '') == 'pooled' else ''} | {cur} | {mas} |")
+        _ks = (f"{f(r.b25_sum_before)} → {f(r.b25_sum_best)} ({int(r.b25_n_best)})" if ln != "no line helps" else f"{f(r.b25_sum_before)} ({int(r.b25_n_best)})") \
+            if hasattr(r, "b25_sum_best") else "–"
+        _rt = (f"{f(r.b25_before_real)} → {f(r.b25_best_real)}" if ln != "no line helps" else f(r.b25_before_real)) if hasattr(r, "b25_best_real") else "–"
+        L.append(f"| {nm} | {ln}{' ¹' if getattr(r, 'basis', '') == 'pooled' else ''} | {cur} | {mas} | {_ks} | {_rt} |")
     # 🤝 (DECISION_LOG 501, operator 11-08) the pooled rule + the runner-up whenever "best on the current batch" (A) and "helps both" (B) pick different lines
     TA = pd.read_csv(os.path.join(OUT, "best_dcr.csv"))
     TA = TA[TA.scen == "A"].set_index("sleeve")
@@ -245,7 +253,7 @@ def main(exp, review=None):
     L += ["", "## ② Total, all sleeves, with re-sizing on top", "",
           "Columns 3–4 leave out the FAN flips TP +2 exit (corrected view: its only master gain is the late-June crash). "
           "CLEAN ONLY = the same scenario with only the lines that passed their checkpoint on NEW trades (95 % range on their side, "
-          "DECISION_LOG 447) — no in-sample cut needed; a re-size counts only when its line passed. It grows toward the full number as lines pass. "
+          "DECISION_LOG 447) — no in-sample cut needed; a step UP counts only when its line passed, a step DOWN (the 5 % cap) always counts. It grows toward the full number as lines pass. "
           "LUCK-CHECKED = the same scenario with every line whose built-on history is NOT ABOVE LUCK switched off (the 🎲 luck test, "
           "DECISION_LOG 473: the same search re-run on day-shuffled results) — the others still carry the 30–50 % in-sample cut; a re-size is off "
           "when any of its sleeve's lines is NOT ABOVE LUCK.", "",
@@ -254,8 +262,16 @@ def main(exp, review=None):
           "|---|---|---|---|---|---|---|---|---|",
           f"| Today | {f(ta['today'][0])} | {f(ta['today'][1])} | {f(tb['today'][0])} | {f(tb['today'][1])} | {f(tc['today'][0])} | {f(tc['today'][1])} "
           f"| {f(tl['today'][0])} | {f(tl['today'][1])} |"]
+    _at = re.search(rf"AS TRADED TODAY: B25 {NUM}", a)
+    if _at:   # 📏 (503 deep review) the account path beside the one-size totals — what the account really did
+        L.append(f"| Today, as traded (account path) | {f(float(_at[1]))} | – | – | – | – | – | – | – |")
     for k, lab in SCEN:
         L.append(f"| {lab} | {f(ta[k][0])} | {f(ta[k][1])} | {f(tb[k][0])} | {f(tb[k][1])} | {f(tc[k][0])} | {f(tc[k][1])} | {f(tl[k][0])} | {f(tl[k][1])} |")
+    _rf = re.search(r"^RESIZE FACTORS .*?: (.*)$", a, re.M)
+    if _rf:
+        L += ["", "Re-size rows (DECISION_LOG 502 / 503): each sleeve sized so ONE stop = 5 % of the account at today's size — " + _rf[1]
+              + ". Only sleeves above their breakeven WR step up; WILLY and FRENZY_LONG lose below breakeven, so sizing them up can only lose more "
+              "(the old WILLY 8× / 10×, FRENZY_LONG ×5, Flatbase 0.5 and Momentum Long ×5 / ×10 rows are retired). Every factor is all sleeves at one size."]
     L += ["", f"Clean-only lines: {npass} of {len(tc['calls'].split(' · '))} passed — {tc['calls']} "
           "(PASS = in · STRADDLE = past checkpoint, range crosses 0 · AGAINST = retire · PRE = before its checkpoint).",
           "", f"🎲 Luck test (built-on trades vs the same search on day-shuffled results; REAL p ≤ 0.05 · UNCLEAR ≤ 0.20 · NOT ABOVE LUCK > 0.20 · "
@@ -274,8 +290,10 @@ def main(exp, review=None):
     L += ["", "FAN flips row: its best line is the TP +2 exit; table ② shows the totals with and without it."]
     if tline.strip():   # (DECISION_LOG 485, operator: "add this tables to the best case view, so its only one call")
         L += ["", "## ④ Checkpoint timeline", "", tline.strip()]
-    L += ["", "Caveats: in-sample (30–50 % haircut minimum) · each re-size waits for its line's frozen read (WILLY_GAP 15 fills, "
-          "Flatbase revert gate, FRENZY_LONG DL 317, Momentum Long ML_MKT_HOT 15 fills on 8 days and a clean edge above 0 — DL 450) · master uses today's intended sizes, not the sizes traded.", ""]
+    L += ["", "Caveats: in-sample (30–50 % haircut minimum) · a step UP waits for its line's frozen read (RETRY ← RETRY_BTC1H, Flatbase ← the FB_CONFIRM revert gate); "
+          "the LITE step DOWN is a risk cap (operator call at the review); WILLY and FRENZY_LONG are never sized up while below breakeven (DL 503) · "
+          "the 5 % factors use the price stop (real stops book a little worse) and assume no Binance bracket / notional cap — RETRY at 7× would "
+          "meet the caps that already cut ≈ 35 % of LITE fills, so its step-up is an upper bound · both blocks use today's intended sizes (one size, DL 503), not the sizes traded — ① 'As traded' = the account path.", ""]
     p = os.path.join(OUT, f"BEST_CASE_{stamp}.md")
     open(p, "w").write("\n".join(L))
     print("\n".join(L))

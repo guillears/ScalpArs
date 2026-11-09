@@ -42,7 +42,8 @@ def zones(d, hot=None, late=None, cool=None):
         "SPIKE_FADE": {"① ADX not rising": ad < 2.359, "② pair ADX ≤ 19.2": ax <= 19.2, "⑤ HB ∧ ADX flat": hb & (ad <= 2.4341),
                        "⑥ HB ∧ BTC ADX high": hb & (ba > 24.5874), "OBS-F1 late weak spike": latez,
                        "NOSTRETCH": (rsi1 <= 50) & (pdi <= 45) & (ext <= 2)},
-        "FRENZY_WILLY": {"WILLY_GAP": wgap, "WILLY_ADX55": ax > 55, "MKT_HOT": hotz},
+        "FRENZY_WILLY": {"WILLY_GAP": wgap, "WILLY_ADX55": ax > 55, "MKT_HOT": hotz,
+                         "WILLY_FAILED_SPIKE": _num(d, "entry_frenzy_vs_vwap_pct") <= 0},   # DL 509 (scout_willy_failed_spike_watch)
         "FRENZY_WILLY_HT": {"WILLY_GAP": wgap, "MKT_HOT": hotz},
         "MOMENTUM_LONG": {"ML_MKT_HOT": hotz, "ML_W4": w4, "STOP_COOLDOWN": coolz,
                           "PAIR_1H_DOWNTREND": _num(d, "entry_pair_1h_ema20_200_gap_pct") <= 0},
@@ -55,4 +56,4 @@ def zones(d, hot=None, late=None, cool=None):
 
 ZONE_COLS = ("entry_btc_regime", "entry_adx_delta", "entry_adx", "entry_btc_adx_prev", "entry_pos_di", "entry_dist_from_ema13_pct",
              "entry_btc_rsi_1h", "entry_ema_gap_8_13", "entry_pattern_w4_match", "entry_pair_1h_ema20_200_gap_pct", "entry_btc_1h_slope",
-             "entry_frenzy_hours", "entry_btc_rsi", "entry_pair_volume_24h_usd")
+             "entry_frenzy_hours", "entry_btc_rsi", "entry_pair_volume_24h_usd", "entry_frenzy_vs_vwap_pct")

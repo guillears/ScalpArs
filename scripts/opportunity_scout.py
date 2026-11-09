@@ -1591,6 +1591,14 @@ def run():
     except Exception as _wgp_e:
         log(f"WILLY_GAP line failed: {_wgp_e}")
         _rg_sec += ["## 👁 WILLY_GAP", "", f"Unavailable this run ({str(_wgp_e)[:120]}).", ""]
+    try:                                               # 👁 Nov-9 WILLY_FAILED_SPIKE — WILLY dip at / below the spike VWAP + the pre-committed WILLY OFF trigger (DECISION_LOG 509; forward)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_willy_failed_spike_watch as _wvw
+        _rg_sec += _wvw.run(now_ms)
+    except Exception as _wvw_e:
+        log(f"WILLY_FAILED_SPIKE line failed: {_wvw_e}")
+        _rg_sec += ["## 👁 WILLY_FAILED_SPIKE", "", f"Unavailable this run ({str(_wvw_e)[:120]}).", ""]
     try:                                               # 👁 Oct-30 FADE_NOSTRETCH — SPIKE_FADE with no overshoot to revert, frozen expectancy bar (DECISION_LOG 413; forward)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

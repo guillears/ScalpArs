@@ -36,6 +36,7 @@ import scout_gatekit as GK  # noqa: E402
 # line → (freeze: DL number or fixed UTC time, checkpoint N, checkpoint days, backtest at registration)
 LINES = {
     "WILLY_GAP": (414, 15, 8, "disagrees (3 / 3 seeds)"),
+    "WILLY_FAILED_SPIKE": (509, 15, 8, "not run"),
     "OBS-F1 late weak spike": ("2026-10-26T15:12:00", 15, 8, "disagrees (3 / 3 seeds)"),
     "FB_CONFIRM": (417, 15, 8, "agrees, small (+1.25 → +1.30 %/trade)"),
     "EXIT TP2": (411, 20, 8, "not run (history: crash window only)"),
@@ -58,7 +59,7 @@ YARD = {"ML_MKT_HOT": "rest", "MKT_HOT": "rest",
 B25_START = pd.Timestamp("2026-10-23 18:30")   # the current batch's start (as best_dcr.B0) — the pace denominator; ⚠ update per batch
 # 🎲 (DECISION_LOG 473) was the line's theory written BEFORE its data were read? first = pre-registered (a real test) · after = a story fitted to
 # what the data showed (explains, never proves) · against = the theory frozen first predicted the opposite. Source: each line's DL entry.
-THEORY = {"WILLY_GAP": "after (EMA cut from the data, DL 414)", "OBS-F1 late weak spike": "after (W/L screen, DL 384)",
+THEORY = {"WILLY_GAP": "after (EMA cut from the data, DL 414)", "WILLY_FAILED_SPIKE": "after (W/L sweep 11-09, DL 509)", "OBS-F1 late weak spike": "after (W/L screen, DL 384)",
           "FB_CONFIRM": "after (best of the waits tried, DL 417)", "EXIT TP2": "after (best of 3 exits, DL 411)",
           "LATE_BTCFALL": "first (cut pre-registered, DL 353)", "MKT_HOT": "after (borrowed from ML_MKT_HOT)",
           "SURGE_BTC_HOT": "after (cut seen in 6 fills, DL 427)", "ML_MKT_HOT": "against (frozen H5 said the opposite, DL 416)",
@@ -70,7 +71,7 @@ REVIEW_AT = pd.Timestamp("2026-11-12 12:00")   # the next batch review (B25, ≈
 TIMELINE_MARK = "<!-- ④ checkpoint timeline -->"
 # how each line's registration search compares with the luck test's family (deep review 473: the family is not a bound either way)
 LUCK_NOTE = {"FB_CONFIRM": "search priced: confirm +5/−10 and +1/−4, waits 1–24 h, selling 1–7 % higher (DL 474); 'a move against then a 1 h close back below' not priced",
-             "WILLY_GAP": "registration searched wider: 28,545 cells", "ML_MKT_HOT": "registration searched 49 market conditions, not in this family",
+             "WILLY_GAP": "registration searched wider: 28,545 cells", "WILLY_FAILED_SPIKE": "registration searched wider: 8,320 2D + 1D cells (WILLY review 11-09)", "ML_MKT_HOT": "registration searched 49 market conditions, not in this family",
              "LONG_ADX35": "registration kept one 1D cut — the 1D p is the closer read"}
 
 

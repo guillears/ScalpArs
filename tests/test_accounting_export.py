@@ -437,3 +437,33 @@ def test_spot_quantity_keeps_small_decimals():
     z = zipfile.ZipFile(io.BytesIO(x))
     assert '<c r="B2" s="5">' in z.read("xl/worksheets/sheet1.xml").decode()                     # spot: price format (≤ 8 decimals)
     assert '<c r="A2" s="11">' in z.read("xl/worksheets/sheet2.xml").decode()                     # futures: 4 decimals
+
+
+def test_return_pct_adjusts_for_a_mid_month_withdrawal():
+    """📒 DL 508 (operator): withdrawing half the wallet mid-month must not leave the return divided by the full start balance."""
+    t = [dict(_month="2026-10", _gross=60.0, _fees=0.0, _funding=0.0, _net=60.0, _size=1000.0, _margin=100.0)]
+    lo, hi = AE.month_bounds("2026-10")
+    mid = lo + (hi - lo) // 2
+    inc = [dict(incomeType="REALIZED_PNL", tranId=1, asset="USDT", income=60.0, time=lo + 3600_000),
+           dict(incomeType="TRANSFER", tranId=2, asset="USDT", income=-500.0, time=mid)]
+    rows = {r["Month"]: r for r in AE.monthly_rows(t, inc, [], lambda a, ms: 1.0, 560.0, True)}
+    m = rows["2026-10"]
+    assert m["Start-of-month futures balance (USDT)"] == 1000.0
+    assert abs(m["Return %"] - 60 / 750) < 1e-4                    # base = 1000 − 500 × ½, not 1000
+    assert abs(rows["TOTAL"]["Return %"] - 60 / 750) < 1e-4
+    # no transfer → unchanged (net ÷ start)
+    m0 = {r["Month"]: r for r in AE.monthly_rows(t, inc[:1], [], lambda a, ms: 1.0, 1060.0, True)}["2026-10"]
+    assert abs(m0["Return %"] - 60 / 1000) < 1e-12
+    assert AE.dietz_base(None, [], 0, 1) is None and AE.dietz_base(100.0, [(0, -200.0)], 0, 10) is None
+
+
+def test_return_pct_clips_weights_to_the_period():
+    """📒 DL 508 deep review: a period starting mid-month weights transfers over [period start, month end], from the balance then."""
+    lo, hi = AE.month_bounds("2026-10")
+    p_lo = lo + (hi - lo) // 4
+    mid = p_lo + (hi - p_lo) // 2
+    t = [dict(_month="2026-10", _gross=60.0, _fees=0.0, _funding=0.0, _net=60.0, _size=1000.0, _margin=100.0)]
+    inc = [dict(incomeType="REALIZED_PNL", tranId=1, asset="USDT", income=60.0, time=p_lo + 3600_000),
+           dict(incomeType="TRANSFER", tranId=2, asset="USDT", income=400.0, time=mid)]               # a deposit half-way through the period
+    m = {r["Month"]: r for r in AE.monthly_rows(t, inc, [], lambda a, ms: 1.0, 1460.0, True, period_lo_ms=p_lo, period_hi_ms=hi)}["2026-10"]
+    assert abs(m["Return %"] - 60 / 1200) < 1e-4                    # 1000 + 400 × ½

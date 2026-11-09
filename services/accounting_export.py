@@ -142,10 +142,24 @@ def month_bounds(m: str) -> Tuple[int, int]:
     return a, b
 
 
+def dietz_base(start_bal: Optional[float], transfers: Iterable[Tuple[int, float]], lo_ms: int, hi_ms: int) -> Optional[float]:
+    """📒 (DECISION_LOG 508, operator 11-09: "make the Return % adjust for withdrawals") — the Modified Dietz capital base: the start
+    balance + every transfer into (+) / out of (−) the futures wallet weighted by the share of the span it was there,
+    (hi − t) ÷ (hi − lo). A mid-month withdrawal then lowers the base only for the days after it. None when there is no start
+    balance or the base is not positive. PURE."""
+    if start_bal is None:
+        return None
+    span = max(1, int(hi_ms) - int(lo_ms))
+    base = float(start_bal) + sum(float(a) * min(1.0, max(0.0, (int(hi_ms) - int(t)) / span)) for t, a in transfers)
+    return base if base > 0 else None
+
+
 def monthly_rows(trades: List[dict], income: List[dict], flows: List[Tuple[int, float, str]], usd, wallet_now: Optional[float],
-                 binance_ok: bool, income_from_ms: int = 0) -> List[dict]:
+                 binance_ok: bool, income_from_ms: int = 0, period_lo_ms: int = 0, period_hi_ms: Optional[int] = None) -> List[dict]:
     """sheet ② — one row per month (Argentina time) with a trade, an income row or a flow, + TOTAL. income_from_ms = the oldest instant Binance's
-    income history still holds: a month starting before it gets no check (blank), a month ending before it no balance (blank)."""
+    income history still holds: a month starting before it gets no check (blank), a month ending before it no balance (blank).
+    period_lo_ms / period_hi_ms = the period the income was filtered to — a caller that filters income MUST pass both, or the Return %
+    transfer weights use whole months (DECISION_LOG 508)."""
     tin = [r for r in income if str(r.get("incomeType")) == "TRANSFER" and str(r.get("asset") or "") in STABLES]
     months = sorted({t["_month"] for t in trades} | {month_of_ms(int(r.get("time") or 0)) for r in income}
                     | {month_of_ms(int(t)) for t, _, _ in flows})
@@ -156,6 +170,19 @@ def monthly_rows(trades: List[dict], income: List[dict], flows: List[Tuple[int, 
     usdt_in = {m: sum(_f(r.get("income")) for r in income if str(r.get("asset") or "") == "USDT"
                       and month_of_ms(int(r.get("time") or 0)) == m) for m in months}
     start = {m: (None if bal.get(m) is None or m not in checked else bal[m] - usdt_in[m]) for m in months}   # the wallet before the month's income
+    # 📒 (508) USDT transfers into (+) / out of (−) the futures wallet — the Return % base is time-weighted for them (Modified Dietz)
+    xfer = [(int(r.get("time") or 0), _f(r.get("income"))) for r in income
+            if str(r.get("incomeType")) == "TRANSFER" and str(r.get("asset") or "") == "USDT"]
+
+    def _span(m_first, m_last):
+        lo, hi = month_bounds(m_first)[0], month_bounds(m_last)[1]
+        return max(lo, int(period_lo_ms or 0)), (min(hi, int(period_hi_ms)) if period_hi_ms is not None else hi)
+
+    def _base(m_first, m_last):
+        lo, hi = _span(m_first, m_last)
+        if lo > hi:
+            return None
+        return dietz_base(start.get(m_first), [(t, a) for t, a in xfer if lo <= t <= hi], lo, hi)
     out, tot = [], dict.fromkeys(["n", "w", "l", "g", "f", "fu", "net", "bn", "dep", "wd", "tr"], 0.0)
     for m in months:
         g = [t for t in trades if t["_month"] == m]
@@ -167,15 +194,16 @@ def monthly_rows(trades: List[dict], income: List[dict], flows: List[Tuple[int, 
                  dep=dep, wd=wd, tr=tr)
         for k in tot:
             tot[k] += s[k]
-        out.append(_month_row(m, s, g, binance_ok and m in checked, start.get(m), bal.get(m)))
+        out.append(_month_row(m, s, g, binance_ok and m in checked, start.get(m), bal.get(m), _base(m, m)))
     out.append(_month_row("TOTAL", tot, trades, binance_ok and set(months) <= checked, start.get(months[0]) if months else None,
-                          bal.get(months[-1]) if months else None))
+                          bal.get(months[-1]) if months else None, _base(months[0], months[-1]) if months else None))
     return out
 
 
-def _month_row(m, s, trades, ok, start_bal, end_bal) -> dict:
-    """one summary row. Avg leverage = Σ size ÷ Σ margin (size-weighted); fees % of volume; return % = net P&L ÷ the start-of-month
-    futures balance (TOTAL: ÷ the first month's start — not compounded, transfers not netted out)."""
+def _month_row(m, s, trades, ok, start_bal, end_bal, ret_base=None) -> dict:
+    """one summary row. Avg leverage = Σ size ÷ Σ margin (size-weighted); fees % of volume; return % = net P&L ÷ the time-weighted capital
+    base (DECISION_LOG 508: the start-of-month futures balance + every transfer in / out weighted by the share of the month it was there —
+    Modified Dietz; TOTAL: the same over the whole period, not compounded)."""
     vol = sum(t.get("_size", 0.0) for t in trades)
     mar = sum(t.get("_margin", 0.0) for t in trades)
     n = int(s["n"])
@@ -187,7 +215,7 @@ def _month_row(m, s, trades, ok, start_bal, end_bal) -> dict:
             "Binance net P&L (check)": _r(s["bn"], 2) if ok else None, "Difference": _r(s["net"] - s["bn"], 2) if ok else None,
             "Deposits (USDT)": _r(s["dep"], 2), "Withdrawals (USDT)": _r(s["wd"], 2), "Net transfers into futures (USDT)": _r(s["tr"], 2),
             "Start-of-month futures balance (USDT)": _r(start_bal, 2), "End-of-month futures balance (USDT)": _r(end_bal, 2),
-            "Return %": (s["net"] / start_bal) if (start_bal and start_bal > 0) else None}
+            "Return %": (s["net"] / ret_base) if (ret_base and ret_base > 0) else None}
 
 
 def transfer_rows(income: List[dict], flows: List[Tuple[int, float, str]], lo_ms: int, hi_ms: int) -> List[dict]:
@@ -647,7 +675,7 @@ async def build_live(lo_ms: int, hi_ms: int, lev_lookup=None, rec=None, bs=None)
     bnb = await read_bnb_hourly(bs, first, hi_ms)
     usd = usd_rate(bnb, prices)
     wallet_at_end = _f(wb.get("usdt_total")) - sum(_f(r.get("income")) for r in after if str(r.get("asset") or "") == "USDT")
-    months = monthly_rows(trades, income, flows, usd, wallet_at_end, True)
+    months = monthly_rows(trades, income, flows, usd, wallet_at_end, True, period_lo_ms=lo_ms, period_hi_ms=hi_ms)
     old = ""
     s_trades, holds, lots = spot_fifo(fills, base_of, usd, balances, prices, lo_ms, hi_ms)
     xfers = transfer_rows(income, flows, lo_ms, hi_ms)
@@ -663,8 +691,10 @@ async def build_live(lo_ms: int, hi_ms: int, lev_lookup=None, rec=None, bs=None)
          [period, "Binance net P&L (check) = Binance's income history (realized P&L + commissions + funding; BNB fees at the hourly BNB "
                   "price). Difference = this file's net P&L − Binance's (funding outside a closed position, rounding).",
           "End-of-month futures balance = the USDT futures wallet at the month's last second (today's wallet less every later income row); "
-          "start-of-month = that less the month's own income. Return % = net P&L ÷ start-of-month balance (TOTAL: ÷ the first month's "
-          "start, not compounded; a period starting mid-month: the balance at the period start). Volume = Σ position size (entry side) — "
+          "start-of-month = that less the month's own income. Return % = net P&L ÷ the month's average capital: the start-of-month balance "
+          "plus each transfer into / out of futures counted for the share of the month it was there (a mid-month withdrawal lowers it only "
+          "after that day — Modified Dietz; USDT transfers only, like the balance). TOTAL: the same over the whole period, not compounded; a period starting mid-month: from the "
+          "balance at the period start. Volume = Σ position size (entry side) — "
           "fees % of volume therefore covers the round trip. Avg leverage = volume ÷ Σ margin (size-weighted)."]
          + ([old] if old else [])),
         ("Transfers", TRANSFER_COLS, xfers,

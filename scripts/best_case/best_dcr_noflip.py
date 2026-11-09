@@ -259,8 +259,16 @@ _STOP = {"FRENZY_LITE_RETRY": float(_TH.get("frenzy_stop_pct", 3.0) or 3.0), "FR
          "FLATBASE_SHORT": float(_TH.get("flatbase_stop_pct", 10.0) or 10.0)}
 CAP5 = {sl: round(OS.cap_factor(X[sl], st), 2) for sl, st in _STOP.items() if sl in X and X[sl] > 0}
 print("RESIZE FACTORS (5 % cap, one stop = 5 % of the account): " + " · ".join(f"{sl} ×{f:.2f} (stop now {X[sl] * _STOP[sl]:.1f} %)" for sl, f in CAP5.items()))
+# 📏 (DL 504, operator 11-09: "re check the other sleeves (non frenzy ones)" → "in ② only add Momentum Long") Momentum Long ×5 / ×10 —
+# Kelly- and cluster-limited, not cap-limited (one stop ≈ 0.17 % of the account; up to 4 opened within 10 min). Spike Fade (×1.4 at its cap),
+# Momentum Short and FAN flips are size WATCH lines only (CURRENT_STATE), not rows here.
+_ML_STOP = 0.70   # Momentum Long's median booked STOP loss % (DL 504, reports/SIZING_5PCT_CAP_2026-11-08.md)
+print(f"RESIZE FACTORS 2 (DL 504): MOMENTUM_LONG ×5 / ×10 (one stop now ≈ {X.get('MOMENTUM_LONG', 0) * _ML_STOP:.2f} % of the account · ×5 ≈ {5 * X.get('MOMENTUM_LONG', 0) * _ML_STOP:.2f} % · ×10 ≈ {10 * X.get('MOMENTUM_LONG', 0) * _ML_STOP:.2f} %)")
+_C3 = {**CAP5, **({"MOMENTUM_LONG": 5.0} if "MOMENTUM_LONG" in X else {})}
 RESIZES = (("C1 5 % cap: RETRY + Flatbase up, LITE down", dict(CAP5)),
-           ("C2 5 % cap: RETRY + Flatbase up only", {k: v for k, v in CAP5.items() if v > 1}))
+           ("C2 5 % cap: RETRY + Flatbase up only", {k: v for k, v in CAP5.items() if v > 1}),
+           ("C3 C1 + Momentum Long ×5", _C3),
+           ("C4 C3 with Momentum Long ×10", {**_C3, **({"MOMENTUM_LONG": 10.0} if "MOMENTUM_LONG" in X else {})}))
 for nm, size in RESIZES:
     acc = b25_sized(B[0], size)
     per = {sl: acc_dcr(acc, acc.sl == sl) for sl in size}

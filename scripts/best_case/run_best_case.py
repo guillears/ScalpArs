@@ -39,9 +39,10 @@ LABELS = {"EXIT TP1.5": "Exit TP +1.5", "EXIT TP2": "Exit TP +2", "EXIT TP3": "E
           "MKT_HOT": "Market-hot", "FB_CONFIRM": "FB_CONFIRM (live)"}
 NUM = r"([-+]?(?:\d+\.?\d*|nan|inf))"
 # 📏 (DECISION_LOG 503, operator 11-08) re-size rows = the DL 502 5 % cap (one stop = 5 % of the account): RETRY / Flatbase up (above
-# breakeven), LITE down; the old WILLY 8× / 10×, FRENZY_LONG ×5, Flatbase 0.5, Momentum Long ×5 / ×10 examples are retired (WILLY and
+# breakeven), LITE down; the old WILLY 8× / 10×, FRENZY_LONG ×5, Flatbase 0.5 examples are retired (Momentum Long ×5 / ×10 back as C3 / C4, DL 504) (WILLY and
 # FRENZY_LONG lose below breakeven — sizing them up can only lose more; Flatbase 0.5 broke the 5 % limit)
-SCEN = [("TOTAL B", "Watch lines only"), ("C1", "+ 5 % cap sizes: RETRY ↑ · Flatbase ↑ · LITE ↓"), ("C2", "+ 5 % cap, step-ups only: RETRY ↑ · Flatbase ↑")]
+SCEN = [("TOTAL B", "Watch lines only"), ("C1", "+ 5 % cap sizes: RETRY ↑ · Flatbase ↑ · LITE ↓"), ("C2", "+ 5 % cap, step-ups only: RETRY ↑ · Flatbase ↑"),
+        ("C3", "+ C1 + Momentum Long ×5"), ("C4", "+ C3 with Momentum Long ×10")]   # 📏 DL 504
 
 
 def step(script, exp, *extra):
@@ -267,11 +268,18 @@ def main(exp, review=None):
         L.append(f"| Today, as traded (account path) | {f(float(_at[1]))} | – | – | – | – | – | – | – |")
     for k, lab in SCEN:
         L.append(f"| {lab} | {f(ta[k][0])} | {f(ta[k][1])} | {f(tb[k][0])} | {f(tb[k][1])} | {f(tc[k][0])} | {f(tc[k][1])} | {f(tl[k][0])} | {f(tl[k][1])} |")
-    _rf = re.search(r"^RESIZE FACTORS .*?: (.*)$", a, re.M)
+    _rf = re.search(r"^RESIZE FACTORS \(.*?: (.*)$", a, re.M)
+    _rf2 = re.search(r"^RESIZE FACTORS 2 \(DL 504\): (.*)$", a, re.M)
     if _rf:
         L += ["", "Re-size rows (DECISION_LOG 502 / 503): each sleeve sized so ONE stop = 5 % of the account at today's size — " + _rf[1]
               + ". Only sleeves above their breakeven WR step up; WILLY and FRENZY_LONG lose below breakeven, so sizing them up can only lose more "
-              "(the old WILLY 8× / 10×, FRENZY_LONG ×5, Flatbase 0.5 and Momentum Long ×5 / ×10 rows are retired). Every factor is all sleeves at one size."]
+              "(the old WILLY 8× / 10×, FRENZY_LONG ×5 and Flatbase 0.5 rows are retired). Every factor is all sleeves at one size."]
+        if _rf2:
+            L += ["", "C3 / C4 (DECISION_LOG 504): " + _rf2[1] + ". Momentum Long is limited by its thin edge (master +0.12 %/trade, 71 % WR vs 61 % "
+                  "breakeven) and its clusters (the all-stopped ones were 3 longs — 11-06 at ×10 ≈ 6.8 % of the account), not by the 5 % cap; "
+                  "a sleeve re-size (part-reversal of DL 289), not a Pattern W cell. Its step waits for ML_MKT_HOT to PASS (deciding test ≈ Dec 26) and "
+                  "leave NOT ABOVE LUCK; 🔒 revert: first 15 ×5 fills WR < 61 % or avg < 0. Spike Fade (×1.4 at its cap), Momentum Short and FAN flips "
+                  "are size watch lines only (CURRENT_STATE), not rows here."]
     L += ["", f"Clean-only lines: {npass} of {len(tc['calls'].split(' · '))} passed — {tc['calls']} "
           "(PASS = in · STRADDLE = past checkpoint, range crosses 0 · AGAINST = retire · PRE = before its checkpoint).",
           "", f"🎲 Luck test (built-on trades vs the same search on day-shuffled results; REAL p ≤ 0.05 · UNCLEAR ≤ 0.20 · NOT ABOVE LUCK > 0.20 · "
@@ -290,7 +298,7 @@ def main(exp, review=None):
     L += ["", "FAN flips row: its best line is the TP +2 exit; table ② shows the totals with and without it."]
     if tline.strip():   # (DECISION_LOG 485, operator: "add this tables to the best case view, so its only one call")
         L += ["", "## ④ Checkpoint timeline", "", tline.strip()]
-    L += ["", "Caveats: in-sample (30–50 % haircut minimum) · a step UP waits for its line's frozen read (RETRY ← RETRY_BTC1H, Flatbase ← the FB_CONFIRM revert gate); "
+    L += ["", "Caveats: in-sample (30–50 % haircut minimum) · a step UP waits for its line's frozen read (RETRY ← RETRY_BTC1H, Flatbase ← the FB_CONFIRM revert gate, Momentum Long ← ML_MKT_HOT); "
           "the LITE step DOWN is a risk cap (operator call at the review); WILLY and FRENZY_LONG are never sized up while below breakeven (DL 503) · "
           "the 5 % factors use the price stop (real stops book a little worse) and assume no Binance bracket / notional cap — RETRY at 7× would "
           "meet the caps that already cut ≈ 35 % of LITE fills, so its step-up is an upper bound · both blocks use today's intended sizes (one size, DL 503), not the sizes traded — ① 'As traded' = the account path.", ""]

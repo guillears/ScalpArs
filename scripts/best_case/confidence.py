@@ -44,11 +44,17 @@ LINES = {
     "SURGE_BTC_HOT": (427, 15, 8, "not run"),
     "ML_MKT_HOT": (416, 15, 8, "agrees (3 / 3 seeds)"),
     "LONG_ADX35": (418, 15, 8, "disagrees (seed 1)"),
+    # (DECISION_LOG 501) RETRY_BTC1H counts from the DL 420 commit + 10 min (its scout's re-based cohort); LITE_BTC1H_RISING from DL 437 + 10 min
+    "RETRY_BTC1H": (420, 15, 8, "not run (no separate RETRY in the backtest)"),
+    "LITE_BTC1H_RISING": (437, 20, 8, "disagrees (yr6: rising the better side)"),
 }
 # (DECISION_LOG 484, operator 11-06 "why so long … maybe you are not considering trades you should") the test that DECIDES each line, from its own
 # registered gate: "rest" = blocked fills must do WORSE THAN THE KEPT ONES (ML_MKT_HOT's operator bar: P(zone < rest); WILLY_HT's Market-hot is
 # decided on the same bar, DL 416) · every other line = "money" (blocked fills must lose / the change must gain — the expectancy bar).
-YARD = {"ML_MKT_HOT": "rest", "MKT_HOT": "rest"}
+YARD = {"ML_MKT_HOT": "rest", "MKT_HOT": "rest",
+        # (DECISION_LOG 501 deep review) decided by their scout's FROZEN bar at the checkpoint (zone WR < 50 % ∧ day-bootstrap P(mean < 0) ≥ 0.95
+        # ∧ no day / pair ≥ 50 %, else retire / keep observing) — never by a size estimate from the in-sample spread (it read 234 / 73,571 trades)
+        "RETRY_BTC1H": "scout", "LITE_BTC1H_RISING": "scout"}
 B25_START = pd.Timestamp("2026-10-23 18:30")   # the current batch's start (as best_dcr.B0) — the pace denominator; ⚠ update per batch
 # 🎲 (DECISION_LOG 473) was the line's theory written BEFORE its data were read? first = pre-registered (a real test) · after = a story fitted to
 # what the data showed (explains, never proves) · against = the theory frozen first predicted the opposite. Source: each line's DL entry.
@@ -56,7 +62,8 @@ THEORY = {"WILLY_GAP": "after (EMA cut from the data, DL 414)", "OBS-F1 late wea
           "FB_CONFIRM": "after (best of the waits tried, DL 417)", "EXIT TP2": "after (best of 3 exits, DL 411)",
           "LATE_BTCFALL": "first (cut pre-registered, DL 353)", "MKT_HOT": "after (borrowed from ML_MKT_HOT)",
           "SURGE_BTC_HOT": "after (cut seen in 6 fills, DL 427)", "ML_MKT_HOT": "against (frozen H5 said the opposite, DL 416)",
-          "LONG_ADX35": "after (post-hoc cut, DL 418)"}
+          "LONG_ADX35": "after (post-hoc cut, DL 418)", "RETRY_BTC1H": "after (in-sample split, DL 415)",
+          "LITE_BTC1H_RISING": "after (mirror of the live falling read, DL 437)"}
 LUCK = {}   # (sleeve, line) → luck.csv row, filled in main() from best_dcr.py's luck test
 TL = []     # (DECISION_LOG 485) one dict per row() call — the ④ checkpoint timeline is built from the SAME numbers as ③
 REVIEW_AT = pd.Timestamp("2026-11-12 12:00")   # the next batch review (B25, ≈ Nov 12) — ④a projects to it; ⚠ update per batch (or pass a date)
@@ -84,7 +91,7 @@ def luck_cell(sleeve, line):
 
 SHOW = {"FLIP:FAN_RATIO_GATE": "FAN flips", "FRENZY_WILLY": "WILLY", "FRENZY_WILLY_HT": "WILLY_HT", "SPIKE_FADE": "Spike Fade",
         "FLATBASE_SHORT": "Flatbase", "FRENZY_LITE_RETRY": "LITE RETRY", "SURGE_LONG": "SURGE Long", "MOMENTUM_LONG": "Momentum Long",
-        "FRENZY_LONG": "FRENZY_LONG"}
+        "FRENZY_LONG": "FRENZY_LONG", "FRENZY_LITE": "LITE"}
 LABEL = {"EXIT TP2": "Exit TP +2", "MKT_HOT": "Market-hot", "SURGE_BTC_HOT": "BTC RSI ≥ 78", "ML_MKT_HOT": "Market-hot"}
 
 
@@ -214,6 +221,8 @@ def row(sleeve, line, built, clean, cdays, sign, fz, rest=None, p=(0.0, 0.0), en
         dec = ("blocked < kept: never" if nr90 == "never" else f"blocked < kept (90 %): {nr90}/side"
                + ("" if need is None else f" ({max(0, need - len(c))} more blocked · {max(0, need - clean_rest)} more kept)"))
         more = None if need is None else max(0, need - len(c))
+    elif yard == "scout":
+        dec, more = "its scout's frozen bar, read once at the checkpoint", 0
     else:
         dec = ("adds money: can't be sized yet (no built-on spread)" if nd == "–" else f"adds money: {nd}" + ("" if gap == "–" else f" ({gap})"))
         more = None if gap == "–" else max(0, int(nd) - len(c))
@@ -323,7 +332,8 @@ def timeline(tl, review_at, share):
         a.append(f"| {LABEL.get(r['line'], r['line'])} ({SHOW.get(r['sleeve'], r['sleeve'])}) | {r['n']} / {r['days']} | {tp:.2f} / day | "
                  f"~{ne:.0f} / ~{de:.0f} | {r['n_min']} / {r['d_min']} | **{r['cp']}** | {fmt(share.get(r['sleeve'], 0.0))} |")
     b = ["", "### ④b What each line needs to be decided", "",
-         "Deciding test = the one the line's own gate uses (blocked < kept at 90 % for the Market-hot lines, adds money for the rest). ✓ / ✗ = the "
+         "Deciding test = the one the line's own gate uses (blocked < kept at 90 % for the Market-hot lines, the scout's frozen bar read once at the "
+         "checkpoint for RETRY_BTC1H / LITE_BTC1H_RISING, adds money for the rest). ✓ / ✗ = the "
          "clean trades so far point the line's way or not (Market-hot lines: blocked vs kept). Dates are projections — zone trades come in bursts.", "",
          "| Line (sleeve) | Line's gain | Clean so far | Deciding test: trades needed | Checkpoint ≈ | Decided ≈ |", "|---|---|---|---|---|---|"]
     for r in rows:

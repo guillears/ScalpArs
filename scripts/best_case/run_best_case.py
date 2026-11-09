@@ -2,7 +2,8 @@
 """📊 BEST-CASE VIEW (operator 2026-11-03: "how do we name them … to ask again this quick view").
 
 Two tables, in-sample upper bound — every current watch line switched on from the batch start:
-  ① each sleeve with its best line ("helps both": never worse on the current batch NOR on master), daily compound before → best
+  ① each sleeve with its best line ("helps both": never worse on the current batch NOR on master — or, when the line
+     changes fewer than 5 master trades, never worse on master + current batch POOLED, DECISION_LOG 501), daily compound before → best
   ② total, all sleeves, with the re-size ideas on top (DECISION_LOG 430), with and without the FAN flip TP +2 exit
      (TP +2's only master gain is the late-June crash window — the "no flip TP+2" columns are the corrected view), and CLEAN ONLY
      (only lines past their checkpoint on new trades, DECISION_LOG 447 — the number without the in-sample cut; DECISION_LOG 453).
@@ -190,7 +191,29 @@ def main(exp, review=None):
         ln = " + ".join(LABELS.get(x, x) for x in ln.split(" + "))
         cur = f"{f(r.b25_before)} → **{f(r.b25_best)}**" if ln != "no line helps" else f(r.b25_before)
         mas = "no master trades" if r.m_before != r.m_before else (f"{f(r.m_before)} → {f(r.m_best)}" if ln != "no line helps" else f(r.m_before))
-        L.append(f"| {nm} | {ln} | {cur} | {mas} |")
+        L.append(f"| {nm} | {ln}{' ¹' if getattr(r, 'basis', '') == 'pooled' else ''} | {cur} | {mas} |")
+    # 🤝 (DECISION_LOG 501, operator 11-08) the pooled rule + the runner-up whenever "best on the current batch" (A) and "helps both" (B) pick different lines
+    TA = pd.read_csv(os.path.join(OUT, "best_dcr.csv"))
+    TA = TA[TA.scen == "A"].set_index("sleeve")
+    if "basis" in t and (t.basis == "pooled").any():
+        _mm = re.search(r"master changes only \d+ fill\(s\) < (\d+)", a)
+        _pl = " · ".join(f"{NAMES.get(r.sleeve, r.sleeve)}: master {f(r.m_before)} → {f(r.m_best)} on {int(r.m_changed)} trade(s)"
+                         for r in t[t.basis == "pooled"].itertuples())
+        L += ["", f"¹ Picked on master + current batch POOLED: the line changes fewer than {_mm[1] if _mm else '?'} master trades, so master "
+                  f"alone has no veto (DECISION_LOG 501: a handful of master trades must not outvote the current batch) — {_pl}. "
+                  "In-sample view only: this rule never feeds a ship or arm decision."]
+    alt = []
+    for r in t.itertuples():
+        if r.sleeve in TA.index:
+            ra = TA.loc[r.sleeve]   # (never `a` / `b`: main() keeps best_dcr's printed output in those)
+            la, lb = (ra.lines if isinstance(ra.lines, str) else ""), (r.lines if isinstance(r.lines, str) else "")
+            if la != lb and la:
+                mas = "no master trades" if ra.m_before != ra.m_before else f"{f(ra.m_before)} → {f(ra.m_best)}"
+                alt.append(f"| {NAMES.get(r.sleeve, r.sleeve)} | {' + '.join(LABELS.get(x, x) for x in la.split(' + '))} | "
+                           f"{f(ra.b25_before)} → {f(ra.b25_best)} | {mas} |")
+    if alt:
+        L += ["", "Runner-up — the line that is best on the current batch alone, where it differs from ① (it fails ①'s master / pooled check):", "",
+              "| Sleeve | Line | Current batch, before → best | Master, before → best |", "|---|---|---|---|"] + alt
     H = pd.read_csv(os.path.join(OUT, "best_hold.csv")).set_index("sleeve")
     L += ["", "## ①b Hold time and trades per day, before → best", "",
           "Same best line as ①. Hold = average time from entry to exit; an exit line holds to its own exit (FAN flips TP +2: first touch of "

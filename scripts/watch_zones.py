@@ -46,7 +46,7 @@ def zones(d, hot=None, late=None, cool=None):
         "FRENZY_WILLY_HT": {"WILLY_GAP": wgap, "MKT_HOT": hotz},
         "MOMENTUM_LONG": {"ML_MKT_HOT": hotz, "ML_W4": w4, "STOP_COOLDOWN": coolz,
                           "PAIR_1H_DOWNTREND": _num(d, "entry_pair_1h_ema20_200_gap_pct") <= 0},
-        "FRENZY_LITE": {"LITE_LATE_BTCFALL": (fh >= 12) & (b1h <= 0)},
+        "FRENZY_LITE": {"LITE_LATE_BTCFALL": (fh >= 12) & (b1h <= 0), "LITE_BTC1H_RISING": b1h > 0},   # RISING: DL 437 (scout_lite_btc1h_rising_watch)
         "FRENZY_LITE_RETRY": {"RETRY_BTC1H": b1h <= 0, "LATE_BTCFALL": (fh >= 12) & (b1h <= 0)},
         "FRENZY_LONG": {"LONG_ADX35": ax > 35},
         "SURGE_LONG": {"SURGE_BTC_HOT": _num(d, "entry_btc_rsi") >= 78, "SURGE_THIN": _num(d, "entry_pair_volume_24h_usd") < 150e6},

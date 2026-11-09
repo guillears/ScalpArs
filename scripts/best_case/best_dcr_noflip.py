@@ -139,6 +139,11 @@ def m_dcr(sl_list, drop_idx=frozenset(), repl=None):
 def stat(g): return f"{len(g)} · {(g>0).mean():.0%} · {g.mean():+.2f}" if len(g) else "0"
 rows = []
 SCEN = {"A": ({}, set(), {}), "B": ({}, set(), {})}
+# 🤝 (DECISION_LOG 501, operator 2026-11-08: "if we see master and current as a whole batch of continuous trading, RETRY_BTC1H seems better") "helps both" gives
+# master a veto only when master has enough trades to mean something: a combo that changes < MASTER_MIN_CHANGED master fills is judged on
+# master + current batch POOLED (Σ % per fill over the kept fills of both, today's exits) instead — 2 master fills must not outvote 19.
+MASTER_MIN_CHANGED = 5
+BASIS, NCHG = {}, {}
 print(f"Market-hot read complete={complete} · X (notional/account) = " + ", ".join(f"{k} {v:.2f}" for k, v in X.items()))
 for sl in SLEEVES:
     msk = A.sl == sl
@@ -165,15 +170,25 @@ for sl in SLEEVES:
             else:
                 dm = m_dcr([sl], frozenset(), mrep)[0] if mrep else mb
             kept = [v for i, v in aft.items() if v is not None] + [A.loc[i, "pct"] for i in A.index[msk] if i not in aft]
-            res.append((d, combo, dm, len(kept)))
+            _mg = M.index[M.sl == sl]
+            _mdrop = set(M.index[z & (M.sl == sl)]) if blk else set()
+            _mv = {i: (float(mrep[i]) if mrep else float(M.at[i, "pct"])) for i in _mg if i not in _mdrop}
+            _nch = len(_mdrop) + sum(1 for i, v in _mv.items() if not (abs(v - float(M.at[i, "pct"])) <= 1e-9))   # NaN → value counts as changed (review)
+            res.append((d, combo, dm, len(kept), _nch, float(np.nansum(kept)) + float(np.nansum(list(_mv.values())))))
             if r == 1:
                 print(f"   {combo[0]:<26} B25 DCR {before:+.3f} → {d:+.3f} · kept {len(kept)}/{msk.sum()}   master {mb:+.3f} → {dm:+.3f}")
-    res.append((before, (), mb, int(msk.sum())))   # "keep as is" is always an option
+    _pool0 = float(np.nansum(A[msk].pct)) + float(np.nansum(M[M.sl == sl].pct))
+    res.append((before, (), mb, int(msk.sum()), 0, _pool0))   # "keep as is" is always an option
+    _mok = lambda x: x[2] != x[2] or x[2] >= mb - 1e-9
+    _pok = lambda x: x[4] < MASTER_MIN_CHANGED and x[5] >= _pool0 - 1e-9
     if len(lines) == 0:
         print("   (no current watch line)")
-    for tag, pool in (("A", res), ("B", [x for x in res if (x[2] != x[2] or x[2] >= mb - 1e-9) and x[0] >= before - 1e-9])):
-        d, combo, dm, nk = max(pool, key=lambda x: x[0])
-        print(f"   ★ {tag} {'best on B25' if tag == 'A' else 'helps both'}: {' + '.join(combo) or 'no line'} → B25 {before:+.3f} → {d:+.3f} · master {mb:+.3f} → {dm:+.3f}")
+    for tag, pool in (("A", res), ("B", [x for x in res if (_mok(x) or _pok(x)) and x[0] >= before - 1e-9])):
+        d, combo, dm, nk, nch, pl = max(pool, key=lambda x: x[0])
+        BASIS[(tag, sl)] = "" if tag == "A" or not combo or _mok((d, combo, dm)) else "pooled"
+        NCHG[(tag, sl)] = nch
+        _why = f" (pooled: master changes only {nch} fill(s) < {MASTER_MIN_CHANGED} → master + current batch Σ {_pool0:+.2f} → {pl:+.2f} %)" if BASIS[(tag, sl)] else ""
+        print(f"   ★ {tag} {'best on B25' if tag == 'A' else 'helps both'}: {' + '.join(combo) or 'no line'} → B25 {before:+.3f} → {d:+.3f} · master {mb:+.3f} → {dm:+.3f}{_why}")
         rows.append((tag, sl, before, d, mb, dm, " + ".join(combo)))
         exs = [c[5:] for c in combo if c.startswith("EXIT ")]; ex = exs[0] if exs else None
         blk = [c for c in combo if c != "FB_CONFIRM" and not c.startswith("EXIT ")]
@@ -192,7 +207,8 @@ for tag in ("A", "B"):
 # without WILLY's B25 (the biggest single driver): does the rest still move?
 nw = A.sl != "FRENZY_WILLY"
 print(f"TOTAL B ex-WILLY B25: {b25_dcr(nw, {}):+.3f} → {b25_dcr(nw, {i: v for i, v in SCEN['B'][0].items() if A.loc[i, 'sl'] != 'FRENZY_WILLY'}):+.3f}")
-pd.DataFrame(rows, columns=["scen", "sleeve", "b25_before", "b25_best", "m_before", "m_best", "lines"]).to_csv(os.path.join(SC, "best_dcr_noflip.csv"), index=False)
+pd.DataFrame(rows, columns=["scen", "sleeve", "b25_before", "b25_best", "m_before", "m_best", "lines"]).assign(
+    basis=[BASIS.get((r[0], r[1]), "") for r in rows], m_changed=[NCHG.get((r[0], r[1]), 0) for r in rows]).to_csv(os.path.join(SC, "best_dcr_noflip.csv"), index=False)
 
 # ── re-sizing on top of scenario B (operator 11-02): WILLY with GAP → 8× / 10× · FRENZY_LONG invest 0.2 → 1.0 (×5) · FLATBASE 0.2 → 0.5 (×2.5)
 def b25_sized(after, size):

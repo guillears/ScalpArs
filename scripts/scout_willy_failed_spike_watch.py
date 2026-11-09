@@ -8,9 +8,11 @@ EVIDENCE   (in-sample, NEVER counted; reports/WILLY_REVIEW_2026-11-09.md) master
            daily compound (one size) +1.73 → +2.00; B25 33 · 48 % · −1.33 → 11 · 82 % · +0.21, −1.52 → +0.07. Pooled zone 45 · 53 % · −1.05
            on 26 days, P(mean < 0) 0.99. AGAINST: found by the 11-09 sweep (8,320 2D + 1D cells; luck search p 0.70 → NOT ABOVE LUCK); master
            alone does not separate (zone 23 · 74 % · −0.05); knife-edge cut (B25 kept −0.14 / +0.21 / −0.67 at −0.25 / 0 / +0.25). → observe only.
-COHORT     CLOSED FRENZY_WILLY fills only (WILLY_HT never pooled; it was not studied) from the orders exports (export_glob: Downloads +
+COHORT     CLOSED FRENZY_WILLY and FRENZY_WILLY_HT fills, each read and decided SEPARATELY (never pooled; HT added by DL 511 after the
+           pre-registered theory test: B25 zone 29 · 62 % · −0.31 vs rest 6 · 83 % · +3.00, no master — TOO FEW, so observe; HT counts from the
+           DL 511 commit + 10 min, WILLY from DL 509), from the orders exports (export_glob: Downloads +
            exports_archive/), dedup (opened_at[:19], pair, entry_strategy) — CLOSED beats OPEN, newest export wins; operator-closed out (scout_gatekit).
-           COUNTED: opened ≥ the DECISION_LOG 509 commit + 10 min (forward only). rest = stamp present and > 0 · stamp missing → UNSCORED.
+           COUNTED: opened ≥ the DECISION_LOG 509 commit + 10 min (WILLY_HT: ≥ the DL 511 commit + 10 min) — forward only. rest = stamp present and > 0 · stamp missing → UNSCORED.
 FROZEN BAR the WILLY_GAP bar (DL 414), never re-fit: at the first prefix where the ZONE reaches N ≥ 15 on ≥ 8 UTC days, decided ONCE —
            ① zone avg ≥ rest avg, OR zone avg ≥ 0 → RETIRED; ② else FILTER CANDIDATE (operator decides; never automatic) iff zone WR < 69.0 %
            ∧ day-bootstrap P(mean < 0) ≥ 0.95 ∧ no single day / pair ≥ 50 % of the zone's gross loss; ③ else KEEP OBSERVING. Pinned to the V2b
@@ -37,7 +39,8 @@ import scout_b1h_negflank as NF    # noqa: E402  (day-bootstrap, gross-loss shar
 import scout_willy_gap_watch as WG  # noqa: E402  (the WILLY_GAP zone cuts, for the off trigger — one definition)
 
 DL = 509
-SLEEVES = ("FRENZY_WILLY",)
+SLEEVES = ("FRENZY_WILLY", "FRENZY_WILLY_HT")   # each read and decided SEPARATELY (never pooled); HT added by DL 511, counted from ITS commit
+HT_DL = 511
 VWAP_CUT = 0.0
 MIN_VWAP_KEPT = 5
 N_MIN, DAYS_MIN = 15, 8
@@ -66,11 +69,11 @@ GAP_STATE = os.path.join(_ROOT, "reports", "SCOUT_WILLY_GAP.json")
 EXPORT_GLOB = os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")
 COLS = ("opened_at", "closed_at", "pair", "direction", "entry_strategy", "status", "pnl_percentage", "pnl", "close_reason", ZONE_COL, "entry_adx", "entry_ema_gap_8_13")
 CANDIDATE = "FILTER CANDIDATE (operator decides; never automatic)"
-REGISTRATION = "in-sample at registration (NEVER counted): pooled zone 45 · 53 % · −1.05 vs kept 26 · 88 %; master 38 → 15 kept, +1.73 → +2.00 %/day; B25 33 → 11 kept, −1.52 → +0.07; luck search p 0.70 (NOT ABOVE LUCK); master alone does not separate"
+REGISTRATION = "in-sample at registration (NEVER counted): pooled zone 45 · 53 % · −1.05 vs kept 26 · 88 %; master 38 → 15 kept, +1.73 → +2.00 %/day; B25 33 → 11 kept, −1.52 → +0.07; luck search p 0.70 (NOT ABOVE LUCK); master alone does not separate · WILLY_HT (DL 511, B25 only, no master): zone 29 · 62 % · −0.31 vs rest 6 · 83 % · +3.00"
 
 
 def load(paths=None):
-    """→ (closed WILLY fills — dedup, CLOSED beats OPEN, newest export wins —, the newest read export's download time or None)."""
+    """→ (closed WILLY / WILLY_HT fills — dedup, CLOSED beats OPEN, newest export wins —, the newest read export's download time or None)."""
     fr, read = [], []
     for f in (_EG.glob_exports(EXPORT_GLOB) if paths is None else paths):
         try:
@@ -162,9 +165,15 @@ def run(now_ms=None, paths=None, state_path=STATE, since_ms=None):
     keep, ox = _GK.split_operator_closed(c) if len(c) else (c, c)
     st, ok = NF.du_load_state(state_path, now_ms) if state_path else ({}, True)
     changed, cap = False, cap_minutes()
-    L += [f"Cohort: CLOSED fills opened ≥ {since:%Y-%m-%d %H:%M} UTC ({'DL ' + str(DL) + ' commit + 10 min' if since_given is None else 'floor given'}) · zone = {ZONE_COL} ≤ {VWAP_CUT:g} · WILLY only · {_GK.operator_closed_line(ox)}.", ""]
+    L += [f"Cohort: CLOSED fills opened ≥ {since:%Y-%m-%d %H:%M} UTC ({'DL ' + str(DL) + ' commit + 10 min' if since_given is None else 'floor given'}) · zone = {ZONE_COL} ≤ {VWAP_CUT:g} · WILLY and WILLY_HT decided separately (HT from the DL {HT_DL} commit + 10 min) · {_GK.operator_closed_line(ox)}.", ""]
+    ht_since = (_GK.dl_deploy_ms(HT_DL, lag_min=10, label="WILLY_FAILED_SPIKE (WILLY_HT) watch line") if since_given is None else since_ms)
     for es in SLEEVES:
         s = keep[keep.entry_strategy.astype(str) == es] if len(keep) else keep
+        if es == "FRENZY_WILLY_HT":
+            if ht_since is None:
+                L += [f"### {es}", "", f"⚠ NOT EVALUABLE — the DECISION_LOG {HT_DL} commit is not in git yet; nothing is counted for WILLY_HT.", ""]
+                continue
+            s = s[s.o >= pd.Timestamp(int(ht_since), unit="ms")] if len(s) else s
         sc = s[s.zone != "unscored"] if len(s) else s
         zone, rest = sc[sc.zone == "zone"], sc[sc.zone == "rest"]
         uns = s[s.zone == "unscored"] if len(s) else s

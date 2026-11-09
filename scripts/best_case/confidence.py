@@ -49,6 +49,17 @@ LINES = {
     "RETRY_BTC1H": (420, 15, 8, "not run (no separate RETRY in the backtest)"),
     "LITE_BTC1H_RISING": (437, 20, 8, "disagrees (yr6: rising the better side)"),
 }
+# (DECISION_LOG 511) a line registered for one sleeve and LATER added to another counts that sleeve from its own commit (never the first one's)
+FREEZE_BY_SLEEVE = {("FRENZY_WILLY_HT", "WILLY_FAILED_SPIKE"): 511}
+THEORY_BY_SLEEVE = {("FRENZY_WILLY_HT", "WILLY_FAILED_SPIKE"): "first (pre-registered transfer test, DL 511)"}
+LUCK_NOTE_BY_SLEEVE = {("FRENZY_WILLY_HT", "WILLY_FAILED_SPIKE"): "cut fixed on WILLY; one pre-registered HT test — the single-test p is the closer read"}
+
+
+def freeze_spec(line, sleeve=None):
+    """the freeze (DL number or UTC time) of a line for a sleeve: the per-sleeve override first, else LINES[line][0]."""
+    return FREEZE_BY_SLEEVE.get((sleeve, line), LINES[line][0])
+
+
 # (DECISION_LOG 484, operator 11-06 "why so long … maybe you are not considering trades you should") the test that DECIDES each line, from its own
 # registered gate: "rest" = blocked fills must do WORSE THAN THE KEPT ONES (ML_MKT_HOT's operator bar: P(zone < rest); WILLY_HT's Market-hot is
 # decided on the same bar, DL 416) · every other line = "money" (blocked fills must lose / the change must gain — the expectancy bar).
@@ -81,7 +92,8 @@ def luck_cell(sleeve, line):
         return "not run"
     if r["verdict"] == "TOO FEW":
         return f"too few to test ({int(r['n'])} trades before the freeze)"
-    note = f" ({LUCK_NOTE[line]})" if line in LUCK_NOTE else ""
+    _n = LUCK_NOTE_BY_SLEEVE.get((sleeve, line), LUCK_NOTE.get(line))
+    note = f" ({_n})" if _n else ""
     dr = r.get("dropped", 0)
     if dr == dr and dr:
         note += f" · {int(dr)} trade(s) left out: an alternative unpriced"
@@ -243,7 +255,7 @@ def row(sleeve, line, built, clean, cdays, sign, fz, rest=None, p=(0.0, 0.0), en
                    p=p, n_min=n_min, d_min=d_min, cp=when_cp, dec=dec, decided=when_dec, end=end))
     return (f"| {SHOW.get(sleeve, sleeve)} | {LABEL.get(line, line)} | {measure} | {fzs} | {bs} | {cs} | {len(c)}/{n_min} trades, "
             f"{len(set(cdays))}/{d_min} days | {boot(c.values, cdays.values)} | **{dec}** | {p[0]:.2f} trades/day | {when_cp} | {when_dec} | "
-            f"{nd} ({gap}) | {nr} | {bt} | {THEORY.get(line, '–')} | {luck_cell(sleeve, line)} |")
+            f"{nd} ({gap}) | {nr} | {bt} | {THEORY_BY_SLEEVE.get((sleeve, line), THEORY.get(line, '–'))} | {luck_cell(sleeve, line)} |")
 
 
 def inputs():
@@ -263,7 +275,7 @@ def inputs():
 
 def clean_cohort(line, sleeve, Z, fb, fx):
     """→ (clean values, their days, sign) — current-batch fills opened ≥ the line's freeze; nothing counts before the freeze is in git."""
-    fz = freeze_ts(LINES[line][0])
+    fz = freeze_ts(freeze_spec(line, sleeve))
     if line == "FB_CONFIRM":
         g, v, sign = fb, "d", +1
         cl = g.iloc[0:0] if fz is None else g[g.o >= fz]
@@ -365,7 +377,7 @@ def main():
             if line not in LINES:
                 rows.append((0, f"| {SHOW.get(r.sleeve, r.sleeve)} | {line} | – | – | – | – | no freeze registered | – | – | – | – | – | – | – | – | – | {luck_cell(r.sleeve, line)} |"))
                 continue
-            fz = freeze_ts(LINES[line][0])
+            fz = freeze_ts(freeze_spec(line, r.sleeve))
             g = Z[(Z.sl == r.sleeve) & Z[line].fillna(False).astype(bool)]
             if fz is None:                                  # freeze commit not found → nothing counts as clean
                 pre, cl = g, g.iloc[0:0]

@@ -33,7 +33,7 @@ def _write(tmp_path, df, stamp="2026-12-30_00-00-00"):
 
 def test_frozen_constants_and_gitignore():
     assert (V.DL, V.VWAP_CUT, V.N_MIN, V.DAYS_MIN, V.BE_WR, V.P_MIN, V.SHARE_MAX, V.MIN_VWAP_KEPT) == (509, 0.0, 15, 8, 0.690, 0.95, 0.50, 5)
-    assert V.SLEEVES == ("FRENZY_WILLY",) and V.ZONE_COL == "entry_frenzy_vs_vwap_pct"
+    assert V.SLEEVES == ("FRENZY_WILLY", "FRENZY_WILLY_HT") and V.HT_DL == 511 and V.ZONE_COL == "entry_frenzy_vs_vwap_pct"
     assert "reports/SCOUT_WILLY_FAILED_SPIKE.json" in open(os.path.join(ROOT, ".gitignore")).read().split("\n")
 
 
@@ -41,8 +41,12 @@ def test_zone_boundary_unscored_and_willy_only(tmp_path):
     df = pd.concat([_fills([(0, "AUSDT", 0.0, 30, 1.0), (0, "BUSDT", 0.01, 30, 1.0), (0, "CUSDT", None, 30, 1.0)]),
                     _fills([(0, "DUSDT", -1.0, 30, -4.0)], es="FRENZY_WILLY_HT")])
     c, _ = V.load(_write(tmp_path, df))
-    assert dict(zip(c.pair, c.zone)) == {"AUSDT": "zone", "BUSDT": "rest", "CUSDT": "unscored"}      # 0 itself = zone; HT out
-    assert dict(zip(c.pair, c.gap_zone)) == {"AUSDT": "rest", "BUSDT": "rest", "CUSDT": "rest"}
+    assert dict(zip(c.pair, c.zone)) == {"AUSDT": "zone", "BUSDT": "rest", "CUSDT": "unscored", "DUSDT": "zone"}   # 0 itself = zone; HT in (DL 511)
+    assert dict(zip(c.pair, c.gap_zone)) == {"AUSDT": "rest", "BUSDT": "rest", "CUSDT": "rest", "DUSDT": "rest"}
+    out = "\n".join(V.run(now_ms=int((T0 + pd.Timedelta(days=30)).value // 10**6), paths=_write(tmp_path, df), state_path=None,
+                         since_ms=int(T0.value // 10**6)))
+    assert "### FRENZY_WILLY_HT" in out and out.count("| **zone** | 1 |") == 2          # each sleeve its own table, never pooled
+    assert WZ.zones(pd.DataFrame(dict(entry_frenzy_vs_vwap_pct=[-1.0])))["FRENZY_WILLY_HT"]["WILLY_FAILED_SPIKE"].tolist() == [True]
 
 
 def test_verdicts(tmp_path):
@@ -100,3 +104,17 @@ def test_off_trigger_reads_gap_state_without_side_effects_and_freezes_once(tmp_p
     open(own, "w").write("{broken")                                                                  # own state corrupt → not frozen, said so
     out = "\n".join(V.off_trigger(now, paths, gap_state=gap, state_path=own, gap_since=since, vw_since=since))
     assert "own state corrupt" in out
+
+
+def test_ht_counts_from_its_own_commit_and_best_case_freeze(tmp_path, monkeypatch):
+    """DL 511: an HT fill between the 509 and 511 floors is NOT counted; WILLY's is. The best case freezes HT at 511 too."""
+    f509, f511 = T0, T0 + pd.Timedelta(days=2)
+    monkeypatch.setattr(V._GK, "dl_deploy_ms", lambda dl, **k: int((f509 if dl == 509 else f511 if dl == 511 else T0).value // 10**6))
+    df = pd.concat([_fills([(1, "AUSDT", -1.0, 30, -4.0)]), _fills([(1, "BUSDT", -1.0, 30, -4.0)], es="FRENZY_WILLY_HT"),
+                    _fills([(3, "CUSDT", -1.0, 30, -4.0)], es="FRENZY_WILLY_HT")])
+    out = "\n".join(V.run(now_ms=int((T0 + pd.Timedelta(days=30)).value // 10**6), paths=_write(tmp_path, df), state_path=None))
+    w, h = out.split("### FRENZY_WILLY_HT")
+    assert "| **zone** | 1 |" in w.split("### FRENZY_WILLY")[1] and "| **zone** | 1 |" in h      # HT: day 1 out, day 3 in
+    sys.path.insert(0, os.path.join(ROOT, "scripts", "best_case"))
+    import confidence as CF
+    assert CF.freeze_spec("WILLY_FAILED_SPIKE", "FRENZY_WILLY_HT") == 511 and CF.freeze_spec("WILLY_FAILED_SPIKE", "FRENZY_WILLY") == 509

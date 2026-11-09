@@ -44,7 +44,8 @@ def zones(d, hot=None, late=None, cool=None):
                        "NOSTRETCH": (rsi1 <= 50) & (pdi <= 45) & (ext <= 2)},
         "FRENZY_WILLY": {"WILLY_GAP": wgap, "WILLY_ADX55": ax > 55, "MKT_HOT": hotz,
                          "WILLY_FAILED_SPIKE": _num(d, "entry_frenzy_vs_vwap_pct") <= 0},   # DL 509 (scout_willy_failed_spike_watch)
-        "FRENZY_WILLY_HT": {"WILLY_GAP": wgap, "MKT_HOT": hotz},
+        "FRENZY_WILLY_HT": {"WILLY_GAP": wgap, "MKT_HOT": hotz,
+                            "WILLY_FAILED_SPIKE": _num(d, "entry_frenzy_vs_vwap_pct") <= 0},   # DL 511
         "MOMENTUM_LONG": {"ML_MKT_HOT": hotz, "ML_W4": w4, "STOP_COOLDOWN": coolz,
                           "PAIR_1H_DOWNTREND": _num(d, "entry_pair_1h_ema20_200_gap_pct") <= 0},
         "FRENZY_LITE": {"LITE_LATE_BTCFALL": (fh >= 12) & (b1h <= 0), "LITE_BTC1H_RISING": b1h > 0},   # RISING: DL 437 (scout_lite_btc1h_rising_watch)

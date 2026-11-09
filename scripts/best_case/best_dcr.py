@@ -476,7 +476,7 @@ import luck_test as LT
 LROWS = []
 for sl, combo in _best:
     for ln in combo.split(" + "):
-        fz = CF.freeze_ts(CF.LINES[ln if not ln.startswith("EXIT ") else "EXIT TP2"][0]) if (ln in CF.LINES or ln.startswith("EXIT ")) else None
+        fz = CF.freeze_ts(CF.freeze_spec(ln if not ln.startswith("EXIT ") else "EXIT TP2", sl)) if (ln in CF.LINES or ln.startswith("EXIT ")) else None
         if ln == "FB_CONFIRM":
             g = FB.assign(o=pd.to_datetime(FB.k, format="mixed"))
             g = g if fz is None else g[g.o < fz]

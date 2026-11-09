@@ -24,7 +24,7 @@ You are the technical owner (engineering) **and** the quant analyst. The user is
 - **Dual-review gate (Sep-8, operator-locked):** EVERY commit runs ① caveman review (terse findings pass) AND ② deep review (thorough verification pass) before the diff is shown; findings from both applied pre-commit. No exceptions for 'simple' changes.
 - **Regression suite gate (Sep-8):** `venv/bin/pytest tests/ -q` must be GREEN before every commit (pure-math money cores: sizing/reserve, exit ladder, NAV/pro-rata, flow classification, cache-key preservation, fee sync, slip math; ~1s, no network). A new money-math ship adds its invariants to `tests/`.
 - Commit directly to `main` (AWS auto-deploys on push). **Always include `trading_config.json`** in any push (else UI settings get overwritten). **Never rebuild the EB environment** (use restart).
-- End commit messages with: `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`
+- End commit messages with: `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`
 
 ## Quant discipline (anti-overfit — non-negotiable)
 - **Cross-batch dedup key = `(opened_at, pair, direction)`; CLOSED only; NEVER use `id`** (it resets on paper reset). Pool: `scripts/build_unified_pool.py` → `reports/dedupe_pool.csv`.

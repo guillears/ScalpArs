@@ -1620,6 +1620,7 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
             "reserve_mode": _rmode,
             "sizing_equity": round(balance + used_margin, 2),               # ⚖️ engine sizing base (USDT free + open margin = open_position's total_portfolio)
             "fee_reserve_burn_usd": round(_fee_reserve_burn_leg(), 2),       # ⚖️ the burn leg the Sleeve Sizing preview cannot compute client-side
+            "capital_use": await _capital_use_now(db, balance + used_margin, _tradeable, True),   # 💧 (DECISION_LOG 507) idle capital (caps)
             "is_paper": True
         }
     else:
@@ -1708,6 +1709,7 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
             "spot_total": spot['total'] if spot else None,
             "sizing_equity": round(float(usdt_free or 0.0) + sum(float(o.investment or 0.0) for o in _live_open), 2),   # ⚖️ engine sizing base (USDT free + DB open margin = open_position's total_portfolio)
             "fee_reserve_burn_usd": round(_fee_reserve_burn_leg(), 2),
+            "capital_use": await _capital_use_now(db, float(usdt_free or 0.0) + sum(float(o.investment or 0.0) for o in _live_open), _tradeable, False),   # 💧 (DL 507)
             "is_paper": False
         }
 
@@ -6193,6 +6195,91 @@ def _compute_time_buckets(orders, bucket_minutes=None):
     except Exception as e:
         logger.error(f"[PERF] Error computing time buckets: {e}\n{traceback.format_exc()}")
         return []
+
+
+_CAPUSE_CACHE = {"at": 0.0, "key": None, "val": None}
+
+
+def _capuse_tradeable_fn():
+    """💧 (DL 507) balance → tradeable on TOTAL equity, the engine's reserve line (calculate_position_size mirror incl. the fee-reserve usd
+    and pct legs, the activity-dependent burn leg left out) — continuous and non-decreasing, so no tier makes a withdrawal look free."""
+    from services.trading_engine import _reserve_schedule_target as _sched
+    _inv = config.trading_config.investment
+    mode = _inv.reserve_mode
+    fee_usd = max(0.0, float(getattr(_inv, 'fee_reserve_usd', 0.0) or 0.0))
+    fee_pct = max(0.0, float(getattr(_inv, 'fee_reserve_pct', 0.0) or 0.0))
+
+    def tf(e):
+        e = max(0.0, float(e or 0.0))
+        tgt = None
+        if mode == "schedule":
+            t = _sched(getattr(_inv, 'reserve_schedule', ''), e)
+            tgt = t if (t is not None and t > 0) else None
+        fee = max(fee_usd, fee_pct / 100.0 * (min(e, tgt) if tgt is not None else e))
+        if tgt is not None:
+            res = max(e - tgt, fee)                                   # (424) the larger of the two with an active tier
+        elif mode == "working_capital":
+            w = float(getattr(_inv, 'working_capital_target', 0.0) or 0.0)
+            res = (max(0.0, e - w) if w > 0 else 0.0) + fee
+        elif mode == "percentage":
+            res = e * float(_inv.reserve_percentage or 0.0) / 100.0 + fee
+        elif mode == "schedule":
+            res = fee
+        else:
+            res = float(_inv.reserve_fixed or 0.0) + fee
+        return max(0.0, e - res)
+    return tf
+
+
+async def _capital_use_now(db: AsyncSession, equity_now, tradeable, paper: bool) -> dict:
+    """💧 (DECISION_LOG 507) Withdrawable (caps) — services.capital_use: the most that can leave the account while the bot's traded size
+    falls ≤ 1 %, on the CLOSED fills opened in the last 7 days, every wanted size re-priced at TODAY's balance on the reserve line
+    (equity at open = equity now − realised $ closed since − net flows since: paper = paper_balance edits, live = the real Binance
+    transfers the card reads, BNB-swap legs out; paper fund expenses −). Inputs cached 60 s (paper: per equity to $1, so a paper edit refetches at once; live:
+    per mode — its equity moves with unrealised P&L); the math runs on every call. Live equity = the engine's sizing base. Never raises — an error → None (the card hides the line)."""
+    try:
+        from services import capital_use as _CU
+        # paper equity moves only on closes / paper edits → key on it (a paper withdrawal refetches at once); live equity moves with
+        # unrealised P&L every poll → key on the mode only (60 s)
+        key = (bool(paper), round(float(equity_now or 0.0), 0) if paper else None)
+        if _CAPUSE_CACHE["key"] == key and time.time() - _CAPUSE_CACHE["at"] < 60:
+            rows, closed, flows, now = _CAPUSE_CACHE["val"]
+        else:
+            now = datetime.utcnow()
+            since = now - timedelta(days=_CU.WINDOW_DAYS)
+            _cols = ("status", "entry_strategy", "direction", "confidence", "cell_multiplier_source", "opened_at", "closed_at", "pnl",
+                     "entry_desired_notional", "entry_liquidity_cap_notional")
+            res = (await db.execute(select(*[getattr(Order, c) for c in _cols]).where(and_(Order.status == "CLOSED", Order.is_paper == bool(paper),
+                                                                                         or_(Order.opened_at >= since, Order.closed_at >= since))))).all()
+            from types import SimpleNamespace as _NS
+            rows = [_NS(**dict(zip(_cols, r))) for r in res]          # plain values — safe to cache across requests
+            closed = [(o.closed_at, o.pnl) for o in rows if o.closed_at is not None]
+            if paper:
+                cl = (await db.execute(select(ConfigChangeLog.changed_at, ConfigChangeLog.old_value, ConfigChangeLog.new_value).where(and_(
+                    ConfigChangeLog.field == "paper_balance", ConfigChangeLog.changed_at >= since)))).all()
+                flows = []
+                for t, o_, n_ in cl:
+                    try:
+                        flows.append((t, float(n_) - float(o_)))
+                    except (TypeError, ValueError):
+                        continue
+                fx = (await db.execute(select(FundExpense.created_at, FundExpense.amount).where(and_(
+                    FundExpense.is_paper == True, FundExpense.created_at >= since)))).all()
+                flows += [(t, -abs(float(a or 0.0))) for t, a in fx]          # a paper fund expense leaves the paper balance
+            else:
+                # the REAL external transfers the live card already reads (Binance TRANSFER rows minus the bot's own BNB-swap legs) —
+                # a withdrawal shows without any ledger booking
+                _since_ms = int(since.replace(tzinfo=timezone.utc).timestamp() * 1000)
+                flows = [(datetime.utcfromtimestamp(ts / 1000.0), float(a or 0.0))
+                         for ts, a in await _external_flow_rows(db, _since_ms, max_age_s=LIVE_CARD_TRANSFER_CACHE_S)]
+            _CAPUSE_CACHE.update(at=time.time(), key=key, val=(rows, closed, flows, now))
+        cu = _CU.compute(rows, now=now, equity_now=equity_now, equity_at=_CU.equity_at_fn(equity_now, closed, flows),
+                         tradeable_fn=_capuse_tradeable_fn())
+        cu["tradeable"] = round(float(tradeable or 0.0), 2)
+        return cu
+    except Exception as e:
+        logger.warning(f"[CAPITAL_USE] compute failed: {e}")
+        return None
 
 
 def _compute_liquidity_sizing(orders):

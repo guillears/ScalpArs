@@ -647,6 +647,7 @@
                     <p id="usdt-balance" class="text-2xl font-bold text-white">$0.00</p>
                     <p id="usdt-tradeable" class="text-xs text-gray-500 mt-1"></p>
                     <p id="usdt-reserve" class="text-xs text-gray-500"></p>
+                    <p id="usdt-idle" class="text-xs text-gray-500" title="💧 (DECISION_LOG 507) Withdrawable (caps): the most you can take out while the bot trades ≤ 1 % less (last 7 days' coins, re-priced at today's balance). Y = % of the flat-book tradeable. Grey < 5 % · green ≥ 5 % = money you can take out."></p>
                 </div>
                 <div class="glass rounded-xl p-5">
                     <p class="text-sm text-gray-400 mb-1">BNB Balance <span id="bnb-label" class="text-xs text-gray-500">(fee reserve)</span></p>
@@ -2776,6 +2777,33 @@
                 </div>
                 <!-- ===== RUNNER TRAIL END ===== -->
 
+
+                <!-- ===== CAPITAL USE START (DECISION_LOG 507) ===== -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-sky-300 mb-2">💧 Capital use per sleeve (last 7 days)</h3>
+                    <p class="text-xs text-gray-400 mb-3">
+                        Closed bot trades opened in the last 7 days (manual and probes out, whole book — no filter applies), each wanted size RE-PRICED AT TODAY'S BALANCE
+                        (on the balance → tradeable line — a withdrawal shows at once; the coin's ① per-pair liquidity cap does not move).
+                        <span class="text-sky-300">size kept</span> = Σ min(wanted, cap) ÷ Σ wanted — below 100 % the sleeve wants more than its coins allow
+                        (a sizing question for that sleeve, not money to take out). <span class="text-sky-300">traded share</span> = the sleeve's part of what the bot actually traded.
+                        The USDT card's <span class="text-emerald-400">Withdrawable (caps)</span> = the most you can take out while the bot trades ≤ 1 % less —
+                        withdrawing shrinks every uncapped trade, so it is ≈ $0 until most trading is capped; green from 5 % of the flat-book tradeable (open trades don't move it). The trade-off line shows what bigger withdrawals cost.
+                    </p>
+                    <div class="text-xs text-gray-400 mb-2" id="capital-use-summary">(no trades in the window)</div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead><tr class="text-gray-400 border-b border-white/10">
+                                <th class="px-2 py-2 text-left">Sleeve</th>
+                                <th class="px-2 py-2 text-center">trades</th>
+                                <th class="px-2 py-2 text-center">capped</th>
+                                <th class="px-2 py-2 text-center">size kept</th>
+                                <th class="px-2 py-2 text-center">traded share</th>
+                            </tr></thead>
+                            <tbody id="capital-use-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <!-- ===== CAPITAL USE END ===== -->
 
                 <!-- ===== LIQUIDITY SIZING START (Jun 2, observation-only) ===== -->
                 <div class="mt-6 pt-6 border-t border-white/10">
@@ -9554,6 +9582,61 @@
             return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
         }
 
+        // 💧 (DECISION_LOG 507) Withdrawable (caps) — /api/balance capital_use: the most that can leave while the bot trades ≤ 1 % less
+        const _cuEsc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        const _cuHidden = () => { try { return localStorage.getItem('balancesHidden') === '1'; } catch (e) { return false; } };
+        const _cuMoney = v => _cuHidden() ? '$••••' : formatUSD(v || 0);
+        function _cuWdPct(cu) {   // withdrawable as % of the FLAT-BOOK tradeable T(equity) — server-side, never the card's free-minus-margin Tradeable (open trades would turn it green)
+            return Number(cu.withdrawable_pct_tradeable) || 0;
+        }
+        function _cuTradeoffText(cu) {
+            return (cu.tradeoff || []).map(x => `withdraw ${x.withdraw_pct} % → ${x.size_cut_pct} % less traded`).join(' · ');
+        }
+        function _renderIdleCapital() {
+            const el = document.getElementById('usdt-idle');
+            const cu = window._capUse;
+            if (!el) return;
+            if (!cu || !cu.platform) { el.textContent = ''; return; }
+            const pct = _cuWdPct(cu);
+            el.textContent = cu.platform.trades ? `Withdrawable (caps): ${formatUSD(cu.withdrawable_usd)} · ${pct.toFixed(0)} %` : 'Withdrawable (caps): no trades in 7 days';
+            el.className = 'text-xs ' + (cu.platform.trades && pct >= 5 ? 'text-emerald-400' : 'text-gray-500');   // operator: green = money you can take out
+            const tr = _cuTradeoffText(cu);
+            el.title = `💧 Withdrawable (caps): the most you can take out of the bot while it trades ≤ ${cu.tolerance_pct ?? 1} % less — on the coins of the last ${cu.window_days || 7} days, `
+                     + `every wanted size re-priced at today's balance. Withdrawing shrinks every UNCAPPED trade one for one; it is free only on trades the per-pair liquidity caps `
+                     + `(0.1 % of a coin's 24 h volume, spike trades on thin coins 0.5 %) already cut. Green from 5 % of the flat-book tradeable.` + (tr ? ` Trade-off: ${tr}.` : '');
+        }
+        function _renderCapitalUseTable() {
+            const cu = window._capUse;
+            const sum = document.getElementById('capital-use-summary');
+            const body = document.getElementById('capital-use-body');
+            if (!sum || !body) return;
+            if (cu === undefined) return;   // /api/balance not answered yet — keep the placeholder
+            if (!cu || !cu.platform) { sum.textContent = '(unavailable)'; body.innerHTML = ''; return; }
+            const p = cu.platform;
+            const tr = _cuTradeoffText(cu);
+            sum.textContent = p.trades ? `Platform: ${p.trades} trades · ${p.capped} capped at today's balance · size kept ${p.kept_pct}% · withdrawable (≤ ${cu.tolerance_pct ?? 1} % less traded) ${_cuMoney(cu.withdrawable_usd)} (${_cuWdPct(cu).toFixed(1)}% of tradeable)`
+                                         + (tr ? ` · ${tr}` : '')
+                                       : '(no bot trades in the last 7 days)';
+            body.innerHTML = (cu.rows || []).map(r => `<tr class="border-b border-white/5">
+                <td class="px-2 py-1 text-left">${_cuEsc(r.sleeve)}</td>
+                <td class="px-2 py-1 text-center">${r.trades}</td>
+                <td class="px-2 py-1 text-center">${r.capped} (${r.capped_pct}%)</td>
+                <td class="px-2 py-1 text-center ${r.kept_pct < 95 ? 'text-amber-300' : 'text-gray-300'}">${r.kept_pct}%</td>
+                <td class="px-2 py-1 text-center">${r.traded_share_pct}%</td></tr>`).join('');
+        }
+        function _capUseExportLines(lines) {   // 💧 (DL 507) shared by BOTH text exports
+            const cu = window._capUse || null;
+            if (!cu || !cu.platform) { lines.push('## Capital use per sleeve (last 7 days)  (unavailable)'); lines.push(''); return; }
+            const p = cu.platform;
+            lines.push(`## Capital use per sleeve (last ${cu.window_days || 7} days, whole book)  [${p.trades} trades · ${p.capped} capped · size kept ${p.kept_pct}% · withdrawable (≤ ${cu.tolerance_pct ?? 1} % less traded) ${formatUSD(cu.withdrawable_usd)} = ${_cuWdPct(cu).toFixed(1)}% of tradeable (flat book)]`);
+            const tr = _cuTradeoffText(cu);
+            if (tr) lines.push(`  Trade-off: ${tr}`);
+            lines.push('  Sleeve                  trades  capped        size kept  traded share');
+            lines.push('-'.repeat(74));
+            (cu.rows || []).forEach(r => lines.push(`  ${(r.sleeve || '').padEnd(22)} ${String(r.trades).padStart(6)}  ${(r.capped + ' (' + r.capped_pct + '%)').padEnd(12)}  ${(r.kept_pct + '%').padStart(9)}  ${(r.traded_share_pct + '%').padStart(12)}`));
+            lines.push('');
+        }
+
         function formatUSD(value) {
             return '$' + parseFloat(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         }
@@ -9890,6 +9973,7 @@
             const btn = document.getElementById('balance-eye-btn');
             if (cards) cards.classList.toggle('balances-hidden', hidden);
             if (btn) btn.textContent = hidden ? '🙈' : '🐵';
+            try { _renderCapitalUseTable(); } catch (e) {}   // 💧 (DL 507) the table's $ sits outside the blurred cards
         }
         function toggleBalancesHidden() {
             const hidden = !(localStorage.getItem('balancesHidden') === '1');
@@ -10473,6 +10557,7 @@
                     rsEl.textContent = `Reserve: ${formatUSD(data.reserve)}`;
                     rsEl.className = 'text-xs text-gray-500';  // Aug 21 (operator): same font/color as the Tradeable line
                 }
+                if (data.capital_use !== undefined) { window._capUse = data.capital_use; _renderIdleCapital(); _renderCapitalUseTable(); }   // 💧 (DL 507)
                 const bnbKey = `${data.bnb_balance}|${data.bnb_balance_usd}|${_bnbBurnRate}`;
                 if (bnbKey !== _lastBnbKey) {
                     _lastBnbKey = bnbKey;
@@ -11269,6 +11354,8 @@
             // ===== RUNNER TRAIL END =====
 
 
+            // 💧 Capital use per sleeve (DECISION_LOG 507)
+            _capUseExportLines(lines);
             // ===== LIQUIDITY SIZING START (Jun 2, observation-only) =====
             const _liq1 = perf.liquidity_sizing || {};
             if (_liq1.summary && _liq1.summary.capped > 0) {
@@ -13173,6 +13260,8 @@
                     });
                     lines.push('');
                 }
+                // 💧 Capital use per sleeve (DECISION_LOG 507)
+                _capUseExportLines(lines);
                 // Liquidity Sizing (Jun 2, observation-only)
                 const _liq2 = perf.liquidity_sizing || {};
                 if (_liq2.summary && _liq2.summary.capped > 0) {
@@ -15901,6 +15990,8 @@
                 }
                 // ===== RUNNER TRAIL END =====
 
+
+                _renderCapitalUseTable();   // 💧 (DECISION_LOG 507) the table reads /api/balance capital_use (window._capUse)
 
                 // ===== LIQUIDITY SIZING START (Jun 2, observation-only) =====
                 {

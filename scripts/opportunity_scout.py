@@ -1575,6 +1575,14 @@ def run():
     except Exception as _lbr_e:
         log(f"LITE_BTC1H_RISING line failed: {_lbr_e}")
         _rg_sec += ["## 👁 LITE_BTC1H_RISING", "", f"Unavailable this run ({str(_lbr_e)[:120]}).", ""]
+    try:                                               # 👁 Nov-10 LITE_BTC_EMA20_DOWN — FRENZY_LITE with BTC 5 m EMA20 slope ≤ 0, frozen expectancy bar (DECISION_LOG 522; forward)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_lite_btc_ema20_down_watch as _lbe
+        _rg_sec += _lbe.run(now_ms)
+    except Exception as _lbe_e:
+        log(f"LITE_BTC_EMA20_DOWN line failed: {_lbe_e}")
+        _rg_sec += ["## 👁 LITE_BTC_EMA20_DOWN", "", f"Unavailable this run ({str(_lbe_e)[:120]}).", ""]
     try:                                               # 🏦 Nov-9 MEGACAP_READMIT — top-10 momentum longs with the mega-cap block OFF, frozen bar (DECISION_LOG 506; forward)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

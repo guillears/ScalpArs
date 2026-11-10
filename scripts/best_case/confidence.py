@@ -45,9 +45,10 @@ LINES = {
     "SURGE_BTC_HOT": (427, 15, 8, "not run"),
     "ML_MKT_HOT": (416, 15, 8, "agrees (3 / 3 seeds)"),
     "LONG_ADX35": (418, 15, 8, "disagrees (seed 1)"),
-    # (DECISION_LOG 501) RETRY_BTC1H counts from the DL 420 commit + 10 min (its scout's re-based cohort); LITE_BTC1H_RISING from DL 437 + 10 min
+    # (DECISION_LOG 501) RETRY_BTC1H counts from the DL 420 commit + 10 min (its scout's re-based cohort); LITE_BTC1H_RISING from DL 437 + 10 min; LITE_BTC_EMA20_DOWN from DL 522 + 10 min
     "RETRY_BTC1H": (420, 15, 8, "not run (no separate RETRY in the backtest)"),
     "LITE_BTC1H_RISING": (437, 20, 8, "disagrees (yr6: rising the better side)"),
+    "LITE_BTC_EMA20_DOWN": (522, 15, 8, "agrees (3 / 3 seeds, every period)"),
 }
 # (DECISION_LOG 511) a line registered for one sleeve and LATER added to another counts that sleeve from its own commit (never the first one's)
 FREEZE_BY_SLEEVE = {("FRENZY_WILLY_HT", "WILLY_FAILED_SPIKE"): 511}
@@ -66,7 +67,7 @@ def freeze_spec(line, sleeve=None):
 YARD = {"ML_MKT_HOT": "rest", "MKT_HOT": "rest",
         # (DECISION_LOG 501 deep review) decided by their scout's FROZEN bar at the checkpoint (zone WR < 50 % ∧ day-bootstrap P(mean < 0) ≥ 0.95
         # ∧ no day / pair ≥ 50 %, else retire / keep observing) — never by a size estimate from the in-sample spread (it read 234 / 73,571 trades)
-        "RETRY_BTC1H": "scout", "LITE_BTC1H_RISING": "scout"}
+        "RETRY_BTC1H": "scout", "LITE_BTC1H_RISING": "scout", "LITE_BTC_EMA20_DOWN": "scout"}
 B25_START = pd.Timestamp("2026-10-23 18:30")   # the current batch's start (as best_dcr.B0) — the pace denominator; ⚠ update per batch
 # 🎲 (DECISION_LOG 473) was the line's theory written BEFORE its data were read? first = pre-registered (a real test) · after = a story fitted to
 # what the data showed (explains, never proves) · against = the theory frozen first predicted the opposite. Source: each line's DL entry.
@@ -75,7 +76,8 @@ THEORY = {"WILLY_GAP": "after (EMA cut from the data, DL 414)", "WILLY_FAILED_SP
           "LATE_BTCFALL": "first (cut pre-registered, DL 353)", "MKT_HOT": "after (borrowed from ML_MKT_HOT)",
           "SURGE_BTC_HOT": "after (cut seen in 6 fills, DL 427)", "ML_MKT_HOT": "against (frozen H5 said the opposite, DL 416)",
           "LONG_ADX35": "after (post-hoc cut, DL 418)", "RETRY_BTC1H": "after (in-sample split, DL 415)",
-          "LITE_BTC1H_RISING": "after (mirror of the live falling read, DL 437)"}
+          "LITE_BTC1H_RISING": "after (mirror of the live falling read, DL 437)",
+          "LITE_BTC_EMA20_DOWN": "after (2D sweep 11-10, simplified to the sign; theory of DL 353)"}
 LUCK = {}   # (sleeve, line) → luck.csv row, filled in main() from best_dcr.py's luck test
 TL = []     # (DECISION_LOG 485) one dict per row() call — the ④ checkpoint timeline is built from the SAME numbers as ③
 REVIEW_AT = pd.Timestamp("2026-11-12 12:00")   # the next batch review (B25, ≈ Nov 12) — ④a projects to it; ⚠ update per batch (or pass a date)
@@ -83,7 +85,8 @@ TIMELINE_MARK = "<!-- ④ checkpoint timeline -->"
 # how each line's registration search compares with the luck test's family (deep review 473: the family is not a bound either way)
 LUCK_NOTE = {"FB_CONFIRM": "search priced: confirm +5/−10 and +1/−4, waits 1–24 h, selling 1–7 % higher (DL 474); 'a move against then a 1 h close back below' not priced",
              "WILLY_GAP": "registration searched wider: 28,545 cells", "WILLY_FAILED_SPIKE": "registration searched wider: 8,320 2D + 1D cells (WILLY review 11-09)", "ML_MKT_HOT": "registration searched 49 market conditions, not in this family",
-             "LONG_ADX35": "registration kept one 1D cut — the 1D p is the closer read"}
+             "LONG_ADX35": "registration kept one 1D cut — the 1D p is the closer read",
+             "LITE_BTC_EMA20_DOWN": "registration searched 9,660 2D cells + hour cuts (live search not above luck); the sign rule itself is one 1D split"}
 
 
 def luck_cell(sleeve, line):

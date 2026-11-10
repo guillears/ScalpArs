@@ -38,21 +38,11 @@ V2_FLOOR = "2026-08-21T19:16"          # gate-57 v2 cohort floor (locked)
 # pre-ship list. The documented invocation therefore scored 42 fills — including the ONE/ZEC/BTC
 # fills the bot no longer trades — instead of the true 36.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # (DL 518) build_master_pool, also under `python -I`
 
 
-def _sleeve_blacklist():
-    """Read the LIVE blacklist (deep review 2026-09-21: a hardcoded tuple silently diverged from
-    config once ONE/ZEC/BTC were added, so the revert gate would have scored a different cohort
-    than the bot actually trades)."""
-    try:
-        import config
-        return tuple(p.strip().upper() for p in
-                     str(getattr(config.trading_config.thresholds, "bullrun_pair_blacklist", "") or "").split(",") if p.strip())
-    except Exception as e:                                  # noqa: BLE001
-        # LOUD, never silent: a quiet fallback here prices a different cohort than the bot trades
-        print(f"  ⚠ could not read live 'bullrun_pair_blacklist' ({e}) — falling back to the "
-              "PRE-SHIP two-pair list. EVERY NUMBER BELOW IS SUSPECT.")
-        return ("ONGUSDT", "ETHUSDT")
+# (11-10, DL 518) the live-blacklist reader moved out: the pair blacklist now comes from build_master_pool (frozen, pinned to
+# trading_config.json by tests/test_master_fade_screen.py) together with every other Bull-Run gate.
 
 # live BR exit stack (config.py: bullrun_be_arm_pct / _be_lock_pct / _trail_atr_mult / _ladder)
 LIVE_ARM, LIVE_TRAIL, LOCK = 1.0, 2.0, 0.2
@@ -107,22 +97,13 @@ def load_cohort(batches):
     df = df[df.status == "CLOSED"].drop_duplicates(subset=["opened_at", "pair", "direction"])
     br = df[(df.entry_strategy == "BULLRUN_LONG") & (df.opened_at >= V2_FLOOR)].copy()
     br["pnl_"] = _num(br, "stack_pnl").fillna(_num(br, "pnl"))
-    rearm = br["entry_br_door"].eq("REARM") | br["era"].eq("B4")   # B4 = the Aug-25 REARM window
-    bull, bear = _num(br, "entry_bull_pct"), _num(br, "entry_bear_pct")
-    # ⚠ THE FULL CURRENT ENTRY STACK — every live gate, not a subset. (2026-09-21: an earlier
-    # version applied only the first three and reported a 60-fill cohort with 32 "master" fills;
-    # the true current-stack cohort is 39 with 11 master. Operator caught it. The ledger rebuild
-    # rule in CLAUDE_CURRENT_STATE applies here too: gates go ON TOP of stack_keep, all of them.)
-    keep = (~br["pair"].isin(_sleeve_blacklist())
-            & ((_num(br, "entry_br_r72").fillna(99) >= 10) | rearm)          # r72 10/8, GREEN door
-            & (_num(br, "entry_btc_dist_from_ema13_pct").fillna(1) >= 0)     # BTC ≥ 5m EMA13
-            & (_num(br, "entry_btc_1h_slope").fillna(1) > 0)                 # BTC 1h-slope gate
-            & ((_num(br, "entry_br_eff").fillna(1) >= 0.095) | rearm)        # efficiency stay band
-            & ((_num(br, "entry_br_off24h").fillna(0) >= -2.0) | rearm)      # off-24h gate
-            & (bull >= 40)                                                   # breadth floor (Sep-19)
-            & ~(rearm & (bull.fillna(0) <= 0) & (bear.fillna(0) <= 0))       # REARM warm-up fail-closed
-            & (_num(br, "entry_slippage_pct").abs().fillna(0) < 0.3)         # 57f dislocation guard
-            & (_num(br, "entry_pair_volume_ratio").fillna(0) <= 1.2))        # PVR ceiling
+    # 🌊 11-10 (DECISION_LOG 518): ONE gate chain for the pool and this sweep — build_master_pool.bullrun_stack_block (today's full
+    # Bull-Run entry stack incl. the 57l REARM entry-age gate, replayed from the log-derived door episodes). The old inline list here
+    # lacked the age gate (44 fills; today's engine admits 24) and could drift from the pool.
+    import build_master_pool as _BMP
+    _why = [(_BMP.stack_pair_blacklist_reason("BULLRUN_LONG", r["pair"]) or _BMP.bullrun_stack_block(r)) for _, r in br.iterrows()]
+    keep = pd.Series([w == "" for w in _why], index=br.index)
+    rearm = pd.Series([_BMP.bullrun_door(r) == "REARM" for _, r in br.iterrows()], index=br.index)
     cc = br[keep].copy()
     cc["door"] = np.where(rearm[keep], "REARM", "GREEN")
     return cc

@@ -1043,6 +1043,12 @@ class SignalThresholds(BaseModel):
     # 🔒 revert: first 2 REARM windows after this ship where the 1.0x cohort underperforms its 2.0x
     # counterfactual (scripts/bullrun_exit_sweep.py) -> back to 0.
     bullrun_rearm_trail_atr_mult: float = 1.0
+    # 🎯 11-10 (DECISION_LOG 519, operator declared override — "yes build it", below the 57i bar): REARM-door fixed take-profit, net %.
+    # A REARM bounce peaks ≈ +1–1.5 % and fades; banking at +1.0 beat today's 1.0×ATR trail on the 14 REARM fills today's gates keep
+    # (1m paths, sim corr 0.99): +$338 (9 better / 4 worse; Sep-20 +$204, Sep-21 +$135) — ONE REARM episode, in-sample. GREEN untouched
+    # (every fixed TP on GREEN loses −$213 … −$1,906: it cuts the runners). 0 = off. 🔒 REVERT: either of the next 2 REARM episodes where
+    # the TP closes book less than the trail would have (scripts/scout_bullrun_rearm_tp.py) → 0, no further vote.
+    bullrun_rearm_tp_pct: float = 1.0
     # Aug-21 (day-1 post-mortem, DECISION_LOG 2026-08-21 (11)): PULLBACK-PHASE GATE — no sleeve entry while
     # BTC sits more than N% below its 24h high. The one variable that separated the founding replay's
     # winners from losers (top of 21, 3/3 per-day): off24h ≤ −1.6% → −$1,679·50% WR vs near the high

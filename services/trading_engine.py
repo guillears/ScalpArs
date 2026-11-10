@@ -1669,6 +1669,13 @@ def _bullrun_exit_for(pnl, peak_pnl, entry_atr_pct, door=None, trail_mult_overri
                 trail_mult = _rt
         if trail_mult_override is not None and float(trail_mult_override) > 0:
             trail_mult = float(trail_mult_override)   # ⚡ SURGE_LONG: the Bull-Run exit with the sleeve's own trail (surge_long_trail_atr_mult)
+        # 🎯 11-10 (DECISION_LOG 519, operator declared override): REARM-door fixed take-profit — a REARM bounce peaks ≈ +1–1.5 % and
+        # fades, so bank it at bullrun_rearm_tp_pct (net %, the caller's convention) instead of trailing. GREEN never (its runners are the
+        # sleeve's P&L); SURGE_LONG / manual Bull-Run rows never (no REARM door / their own trail). 0 = off. Revert gate in CURRENT_STATE.
+        if str(door or '').upper() == 'REARM' and trail_mult_override is None and not no_lock:
+            _rtp = float(getattr(th, 'bullrun_rearm_tp_pct', 0.0) or 0.0)
+            if _rtp > 0 and float(pnl) >= _rtp:
+                return True, "REARM_TP", _rtp
         pk = float(peak_pnl or 0.0)
         if no_lock and pk >= arm:
             # 🎯 SURGE_LONG (DECISION_LOG 203): no break-even lock, no ladder — the trail may fall back to the initial stop.

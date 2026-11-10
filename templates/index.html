@@ -1839,7 +1839,7 @@
                 <div class="mt-6 pt-6 border-t border-cyan-900/40">
                     <h3 class="text-sm font-semibold text-cyan-300 mb-1">🌊 Gate 57 — Bull-Run Sleeve (Aug 21 — GREEN-gated dip-reclaim LONGs, top-10 COIN)</h3>
                     <p class="text-xs text-gray-500 mb-1" id="bullrun-monitor-line">Monitor: —</p>
-                    <p class="text-xs text-gray-500 mb-3">Trades only while the Monitor is GREEN (72h composite + Schmitt band + crash-latch). Own exits: BR_STOP_LOSS / BR_BREAKEVEN_EXIT (arm +1.0 → lock +0.2) / BR_TRAILING_STOP (2×ATR giveback; REARM door 1×ATR) / BR_REARM_TP (REARM door only: fixed take-profit, DL 519). 🔒 KILL BAR (manual): first 10 fills WR≤45% ∨ Σ&lt;0 ⇒ toggle OFF. Sizing frozen 1×/1× until ≥2 profitable episodes.</p>
+                    <p class="text-xs text-gray-500 mb-3">Trades only while the Monitor is GREEN (72h composite + Schmitt band + crash-latch). Own exits: BR_STOP_LOSS / BR_BREAKEVEN_EXIT (arm +1.0 → lock +0.2) / BR_TRAILING_STOP (2×ATR giveback; REARM door 1×ATR) / BR_REARM_TP (REARM door fixed take-profit, OFF since DL 521). 🔒 KILL BAR (manual): first 10 fills WR≤45% ∨ Σ&lt;0 ⇒ toggle OFF. Sizing frozen 1×/1× until ≥2 profitable episodes.</p>
                     <div class="overflow-x-auto"><table class="w-full text-xs"><thead><tr class="text-gray-400 border-b border-white/10">
                         <th class="px-2 py-1 text-left">Cohort</th><th class="px-2 py-1 text-right">N</th><th class="px-2 py-1 text-right">WR%</th><th class="px-2 py-1 text-right">avg%</th><th class="px-2 py-1 text-right">Total$</th><th class="px-2 py-1 text-right">avgPk%</th><th class="px-2 py-1 text-right">Dates</th><th class="px-2 py-1 text-left">Gate verdict</th>
                     </tr></thead><tbody id="bullrun-body" class="divide-y divide-white/5"><tr><td colspan="8" class="px-3 py-3 text-center text-gray-500">—</td></tr></tbody></table></div>
@@ -5461,7 +5461,7 @@
                                 <input type="number" step="0.25" min="0.5" id="config-br-trail-atr-mult" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="2.0">
                             </div>
                             <div title="Sep 21 (57i): REARM-door trail width. A bounce off a dark composite has limited follow-through, so banking beats giving room — armed REARM fills 1.0x $719 vs 2.0x $527, while GREEN is the reverse and keeps 2.0x. 0 = use the GREEN multiplier."><label class="block text-xs text-gray-400 mb-1">REARM trail (×ATR, 0 = same as GREEN)</label><input type="number" step="0.25" min="0" id="config-br-rearm-trail-atr-mult" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="1.0"></div>
-                            <div title="Nov 10 (DECISION_LOG 519, operator override): REARM-door fixed take-profit, net %. REARM bounces peak ≈ +1–1.5 % and fade — banking at +1.0 beat the trail by +$338 on the 14 REARM fills today's gates keep (one episode, in-sample). GREEN never uses it. Revert: either of the next 2 REARM episodes where it books less than the trail → 0. 0 = off."><label class="block text-xs text-gray-400 mb-1">REARM take-profit (net %, 0 = off)</label><input type="number" step="0.25" min="0" id="config-br-rearm-tp-pct" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="1.0"></div>
+                            <div title="Nov 10: REARM-door fixed take-profit, net % (DECISION_LOG 519 → REVERTED 521: its 14 live REARM fills could not open under today's GREEN bar, and on the 144 backtest REARM fills +1.0 lost to the trail on all 3 seeds). GREEN never uses it. 0 = off."><label class="block text-xs text-gray-400 mb-1">REARM take-profit (net %, 0 = off)</label><input type="number" step="0.25" min="0" id="config-br-rearm-tp-pct" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0"></div>
                             <div class="md:col-span-2" title="Aug 21 (15): high-rung profit lock for sleeve runners — 'peak:floor' pairs; floor = max(2×ATR trail line, highest rung ≤ peak). Below the first rung nothing changes. Retrace study: runners pull back a median 1.2-1.4% before their next leg, so rungs start at +4 where continuation decays (84%). Blank = off.">
                                 <label class="block text-xs text-gray-400 mb-1">Profit-lock ladder (peak:floor, …)</label>
                                 <input type="text" id="config-br-ladder" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white font-mono text-xs" value="4.0:3.5, 5.0:4.5, 6.0:5.5, 8.0:7.0, 10.0:9.0, 12.0:11.0, 15.0:13.5, 20.0:18.0, 25.0:22.5, 30.0:27.0">
@@ -23725,7 +23725,7 @@
                     ['config-br-base-sl', 'bullrun_base_sl_pct', -0.7],
                     ['config-br-be-arm', 'bullrun_be_arm_pct', 1.0],
                     ['config-br-be-lock', 'bullrun_be_lock_pct', 0.2],
-                    ['config-br-trail-atr-mult', 'bullrun_trail_atr_mult', 2.0], ['config-br-rearm-trail-atr-mult', 'bullrun_rearm_trail_atr_mult', 1.0], ['config-br-rearm-tp-pct', 'bullrun_rearm_tp_pct', 1.0],
+                    ['config-br-trail-atr-mult', 'bullrun_trail_atr_mult', 2.0], ['config-br-rearm-trail-atr-mult', 'bullrun_rearm_trail_atr_mult', 1.0], ['config-br-rearm-tp-pct', 'bullrun_rearm_tp_pct', 0],
                     ['config-br-off24h-max', 'bullrun_btc_off24h_max', -2.0],
                 ];
                 { const _e = document.getElementById('config-br-ladder'); if (_e) _e.value = (config.thresholds.bullrun_ladder !== undefined && config.thresholds.bullrun_ladder !== null) ? config.thresholds.bullrun_ladder : '4.0:3.5, 5.0:4.5, 6.0:5.5, 8.0:7.0, 10.0:9.0, 12.0:11.0, 15.0:13.5, 20.0:18.0, 25.0:22.5, 30.0:27.0'; }
@@ -25258,7 +25258,7 @@
                     bullrun_be_lock_pct: safeFloat(document.getElementById('config-br-be-lock')?.value ?? 0.2),
                     bullrun_trail_atr_mult: safeFloat(document.getElementById('config-br-trail-atr-mult')?.value ?? 2.0),
                     bullrun_rearm_trail_atr_mult: safeFloat(document.getElementById('config-br-rearm-trail-atr-mult')?.value ?? 1.0),
-                    bullrun_rearm_tp_pct: safeFloat(document.getElementById('config-br-rearm-tp-pct')?.value ?? 1.0),
+                    bullrun_rearm_tp_pct: safeFloat(document.getElementById('config-br-rearm-tp-pct')?.value ?? 0),
                     bullrun_btc_off24h_max: safeFloat(document.getElementById('config-br-off24h-max')?.value || -2.0),
                     bullrun_ladder: String(document.getElementById('config-br-ladder')?.value ?? '').trim(),  // blank = ladder OFF (deliberate)
                     bullrun_pair_blacklist: String(document.getElementById('config-br-blacklist')?.value ?? '').trim().toUpperCase(),  // blank = none

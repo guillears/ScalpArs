@@ -56,11 +56,6 @@ EXIT = {
                                   "runner_trail_short_enabled": True, "runner_trail_short_arm_peak": 0.4, "runner_trail_short_k": 0.5,
                                   "runner_trail_short_use_atr": True, "runner_trail_short_atr_mult": 0.5,
                                   "runner_trail_short_giveback_frac": 0.35, "flip_runner_strpk_shorts": True}),
-    # 🎯 (519) the REARM_TP revert gate walks each REARM fill under today's REARM exit with the TP off (the trail counterfactual) — a change to
-    # the TP value, the REARM trail or the shared Bull-Run stop / arm / lock makes the line STALE
-    "scout_bullrun_rearm_tp.py": dict(dl="519", sleeves="BULLRUN_LONG (REARM door)", walks={"bullrun_rearm_tp_pct": 1.0, "bullrun_rearm_trail_atr_mult": 1.0,
-                                      "bullrun_be_arm_pct": 1.0, "bullrun_be_lock_pct": 0.2, "bullrun_base_sl_pct": -0.7, "sl_atr_multiplier": 1.5,
-                                      "sl_atr_widen_floor_pct": -1.2}),
     "scout_frenzy.py": dict(dl="195 · 196 · 205", sleeves="FRENZY_LONG / WIDE", walks=_FZ_STOP3),
     "scout_frenzy_exits.py": dict(dl="214 · 243 · 250 · 251 · 263 · 272 · 284 · 333 · 336", sleeves="FRENZY family + WILLY gate",
                                   walks={**_FZ_STOP3, **_NO_LITE_C, **_OLD_WILLY}),

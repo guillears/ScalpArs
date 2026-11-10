@@ -42,7 +42,50 @@ def test_clean_row_admitted_and_each_gate_in_engine_order():
     assert B.bullrun_stack_block({**BASE, "entry_br_r72": 9.0, "entry_bull_pct": 10.0}) == "BULLRUN_DOOR_GREEN"
 
 
-def test_rearm_door_skips_green_legs_and_ages_from_the_log_episodes():
+NO_GREEN_CHECK = ([], None)   # cache span None → the today-GREEN check fails open; the door / age legs are tested on their own
+
+
+def test_rearm_needs_a_today_green_within_48h():
+    t0, t1 = pd.Timestamp("2026-01-01"), pd.Timestamp("2026-12-31")
+    ends = ([pd.Timestamp("2026-09-19T10:00")], (t0, t1))
+    rearm = {**BASE, "entry_br_door": "REARM", "entry_br_door_age_min": 10.0}
+    assert B.bullrun_stack_block({**rearm, "opened_at": "2026-09-20T09:00:00"}, green_ends=ends) == ""                      # 23 h after
+    assert B.bullrun_stack_block({**rearm, "opened_at": "2026-09-21T11:00:00"}, green_ends=ends) == "BULLRUN_REARM_NO_GREEN"  # 49 h after
+    assert B.bullrun_stack_block({**rearm, "opened_at": "2026-09-21T11:00:00"}, green_ends=([], None)) == ""               # no cache → fail-open
+    assert B.bullrun_stack_block({**BASE, "opened_at": "2026-09-21T11:00:00"}, green_ends=ends) == ""                      # GREEN never checked
+
+
+def test_green_rebuild_on_a_synthetic_run(tmp_path):
+    # a straight run-up long enough for r72 ≥ 10 / above ≥ 56 / eff ≥ 0.10, then a steady slide → exactly one GREEN episode that ends
+    n = 864 * 3
+    top = 100.0 * (1 + 0.0002) ** n
+    px = [100.0 * (1 + 0.0002) ** i for i in range(n)] + [top * (1 - 0.0003) ** i for i in range(1, 1500)]
+    t0 = 1767052800000
+    syn = tmp_path / "btc5m.csv"
+    pd.DataFrame({"open_time": [t0 + i * 300000 for i in range(len(px))], "c": px}).to_csv(syn, index=False)
+    ends, span = B.bullrun_green_ends(str(syn))
+    assert len(ends) == 1 and span is not None
+    turn = pd.to_datetime(t0 + n * 300000, unit="ms")
+    assert turn < ends[0] < turn + pd.Timedelta(hours=72)          # ends during the slide, not before the top
+
+
+def test_door_bands_pinned_to_live_config():
+    th = json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
+    assert B.BULLRUN_GREEN_ON == (th["bullrun_green_r72_on"], th["bullrun_green_above_on"], th["bullrun_green_eff_on"])
+    assert B.BULLRUN_GREEN_OFF == (th["bullrun_green_r72_off"], th["bullrun_green_above_off"], th["bullrun_green_eff_off"])
+    assert B.BULLRUN_REARM_AFTER_GREEN_H == th["bullrun_rearm_after_green_hours"]
+
+
+def test_rearm_window_measured_from_the_door_open():
+    ends = ([pd.Timestamp("2026-09-19T10:00")], (pd.Timestamp("2026-01-01"), pd.Timestamp("2026-12-31")))
+    late = {**BASE, "entry_br_door": "REARM", "opened_at": "2026-09-21T11:00:00", "entry_br_door_age_min": 120.0}   # door opened 09:00, 47 h after
+    assert B.bullrun_stack_block({**late, "entry_br_door_age_min": 55.0}, green_ends=ends) == "BULLRUN_REARM_NO_GREEN"   # door 10:05 = 48.1 h
+    assert B.bullrun_door_open_at(late) == pd.Timestamp("2026-09-21T09:00")
+    assert B.bullrun_rearm_has_green(B.bullrun_door_open_at(late), ends) is True
+
+
+def test_rearm_door_skips_green_legs_and_ages_from_the_log_episodes(monkeypatch):
+    monkeypatch.setattr(B, "bullrun_green_ends", lambda *a, **k: NO_GREEN_CHECK)
     rearm = {**BASE, "entry_br_door": "REARM", "entry_br_r72": 1.0, "entry_br_off24h": -5.0}
     assert B.bullrun_stack_block({**rearm, "opened_at": "2026-09-21T09:30:00"}) == ""                    # 48 min into episode #44
     assert B.bullrun_stack_block({**rearm, "opened_at": "2026-09-21T14:29:00"}) == "BULLRUN_REARM_STALE"  # 347 min (DL 104's burst)
@@ -57,7 +100,8 @@ def test_rearm_door_skips_green_legs_and_ages_from_the_log_episodes():
     assert B.bullrun_stack_block({**BASE, "entry_bull_pct": 0, "entry_bear_pct": 0}) == ""
 
 
-def test_missing_stamps_fail_open():
+def test_missing_stamps_fail_open(monkeypatch):
+    monkeypatch.setattr(B, "bullrun_green_ends", lambda *a, **k: NO_GREEN_CHECK)
     row = {k: None for k in BASE}
     row.update(opened_at="2026-09-20T17:00:00", era="B10")
     assert B.bullrun_stack_block(row) == ""
@@ -69,8 +113,9 @@ def test_pool_keeps_dl104_cohort():
     m = pd.read_csv(os.path.join(ROOT, "reports", "MASTER_POOL_stacked.csv"), low_memory=False)
     b = m[m.entry_strategy == "BULLRUN_LONG"]                       # ALL eras: the v1 floor is inside the gate chain (deep review 518)
     k = b[b.stack_keep.astype(bool)]
-    assert len(k) == 24 and round(k.pnl.sum()) == 3378 and (k.opened_at >= "2026-08-21T19:16").all()
+    assert len(k) == 10 and round(k.pnl.sum()) == 2426 and (k.opened_at >= "2026-08-21T19:16").all()   # DL 521: GREEN only
+    assert (b.loc[b.entry_br_door.eq("REARM"), "stack_block_reason"] != "").all()
     assert not m[m.entry_strategy.isin(["SPIKE_BOUNCE", "SPIKE_CHASE"]) & ~m.is_probe.fillna(False).astype(bool)].stack_keep.astype(bool).any()
     assert set(b.loc[~b.stack_keep.astype(bool), "stack_block_reason"]) <= {
         "SLEEVE_PAIR_BLACKLIST", "BULLRUN_DOOR_GREEN", "BULLRUN_REARM_STALE", "BULLRUN_BTC_1H_SLOPE", "BULLRUN_BTC_EMA13",
-        "BULLRUN_BREADTH", "BULLRUN_PVR_MAX", "BULLRUN_DISLOC", "BULLRUN_BTC_OFF24H", "BULLRUN_V1"}
+        "BULLRUN_BREADTH", "BULLRUN_PVR_MAX", "BULLRUN_DISLOC", "BULLRUN_BTC_OFF24H", "BULLRUN_V1", "BULLRUN_REARM_NO_GREEN"}

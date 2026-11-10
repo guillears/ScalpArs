@@ -1575,14 +1575,6 @@ def run():
     except Exception as _lbr_e:
         log(f"LITE_BTC1H_RISING line failed: {_lbr_e}")
         _rg_sec += ["## 👁 LITE_BTC1H_RISING", "", f"Unavailable this run ({str(_lbr_e)[:120]}).", ""]
-    try:                                               # 🎯 Nov-10 BULLRUN REARM_TP — REARM take-profit +1.0 vs the trail, revert gate on the first 2 REARM episodes (DECISION_LOG 519)
-        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
-            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        import scout_bullrun_rearm_tp as _brtp
-        _rg_sec += _brtp.run(now_ms)
-    except Exception as _brtp_e:
-        log(f"BULLRUN REARM_TP line failed: {_brtp_e}")
-        _rg_sec += ["## 🎯 BULLRUN REARM_TP", "", f"Unavailable this run ({str(_brtp_e)[:120]}).", ""]
     try:                                               # 🏦 Nov-9 MEGACAP_READMIT — top-10 momentum longs with the mega-cap block OFF, frozen bar (DECISION_LOG 506; forward)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

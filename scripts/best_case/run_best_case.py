@@ -287,6 +287,7 @@ def main(exp, review=None):
                   "line: at registration (export 11-09) the kept fills were above breakeven (WILLY 21 / 21 winners master + current batch — no loss seen, so its breakeven cannot even be measured; HT 5 / 6 on 6 fills, current batch only, below the N < 10 noise floor) — in-sample, the row uses the factor AFTER each fill's coin cap (the caps already bind at today's balance), and both lines were "
                   "NOT ABOVE LUCK; the step is off in LUCK-CHECKED while a line is NOT ABOVE LUCK and waits for WILLY_ADX55 + WILLY_FAILED_SPIKE (WILLY) / WILLY_FAILED_SPIKE "
                   "(HT) to PASS in CLEAN ONLY. WILLY and HT can be open together → two stops ≈ 10 % of the account in one spike."]
+        L += _settings_block(_rf, _rf2, _rf3)
     L += ["", f"Clean-only lines: {npass} of {len(tc['calls'].split(' · '))} passed — {tc['calls']} "
           "(PASS = in · STRADDLE = past checkpoint, range crosses 0 · AGAINST = retire · PRE = before its checkpoint).",
           "", f"🎲 Luck test (built-on trades vs the same search on day-shuffled results; REAL p ≤ 0.05 · UNCLEAR ≤ 0.20 · NOT ABOVE LUCK > 0.20 · "
@@ -313,6 +314,48 @@ def main(exp, review=None):
     open(p, "w").write("\n".join(L))
     print("\n".join(L))
     print(f"saved → {os.path.relpath(p, ROOT)}")
+
+
+def _settings_block(rf, rf2, rf3):
+    """⚙️ (operator 11-10: "be clear on INV size 1x, or what, and lev size 10x (0.5)") — each re-size row as the dashboard settings:
+    investment (share of one slot) × leverage, with the config values (size_settings.py: ONE RULE for every sleeve)."""
+    if D not in sys.path:
+        sys.path.insert(0, D)
+    import size_settings as SS
+    try:
+        cfg = SS.load_cfg(os.path.join(ROOT, "trading_config.json"))
+    except (OSError, ValueError) as e:
+        return ["", f"⚙️ Settings table skipped: trading_config.json unreadable ({e})."]
+    pair = r"([A-Z_]+) ×([\d.]+) \(stop now ([\d.]+) %"
+    c1 = {s: float(f) for s, f, _ in re.findall(pair, rf[1])} if rf else {}
+    c5 = {s: float(f) for s, f, _ in re.findall(pair, rf3[1])} if rf3 else {}
+    stops = {s: float(st) for s, _, st in re.findall(pair, (rf[1] if rf else "") + " " + (rf3[1] if rf3 else ""))}
+    rows = [("C1", c1)]
+    if rf2:
+        m = re.search(r"one stop now ≈ ([\d.]+) %", rf2[1])
+        if m and float(m[1]) > 0:   # 0.00 % = no Momentum Long in the batch → no C3 / C4 settings
+            stops["MOMENTUM_LONG"] = float(m[1])
+            rows += [("C3", {"MOMENTUM_LONG": 5.0}), ("C4", {"MOMENTUM_LONG": 10.0})]
+    if c5:
+        rows.append(("C5", c5))
+    try:
+        tab = SS.table(cfg, [r for r in rows if r[1]], stops)
+    except (KeyError, ValueError, ZeroDivisionError) as e:
+        return ["", f"⚙️ Settings table skipped: a sleeve setting is missing ({e})."]
+    base = int(SS.base_leverage(cfg))
+    ceil = [lv for b, lv in SS.schedule_ceilings(cfg) if b > 0]
+    ceil_txt = (f"; above $25k the leverage is capped at {int(min(ceil))}× (a ceiling: 5× / 7× / 8× / 10× trade the same, only a leg "
+                f"above {int(min(ceil))}× is cut)") if ceil else ""
+    return ["", "### ⚙️ What to set for each re-size",
+            f"Investment = share of ONE slot ((total − reserve) ÷ {SS.slots(cfg)}: 1× = a full slot). Leverage = whole number; its setting = "
+            f"leverage ÷ {base} (the leverage a signal opens at before the sleeve setting){ceil_txt}. Size = investment × leverage. "
+            "ONE RULE for every sleeve: keep today's leverage and scale the investment, up to one slot; above one slot, raise the leverage to the "
+            "smallest whole number that keeps the investment ≤ 1 slot and trim the investment to land on the size; the investment rounds DOWN "
+            "to 0.05 (never over the 5 % cap). WILLY_HT = `frenzy_willy_ht_size_frac` × WILLY's investment at WILLY's leverage (max 1.0 = "
+            "WILLY's size). Momentum Long: the engine rounds investment × leverage together, so its investment stays 1 and only the leverage moves; "
+            "its pattern cells multiply the margin on top (UNMATCHED long ×1.5 → 1.5 slots). The re-size is the factor BEFORE coin caps (the "
+            "engine's caps cut big coins' size afterwards — ② shows the after-cap factor). One stop = the price stop at the new size (real stops "
+            "book a little worse). ⚠ = read the note beside the size (a rule it cannot meet, or the margin it really opens).", ""] + tab
 
 
 if __name__ == "__main__":

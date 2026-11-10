@@ -18,7 +18,7 @@ every start rate uses the same sleeve mix · paper-balance edits after --since a
 deep-coin sleeves.
 
 Usage: venv/bin/python -I scripts/best_case/capacity_path.py <orders export.csv> [--rates 8,5] [--start 10000] [--since "2026-10-26 13:50"]
-       [--start-equity 10100] [--no-reserve] [--best-case reports/best_case/BEST_CASE_….md]
+       [--start-equity 10100] [--no-reserve] [--best-case reports/best_case/BEST_CASE_….md] [--resize SLEEVE=f,…]
 Saved runs: reports/best_case/CAPACITY_PATH_<date>.md.
 """
 import argparse, glob, json, math, os, re, sys, warnings
@@ -86,19 +86,21 @@ def tradeable_fn(no_reserve=False, inv=None):
     return T
 
 
+def kept_at(fills, sl, E, T, lev_schedule=""):
+    """share of a sleeve's wanted size the coin caps + leverage ceiling let through at balance E (1.0 when it has no fills). PURE."""
+    g = fills[fills.sl == sl]
+    if not len(g):
+        return 1.0
+    base = g.frac * T(E)
+    lc = LEVSCHED(lev_schedule, E)
+    w = base * (np.minimum(g.lev, lc) / g.lev if lc else 1.0)
+    tr = np.where(g.cap.notna(), np.minimum(w, g.cap), w)
+    return float(tr.sum() / base.sum()) if base.sum() > 0 else 1.0
+
+
 def build(fills, share, T, start, lev_schedule=""):
     """fills = DataFrame with sl, frac (wanted ÷ T at open), cap (NaN = none), lev → (rate(E, R), rel(sleeve, E)). PURE."""
-    L = lambda E: LEVSCHED(lev_schedule, E)
-
-    def kept(sl, E):
-        g = fills[fills.sl == sl]
-        if not len(g):
-            return 1.0
-        base = g.frac * T(E)
-        lc = L(E)
-        w = base * (np.minimum(g.lev, lc) / g.lev if lc else 1.0)
-        tr = np.where(g.cap.notna(), np.minimum(w, g.cap), w)
-        return float(tr.sum() / base.sum()) if base.sum() > 0 else 1.0
+    kept = lambda sl, E: kept_at(fills, sl, E, T, lev_schedule)
     k0 = {s: kept(s, start) for s in share}
     rel = lambda s, E: kept(s, E) / k0[s] if k0[s] > 0 else 1.0
     r0 = T(start) / start
@@ -142,6 +144,44 @@ def load_fills(path, since, start_equity, T):
     return d, (d.c.max() if len(d) else pd.Timestamp.utcnow().tz_localize(None))
 
 
+def parse_resize(txt):
+    """"FRENZY_WILLY=2.05,FRENZY_WILLY_HT=4.09" → {sleeve: factor}; a bad item or a factor ≤ 0 stops the run. PURE."""
+    out = {}
+    for it in (x.strip() for x in str(txt or "").split(",")):
+        if not it:
+            continue
+        k, _, v = it.partition("=")
+        try:
+            f = float(v)
+        except ValueError:
+            raise SystemExit(f"--resize item '{it}' — use SLEEVE=factor")
+        if not k.strip() or not f > 0:
+            raise SystemExit(f"--resize item '{it}' — the factor must be > 0")
+        out[k.strip()] = f
+    return out
+
+
+def resize_shares(share, fills, resized, rsz, T, start, lev_schedule=""):
+    """(DL 514 review) a re-sized sleeve's share of the start rate = its one-size share × f × (what its caps let through at the start at the
+    new size ÷ at today's size) — a bigger size already capped at the start adds less than f. Not normalised. PURE."""
+    out = {}
+    for k, v in share.items():
+        f = rsz.get(k, 1.0)
+        if f != 1.0:
+            k_old = kept_at(fills, k, start, T, lev_schedule)
+            v = v * f * (kept_at(resized, k, start, T, lev_schedule) / k_old if k_old > 0 else 1.0)
+        out[k] = v
+    return out
+
+
+def apply_resize(fills, rsz):
+    """each re-sized sleeve's wanted size × its factor (the coin cap does not move). PURE (returns a copy)."""
+    d = fills.copy()
+    for sl, f in rsz.items():
+        d.loc[d.sl == sl, "frac"] = d.loc[d.sl == sl, "frac"] * f
+    return d
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("export")
@@ -151,26 +191,35 @@ def main():
     ap.add_argument("--start-equity", type=float, default=10100.0)
     ap.add_argument("--no-reserve", action="store_true")
     ap.add_argument("--best-case", default=None)
+    ap.add_argument("--resize", default="", help="SLEEVE=factor,… — a sleeve re-sized to factor × today's size (DL 514: the best-case C5 "
+                    "row, e.g. FRENZY_WILLY=2.05,FRENZY_WILLY_HT=4.09): its share of the rate AND its wanted size × factor (it meets its coin caps sooner)")
     a = ap.parse_args()
     bcs = sorted(glob.glob(os.path.join(ROOT, "reports/best_case/BEST_CASE_*.md")))
     bc = a.best_case or (bcs[-1] if bcs else None)
     if not bc:
         raise SystemExit("no reports/best_case/BEST_CASE_*.md — run scripts/best_case/run_best_case.py first or pass --best-case")
+    rsz = parse_resize(a.resize)
     share = {k: v for k, v in best_case_shares(bc).items() if v > 0}
-    tot = sum(share.values())
-    if tot <= 0:
-        raise SystemExit(f"no positive sleeve in table ① of {bc}")
-    share = {k: v / tot for k, v in share.items()}
+    if set(rsz) - set(share):   # (DL 514 review) a typo / a sleeve not in table ①'s positive rows would silently do nothing
+        raise SystemExit(f"--resize {sorted(set(rsz) - set(share))} not among the positive table ① sleeves: {sorted(share)}")
     rates = [float(x) for x in a.rates.split(",") if x.strip()]
     T = tradeable_fn(a.no_reserve)
     cfg = json.load(open(os.path.join(ROOT, "trading_config.json")))
     lev_sched = (cfg.get("investment", cfg) or {}).get("leverage_balance_schedule", "") or cfg.get("leverage_balance_schedule", "")
-    d, last = load_fills(a.export, a.since, a.start_equity, T)
+    d0, last = load_fills(a.export, a.since, a.start_equity, T)
+    d = apply_resize(d0, rsz)
+    share = resize_shares(share, d0, d, rsz, T, a.start, lev_sched)
+    tot = sum(share.values())
+    if tot <= 0:
+        raise SystemExit(f"no positive sleeve in table ① of {bc}")
+    share = {k: v / tot for k, v in share.items()}
     rate, rel = build(d, share, T, a.start, lev_sched)
 
     print(f"best case: {os.path.basename(bc)} · export {os.path.basename(a.export)} · fills since {a.since}: {len(d)} · "
           f"reserve {'OFF' if a.no_reserve else 'schedule'} · leverage schedule '{lev_sched or 'none'}' · "
           + " / ".join(f"{R:g}" for R in rates) + f" %/day at ${a.start:,.0f}")
+    if rsz:
+        print("re-sized (share + wanted size): " + " · ".join(f"{k} ×{v:g}" for k, v in rsz.items()))
     n = {s: int((d.sl == s).sum()) for s in share}
     print("sleeve shares of the rate: " + " · ".join(f"{s} {v:.0%} ({n[s]} fills{' ⚠ few' if n[s] < LOW_N else ''})" for s, v in share.items()))
     if any(v == 0 for v in n.values()):

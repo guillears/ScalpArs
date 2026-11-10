@@ -395,15 +395,15 @@ pd.DataFrame(rows, columns=["scen", "sleeve", "b25_before", "b25_best", "m_befor
     b25_sum_before=[KSUM[(r[0], r[1])][0] for r in rows], b25_sum_best=[KSUM[(r[0], r[1])][1] for r in rows],
     b25_n_best=[KSUM[(r[0], r[1])][2] for r in rows]).to_csv(os.path.join(SC, "best_dcr.csv"), index=False)
 
-# ── re-sizing on top of scenario B — the DL 502 5 % cap (📏 DL 503): RETRY / Flatbase up, LITE down; WILLY / FRENZY_LONG never sized up
+# ── re-sizing on top of scenario B — the DL 502 5 % cap (📏 DL 503): RETRY / Flatbase up, LITE down; WILLY / WILLY_HT up in C5 (DL 514); FRENZY_LONG never sized up
 def b25_sized(after, size):
-    """📏 (DECISION_LOG 503) the re-sizes at ONE size: account fractions (% × X ÷ 100) × the size factor (WILLY: target × ÷ today's 5×)."""
+    """📏 (DECISION_LOG 503) the re-sizes at ONE size: account fractions (% × X ÷ 100) × the size factor (a multiple of today's size, DL 514)."""
     acc = A.copy(); acc["ua"] = OS.frac(acc.pct, acc.sl.map(X))
     for i, v in after.items():
         acc.loc[i, "ua"] = 0.0 if v is None else float(v) * X[acc.at[i, "sl"]] / 100.0
     for sl, f in size.items():
         m = acc.sl == sl
-        acc.loc[m, "ua"] = acc.loc[m, "ua"] * (f / 5.0 if sl == "FRENZY_WILLY" else f)   # X WILLY is at today's 5× (kept for a WILLY row; none today, DL 503) (as m_sized)
+        acc.loc[m, "ua"] = acc.loc[m, "ua"] * f   # (DL 514) every factor multiplies TODAY's size X (WILLY X already = 5× at ½ margin) — the old ÷ 5 was for the retired 8× / 10× leverage targets
     return acc
 def acc_dcr(acc, mask):
     return OS.dcr(acc.closed_at, acc.ua.values, np.asarray(mask), t0, t1)
@@ -411,7 +411,7 @@ def m_sized(drop, repl, size):
     global X
     X0 = dict(X)
     for sl, f in size.items():
-        X[sl] = X0[sl] * (f / 5.0 if sl == "FRENZY_WILLY" else f)   # master WILLY X is at 5×
+        X[sl] = X0[sl] * f   # (DL 514) a factor on today's size, as b25_sized
     try:
         return m_dcr(SLEEVES, frozenset(drop), repl)[0]
     finally:
@@ -419,7 +419,7 @@ def m_sized(drop, repl, size):
 B = SCEN["B"]
 # 📏 (DECISION_LOG 503, operator 11-08: "maybe we should change all this, for the recently talked items") the re-size rows = the DL 502
 # 5 % cap: each sleeve sized so ONE stop costs 5 % of the account at today's size (factor = 5 ÷ (X × stop %)); only sleeves above their
-# breakeven WR step up (RETRY, Flatbase); LITE steps DOWN (its stop costs > 5 %). WILLY / FRENZY_LONG are below breakeven → never sized up.
+# breakeven WR step up (RETRY, Flatbase); LITE steps DOWN (its stop costs > 5 %). FRENZY_LONG is below breakeven → never sized up; WILLY / WILLY_HT step up only in C5 (DL 514).
 _TH = _json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
 _STOP = {"FRENZY_LITE_RETRY": float(_TH.get("frenzy_stop_pct", 3.0) or 3.0), "FRENZY_LITE": float(_TH.get("frenzy_stop_pct", 3.0) or 3.0),
          "FLATBASE_SHORT": float(_TH.get("flatbase_stop_pct", 10.0) or 10.0)}
@@ -435,6 +435,32 @@ RESIZES = (("C1 5 % cap: RETRY + Flatbase up, LITE down", dict(CAP5)),
            ("C2 5 % cap: RETRY + Flatbase up only", {k: v for k, v in CAP5.items() if v > 1}),
            ("C3 C1 + Momentum Long ×5", _C3),
            ("C4 C3 with Momentum Long ×10", {**_C3, **({"MOMENTUM_LONG": 10.0} if "MOMENTUM_LONG" in X else {})}))
+# 📏 (DECISION_LOG 514, operator 11-09: "now that willy is positive we should add the new sizing of willy to the best case" + "and willy Ht too")
+# WILLY / WILLY_HT on the same DL 502 5 % cap (one −frenzy_willy_stop_pct stop = 5 % of the account at today's size). They qualify only
+# under their best line (kept fills above breakeven WR: WILLY 21 / 21 winners master + current batch, HT 5 / 6) — in-sample; both lines NOT
+# ABOVE LUCK, so the step is off in LUCK-CHECKED and waits for WILLY_ADX55 + WILLY_FAILED_SPIKE (WILLY) / WILLY_FAILED_SPIKE (HT) in CLEAN ONLY.
+_WSTOP = float(_TH.get("frenzy_willy_stop_pct", 4.0) or 4.0)
+WCAP5 = {sl: round(OS.cap_factor(X[sl], _WSTOP), 2) for sl in ("FRENZY_WILLY", "FRENZY_WILLY_HT") if sl in X and X[sl] > 0}
+if any(not (v == v) for v in WCAP5.values()):   # (DL 514 review) a bad stop / size → NaN would blank C5 silently
+    print("⚠ C5: no 5 % factor for " + ", ".join(k for k, v in WCAP5.items() if not (v == v)) + " — left at today's size")
+WCAP5 = {k: v for k, v in WCAP5.items() if v == v}
+# (DL 514 deep review) the coin caps already bind at today's balance: a bigger WILLY / HT order gets cut to its cap on the thinner coins,
+# so the traded size grows by less than f. Effective factor = Σ min(f × wanted, cap) ÷ Σ min(wanted, cap) over the sleeve's fills since the
+# top-up (today's balance; cap = min(liquidity cap, bracket cap), as capacity_path.py) — used for the C5 row in BOTH blocks.
+def _cap_eff(sl, f):
+    g = A[(A.sl == sl) & (pd.to_datetime(A.opened_at, format="mixed") >= pd.Timestamp(FLOWS[0][0]))]
+    w = pd.to_numeric(g.get("entry_desired_notional"), errors="coerce")
+    cap = np.fmin(pd.to_numeric(g.get("entry_liquidity_cap_notional"), errors="coerce"), pd.to_numeric(g.get("entry_bracket_cap_notional"), errors="coerce"))
+    ok = w > 0
+    if not ok.any():
+        return f
+    w, cap = w[ok].to_numpy(dtype=float), cap[ok].to_numpy(dtype=float)
+    tr = lambda k: np.where(np.isfinite(cap), np.minimum(k * w, cap), k * w).sum()
+    return round(float(tr(f) / tr(1.0)), 2) if tr(1.0) > 0 else f
+WCAP5_NOM = dict(WCAP5)
+WCAP5 = {k: _cap_eff(k, v) for k, v in WCAP5.items()}
+print("RESIZE FACTORS 3 (DL 514): " + " · ".join(f"{sl} ×{WCAP5_NOM[sl]:.2f} (stop now {X[sl] * _WSTOP:.1f} % → 5 %; ×{f:.2f} after its coin caps)" for sl, f in WCAP5.items()))
+RESIZES += (("C5 C4 + WILLY + WILLY_HT up (5 % cap)", {**RESIZES[-1][1], **WCAP5}),)
 for nm, size in RESIZES:
     acc = b25_sized(B[0], size)
     per = {sl: acc_dcr(acc, acc.sl == sl) for sl in size}
@@ -444,7 +470,8 @@ for nm, size in RESIZES:
 # ladder (past checkpoint ∧ 95 % day range on the line's side → no haircut); a re-size counts only when its gating line passed (FRENZY_LONG's
 # DL 317 stop read is not in this view → never on here). Grows toward the full number as lines pass; equals today while none has.
 import confidence as CF
-RESIZE_GATE = {"FRENZY_LITE_RETRY": "RETRY_BTC1H", "FLATBASE_SHORT": "FB_CONFIRM", "MOMENTUM_LONG": "ML_MKT_HOT"}   # a step UP waits for its line · a step DOWN (risk cap) always counts
+RESIZE_GATE = {"FRENZY_LITE_RETRY": "RETRY_BTC1H", "FLATBASE_SHORT": "FB_CONFIRM", "MOMENTUM_LONG": "ML_MKT_HOT",
+               "FRENZY_WILLY": ("WILLY_ADX55", "WILLY_FAILED_SPIKE"), "FRENZY_WILLY_HT": ("WILLY_FAILED_SPIKE",)}   # a step UP waits for its line(s) — a tuple = every line must PASS (DL 514) · a step DOWN (risk cap) always counts
 _best = [(r[1], r[6]) for r in rows if r[0] == "B" and r[6]]
 CALLS = CF.line_calls([(sl, ln) for sl, combo in _best for ln in combo.split(" + ")])
 CS = ({}, set(), {})
@@ -462,8 +489,14 @@ for sl, combo in _best:
 print("\nCLEAN CALLS: " + " · ".join(f"{sl}:{ln} {c}" for (sl, ln), c in CALLS.items()))
 print(f"CLEAN TOTAL B: B25 one size {tb:+.3f} → {b25_dcr(allm, CS[0]):+.3f} %/day · master intended size {mt_b:+.3f} → "
       f"{m_dcr(SLEEVES, frozenset(CS[1]), CS[2])[0]:+.3f}")
+def _gate_pass(sl):
+    g = RESIZE_GATE.get(sl)
+    g = (g,) if isinstance(g, str) else tuple(g or ())
+    if any((sl, ln) not in CALLS for ln in g):   # (DL 514 review) the sleeve's best line moved off a gating line → the step can never pass
+        print(f"⚠ RESIZE_GATE {sl}: {[ln for ln in g if (sl, ln) not in CALLS]} not in the sleeve's best line — its step-up stays off; update RESIZE_GATE")
+    return bool(g) and all(CALLS.get((sl, ln)) == "PASS" for ln in g)
 for nm, size in RESIZES:
-    sz = {sl: f for sl, f in size.items() if f < 1 or (RESIZE_GATE.get(sl) and CALLS.get((sl, RESIZE_GATE[sl])) == "PASS")}
+    sz = {sl: f for sl, f in size.items() if f < 1 or _gate_pass(sl)}
     acc = b25_sized(CS[0], sz)
     print(f"CLEAN {nm.split()[0]}: B25 total {acc_dcr(acc, pd.Series(True, index=acc.index)):+.3f} %/day"
           f" | master total {m_sized(CS[1], CS[2], sz):+.3f} · re-sized: {', '.join(sz) or 'none'}")

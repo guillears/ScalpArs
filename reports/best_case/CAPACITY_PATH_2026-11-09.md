@@ -45,3 +45,31 @@ sleeve shares of the rate: FRENZY_LITE_RETRY 24% (34 fills) · FRENZY_WILLY 4% (
 | $500,000 | 81 | **184** | May 12, 2027 |
 | $1,000,000 | 95 | **306** | Sep 11, 2027 |
 ```
+
+---
+
+## Re-run 2026-11-09 evening — export 14-33, BEST_CASE 14-33, WILLY + WILLY_HT re-sized (DECISION_LOG 514)
+
+Operator: "commit and push, and re-run the capacity path" after the best-case C5 row (WILLY ×2.05 · WILLY_HT ×4.09 = one −4 stop costs 5 % of the account; after each fill's coin cap the traded size grows only ×1.46 / ×3.27 — the caps already bind at today's balance, deep review 514 — so C5 = +11.97 %/day vs C4 +11.21, a +0.76 lift).
+
+```
+venv/bin/python -I scripts/best_case/capacity_path.py ~/Downloads/scalpars_orders_paper_2026-11-09_14-33-26.csv
+venv/bin/python -I scripts/best_case/capacity_path.py ~/Downloads/scalpars_orders_paper_2026-11-09_14-33-26.csv --resize FRENZY_WILLY=2.05,FRENZY_WILLY_HT=4.09
+venv/bin/python -I scripts/best_case/capacity_path.py ~/Downloads/scalpars_orders_paper_2026-11-09_14-33-26.csv --rates 8.76 --resize FRENZY_WILLY=2.05,FRENZY_WILLY_HT=4.09
+```
+
+`--resize` takes the NOMINAL factor: the sleeve's wanted size × f (its coin cap does not move) and its share × f × (what its caps let through at the start balance, new ÷ today).
+
+Days from $10k, with caps + reserve + leverage schedule:
+
+| Target | 8 %, today's sizes | 8 %, WILLY / HT re-sized | 5 %, today's sizes | 5 %, WILLY / HT re-sized | 8.76 %, WILLY / HT re-sized (8 % + the C5 lift) |
+|---|---|---|---|---|---|
+| $50,000 | 27 (26) | 27 | 42 (41) | 42 | 24 (Dec 3) |
+| $100,000 | 43 (42) | 43 | 67 (67) | 68 | 40 (Dec 19) |
+| $200,000 | 65 (64) | 67 | 103 (102) | 107 | 62 (Jan 10) |
+| $500,000 | 117 (115) | 125 | 186 (184) | 199 | 114 (Mar 3) |
+| $1,000,000 | 195 (192) | 211 | 311 (306) | 337 | 193 (May 21, 2027) |
+
+(brackets = the 12-45 run above; the small move comes from the flips line losing share after INJ / PEPE / UNI.)
+
+**Reading.** At the SAME start rate a bigger WILLY / HT is slower above $100k: their share of the rate grows (WILLY 4 → 6 %, HT 4 → 11 %) and their coins cap early (at $200k WILLY keeps 17 %, HT 24 % of its wanted size, vs 22 % / 67 % at today's size). The re-size pays only through a higher start rate: the C5 lift (+0.76 %/day in-sample) on 8 % gives 8.76 % → $1M in 193 days instead of 195 — about the same, because the lift is spent in coins that cap out. The lift is in-sample (HT on 6 fills) and both WILLY lines are NOT ABOVE LUCK (luck-checked lift = 0), so the luck-checked 5 % row stays at today's sizes.

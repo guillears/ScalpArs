@@ -67,3 +67,35 @@ def test_binding_cap_and_leverage_step_slow_the_path():
     assert CP.days_to(rate_c, 8.0, 10000.0)[1e6] > CP.days_to(CP.build(_fills(np.nan), {"A": 1.0}, T, 10000.0)[0], 8.0, 10000.0)[1e6]
     rate_l, rel_l = CP.build(_fills(np.nan, lev=20.0), {"A": 1.0}, T, 10000.0, "0:20, 25000:15")
     assert rel_l("A", 20000.0) == 1.0 and abs(rel_l("A", 30000.0) - 0.75) < 1e-9
+
+
+def test_resize_parse_and_apply_scales_only_named_sleeves():
+    """DL 514: --resize multiplies the named sleeve's wanted size (caps unchanged) — a bigger WILLY meets its caps sooner."""
+    import pandas as pd
+    import pytest
+    assert CP.parse_resize("FRENZY_WILLY=2.05, FRENZY_WILLY_HT=4.09") == {"FRENZY_WILLY": 2.05, "FRENZY_WILLY_HT": 4.09}
+    assert CP.parse_resize("") == {}
+    with pytest.raises(SystemExit):
+        CP.parse_resize("FRENZY_WILLY=0")
+    with pytest.raises(SystemExit):
+        CP.parse_resize("FRENZY_WILLY")
+    d = pd.DataFrame({"sl": ["FRENZY_WILLY", "SPIKE_FADE"], "frac": [0.5, 1.0], "cap": [1000.0, float("nan")], "lev": [5.0, 5.0]})
+    r = CP.apply_resize(d, {"FRENZY_WILLY": 2.0})
+    assert list(r.frac) == [1.0, 1.0] and list(d.frac) == [0.5, 1.0]
+    T = lambda e: e
+    _, rel1 = CP.build(d, {"FRENZY_WILLY": 1.0}, T, 1000.0)
+    _, rel2 = CP.build(r, {"FRENZY_WILLY": 1.0}, T, 1000.0)
+    assert rel2("FRENZY_WILLY", 3000.0) < rel1("FRENZY_WILLY", 3000.0)
+
+
+def test_resize_shares_counts_only_what_the_caps_let_through_at_the_start():
+    """DL 514 review: a re-size already capped at the start adds less than f to the sleeve's share; an uncapped one adds f; others untouched."""
+    import pandas as pd
+    T = lambda e: e
+    d = pd.DataFrame({"sl": ["FRENZY_WILLY", "FRENZY_WILLY_HT", "SPIKE_FADE"], "frac": [0.5, 0.5, 1.0],
+                      "cap": [600.0, float("nan"), float("nan")], "lev": [5.0, 5.0, 5.0]})
+    rsz = {"FRENZY_WILLY": 2.0, "FRENZY_WILLY_HT": 2.0}
+    r = CP.apply_resize(d, rsz)
+    s = CP.resize_shares({"FRENZY_WILLY": 1.0, "FRENZY_WILLY_HT": 1.0, "SPIKE_FADE": 1.0}, d, r, rsz, T, 1000.0)
+    # WILLY at 1000: today 500 (< cap 600, kept 1.0); ×2 → 1000 capped at 600 (kept 0.6) → share 1 × 2 × 0.6
+    assert math.isclose(s["FRENZY_WILLY"], 1.2) and math.isclose(s["FRENZY_WILLY_HT"], 2.0) and s["SPIKE_FADE"] == 1.0

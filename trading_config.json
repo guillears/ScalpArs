@@ -59,7 +59,7 @@
     "leverage_bracket_cap_enabled": true,
     "max_open_positions_hard": 10,
     "manual_max_open_positions": 8,
-    "leverage_balance_schedule": "0:20, 25000:15",
+    "leverage_balance_schedule": "0:20",
     "spike_lowvol_liq_cap_pct": 0.5,
     "spike_lowvol_threshold_usd": 1000000000000.0,
     "fee_reserve_hours": 12.0,

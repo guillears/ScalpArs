@@ -3085,6 +3085,11 @@ class InvestmentConfig(BaseModel):
     # → 3.0×@500k, monotonic. The deleted tiers double-braked $75k+ to 1.4-4× effective. ON RECORD:
     # sub-$25k 20× runs ABOVE the 15% bound (design-tail day ≈ −31%; lived −16% Jul-10) — accepted
     # legacy aggression at small balances. 🔴 RE-DERIVE ON LIVE FILLS AT CUTOVER (punch list).
+    # Nov-10 2026 (operator: "remove the 25k step", DECISION_LOG 517): JSON "0:20, 25000:15" → "0:20" — the step only ever cut the
+    # 20× legs (Momentum Short incl. C1, Spike Fade, Bull-Run Long, Spike Chase probe) to 15× (a CEILING: 5–10× sleeves never touched);
+    # one stop at 20× at $25k (slot $6,062): C1 −0.70 ≈ 3.4 %, other MS / Bull-Run at the −1.2 widened stop ≈ 5.8 % (over the DL 502
+    # 5 % cap; real MS worst −0.79 ≈ 3.8 %). Bull-Run's 20× size is a separate open review (DL 517). "0:20" (not empty) keeps a 20× ceiling on any stacked
+    # cell lev-mult. Inert below $25k (paper ≈ $6.5k). The Aug-20 worst-day bound assumed 15× above $25k — re-derive at live cutover.
     leverage_balance_schedule: str = ""  # "0:20, 10000:15, 25000:10, 100000:5"; empty = off
 
 

@@ -7,7 +7,7 @@ Method (read-only, no network):
   · each fill: wanted size as a share of the tradeable line at its open (equity at open = --start-equity + realised $ of EVERY fill closed
     between --since and its open), cap = min(entry_liquidity_cap_notional, entry_bracket_cap_notional).
   · at balance E: wanted = share × T(E) × min(lev, L(E)) ÷ lev (T = trading_config reserve schedule + fee reserve, L = the
-    leverage_balance_schedule ceiling — 20× → 15× above $25k), traded = min(wanted, cap); a sleeve's "size kept" = Σ traded ÷ Σ share × T(E),
+    leverage_balance_schedule ceiling — 20× since DL 517, was 20× → 15× above $25k), traded = min(wanted, cap); a sleeve's "size kept" = Σ traded ÷ Σ share × T(E),
     RELATIVE to the start balance (today's rate already carries today's caps and leverage).
   · rate(E) = start rate × Σ_sleeves sleeve share × size kept(E) × [T(E)/E ÷ T(E0)/E0]; sleeve shares = the positive "best" values of the
     newest reports/best_case/BEST_CASE_*.md table ① (current batch), scaled to 1.

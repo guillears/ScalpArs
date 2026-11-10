@@ -3,7 +3,7 @@
 Turns each best-case re-size factor (a × on the traded size, DL 502 / 503 / 504 / 514) into the two numbers the dashboard takes:
 INVESTMENT (a share of one slot: (total − reserve) ÷ max_open_positions) and LEVERAGE (a whole number). The engine opens at
 round(confidence leverage × lev setting) (trading_engine.compose_leverage; STRONG_BUY = 20×), and leverage_balance_schedule is only a
-CEILING applied after (above $25k: 15× — it cuts only leverages above 15). Size = investment × leverage.
+CEILING applied after ("0:20" since DL 517: a 20× ceiling; the old 25000:15 step cut only legs above 15×). Size = investment × leverage.
 
 ONE RULE for every sleeve (the WILLY call agreed 11-09: "1× investment at 5×"; 0.05 steps, operator 11-10):
   1. keep today's leverage, scale the investment by the factor;

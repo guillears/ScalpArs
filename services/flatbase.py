@@ -95,7 +95,7 @@ def flatbase_config_errors(th, base_leverage=20.0) -> list:
     """🩳 PUT /api/config refusals for the FLATBASE_SHORT fields (DECISION_LOG 348). The stop's exchange backstop at the sleeve's leverage
     (base_leverage × flatbase_lev_mult, the STRONG_BUY level the sleeves open at) must sit ≥ MANUAL_BACKSTOP_MIN_GAP_PCT beyond the stop."""
     errs = []
-    for k in ('flatbase_short_enabled', 'resting_tp_flatbase_enabled'):
+    for k in ('flatbase_short_enabled', 'resting_tp_flatbase_enabled', 'flatbase_shares_bot_slots'):   # 🧺 (515)
         if not isinstance(getattr(th, k, False), bool):
             errs.append(f"{k} must be true or false")
     rng = dict(flat_max=("a fraction > 0 and ≤ 5 (0.444 = a 44.4 % 14-day range)", lambda x: 0 < x <= 5.0),

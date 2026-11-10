@@ -1209,9 +1209,16 @@ def _bot_open_filter():
     return or_(Order.entry_strategy.is_(None), Order.entry_strategy != "MANUAL")
 
 
+def _flatbase_shares_slots() -> bool:
+    """🧺 (DECISION_LOG 515) True (default) = FLATBASE_SHORT holds a max_open_positions slot like every bot sleeve; False = the DL 348 lane."""
+    return bool(getattr(config.trading_config.thresholds, 'flatbase_shares_bot_slots', True))
+
+
 def _bot_slot_filter():
-    """🩳 (DECISION_LOG 348) SQL clause selecting the bot rows that consume a max_open_positions SLOT: _bot_open_filter minus FLATBASE_SHORT
-    (operator: no cap of its own and never counted in the bot's slots — like MANUAL's own lane). The fee burn (_bot_open_filter) keeps it."""
+    """🩳 (DECISION_LOG 348) SQL clause selecting the bot rows that consume a max_open_positions SLOT: _bot_open_filter — minus FLATBASE_SHORT
+    only while flatbase_shares_bot_slots is False (🧺 DL 515: shared by default). MANUAL keeps its own lane. The fee burn (_bot_open_filter) keeps it."""
+    if _flatbase_shares_slots():
+        return _bot_open_filter()
     return and_(_bot_open_filter(), or_(Order.entry_strategy.is_(None), Order.entry_strategy != FLATBASE_SHORT))
 
 
@@ -13155,7 +13162,7 @@ class TradingEngine:
         # 🩳 2026-10-22 FLATBASE_SHORT (DECISION_LOG 348): a SHORT from _flatbase_enter (a FLAT-based FRENZY episode's S4 bar). Tagged
         # FLATBASE_SHORT; rides the SURGE open path (alt entry filters / pattern cells bypassed, direct taker, NO dislocation guard — the study
         # entered at the bar close) with its own size (flatbase_invest_mult × flatbase_lev_mult, absolute-assign = the momentum-long mults),
-        # NO slot cap and never counted in max_open_positions (_bot_slot_filter), its own exit (services.flatbase.flatbase_exit_for).
+        # one bot slot (🧺 DL 515, flatbase_shares_bot_slots; DL 348 had none — _bot_slot_filter), its own exit (services.flatbase.flatbase_exit_for).
         flatbase_short: bool = False,
         flatbase_bar_close_ms: Optional[int] = None,   # the S4 bar's close — the order must reach the open path inside the same 5m bar
         entry_flatbase_flat14_pct: Optional[float] = None,
@@ -13294,7 +13301,7 @@ class TradingEngine:
         # never consume a systematic slot (NULL entry_strategy = legacy momentum rows, kept in the count).
         total_open = await db.execute(
             select(func.count(Order.id)).where(
-                and_(Order.status == "OPEN", Order.is_paper == self.is_paper_mode, _bot_slot_filter())   # 🩳 (348) FLATBASE_SHORT holds no slot
+                and_(Order.status == "OPEN", Order.is_paper == self.is_paper_mode, _bot_slot_filter())   # 🧺 (515) FLATBASE_SHORT holds a slot unless the 348 lane is on
             )
         )
         # Jun 2: when redeploy_leftover is on, the count limit rises to the hard
@@ -13306,11 +13313,16 @@ class TradingEngine:
         if _redeploy_on:
             _eff_max_pos = max(_eff_max_pos, getattr(_inv_cfg, 'max_open_positions_hard', _eff_max_pos))
         _open_count_now = total_open.scalar()
-        if _open_count_now >= _eff_max_pos and not _fbs:   # 🩳 (348) FLATBASE_SHORT: no slot cap of its own and never refused by the bot's slots
+        _fbs_lane = _fbs and not _flatbase_shares_slots()   # 🩳 (348) the old no-slot lane — only when the operator switches 515 off
+        if _open_count_now >= _eff_max_pos and not _fbs_lane:   # 🧺 (515) a FLATBASE_SHORT is refused by a full book like every bot sleeve
             logger.warning(f"[SKIP] {pair}: Max open positions ({_eff_max_pos}) reached")
+            if _fbs:   # 🧺 (515) counted (D11) + the reason lands on the episode ledger (REFUSED)
+                self._record_filter_block("FLATBASE_BOOK_FULL", direction)
+                self._frenzy_open_refusal = f"bot slots full ({_open_count_now} open, max {_eff_max_pos})"
             # Jun 18: the REAL cap-cost — a fully-qualified signal we couldn't open because full.
-            try: self._cap_skip_counts["flip" if flip_source else "normal"] += 1
-            except Exception: pass
+            if not _fbs:   # 🧺 (515 review) the momentum / flip cap-cost tally stays momentum-only — FLATBASE has its own FLATBASE_BOOK_FULL counter
+                try: self._cap_skip_counts["flip" if flip_source else "normal"] += 1
+                except Exception: pass
             try:   # 🔭 Sep-30: journal the capacity refusal (file-only — the scout tells 'book full' from 'no signal'; no counter)
                 _djournal.note('BLOCK', gate='BOOK_FULL', dir=direction, pair=pair, room=False)
             except Exception:
@@ -13319,8 +13331,8 @@ class TradingEngine:
         # Jun 2: this open sits in the "redeploy band" if it's beyond the normal
         # max_open_positions — only reachable because redeploy raised the ceiling.
         # Recorded as REDEPLOY_OPEN after the Order commits (positive-event counter).
-        _is_redeploy_open = _redeploy_on and _open_count_now >= _inv_cfg.max_open_positions and not _fbs   # 🩳 (348) never a slot open
-        if _fbs:   # 🩳 (348) flatbase_max_open: its OWN optional cap (0 = no cap — operator decision pending), never the bot's slots
+        _is_redeploy_open = _redeploy_on and _open_count_now >= _inv_cfg.max_open_positions and not _fbs_lane   # 🧺 (515) a shared FLATBASE slot can be one
+        if _fbs:   # 🩳 (348) flatbase_max_open: its OWN optional cap on top (0 = no cap — DL 515 default: the shared slots are the limit)
             _fb_cap = int(flatbase_params(config.trading_config.thresholds)['max_open'])
             if _fb_cap > 0:
                 try:
@@ -21169,7 +21181,7 @@ class TradingEngine:
         try:
             _scan_start_open_count_q = await db.execute(
                 select(func.count(Order.id)).where(
-                    and_(Order.status == "OPEN", Order.is_paper == self.is_paper_mode, _bot_slot_filter())   # 🖐 bot lane only · 🩳 (348) slot rows
+                    and_(Order.status == "OPEN", Order.is_paper == self.is_paper_mode, _bot_slot_filter())   # 🖐 bot lane only · 🧺 (515) FLATBASE counts unless the 348 lane is on
                 )
             )
             _scan_start_open_count = _scan_start_open_count_q.scalar() or 0
@@ -21580,7 +21592,7 @@ class TradingEngine:
         try:
             _open_count_q = await db.execute(
                 select(func.count(Order.id)).where(
-                    and_(Order.status == "OPEN", Order.is_paper == self.is_paper_mode, _bot_slot_filter())   # 🖐 bot lane only · 🩳 (348) slot rows
+                    and_(Order.status == "OPEN", Order.is_paper == self.is_paper_mode, _bot_slot_filter())   # 🖐 bot lane only · 🧺 (515) FLATBASE counts unless the 348 lane is on
                 )
             )
             _open_positions_in_scan = _open_count_q.scalar() or 0

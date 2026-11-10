@@ -32,7 +32,7 @@ its own section, each crash-isolated; one shared Budget for the whole run; final
               ledger fb_turnover when stamped, else INFERRED: circulating supply from the nearest stamped mcap of the same pair (ledger
               fb_mcap_usd / price or an order's entry_mcap_usd / entry_price, ≤ 30 days) × the S4 close; none → unscored (shown apart).
               Compared with the FLAT real cohort and the FLAT shadows over the same period. Purpose: "flat coins fall harder" on fresh data.
-  ② MISSED    ledger rows MISSED (the first qualifying 4-h close passed unjudged), REFUSED (by reason: FLATBASE_MAX_OPEN, pair held,
+  ② MISSED    ledger rows MISSED (the first qualifying 4-h close passed unjudged), REFUSED (by reason: FLATBASE_BOOK_FULL (DL 515 shared slots), FLATBASE_MAX_OPEN, pair held,
               late, other) and UNREADABLE — the S4 bar from the row when stamped, else recomputed like ①; priced like the shadows; per reason.
   ③ BLOCKED   FRENZY longs refused PAIR_HELD while a FLATBASE_SHORT held the pair: decisions BLOCK rows (dir LONG) with the sleeve-named
               gates FRENZY_LITE_PAIR_HELD / FRENZY_LITE_RETRY_PAIR_HELD / FRENZY_WILLY_PAIR_HELD / FRENZY_WILLY_HT_PAIR_HELD (and
@@ -480,6 +480,8 @@ def _reason_class(status, reason):
     t = str(reason or "").lower()
     if "flatbase_max_open" in t:
         return "FLATBASE_MAX_OPEN"
+    if "bot slots full" in t:   # 🧺 (DECISION_LOG 515) shared slots: a full book refused the episode — the DL 515 revert-gate cohort
+        return "FLATBASE_BOOK_FULL"
     if "pair held" in t:
         return "REFUSED_PAIR_HELD"
     if "after the 4-h bar closed" in t:
@@ -487,7 +489,7 @@ def _reason_class(status, reason):
     return "REFUSED_OTHER"
 
 
-MISSED_ORDER = ("MISSED", "FLATBASE_MAX_OPEN", "FLAT_UNREADABLE", "REFUSED_PAIR_HELD", "REFUSED_LATE", "REFUSED_OTHER")
+MISSED_ORDER = ("MISSED", "FLATBASE_BOOK_FULL", "FLATBASE_MAX_OPEN", "FLAT_UNREADABLE", "REFUSED_PAIR_HELD", "REFUSED_LATE", "REFUSED_OTHER")
 
 
 def missed_lines(ctx):
@@ -515,7 +517,38 @@ def missed_lines(ctx):
         L.append(f"- {k}: {len(res)} · {_st(net)} · {_tally(res)}{extra}")
     if ctx["bud"].stop:
         L.append(f"- ⚠ fetch stopped: {ctx['bud'].why} — the rest waits for the next run")
+    L += shared_slots_gate_lines(led, by, ctx.get("slots_since_ms", "git"))
     return L + [""]
+
+
+SLOTS_DL = 515              # 🧺 FLATBASE shares the bot slots
+SLOTS_GATE_N, SLOTS_GATE_REFUSED = 15, 3
+
+
+def shared_slots_gate_lines(led, by, since_ms="git"):
+    """🧺 (DECISION_LOG 515) the frozen revert gate, read ONCE at the 15th FLATBASE episode first seen after the deploy (+ 10 min): ≥ 3 of them
+    refused FLATBASE_BOOK_FULL AND those refusals' shadow-priced net Σ > 0 → REVERT CANDIDATE (operator switches flatbase_shares_bot_slots
+    off); else KEEP. Before the 15th: progress only. Never raises."""
+    try:
+        if since_ms == "git":
+            since_ms = _GK.dl_deploy_ms(SLOTS_DL, lag_min=10, label="FLATBASE shared slots")
+        head = f"- 🧺 SHARED SLOTS gate (DL {SLOTS_DL}, frozen): first {SLOTS_GATE_N} episodes after the deploy — ≥ {SLOTS_GATE_REFUSED} FLATBASE_BOOK_FULL refusals with priced net Σ > 0 → REVERT CANDIDATE"
+        if since_ms is None:
+            return [head, "  not evaluable yet — the DL 515 commit is not in git"]
+        e = led.assign(_fl=_floor(led)) if len(led) else led
+        e = e[e._fl >= since_ms].sort_values("_fl").head(SLOTS_GATE_N) if len(e) else e
+        keys = set(zip(e.pair, e.spike_ms)) if len(e) else set()
+        bf = [(r, x) for r, x in by.get("FLATBASE_BOOK_FULL", []) if (r.pair, r.spike_ms) in keys]
+        net = [x["net"] for _, x in bf if x.get("state") == "PRICED"]
+        prog = f"  {len(e)}/{SLOTS_GATE_N} episodes · BOOK_FULL refused {len(bf)} · priced net Σ {sum(net):+.2f} % ({len(net)} priced)"
+        if len(e) < SLOTS_GATE_N:
+            return [head, prog + " — keep observing"]
+        if len(bf) >= SLOTS_GATE_REFUSED and len(net) < len(bf):
+            return [head, prog + " — WAIT: price every refusal before the read"]
+        verdict = "🔴 REVERT CANDIDATE (operator: switch 'Shares the bot slots' off)" if (len(bf) >= SLOTS_GATE_REFUSED and sum(net) > 0) else "✅ KEEP shared slots"
+        return [head, prog + " → " + verdict]
+    except Exception as ex:
+        return [f"- 🧺 SHARED SLOTS gate: unreadable ({str(ex)[:80]})"]
 
 
 def load_blocks(frame, since_ms):
@@ -722,7 +755,7 @@ FB_SLOT_MARGIN_REF = 456.0                   # ≈ one equal-split slot at ≈ $
 def resize_lines(real, inv_now=None):
     """🔒 the frozen FLATBASE re-size ladder → printed lines (operator decides; nothing automatic). → STEP-UP candidate when flatbase_gate on
     the current run at this size says STEP_UP; STEP-DOWN candidate (rungs above 0.2) when it says OFF or REVIEW. Every step up also needs the
-    operator to re-decide flatbase_max_open (FLATBASE holds no bot slot — the cap was sized for 0.2). Above 0.2 the ladder line — not the
+    operator to re-decide flatbase_max_open (an optional own cap on top of the shared bot slots since DL 515; 0 = none). Above 0.2 the ladder line — not the
     sleeve gate line above it (all fills, frozen first-30 sample) — is the size verdict. Off the ladder → no step verdict. Never raises."""
     try:
         cap = 0

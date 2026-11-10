@@ -1585,7 +1585,7 @@ class SignalThresholds(BaseModel):
     # 24 h volume ≥ $20M, ≤ 96 h after the spike; one per episode (DB + the flatbase_episodes ledger, restart-safe; a missed boundary is never
     # caught up). Turnover (24 h volume / mcap) > 1 → trade; ≤ 1 → observe-only shadow (ledger SHADOW); unknown mcap → trade. Exit = price
     # −8 % (resting maker TP) · +15 % stop (bot + exchange backstop) · 72 h. Size = the momentum-long mults (0.2 margin at 0.25 lev → ≈ $100 margin /
-    # $500 notional at 5×, floor-bound below ≈ $2,050 equity), own cap flatbase_max_open, NOT counted in max_open_positions. Evidence (reports/FRENZY_FLATBASE_SHORT_2026-10-22*.md): closest
+    # $500 notional at 5×, floor-bound below ≈ $2,050 equity), own cap flatbase_max_open, NOT counted in max_open_positions (⟶ DL 515: shares the slots, flatbase_shares_bot_slots). Evidence (reports/FRENZY_FLATBASE_SHORT_2026-10-22*.md): closest
     # cell S4 · TP −8 · 72 h · stop 15 = +0.93 %/trade in 2026 [+0.28, +1.53], walk-forward unstable, fair-random p 0.050; turnover > 1
     # cohort +1.65 in-sample (2026-H2 held out +1.25 [−0.1, +2.4] — the OOS lift CI touches 0). 🔒 Gates (scripts/scout_flatbase_short.py +
     # the FRENZY table row, ALERT only): 3 stop-outs in a row or Σ ≤ −30 pts → review · first 10 avg < 0 → review · main read at 30 fills
@@ -1612,9 +1612,18 @@ class SignalThresholds(BaseModel):
     flatbase_confirm_hours: float = 24.0
     flatbase_invest_mult: float = 0.2             # = momentum_long_invest_mult (DL 298): the margin share
     flatbase_lev_mult: float = 0.25               # = momentum_long_lev_mult: × the STRONG_BUY leverage (20 × 0.25 = 5×)
-    # its OWN open cap (never the bot's slots), 0 = no cap. Operator decided 10 on 2026-10-22: the study's bursts reached 24 open
+    # its OWN optional open cap ON TOP of the shared bot slots (DL 515), 0 = no cap. Operator decided 10 on 2026-10-22 (the DL 348 no-slot lane): the study's bursts reached 24 open
     # (≈ $1.5k margin ≈ 46 % of the account at today's size) — a refusal at the cap ends that episode (FLATBASE_MAX_OPEN).
-    flatbase_max_open: int = 10                 # operator 2026-10-22: cap 10 open (≤ ~$620 margin ≈ 19 % of the account); 0 = no cap
+    flatbase_max_open: int = 0                  # operator 2026-10-22: cap 10 open; DL 515 (operator 11-09): 0 = no cap of its own — FLATBASE shares the bot slots below
+    # 🧺 2026-11-09 SHARED SLOTS (DECISION_LOG 515, operator: "flatbase not being part of the normal slots will not make sense" → "yes build the flatbase
+    # shared slots change"): True = a FLATBASE_SHORT holds a bot slot like every other sleeve — the SAME ceiling (max_open_positions 4, or
+    # max_open_positions_hard 10 while redeploy_leftover_enabled is on — 10 today; free margin + the gross cap limit it in practice) (refused when the book is full →
+    # FLATBASE_BOOK_FULL, the episode ends REFUSED; may open in the redeploy band like any slot); False = the DL 348 lane (no slot). Evidence (B25,
+    # 25 fills): ≤ 3 open at once, 0 of 25 opened with ≥ 4 open, ≤ 7 of 250 other fills would have met a full book. Why now: the 5 % per-stop
+    # re-size (DL 502 / 514) makes the slot count THE risk budget; a separate 10-open lane at ×2.05 on top of the bot's 10 would double it.
+    # 🔒 Revert to False if, at the first 15 FLATBASE episodes after the deploy, FLATBASE_BOOK_FULL refused ≥ 3 that the shadow prices as winners
+    # (net Σ > 0) — scout line FLATBASE_BOOK_FULL. No own sub-cap (operator 11-09: no other sleeve has one); watch: days with ≥ 3 FLATBASE open.
+    flatbase_shares_bot_slots: bool = True
     # 🎯 2026-10-15 RESTING TAKE-PROFIT (DECISION_LOG 296, operator-armed DECLARED EXCEPTION — below the usual evidence bar): a reduce-only,
     # post-only (GTX) LIMIT rests on Binance at the price that books the SAME net TP with the MAKER exit fee (services/resting_tp.py +
     # exec_shadow.resting_tp_price). Evidence: live TP give-back 4/4 (WILLY ZK +1.12 / BLUR +1.09 / RLC +1.08 vs +1.25, LITE DEEP +2.80 vs

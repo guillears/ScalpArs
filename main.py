@@ -1600,8 +1600,9 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
             "bnb_balance": round(bnb_usd, 2),
             "bnb_balance_is_usd": True,
             "usdt_in_orders": used_margin,
-            "open_orders_count": len([o for o in open_orders if (getattr(o, 'entry_strategy', None) or '') not in ('MANUAL', 'FLATBASE_SHORT')]),   # bot SLOT lane (🖐 Sep-29 · 🩳 348: FLATBASE holds no slot)
-            "flatbase_open_count": len([o for o in open_orders if (getattr(o, 'entry_strategy', None) or '') == 'FLATBASE_SHORT']),   # 🩳 (348) holds no bot slot · shown in the lanes line (362)
+            "open_orders_count": len([o for o in open_orders if (getattr(o, 'entry_strategy', None) or '') not in (('MANUAL',) if _fb_shares_slots() else ('MANUAL', 'FLATBASE_SHORT'))]),   # bot SLOT lane (🖐 Sep-29 · 🧺 515: FLATBASE holds a slot unless the 348 lane is on)
+            "flatbase_shares_slots": _fb_shares_slots(),   # 🧺 (515) the dashboard folds FLATBASE into "Bot slots"
+            "flatbase_open_count": len([o for o in open_orders if (getattr(o, 'entry_strategy', None) or '') == 'FLATBASE_SHORT']),   # 🩳 (348) · 🧺 (515) inside open_orders_count when shared; own lane line only when not
             "manual_open_count": len([o for o in open_orders if (getattr(o, 'entry_strategy', None) or '') == 'MANUAL']),
             "flatbase_max_open": int(getattr(config.trading_config.thresholds, 'flatbase_max_open', 0) or 0),   # 🩳 (362) the FLATBASE lane cap shown next to the slots
             "max_open_positions_redeploy": (int(getattr(config.trading_config.investment, 'max_open_positions_hard', 0) or 0)
@@ -1683,7 +1684,8 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
             "bnb_balance_is_usd": False,
             "usdt_in_orders": round(_usdt_im, 2),   # 🏦 (344) the margin actually locked (USDT initialMargin = position + open-order IM), not total − free
             "usdt_unrealized": round(_usdt_unrl, 2) if balance.get('ok', True) else None,   # 🏦 (344) Binance open P&L over ALL positions — inside total_portfolio ("incl. open P&L"); None on a failed read (sub-line hidden)
-            "open_orders_count": len([o for o in _live_open if (getattr(o, 'entry_strategy', None) or '') not in ('MANUAL', 'FLATBASE_SHORT')]),   # bot SLOT lane (🖐 Sep-29, parity with paper · 🩳 348)
+            "open_orders_count": len([o for o in _live_open if (getattr(o, 'entry_strategy', None) or '') not in (('MANUAL',) if _fb_shares_slots() else ('MANUAL', 'FLATBASE_SHORT'))]),   # bot SLOT lane (🖐 Sep-29, parity with paper · 🧺 515)
+            "flatbase_shares_slots": _fb_shares_slots(),   # 🧺 (515)
             "flatbase_open_count": len([o for o in _live_open if (getattr(o, 'entry_strategy', None) or '') == 'FLATBASE_SHORT']),   # 🩳 (348)
             "manual_open_count": len([o for o in _live_open if (getattr(o, 'entry_strategy', None) or '') == 'MANUAL']),
             "flatbase_max_open": int(getattr(config.trading_config.thresholds, 'flatbase_max_open', 0) or 0),   # 🩳 (362)
@@ -4838,6 +4840,11 @@ _SLEEVE_LABELS = {   # 🧭 Oct-5 (operator): open positions per sleeve under th
     ("FLATBASE_SHORT", "SHORT"): "FLATBASE Short",   # 🩳 (DECISION_LOG 348)
     ("BULL_LONG", "LONG"): "Bull Long", ("BOUNCE_LONG", "LONG"): "Bounce Long",
 }
+
+
+def _fb_shares_slots() -> bool:
+    """🧺 (DECISION_LOG 515) FLATBASE_SHORT holds a bot slot (default True) — the dashboard slot count follows the engine's _bot_slot_filter."""
+    return bool(getattr(config.trading_config.thresholds, 'flatbase_shares_bot_slots', True))
 
 
 def _open_by_sleeve(orders):
@@ -9820,7 +9827,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                                 ("FRENZY_LITE_RETRY", "FRENZY_LITE_RETRY (LITE green refusal → first red / flat READY bar ≤ 15 min · 4× · no slot limit · declared override"),
                                 ("FRENZY_WILLY", "FRENZY_WILLY (new flag + ON not taken · red-candle entry · turnover < 1× mcap · declared exception"),
                                 ("FRENZY_WILLY_HT", "FRENZY_WILLY_HT (¼ size · WILLY setups refused ONLY by turnover ≥ 1× mcap · own slot · alert-only gates"),
-                                ("FLATBASE_SHORT", "🩳 FLATBASE_SHORT (FLAT 14-d base · S4 4-h close < spike VWAP ≥ 4 h · turnover > 1 · no slot · discipline override")):
+                                ("FLATBASE_SHORT", "🩳 FLATBASE_SHORT (FLAT 14-d base · S4 4-h close < spike VWAP ≥ 4 h · turnover > 1 · shares the bot slots (DL 515) · discipline override")):
             _fz_all = [o for o in orders if (o.entry_strategy or '') == _fz_es and o.pnl_percentage is not None]
             if _fz_es == "FRENZY_WIDE" and not _fz_all:   # OFF since DL 291: a row only if a fill is in view
                 continue

@@ -532,8 +532,9 @@ def _e2e_open(monkeypatch, n_open=4, seed_strategy="MOMENTUM", th_kw=None, **kw)
 
 
 def test_open_no_slot_momentum_size_stop_and_backstop(monkeypatch):
+    """the DL 348 lane (flatbase_shares_bot_slots False — DL 515's revert switch): a full book (4/4) never refuses it, it holds no slot."""
     now_ms = int(__import__("time").time() * 1000)
-    r, blocks, n_slot, n_bot, ref, ref_m = _e2e_open(monkeypatch, flatbase_short=True, flatbase_bar_close_ms=now_ms,
+    r, blocks, n_slot, n_bot, ref, ref_m = _e2e_open(monkeypatch, th_kw=dict(flatbase_shares_bot_slots=False), flatbase_short=True, flatbase_bar_close_ms=now_ms,
                                                     entry_frenzy_spike_at=dt.datetime(2026, 10, 22, 8, 0), entry_flatbase_flat14_pct=31.5,
                                                     entry_flatbase_flat_cov_pct=100.0, entry_flatbase_off_peak_pct=-22.0,
                                                     entry_flatbase_peak_age_h=7.5)
@@ -555,13 +556,36 @@ def test_open_refused_late_and_manual_block(monkeypatch):
     assert r is None and "FLATBASE_LATE" in blocks
 
 
-def test_slot_filter_sql_and_momentum_still_capped():
+def test_shared_slots_full_book_refuses_and_a_free_slot_opens(monkeypatch):
+    """🧺 (DECISION_LOG 515) default: FLATBASE holds a bot slot — a full book (4/4) refuses it (FLATBASE_BOOK_FULL, the reason the episode
+    ledger records); with 3/4 open it opens and the slot count reaches 4 (it is counted)."""
+    now_ms = int(__import__("time").time() * 1000)
+    r, blocks, n_slot, n_bot, *_ = _e2e_open(monkeypatch, flatbase_short=True, flatbase_bar_close_ms=now_ms)
+    assert r is None and "FLATBASE_BOOK_FULL" in blocks and n_slot == 4
+    mp = pytest.MonkeyPatch()
+    try:
+        r2, b2, n2, nb2, *_ = _e2e_open(mp, n_open=3, flatbase_short=True, flatbase_bar_close_ms=now_ms)
+    finally:
+        mp.undo()
+    assert r2 is not None and r2.entry_strategy == "FLATBASE_SHORT" and n2 == 4 and nb2 == 4 and "FLATBASE_BOOK_FULL" not in b2
+
+
+def test_book_full_refusal_reason_is_classified_by_the_scout():
+    import scout_flatbase_short as SC
+    assert SC._reason_class("REFUSED", "bot slots full (4 open, max 4) at the S4 bar") == "FLATBASE_BOOK_FULL"
+    assert "FLATBASE_BOOK_FULL" in SC.MISSED_ORDER
+
+
+def test_slot_filter_sql_and_momentum_still_capped(monkeypatch):
     import services.trading_engine as TE
     s = str(TE._bot_slot_filter().compile(compile_kwargs={"literal_binds": True}))
-    assert "FLATBASE_SHORT" in s and "MANUAL" in s
+    assert "FLATBASE_SHORT" not in s and "MANUAL" in s                                      # 🧺 (515) shared: FLATBASE counts
+    monkeypatch.setattr(TE.config.trading_config.thresholds, "flatbase_shares_bot_slots", False, raising=False)
+    s2 = str(TE._bot_slot_filter().compile(compile_kwargs={"literal_binds": True}))
+    assert "FLATBASE_SHORT" in s2 and "MANUAL" in s2                                        # the 348 lane when switched off
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
     assert eng.count("_bot_slot_filter())") == 3                                            # open_position + both scan had-room counts
-    assert "if _open_count_now >= _eff_max_pos and not _fbs:" in eng
+    assert "if _open_count_now >= _eff_max_pos and not _fbs_lane:" in eng
 
 
 # ── ⑦ exits through the REAL realtime path · candle path / restart / heal wiring ─────────────────────────────────────────────────────
@@ -623,7 +647,7 @@ def test_exit_and_protection_sites_wired():
 
 # ── ⑧ config / UI / exports parity (D11 / D12) ───────────────────────────────────────────────────────────────────────────────────────
 
-FIELDS = {"flatbase_confirm_hours": 24.0, "flatbase_max_open": 10, "flatbase_short_enabled": True, "flatbase_flat_max": 0.444, "flatbase_min_vol_usd": 20e6, "flatbase_turnover_min": 1.0,
+FIELDS = {"flatbase_confirm_hours": 24.0, "flatbase_max_open": 0, "flatbase_shares_bot_slots": True, "flatbase_short_enabled": True, "flatbase_flat_max": 0.444, "flatbase_min_vol_usd": 20e6, "flatbase_turnover_min": 1.0,
           "flatbase_tp_pct": 5.0, "flatbase_stop_pct": 10.0, "flatbase_max_hold_hours": 72.0, "flatbase_min_hours_after_spike": 4.0,
           "flatbase_max_hours_after_spike": 96.0, "flatbase_invest_mult": 0.2, "flatbase_lev_mult": 0.25, "resting_tp_flatbase_enabled": True}
 
@@ -640,12 +664,13 @@ def test_config_defaults_json_ui_and_exports():
     html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
     ids = ["config-fbs-enabled", "config-rtp-flatbase-enabled", "config-fbs-flat-max", "config-fbs-min-vol", "config-fbs-turnover-min", "config-fbs-tp",
            "config-fbs-stop", "config-fbs-max-hold", "config-fbs-min-hours", "config-fbs-max-hours", "config-fbs-invest-mult", "config-fbs-lev-mult",
-           "config-fbs-max-open", "config-fbs-confirm-hours"]
+           "config-fbs-max-open", "config-fbs-confirm-hours", "config-fbs-shared-slots"]
     for i in ids:
         assert html.count(f'id="{i}"') == 1, i                                               # one input each, in the FLATBASE box
-    for i in ids[2:]:
+    for i in ids[2:-1]:
         assert f"['{i}', 'flatbase_" in html, i                                                 # FLATBASE_NUM_FIELDS = load AND save
     assert "for (const [_id, _key, _def] of FLATBASE_NUM_FIELDS)" in html and "...Object.fromEntries(FLATBASE_NUM_FIELDS.map(" in html
+    assert "config.thresholds.flatbase_shares_bot_slots !== false" in html and "flatbase_shares_bot_slots: document.getElementById('config-fbs-shared-slots')" in html   # 🧺 (515)
     assert "config.thresholds.flatbase_short_enabled !== false" in html and "flatbase_short_enabled: document.getElementById('config-fbs-enabled')" in html
     assert "config.thresholds.resting_tp_flatbase_enabled !== false" in html and "resting_tp_flatbase_enabled: document.getElementById('config-rtp-flatbase-enabled')" in html
     a = html.index("<!-- ===== FRENZY SLEEVE BOX END ===== -->"); b = html.index("<!-- ===== 🩳 FLATBASE_SHORT BOX")
@@ -812,7 +837,7 @@ def test_reset_never_reopens_a_decided_episode(monkeypatch):
 def test_max_open_cap_and_dashboard_count(monkeypatch):
     now_ms = int(__import__("time").time() * 1000)
     r, blocks, *_ = _e2e_open(monkeypatch, n_open=1, seed_strategy="FLATBASE_SHORT", flatbase_short=True, flatbase_bar_close_ms=now_ms)
-    assert r is not None                                                                          # 1 open < the cap (10, operator)
+    assert r is not None                                                                          # 1 open, no own cap (0, DL 515) and a free slot
     mp = pytest.MonkeyPatch()
     try:
         r2, b2, *_ = _e2e_open(mp, n_open=1, seed_strategy="FLATBASE_SHORT", th_kw=dict(flatbase_max_open=1), flatbase_short=True,
@@ -822,11 +847,13 @@ def test_max_open_cap_and_dashboard_count(monkeypatch):
     assert r2 is None and "FLATBASE_MAX_OPEN" in b2                                               # its OWN cap, counted
     assert FB.flatbase_params(NS(flatbase_max_open=2))['max_open'] == 2 and FB.flatbase_params(NS(flatbase_max_open=-1))['max_open'] == 0
     main = open(os.path.join(ROOT, "main.py"), encoding="utf-8").read()
-    assert main.count("not in ('MANUAL', 'FLATBASE_SHORT')]),   # bot SLOT lane") == 2 and main.count('"flatbase_open_count": len(') == 2
+    assert main.count("not in (('MANUAL',) if _fb_shares_slots() else ('MANUAL', 'FLATBASE_SHORT'))]),   # bot SLOT lane") == 2 and main.count('"flatbase_open_count": len(') == 2
+    assert main.count('"flatbase_shares_slots": _fb_shares_slots(),') == 2                       # 🧺 (515) paper + live payloads
     html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
-    assert "ordCountEl.textContent = `Open Positions: ${_bo + _mo + _fo}`;" in html                  # 🩳 (362) total first
+    assert "ordCountEl.textContent = `Open Positions: ${_bo + _mo + (_fsh ? 0 : _fo)}`;" in html    # 🩳 (362) total first · 🧺 (515) FLATBASE inside _bo when shared
     assert "`Bot slots ${_bo} / ${data.max_open_positions ?? '–'}` + (_rdp > Number(data.max_open_positions || 0) ? ` (redeploy ≤ ${_rdp})` : '')" in html
     assert main.count('"max_open_positions_redeploy": (int(getattr(config.trading_config.investment, \'max_open_positions_hard\'') == 2 and "`FLATBASE ${_fo}${_fcap > 0 ? ' / ' + _fcap : ''}`" in html
+    assert "incl. FLATBASE" not in html and "if (!_fsh && (_fo || _fcap))" in html             # 🧺 (515, operator) shared: no FLATBASE lane text
     assert main.count('"flatbase_max_open": int(getattr(config.trading_config.thresholds, \'flatbase_max_open\', 0) or 0)') == 2
 
 
@@ -1195,3 +1222,21 @@ def test_confirm_wiring_ui_monitor_exports():
     assert "FB_CONFIRM entry: first 4-h close < the S4 close ≤ ' + (_bt.flatbase_confirm_hours ?? 24)" in html      # config line (both exports)
     main = open(os.path.join(ROOT, "main.py"), encoding="utf-8").read()
     assert "confirm_px=((v.get('confirm') or {}).get('px'))" in main and "_p['max_h'] + CONFIRM_H_MAX + 6" in main
+
+
+def test_shared_slots_gate_line_progress_keep_and_revert():
+    """🧺 (DECISION_LOG 515) the frozen revert gate: progress before the 15th episode; ≥ 3 BOOK_FULL refusals with priced net Σ > 0 → REVERT."""
+    import pandas as pd
+    import scout_flatbase_short as SC
+    from types import SimpleNamespace as R
+    led = pd.DataFrame({"pair": [f"P{i}USDT" for i in range(16)], "spike_ms": [1_000 + i for i in range(16)], "fs_ms": [2_000 + i for i in range(16)]})
+    bf = lambda nets: {"FLATBASE_BOOK_FULL": [(R(pair=f"P{i}USDT", spike_ms=1_000 + i), {"state": "PRICED", "net": n}) for i, n in enumerate(nets)]}
+    t = "\n".join(SC.shared_slots_gate_lines(led.head(5), bf([1.0]), since_ms=0))
+    assert "5/15 episodes" in t and "keep observing" in t
+    t = "\n".join(SC.shared_slots_gate_lines(led, bf([5.0, -1.0, 2.0]), since_ms=0))
+    assert "15/15" in t and "BOOK_FULL refused 3" in t and "REVERT CANDIDATE (operator" in t
+    t = "\n".join(SC.shared_slots_gate_lines(led, bf([-5.0, -1.0, 2.0]), since_ms=0))
+    assert "KEEP shared slots" in t
+    t = "\n".join(SC.shared_slots_gate_lines(led, bf([5.0]), since_ms=0))
+    assert "KEEP shared slots" in t                                                          # < 3 refusals
+    assert "not evaluable yet" in "\n".join(SC.shared_slots_gate_lines(led, {}, since_ms=None))

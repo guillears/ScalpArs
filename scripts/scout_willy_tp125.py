@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""🎯 Scout — WILLY_TP125 exit shadow (2026-10-09, DECISION_LOG 265; OBSERVE only — never changes config, no bot API).
+"""⛔ RETIRED 2026-11-11 (DECISION_LOG 530): decided — the V2b exit is live (DL 358). Unhooked from the opportunity scout; still runnable standalone.
+🎯 Scout — WILLY_TP125 exit shadow (2026-10-09, DECISION_LOG 265; OBSERVE only — never changes config, no bot API).
 
 HYPOTHESIS  FRENZY_WILLY with a fixed TP of +1.25 % net instead of today's +frenzy_willy_tp_pct (+1.00) — same entries, same no-stop, same
             frenzy_willy_max_hold_minutes cap. Source: reports/WILLY_TP075_AND_TURNOVER_2026-10-09.md (yr5 WILLY A 1,067 fills: +1.25

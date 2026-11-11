@@ -27,8 +27,7 @@ def test_frozen_rule_pinned():
 
 def test_hook_after_frenzy_willy_tp_and_guarded():
     src = open(os.path.join(HERE, "scripts", "opportunity_scout.py")).read()
-    i, j = src.index("import scout_frenzy_willy_exit as _fwx"), src.index("import scout_lite_stretch_reentry as _lsr")
-    assert i < j and "try:" in src[j - 400:j] and "except Exception as _lsr_e" in src[j:j + 400]
+    assert "import scout_lite_stretch_reentry as" not in src and "scout_lite_stretch_reentry RETIRED 2026-11-11 (DECISION_LOG 530)" in src   # DL 530: unhooked
 
 
 def test_state_file_gitignored():

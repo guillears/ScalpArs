@@ -24,10 +24,7 @@ def test_frozen_rule_pinned():
 
 def test_scout_hook_after_timecap_and_guarded():
     src = open(os.path.join(HERE, "scripts", "opportunity_scout.py")).read()
-    i, j = src.index("import scout_willy_timecap as _wt"), src.index("import scout_willy_tp125 as _w125")
-    assert i < j                                                     # cache-only line runs after the line that fetches
-    blk = src[j:j + 400]
-    assert "except Exception as _w125_e" in blk and "Unavailable this run" in blk
+    assert "import scout_willy_tp125 as" not in src and "scout_willy_tp125 RETIRED 2026-11-11 (DECISION_LOG 530)" in src   # DL 530: unhooked
 
 
 def test_no_network_in_module():

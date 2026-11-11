@@ -75,7 +75,7 @@ def test_freezes_once_and_defers_on_a_young_export(tmp_path):
 
 def test_hook_registry_and_gitignore():
     src = open(os.path.join(ROOT, "scripts", "opportunity_scout.py"), encoding="utf-8").read()
-    assert "import scout_willy_5x_watch as _w5x" in src and "_rg_sec += _w5x.run(now_ms)" in src
+    assert "import scout_willy_5x_watch as" not in src and "scout_willy_5x_watch RETIRED 2026-11-11 (DECISION_LOG 530)" in src   # DL 530: unhooked
     reg = open(os.path.join(ROOT, "scripts", "observe_registry.py"), encoding="utf-8").read()
-    assert '"scout_willy_5x_watch.py": {"frenzy_willy_lev_mult": 0.25' in reg
+    assert '"scout_willy_5x_watch.py"' in reg and "scout_willy_5x_watch.py" in __import__("observe_registry").NONE   # DL 530: retired (size set by C5)
     assert "reports/SCOUT_WILLY_5X.json" in open(os.path.join(ROOT, ".gitignore")).read()

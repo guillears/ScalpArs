@@ -17,7 +17,8 @@ def test_hermetic_selftest(capsys):
     TR.selftest()
     assert "selftest FRENZY_TP_REVERT OK" in capsys.readouterr().out
     assert WT._NET_BLOCKED is False and WT._K1 == {} and WT.MY_CACHE.endswith(os.path.join("backtest_cache", "scout_willy_timecap"))
-    assert TR.STATE.endswith(os.path.join("reports", "SCOUT_FRENZY_TP_REVERT.json"))
+    assert TR.STATE.endswith(os.path.join("reports", "SCOUT_FRENZY_TP_REVERT_531.json")) and TR.REBASE_DL == 527   # (DL 531) fresh count
+    assert TR.deploy_ts() >= pd.Timestamp("2026-11-11")                                     # counted from the armed filters (DL 527 + 10)
 
 
 def test_frozen_bar_pinned():
@@ -36,9 +37,9 @@ def test_frenzy_willy_tp_rebased_to_dl283():
 
 def test_hook_after_frenzy_willy_tp_and_guarded():
     src = open(os.path.join(HERE, "scripts", "opportunity_scout.py")).read()
-    i, j = src.index("import scout_frenzy_willy_exit as _fwx"), src.index("import scout_frenzy_tp_revert as _ftr")
+    i, j = src.index("import scout_willy_timecap as _wt"), src.index("import scout_frenzy_tp_revert as _ftr")   # DL 530: FRENZY_WILLY_TP unhooked; anchor on the fetch pass
     assert i < j and "try:" in src[j - 400:j] and "except Exception as _ftr_e" in src[j:j + 400]
 
 
 def test_state_file_gitignored():
-    assert "reports/SCOUT_FRENZY_TP_REVERT.json" in open(os.path.join(HERE, ".gitignore")).read().split("\n")
+    assert "reports/SCOUT_FRENZY_TP_REVERT_531.json" in open(os.path.join(HERE, ".gitignore")).read().split("\n")

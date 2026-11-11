@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""👁 Scout — RETRY_BTC1H watch line (pre-registered 2026-10-30, DECISION_LOG 415; OBSERVE ONLY — never changes config, no bot API, no network).
+"""⛔ RETIRED 2026-11-11 (DECISION_LOG 530): ARMED (DL 527) — its verdict = scout_blocked_filters (the blocked trades priced). Unhooked from the opportunity scout; still runnable standalone.
+👁 Scout — RETRY_BTC1H watch line (pre-registered 2026-10-30, DECISION_LOG 415; OBSERVE ONLY — never changes config, no bot API, no network).
 
 QUESTION   Does FRENZY_LITE_RETRY lose when BTC's 1 h trend is falling? LITE itself does the opposite, so RETRY gets its own read. Theory: a retry re-enters after
            a failed first attempt; with BTC falling the second attempt has no market behind it.

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""🩸🌙 OBS-F1 "LATE-TAPE WEAK SPIKE" — SPIKE_FADE frozen observe line, DECISION_LOG 384 (operator 2026-10-26: "dig into spike fade winners
+"""⛔ RETIRED 2026-11-11 (DECISION_LOG 530): ARMED (DL 527) — verdict in scout_blocked_filters. Unhooked from the opportunity scout; still runnable standalone.
+🩸🌙 OBS-F1 "LATE-TAPE WEAK SPIKE" — SPIKE_FADE frozen observe line, DECISION_LOG 384 (operator 2026-10-26: "dig into spike fade winners
 vs losers by regime" → register). Observe-only: never changes config, never calls the bot API. Reads the orders exports + BTCUSDT 1d
 klines (one public GET, weight 5, cached; shared cooldown / used-weight discipline of scout_ml_regime_lines).
 

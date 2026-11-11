@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""👁 Scout — LONG_WEAK_FRENZY watch line (pre-registered 2026-11-11, DECISION_LOG 525, operator "yes … add the weak frenzy line"; OBSERVE ONLY —
+"""⛔ RETIRED 2026-11-11 (DECISION_LOG 530): ARMED (DL 527) — verdict in scout_blocked_filters. Unhooked from the opportunity scout; still runnable standalone.
+👁 Scout — LONG_WEAK_FRENZY watch line (pre-registered 2026-11-11, DECISION_LOG 525, operator "yes … add the weak frenzy line"; OBSERVE ONLY —
 never changes config, no bot API, no network).
 
 QUESTION   Do FRENZY_LONG entries on a WEAK frenzy — the ON state's volume only just above its 100× threshold (entry_frenzy_vol_mult ≤ 119) — lose

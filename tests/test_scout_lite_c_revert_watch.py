@@ -91,12 +91,11 @@ def test_switch_master_lines_hook_and_registry(monkeypatch):
     th = json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
     assert th["frenzy_lite_c_enabled"] is False and th["frenzy_lite_tp_pct"] == 3.0
     src = open(os.path.join(ROOT, "scripts", "opportunity_scout.py"), encoding="utf-8").read()
-    j = src.index("import scout_lite_c_revert_watch as _lcr")
-    assert "_lcr.run(now_ms)" in src[j:j + 200] and "except Exception as _lcr_e" in src[j:j + 400]
+    assert "import scout_lite_c_revert_watch as" not in src and "scout_lite_c_revert_watch RETIRED 2026-11-11 (DECISION_LOG 530)" in src   # DL 530: unhooked
     assert "reports/SCOUT_LITE_C_REVERT.json" in open(os.path.join(ROOT, ".gitignore")).read().split("\n")
     import observe_registry as OR
     st = {r[0]: r for r in OR.status(OR.thresholds())}
-    assert st["scout_lite_c_revert_watch.py"][4] == "OK" and st["scout_retry_btc1h_watch.py"][4] == "OK" and st["scout_frenzy_v2b_shadow.py"][4] == "OK"   # (DL 526) LONG re-based on −3
+    assert {"scout_lite_c_revert_watch.py", "scout_retry_btc1h_watch.py"} <= OR.NONE and st["scout_frenzy_v2b_shadow.py"][4] == "OK"   # (DL 526) LONG re-based on −3
     assert st["scout_lite_c.py"][4] == "STALE" and st["scout_lite_green_retry.py"][4] == "STALE"     # resolved / measures the old rule: never read again
     import build_master_pool as B
     assert B.FRENZY_LITE_C_ENABLED_FROZEN is False

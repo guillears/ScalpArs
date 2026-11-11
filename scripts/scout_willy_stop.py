@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""🛑 Scout — WILLY_STOP exit shadow (operator 2026-10-10, DECISION_LOG 268; OBSERVE only — never changes config, no bot API).
+"""⛔ RETIRED 2026-11-11 (DECISION_LOG 530): decided — V2b / −4 live. Unhooked from the opportunity scout; still runnable standalone.
+🛑 Scout — WILLY_STOP exit shadow (operator 2026-10-10, DECISION_LOG 268; OBSERVE only — never changes config, no bot API).
 
 HYPOTHESIS  FRENZY_WILLY should carry a −4 % net stop (SL4) instead of no stop — same TP (frenzy_willy_tp_pct), same cap
             (frenzy_willy_max_hold_minutes), read from trading_config.json. Operator 2026-10-10 chose −4 after reading −2 / −3 / −5: the

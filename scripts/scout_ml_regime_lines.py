@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""🌐 Scout — ML_REGIME_LINES: the frozen momentum-long REGIME observe lines OBS-R1 / R1b / R2 (DECISION_LOG 382, operator 2026-10-26;
+"""⛔ RETIRED 2026-11-11 (DECISION_LOG 530): decided — retire. Unhooked from the opportunity scout; still runnable standalone.
+🌐 Scout — ML_REGIME_LINES: the frozen momentum-long REGIME observe lines OBS-R1 / R1b / R2 (DECISION_LOG 382, operator 2026-10-26;
 OBSERVE-ONLY — never changes config, never calls the bot API, never writes the DB; writes only under reports/).
 
 SOURCE  reports/ML_REGIME_WL_2026-10-26.md §8 (thresholds frozen 2026-10-26, never re-tuned). The regime study found the B12–B24 ML loss

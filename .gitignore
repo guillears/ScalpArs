@@ -62,6 +62,7 @@ reports/SCOUT_WILLY_TP125.json
 reports/SCOUT_HOLD_FRENZY_EXEMPT.json
 reports/SCOUT_FRENZY_WILLY_EXIT.json
 reports/SCOUT_FRENZY_TP_REVERT.json
+reports/SCOUT_FRENZY_TP_REVERT_531.json
 reports/SCOUT_WILLY_STOP.json
 reports/SCOUT_LITE_STRETCH_REENTRY.json
 reports/SCOUT_WILLY_BTC1H.json
@@ -76,6 +77,10 @@ reports/SCOUT_LITE_BTC1H_RISING.json
 reports/SCOUT_LITE_BTC_EMA20_DOWN.json
 reports/SCOUT_ML_BULL90.json
 reports/SCOUT_LONG_WEAK_FRENZY.json
+reports/SCOUT_BLOCKED_FILTERS.csv
+reports/SCOUT_BLOCKED_FILTERS.csv.*
+reports/.scout_blocked_filters_gate.json.*
+reports/.scout_blocked_filters_gate.json
 reports/SCOUT_MEGACAP_READMIT.json
 reports/SCOUT_G51_BAND1.json
 reports/SCOUT_ALPHA_SLEEVES.json

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""🎲➡🔥 Scout — FRENZY_WILLY_EXIT exit shadow (operator hypothesis 2026-10-10, DECISION_LOG 267; OBSERVE only — never changes config).
+"""⛔ RETIRED 2026-11-11 (DECISION_LOG 530): stale grid (WIDE off, LITE +3, LONG −3); its loader / walker stay the library FX others import. Unhooked from the opportunity scout; still runnable standalone.
+🎲➡🔥 Scout — FRENZY_WILLY_EXIT exit shadow (operator hypothesis 2026-10-10, DECISION_LOG 267; OBSERVE only — never changes config).
 
 HYPOTHESIS  FRENZY_LONG / FRENZY_WIDE / FRENZY_LITE should share FRENZY_WILLY-style small fixed targets — a 7-cell grid, operator 2026-10-10:
             TP +frenzy_willy_tp_pct (1.00) or +1.25 net × stop −2 / −2.5 / −3 net, plus +1.25 / −4 (added the same day, the WILLY

@@ -28,12 +28,7 @@ EXIT = {
     "scout_flatbase_confirm_watch.py": dict(dl="417 · 428", sleeves="FLATBASE_SHORT", walks={"flatbase_tp_pct": 5.0, "flatbase_stop_pct": 10.0, "flatbase_max_hold_hours": 72.0,
                                                                                          "flatbase_confirm_hours": 24.0}),   # ✅ (428) the revert gate reads confirmed fills
     "scout_willy_timecap.py": dict(dl="264 · 278 · 281 · 285 · 290 · 297", sleeves="FRENZY_WILLY", walks=_OLD_WILLY),
-    "scout_willy_tp125.py": dict(dl="265", sleeves="FRENZY_WILLY", walks=_OLD_WILLY),
-    "scout_willy_stop.py": dict(dl="268 · 269", sleeves="FRENZY_WILLY", walks=_OLD_WILLY),
     # 🔁 (409) re-based 2026-10-29: every fill walked under today's V2b exit (the old +1.25 / −4 / 90 ruler printed as context only)
-    "scout_willy_btc1h.py": dict(dl="275 · 279 · 409", sleeves="FRENZY_WILLY", walks={"frenzy_willy_high_target_enabled": True,
-                                 "frenzy_willy_high_k_pct": 1.0, "frenzy_willy_high_tp_max_pct": 8.0, "frenzy_willy_stop_pct": 4.0,
-                                 "frenzy_willy_late_tp_minutes": 30.0, "frenzy_willy_late_tp_pct": 0.25, "frenzy_willy_max_hold_minutes": 90}),
     "scout_willy_mktdip.py": dict(dl="305", sleeves="FRENZY_WILLY", walks=_OLD_WILLY),
     "scout_willy_avgdown.py": dict(dl="313", sleeves="FRENZY_WILLY", walks=_OLD_WILLY),
     "scout_willy_hold.py": dict(dl="251", sleeves="FRENZY_WILLY · FRENZY family", walks={**_OLD_WILLY, **_FZ_STOP3, **_NO_LITE_C}),
@@ -59,19 +54,16 @@ EXIT = {
     "scout_frenzy.py": dict(dl="195 · 196 · 205", sleeves="FRENZY_LONG / WIDE", walks=_FZ_STOP3),
     "scout_frenzy_exits.py": dict(dl="214 · 243 · 250 · 251 · 263 · 272 · 284 · 333 · 336", sleeves="FRENZY family + WILLY gate",
                                   walks={**_FZ_STOP3, **_NO_LITE_C, **_OLD_WILLY}),
-    "scout_frenzy_tp_revert.py": dict(dl="283 · 284", sleeves="FRENZY_LONG / WIDE", walks=_FZ_STOP3),
-    "scout_frenzy_willy_exit.py": dict(dl="267", sleeves="FRENZY_LONG / WIDE / LITE", walks={"frenzy_willy_tp_pct": 1.0, **_FZ_STOP3}),
+    "scout_frenzy_tp_revert.py": dict(dl="283 · 284 · 531", sleeves="FRENZY_LONG / WIDE", walks=_FZ_STOP3),
     "scout_frenzy_v2b_shadow.py": dict(dl="379 · 526", sleeves="FRENZY_LITE · LONG", walks={"frenzy_long_stop_pct": 3.0, "frenzy_stop_pct": 3.0,
                                        "frenzy_lite_c_enabled": False, "frenzy_tp_pct": 1.5}),   # re-based on +3 (DL 420)
     "scout_lite_c.py": dict(dl="301", sleeves="FRENZY_LITE", walks={"frenzy_lite_c_enabled": True, "frenzy_lite_c_tp_pct": 2.0,
                                                                     "frenzy_lite_tp_pct": 3.0, "frenzy_stop_pct": 3.0}),
     "scout_lite_green_retry.py": dict(dl="315 · 316 · 355", sleeves="FRENZY_LITE · RETRY", walks={"frenzy_lite_c_enabled": True, "frenzy_lite_c_tp_pct": 2.0,
                                       "frenzy_lite_tp_pct": 3.0, "frenzy_stop_pct": 3.0}),
-    "scout_lite_stretch_reentry.py": dict(dl="272 · 284", sleeves="FRENZY_LITE", walks=_NO_LITE_C),
     "scout_revert_gates.py": dict(dl="110 … 252 (TP3_VS_LOCK · BEARISH_BLOCKED stale; ML / flip / MS replicas live)",
                                   sleeves="FRENZY family · ML · flips · MS", walks={**_FZ_STOP3, **_NO_LITE_C}),
     "scout_stop_slip.py": dict(dl="244", sleeves="every stopped sleeve", walks=_FZ_STOP3),
-    "scout_heat_regime.py": dict(dl="208", sleeves="MOMENTUM", walks={"ema13_cross_exit_long_enabled": False}),
     "scout_ml_matched_refusals.py": dict(dl="380 · 383", sleeves="MOMENTUM", walks={"ema13_cross_exit_long_enabled": False}),
     # 🎯 (479) ML_FIXED_TP: "before" = today's booked momentum-long exit (runner trail + ladder + recovery hold); the TP walk continues profit exits on
     # the 45-min post-exit record against the −0.70 stop → a change to the long runner / ladder / hard-TP keys makes the line STALE
@@ -80,16 +72,22 @@ EXIT = {
                                        "runner_trail_atr_mult": 1.0, "runner_trail_be_ratchet_enabled": True, "runner_trail_be_lock_pct": 0.1,
                                        "runner_trail_giveback_frac": 0.0, "hard_tp_enabled": True,
                                        "hard_tp_ladder_long": "1.25:0.25,1.5:0.30,2.0:0.40,3.0:0.60,4.0:0.80", "recovery_hold_enabled": True}),
-    "scout_surge_obs.py": dict(dl="202 · 203", sleeves="SURGE_LONG", walks={"surge_long_exit_no_lock": True}),
     "study_surge_exit_grid.py": dict(dl="397", sleeves="SURGE_LONG", walks={"surge_long_exit_no_lock": True}),
 }
+# 🧱💲 (DECISION_LOG 529) the blocked-trade pricer reads every sleeve's exit from trading_config.json AT RUN TIME (never a pinned era) → no walks to
+# go stale; its frozen gate verdicts carry their run date
+# FRENZY / fade exits are read live and every stored price carries its exit era (re-priced on a change); the momentum-long replica
+# (RP.BASE) is PINNED — registered here so an ML exit change shows ⚠ STALE (review M2)
+EXIT["scout_blocked_filters.py"] = dict(dl="527 · 529", sleeves="the 7 armed-filter sleeves", walks={**EXIT["scout_ml_fixed_tp_watch.py"]["walks"],
+    # the WILLY V2b target is built by the pinned scout_frenzy_v2b_shadow.V2B_TH (review LOW-2) — a live change shows ⚠ STALE
+    "frenzy_willy_high_target_enabled": True, "frenzy_willy_tp_pct": 1.25, "frenzy_willy_high_k_pct": 1.0, "frenzy_willy_high_tp_max_pct": 8.0})
 PROXY = {"scout_bearrun_v2.py": "359", "scout_bearrun_r24.py": "369",
          "scout_g51_band1_watch.py": "463"}   # 👁 (463) refused band-① signals on the audit's +0.40 / −0.70 ruler, never the live exit
 BOOKED = {   # booked P&L — `era` = drops fills by WILLY exit era (registered on the old +1.25 exit)
-    "scout_b1h_negflank.py": None, "scout_fade_late_weak.py": None, "scout_fade_watch.py": None,
+    "scout_b1h_negflank.py": None, "scout_fade_watch.py": None,
     # review M5: booked WR judged against TODAY's breakeven over FRENZY fills spanning exit eras (LONG −3 → −4, LITE pre-C)
-    "scout_frenzy_entry_lines.py": {**_FZ_STOP3}, "scout_frenzy_wl_lines.py": {**_FZ_STOP3, **_NO_LITE_C}, "scout_lite_late_btcfall.py": {"frenzy_lite_c_enabled": False, "frenzy_lite_tp_pct": 3.0, "frenzy_stop_pct": 3.0}, "scout_lite_ob_thin.py": None, "scout_lite_off30.py": None,
-    "scout_lite_z3.py": None, "scout_liquidity_capacity.py": None, "scout_alpha_sleeves_watch.py": None, "scout_long_resize.py": None, "scout_ml_cooldown.py": None, "scout_ml_regime_lines.py": None,
+    "scout_frenzy_entry_lines.py": {**_FZ_STOP3}, "scout_frenzy_wl_lines.py": {**_FZ_STOP3, **_NO_LITE_C}, "scout_lite_ob_thin.py": None, "scout_lite_off30.py": None,
+    "scout_lite_z3.py": None, "scout_liquidity_capacity.py": None, "scout_alpha_sleeves_watch.py": None, "scout_long_resize.py": None, "scout_ml_cooldown.py": None,
     "scout_ml_trend_lines.py": None, "scout_ml_w4_watch.py": None, "scout_ml_mkt_hot_watch.py": None, "scout_megacap_readmit_watch.py": None,
     # (481) ML_LEAD_A judges booked WR / avg against the Pattern W bar → pinned to today's momentum-long exit keys (as ML_FIXED_TP)
     "scout_ml_lead_a_watch.py": {**EXIT["scout_ml_fixed_tp_watch.py"]["walks"]},
@@ -99,21 +97,14 @@ BOOKED = {   # booked P&L — `era` = drops fills by WILLY exit era (registered 
                                       "runner_trail_short_giveback_frac": 0.35, "spike_fade_late_arm_after_min": 15.0, "spike_fade_late_arm_peak": 0.3,
                                       "hard_tp_ladder_short": "1.0:0.25,1.5:0.30,2.0:0.40,3.0:0.60,4.0:0.80"},
     # (415) RETRY_BTC1H judges booked WR against the frozen breakeven of today's LITE exit (+3 / −3: 50.0 %, DL 420) → pinned to its keys
-    "scout_retry_btc1h_watch.py": {"frenzy_lock_arm_pct": 0.0, "frenzy_stop_pct": 3.0, "frenzy_lite_tp_pct": 3.0, "frenzy_lite_c_enabled": False, "frenzy_max_hold_minutes": 720},   # re-based on +3 (DL 420)
     # (437) LITE_BTC1H_RISING judges booked WR against the frozen breakeven of today's LITE exit (+3 / −3: 50.0 %, DL 420) → pinned to its keys
     "scout_lite_btc1h_rising_watch.py": {"frenzy_lock_arm_pct": 0.0, "frenzy_stop_pct": 3.0, "frenzy_lite_tp_pct": 3.0, "frenzy_lite_c_enabled": False, "frenzy_max_hold_minutes": 720},
     # (522) LITE_BTC_EMA20_DOWN judges booked WR against the frozen breakeven of today's LITE exit (+3 / −3: 50.0 %, DL 420) → pinned to its keys
-    "scout_lite_btc_ema20_down_watch.py": {"frenzy_lock_arm_pct": 0.0, "frenzy_stop_pct": 3.0, "frenzy_lite_tp_pct": 3.0, "frenzy_lite_c_enabled": False, "frenzy_max_hold_minutes": 720},
     # (523) ML_BULL90 judges booked WR against the frozen momentum-long breakeven (61.1 %) → pinned to today's momentum-long exit keys (as ML_LEAD_A)
-    "scout_ml_bull90_watch.py": {**EXIT["scout_ml_fixed_tp_watch.py"]["walks"]},
     # (425) WILLY_5X judges booked WR against the frozen V2b breakeven (69.0 %) at 5× → pinned to the leverage + the V2b exit keys
-    "scout_willy_5x_watch.py": {"frenzy_willy_lev_mult": 0.25, "frenzy_willy_high_target_enabled": True, "frenzy_willy_stop_pct": 4.0, "frenzy_willy_high_k_pct": 1.0,
-                                "frenzy_willy_high_tp_max_pct": 8.0, "frenzy_willy_max_hold_minutes": 90, "frenzy_willy_late_tp_minutes": 30.0, "frenzy_willy_late_tp_pct": 0.25},
     # (420) LITE_C_REVERT: fills booked on +3 / −3 / 12 h vs the old +2 shadow
-    "scout_lite_c_revert_watch.py": {"frenzy_lite_c_enabled": False, "frenzy_lite_tp_pct": 3.0, "frenzy_stop_pct": 3.0, "frenzy_max_hold_minutes": 720, "frenzy_lock_arm_pct": 0.0},
     # (418) LONG_ADX35 judges booked WR against the frozen +1.5 / −4 breakeven (72.7 %) → pinned to that exit
     # (525) LONG_WEAK_FRENZY judges booked WR against the frozen +1.5 / −3 breakeven (66.7 %) → pinned to the reverted LONG exit (DL 524: frenzy_long_stop_pct 3)
-    "scout_long_weak_frenzy_watch.py": {"frenzy_tp_pct": 1.5, "frenzy_long_stop_pct": 3.0, "frenzy_stop_pct": 3.0, "frenzy_max_hold_minutes": 720, "frenzy_lock_arm_pct": 0.0},
     # (427) SURGE_WL judges booked WR against SURGE_LONG's frozen breakeven (31.5 %) → pinned to its exit keys
     "scout_surge_wl_watch.py": {"surge_long_exit_no_lock": True, "surge_max_hold_minutes": 240, "sl_atr_multiplier": 1.5, "sl_atr_widen_floor_pct": -1.2, "bullrun_base_sl_pct": -0.7, "bullrun_be_arm_pct": 1.0, "surge_long_trail_atr_mult": 1.0},
     # (509) WILLY_FAILED_SPIKE + the WILLY OFF trigger judge booked WR against the same frozen V2b breakeven (69.0 %) → the same pins
@@ -121,9 +112,6 @@ BOOKED = {   # booked P&L — `era` = drops fills by WILLY exit era (registered 
                                   "frenzy_willy_high_tp_max_pct": 8.0, "frenzy_willy_max_hold_minutes": 90,
                                   "frenzy_willy_late_tp_minutes": 30.0, "frenzy_willy_late_tp_pct": 0.25},
     # (414) WILLY_GAP judges booked WR against the same frozen V2b breakeven (69.0 %) → the same pins
-    "scout_willy_gap_watch.py": {"frenzy_willy_high_target_enabled": True, "frenzy_willy_stop_pct": 4.0, "frenzy_willy_high_k_pct": 1.0,
-                                 "frenzy_willy_high_tp_max_pct": 8.0, "frenzy_willy_max_hold_minutes": 90,
-                                 "frenzy_willy_late_tp_minutes": 30.0, "frenzy_willy_late_tp_pct": 0.25},
     # (412) WILLY_ADX55 judges booked WR against the frozen V2b breakeven (69.0 %) → pinned to the V2b exit keys
     "scout_willy_adx_watch.py": {"frenzy_willy_high_target_enabled": True, "frenzy_willy_stop_pct": 4.0, "frenzy_willy_high_k_pct": 1.0,
                                  "frenzy_willy_high_tp_max_pct": 8.0, "frenzy_willy_max_hold_minutes": 90,
@@ -140,7 +128,16 @@ NONE = {"scout_features.py", "scout_features_parity.py", "scout_gatekit.py", "sc
         "scout_stamp_coverage.py", "scout_sweep_all.py", "scout_path_decomposition.py",
         # ⛔ (DECISION_LOG 526) RETIRED lines — no outcome read any more: LONG_ADX35 (unhooked) · LONG_STOP4 (its DL 317 gate decided REVERT;
         # the module stays as the shared budgeted-kline / path library other scouts import)
-        "scout_long_adx35_watch.py", "scout_long_stop4.py"}
+        "scout_long_adx35_watch.py", "scout_long_stop4.py",
+        # ⛔ (DECISION_LOG 530) RETIRED 2026-11-11 — unhooked from the opportunity scout, no outcome read any more:
+        # decided / stale exit lines (WILLY_TP125 · WILLY_STOP · WILLY_BTC1H · WILLY_5X · FRENZY_WILLY_TP grid · LITE_C revert · LITE_LATE_BTCFALL ·
+        # LITE stretch re-entry · ML regime lines · SURGE obs · heat × regime) and the 6 ARMED lines (DL 527) whose verdict now lives in
+        # scout_blocked_filters.py (the blocked trades priced) — RETRY_BTC1H · LITE_BTC_EMA20_DOWN · LONG_WEAK_FRENZY · ML_BULL90 · WILLY_GAP · OBS-F1
+        "scout_willy_tp125.py", "scout_willy_stop.py", "scout_willy_btc1h.py", "scout_willy_5x_watch.py",
+        "scout_frenzy_willy_exit.py", "scout_lite_c_revert_watch.py", "scout_lite_late_btcfall.py", "scout_lite_stretch_reentry.py",
+        "scout_ml_regime_lines.py", "scout_surge_obs.py", "scout_heat_regime.py", "scout_retry_btc1h_watch.py",
+        "scout_lite_btc_ema20_down_watch.py", "scout_long_weak_frenzy_watch.py", "scout_ml_bull90_watch.py", "scout_willy_gap_watch.py",
+        "scout_fade_late_weak.py"}
 
 
 def thresholds(path=CONFIG):

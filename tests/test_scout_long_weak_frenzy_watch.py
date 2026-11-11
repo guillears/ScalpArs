@@ -130,12 +130,9 @@ def test_not_evaluable_hook_and_registry(monkeypatch):
     monkeypatch.setattr(W._GK, "dl_deploy_ms", lambda *a, **k: None)
     assert "NOT EVALUABLE" in "\n".join(W.run(now_ms=0, paths=[], state_path=None))
     src = open(os.path.join(ROOT, "scripts", "opportunity_scout.py")).read()
-    j = src.index("import scout_long_weak_frenzy_watch as _lwf")
-    assert "_lwf.run(now_ms)" in src[j:j + 200] and "except Exception as _lwf_e" in src[j:j + 400]
+    assert "import scout_long_weak_frenzy_watch as" not in src and "scout_long_weak_frenzy_watch RETIRED 2026-11-11 (DECISION_LOG 530)" in src   # DL 530: unhooked
     import observe_registry as OR
-    era = OR.BOOKED["scout_long_weak_frenzy_watch.py"]
-    assert era == {"frenzy_tp_pct": 1.5, "frenzy_long_stop_pct": 3.0, "frenzy_stop_pct": 3.0, "frenzy_max_hold_minutes": 720, "frenzy_lock_arm_pct": 0.0}
-    assert OR.diffs(era, OR.thresholds()) == []
+    assert "scout_long_weak_frenzy_watch.py" in OR.NONE and "scout_long_weak_frenzy_watch.py" not in OR.BOOKED   # DL 530: retired (armed DL 527 → scout_blocked_filters)
 
 
 def test_minus4_stamped_and_probe_fills_never_counted(tmp_path):

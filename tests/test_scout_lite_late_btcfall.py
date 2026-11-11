@@ -134,7 +134,7 @@ def test_empty_inputs_never_raise(tmp_path):
 
 def test_wired_into_the_opportunity_scout():
     src = open(os.path.join(ROOT, "scripts", "opportunity_scout.py"), encoding="utf-8").read()
-    assert "import scout_lite_late_btcfall as _llb" in src and "_rg_sec += _llb.run(now_ms)" in src
+    assert "import scout_lite_late_btcfall as" not in src and "scout_lite_late_btcfall RETIRED 2026-11-11 (DECISION_LOG 530)" in src   # DL 530: unhooked
 
 
 def test_verdict_is_persisted_and_never_moves(tmp_path):

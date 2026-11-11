@@ -1425,6 +1425,14 @@ FBX_EXIT = (5.0, 10.0)
 FBX_EARLY_N, FBX_EARLY_MARGIN, FBX_N, FBX_DAYS = 10, 1.0, 15, 8
 FBX_STATE = os.path.join(_R, "reports", ".flatbase_exit_switch_gate.json")
 FBX_END_MS = None                                             # 🔒 set to the revert commit (ms) if +5 / −10 is ever reverted — closes the era
+# ⛔ (DECISION_LOG 531, operator 2026-11-11) EARLY / FINAL RETIRED: EARLY froze REVERT (+2.42 vs −0.19) on 10 fills of which 8 were SIGNAL-entry
+# (pre FB_CONFIRM, DL 428) — an entry that no longer trades; POWR alone was 51 % of the gap. Frozen records show as history, nothing new freezes.
+# 🔒 FBX_RISK (DL 531) — the first FBXR_N fills opened ≥ the DECISION_LOG 527 commit + 10 min (confirm entry, today's stack) on ≥ FBXR_DAYS
+# UTC days, each re-walked under both exits: +8 / −15 judged at RISK-EQUAL size (its % × 10 / 15 — the same $ lost at a stop as +5 / −10 at
+# today's size; C5 sizes per stop, DL 528) vs +5 / −10 → +8 / −15 scaled Σ > +5 / −10 Σ → SWITCH CANDIDATE (+8 / −15 at size × 0.67,
+# operator decides) · else KEEP +5 / −10. Decided once (FBX_STATE key "risk531"); an unpriced / open fill in the sample holds it.
+FBXR_DL, FBXR_N, FBXR_DAYS = 527, 15, 8
+FBXR_SCALE = 10.0 / 15.0
 
 
 def fbx_ran(r, switch_ms, end_ms=None):
@@ -1484,7 +1492,26 @@ def fbx_verdict(rows):
     return out
 
 
-def fbx_lines(real, walks, switch_ms, state_path=FBX_STATE, finals=(), open_rows=None):
+def fbx_risk_verdict(rows):
+    """(DL 531) rows = [(t, pair, old_pct, new_pct, notional)] since the DL 527 floor, by entry time → (verdict, text). PURE.
+    verdicts: COLLECTING · HOLD · SWITCH CANDIDATE · KEEP."""
+    smp, ds = None, set()
+    for i, x in enumerate(rows):
+        ds.add(pd.Timestamp(x[0]).date())
+        if i + 1 >= FBXR_N and len(ds) >= FBXR_DAYS:
+            smp = rows[:i + 1]
+            break
+    if smp is None:
+        return "COLLECTING", f"{len(rows)}/{FBXR_N} fills on {len(ds)}/{FBXR_DAYS} UTC days"
+    if any(x[2] is None or x[3] is None for x in smp):
+        return "HOLD", f"{sum(x[2] is None or x[3] is None for x in smp)} of the {len(smp)} sample fills not priced / still open"
+    o = sum(x[2] for x in smp) * FBXR_SCALE
+    n = sum(x[3] for x in smp)
+    txt = (f"{len(smp)} fills on {len(ds)} days: +8 / −15 at risk-equal size Σ {o:+.2f} pts (raw {o / FBXR_SCALE:+.2f}) vs +5 / −10 Σ {n:+.2f}")
+    return (("SWITCH CANDIDATE", txt + " → +8 / −15 at Flatbase size × 0.67 (operator decides)") if o > n else ("KEEP", txt + " → KEEP +5 / −10"))
+
+
+def fbx_lines(real, walks, switch_ms, state_path=FBX_STATE, finals=(), open_rows=None, risk_since_ms="auto"):
     """🔁🔒 (DL 408) the switch-back gate → printed lines. walks = {(opened_at, pair): walk} (tp_shadow_lines' PRICED walks); finals = the
     UNPRICEABLE_FINAL keys (out, counted — like DL 367); open_rows = the still-OPEN FLATBASE rows (an open fill opened before the sample's
     last entry holds the read: the sample is the first N by ENTRY time). An EARLY REVERT freezes FINAL as SUPERSEDED. Never raises."""
@@ -1532,29 +1559,43 @@ def fbx_lines(real, walks, switch_ms, state_path=FBX_STATE, finals=(), open_rows
                      f"avg {sum(o) / len(o):+.3f} % · hold {hhmm(sum(ho) / len(ho))} → +5 / −10: WR {sum(x > 0 for x in n) / len(n):.0%} · "
                      f"avg {sum(n) / len(n):+.3f} % · hold {hhmm(sum(hn) / len(hn))}")
             L.append("  🧮 " + _RM.loo_text([b - a for a, b in zip(o, n)], [f"{r.pair} {r.o:%m-%d}" for r, _ in ok]))
-        st = {}
+        st, st_ok = {}, True
         try:
             if state_path and os.path.exists(state_path):
                 with open(state_path, encoding="utf-8") as fh:
                     st = _j.load(fh) or {}
+                st_ok = isinstance(st, dict)
+                st = st if st_ok else {}
         except Exception:
-            st = {}
+            st, st_ok = {}, False
+        if not st_ok:
+            L.append("  ⚠ FBX state unreadable — nothing frozen this run (operator restore needed; the file is left as is)")
         res = fbx_verdict(rows)
-        if st.get("early", {}).get("verdict") == "REVERT" or res["early"][0] == "REVERT":
-            res["final"] = ("SUPERSEDED", "the EARLY read reverted — no final read")
-        for k in ("early", "final"):
+        for k in ("early", "final"):                          # ⛔ (DL 531) retired — history only, nothing new freezes
             if k in st:
-                L.append(f"  {k.upper()}: {st[k]['verdict']} — {st[k]['text']} (frozen {st[k]['at']})")
-                continue
-            v, txt = res[k]
-            L.append(f"  {k.upper()}: {v} — {txt}")
-            if v in ("REVERT", "EARLY_OK", "KEEP", "SUPERSEDED") and state_path:
-                st[k] = dict(verdict=v, text=txt, at=pd.Timestamp.now("UTC").isoformat()[:16])
-                try:
-                    with open(state_path, "w", encoding="utf-8") as fh:
-                        _j.dump(st, fh, indent=1)
-                except Exception:
-                    pass
+                L.append(f"  ⛔ {k.upper()} RETIRED (DL 531): {st[k]['verdict']} — {st[k]['text']} (frozen {st[k]['at']}; signal-entry sample, never acted on)")
+            else:
+                L.append(f"  ⛔ {k.upper()} RETIRED (DL 531): never frozen (now {res[k][0]})")
+        rs_ms = _GK.dl_deploy_ms(FBXR_DL, 10, label="FBX_RISK (DECISION_LOG 527 / 531)") if risk_since_ms == "auto" else risk_since_ms
+        if rs_ms is None:
+            L.append(f"  🔒 FBX_RISK (DL 531): ⚠ NOT EVALUABLE — the DL {FBXR_DL} commit is not in git")
+        else:
+            rfl = pd.Timestamp(int(rs_ms), unit="ms")
+            rrows = [x for x in rows if pd.Timestamp(x[0]) >= rfl]
+            if "risk531" in st:
+                L.append(f"  🔒 FBX_RISK (DL 531): {st['risk531']['verdict']} — {st['risk531']['text']} (frozen {st['risk531']['at']})")
+            else:
+                v, txt = fbx_risk_verdict(rrows)
+                L.append(f"  🔒 FBX_RISK (DL 531, fills ≥ {rfl:%Y-%m-%d %H:%M} UTC; +8 / −15 at × {FBXR_SCALE:.2f}): {v} — {txt}")
+                if v in ("SWITCH CANDIDATE", "KEEP") and state_path and st_ok:
+                    st["risk531"] = dict(verdict=v, text=txt, at=pd.Timestamp.now("UTC").isoformat()[:16])
+                    try:
+                        tmp = f"{state_path}.{os.getpid()}.tmp"
+                        with open(tmp, "w", encoding="utf-8") as fh:
+                            _j.dump(st, fh, indent=1)
+                        os.replace(tmp, state_path)
+                    except Exception:
+                        pass
     except Exception as e:
         L.append(f"  FBX unreadable ({type(e).__name__}: {str(e)[:80]})")
     return L

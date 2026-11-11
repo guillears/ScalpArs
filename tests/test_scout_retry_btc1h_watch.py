@@ -96,8 +96,6 @@ def test_not_evaluable_hook_and_registry(monkeypatch):
     monkeypatch.setattr(W._GK, "dl_deploy_ms", lambda *a, **k: None)
     assert "NOT EVALUABLE" in "\n".join(W.run(now_ms=0, paths=[], state_path=None))
     src = open(os.path.join(ROOT, "scripts", "opportunity_scout.py")).read()
-    j = src.index("import scout_retry_btc1h_watch as _rbt")
-    assert "_rbt.run(now_ms)" in src[j:j + 200] and "except Exception as _rbt_e" in src[j:j + 400]
+    assert "import scout_retry_btc1h_watch as" not in src and "scout_retry_btc1h_watch RETIRED 2026-11-11 (DECISION_LOG 530)" in src   # DL 530: unhooked
     import observe_registry as OR
-    era = OR.BOOKED["scout_retry_btc1h_watch.py"]
-    assert era["frenzy_stop_pct"] == 3.0 and era["frenzy_lite_c_enabled"] is False
+    assert "scout_retry_btc1h_watch.py" in OR.NONE and "scout_retry_btc1h_watch.py" not in OR.BOOKED   # DL 530: retired (armed DL 527 → scout_blocked_filters)

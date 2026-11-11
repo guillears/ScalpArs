@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""👁 Scout — LITE_C_REVERT tracker (DECISION_LOG 420, operator 2026-10-30: "keep tracking this … to re check if the revert was positive after all"; OBSERVE ONLY — never changes
+"""⛔ RETIRED 2026-11-11 (DECISION_LOG 530): decided — revert confirmed. Unhooked from the opportunity scout; still runnable standalone.
+👁 Scout — LITE_C_REVERT tracker (DECISION_LOG 420, operator 2026-10-30: "keep tracking this … to re check if the revert was positive after all"; OBSERVE ONLY — never changes
 config, no bot API, no network).
 
 QUESTION   LITE C (+2 % target outside the zone) was switched off when its locked gate fired (Σ Δ −9.91 on 13 trades, 0 saved, 10 capped). Was going back to +3 % right?

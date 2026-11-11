@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""👁 Scout — WILLY_5X gate (DECISION_LOG 425, operator 2026-10-31: "reduce the leverage of Willy until we solve the winners vs loosers"; OBSERVE ONLY — never changes config, no bot
+"""⛔ RETIRED 2026-11-11 (DECISION_LOG 530): decided — WILLY's size is set by C5 (DL 528). Unhooked from the opportunity scout; still runnable standalone.
+👁 Scout — WILLY_5X gate (DECISION_LOG 425, operator 2026-10-31: "reduce the leverage of Willy until we solve the winners vs loosers"; OBSERVE ONLY — never changes config, no bot
 API, no network).
 
 QUESTION   WILLY went 10× → 5× as a bridge. When does it go back? Leverage changes no % result, so every WILLY watch line keeps counting; only the account's exposure halves.

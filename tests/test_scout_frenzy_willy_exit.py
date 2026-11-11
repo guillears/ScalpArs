@@ -26,8 +26,7 @@ def test_frozen_rule_pinned():
 
 def test_hook_after_timecap_and_guarded():
     src = open(os.path.join(HERE, "scripts", "opportunity_scout.py")).read()
-    i, j = src.index("import scout_willy_timecap as _wt"), src.index("import scout_frenzy_willy_exit as _fwx")
-    assert i < j and "except Exception as _fwx_e" in src[j:j + 400]
+    assert "import scout_frenzy_willy_exit as" not in src and "scout_frenzy_willy_exit RETIRED 2026-11-11 (DECISION_LOG 530)" in src   # DL 530: unhooked
 
 
 def test_state_file_gitignored():

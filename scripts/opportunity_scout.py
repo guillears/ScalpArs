@@ -1254,15 +1254,7 @@ def run():
     except Exception as _fz_e:
         log(f"FRENZY watch failed: {_fz_e}")
         _fz_sec = ["## 🔥 FRENZY watch", "", f"Unavailable this run ({str(_fz_e)[:120]}).", ""]
-    try:                                               # ⚡ Oct-4 SURGE early-trigger observation (pre-registered; never breaks the run)
-        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
-            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        import scout_surge_obs as _so
-        _so_bars, _so_obs = _so.scan(EX, _retry, {**cfg, **(cfg.get("thresholds") or {})}, last_closed, alts, btc_full, in_now, now_ms)
-        _fz_sec += _so.lines(_so_bars, _so.save(_so_obs))
-    except Exception as _so_e:
-        log(f"SURGE observation failed: {_so_e}")
-        _fz_sec += ["## ⚡ SURGE early-trigger observation", "", f"Unavailable this run ({str(_so_e)[:120]}).", ""]
+    # ⛔ scout_surge_obs RETIRED 2026-11-11 (DECISION_LOG 530): SURGE early-trigger option A — no verdict since 10-04
     try:                                               # 🩹 Oct-5 BTC rebound-window observation (pre-registered; never breaks the run)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -1328,22 +1320,8 @@ def run():
     except Exception as _swa_e:
         log(f"separator sweep lines failed: {_swa_e}")
         _rg_sec += ["## 🔎 SEPARATOR SWEEP — every sleeve", "", f"Unavailable this run ({str(_swa_e)[:120]}).", ""]
-    try:                                               # 🩸🌙 Oct-26 OBS-F1 LATE-TAPE WEAK SPIKE (DECISION_LOG 384; orders exports + cached BTC 1d klines, one budgeted public GET; frozen read → OPERATOR CALL; never breaks the run)
-        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
-            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        import scout_fade_late_weak as _flw
-        _rg_sec += _flw.run(now_ms)
-    except Exception as _flw_e:
-        log(f"OBS-F1 late-tape weak spike line failed: {_flw_e}")
-        _rg_sec += ["## 🩸🌙 OBS-F1 LATE-TAPE WEAK SPIKE", "", f"Unavailable this run ({str(_flw_e)[:120]}).", ""]
-    try:                                               # 🌡 Oct-5 heat block × BTC regime observation (pre-registered; reads the tracker's priced heat blocks; never breaks the run)
-        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
-            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        import scout_heat_regime as _hr
-        _rg_sec += _hr.run(now_ms)
-    except Exception as _hr_e:
-        log(f"heat regime observation failed: {_hr_e}")
-        _rg_sec += ["## 🌡 Heat block × BTC regime", "", f"Unavailable this run ({str(_hr_e)[:120]}).", ""]
+    # ⛔ scout_fade_late_weak RETIRED 2026-11-11 (DECISION_LOG 530): fade OBS-F1 — ARMED (DL 527): scout_blocked_filters
+    # ⛔ scout_heat_regime RETIRED 2026-11-11 (DECISION_LOG 530): heat block × regime — 1/8 days since 10-05
     try:                                               # 📉 Oct-5 ML_B1H_NEGFLANK observation (pre-registered; orders exports only; never breaks the run)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -1376,31 +1354,10 @@ def run():
     except Exception as _wt_e:
         log(f"WILLY_TIMECAP exit shadow failed: {_wt_e}")
         _rg_sec += ["## ⏱ WILLY_TIMECAP", "", f"Unavailable this run ({str(_wt_e)[:120]}).", ""]
-    try:                                               # 🎯 Oct-9 WILLY_TP125 exit shadow (DECISION_LOG 265; cache only — runs AFTER WILLY_TIMECAP's fetch pass; never breaks the run)
-        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
-            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        import scout_willy_tp125 as _w125
-        _rg_sec += _w125.run(now_ms)
-    except Exception as _w125_e:
-        log(f"WILLY_TP125 exit shadow failed: {_w125_e}")
-        _rg_sec += ["## 🎯 WILLY_TP125", "", f"Unavailable this run ({str(_w125_e)[:120]}).", ""]
-    try:                                               # 🛑 Oct-10 WILLY_STOP exit shadow (DECISION_LOG 268; cache only — after WILLY_TIMECAP's fetch pass; never breaks the run)
-        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
-            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        import scout_willy_stop as _wst
-        _rg_sec += _wst.run(now_ms)
-    except Exception as _wst_e:
-        log(f"WILLY_STOP exit shadow failed: {_wst_e}")
-        _rg_sec += ["## 🛑 WILLY_STOP", "", f"Unavailable this run ({str(_wst_e)[:120]}).", ""]
-    try:                                               # 🎲➡🔥 Oct-10 FRENZY_WILLY_TP exit shadow (DECISION_LOG 267; WILLY_TIMECAP's walker / fetcher; never breaks the run)
-        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
-            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        import scout_frenzy_willy_exit as _fwx
-        _rg_sec += _fwx.run(now_ms)
-    except Exception as _fwx_e:
-        log(f"FRENZY_WILLY_TP exit shadow failed: {_fwx_e}")
-        _rg_sec += ["## 🎲➡🔥 FRENZY_WILLY_TP", "", f"Unavailable this run ({str(_fwx_e)[:120]}).", ""]
-    try:                                               # 🎯↩ Oct-12 FRENZY_TP_REVERT (the +3 → +1.5 TP revert gate, DECISION_LOG 283; after FRENZY_WILLY_TP's fetch pass; never breaks the run)
+    # ⛔ scout_willy_tp125 RETIRED 2026-11-11 (DECISION_LOG 530): WILLY +1.25 TP shadow — V2b exit live (DL 358)
+    # ⛔ scout_willy_stop RETIRED 2026-11-11 (DECISION_LOG 530): WILLY stop shadow — V2b / −4 live
+    # ⛔ scout_frenzy_willy_exit RETIRED 2026-11-11 (DECISION_LOG 530): FRENZY_WILLY_TP grid — stale (WIDE off, LITE +3, LONG −3)
+    try:                                               # 🎯↩ Oct-12 FRENZY_TP_REVERT (the +3 → +1.5 TP revert gate, DECISION_LOG 283, re-based DL 531; fetches its own paths; never breaks the run)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         import scout_frenzy_tp_revert as _ftr
@@ -1416,22 +1373,8 @@ def run():
     except Exception as _fwl_e:
         log(f"FRENZY WL observe lines failed: {_fwl_e}")
         _rg_sec += ["## 🧭📊 FRENZY WL observe lines", "", f"Unavailable this run ({str(_fwl_e)[:120]}).", ""]
-    try:                                               # 📐🔁 Oct-12 LITE_STRETCH_REENTRY (pre-registered, DECISION_LOG 272; cache only — after FRENZY_WILLY_TP's fetch pass; never breaks the run)
-        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
-            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        import scout_lite_stretch_reentry as _lsr
-        _rg_sec += _lsr.run(now_ms)
-    except Exception as _lsr_e:
-        log(f"LITE_STRETCH_REENTRY observe line failed: {_lsr_e}")
-        _rg_sec += ["## 📐🔁 LITE_STRETCH_REENTRY", "", f"Unavailable this run ({str(_lsr_e)[:120]}).", ""]
-    try:                                               # 🧭🎲 Oct-12 WILLY_BTC1H (pre-registered, DECISION_LOG 275; ticks / 1m cache only — after WILLY_TIMECAP's fetch pass; BTC 5m via NEG_DAILYUP's fetcher; never breaks the run)
-        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
-            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        import scout_willy_btc1h as _wb1h
-        _rg_sec += _wb1h.run(now_ms)
-    except Exception as _wb1h_e:
-        log(f"WILLY_BTC1H observe line failed: {_wb1h_e}")
-        _rg_sec += ["## 🧭🎲 WILLY_BTC1H", "", f"Unavailable this run ({str(_wb1h_e)[:120]}).", ""]
+    # ⛔ scout_lite_stretch_reentry RETIRED 2026-11-11 (DECISION_LOG 530): LITE stretch re-entry — 2/15 in a month, cannot decide
+    # ⛔ scout_willy_btc1h RETIRED 2026-11-11 (DECISION_LOG 530): WILLY BTC 1h line — DECIDED RETIRED
     try:                                               # 🎲² Oct-23 WILLY_EXIT_V2b (DECISION_LOG 356 → 358; frozen revert gates, verdict persisted; ticks / 1m cache + timecap's budgeted fetch; never breaks the run)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -1448,14 +1391,7 @@ def run():
     except Exception as _fv2b_e:
         log(f"FRENZY_V2B_SHADOW line failed: {_fv2b_e}")
         _rg_sec += ["## 🎲🪶 FRENZY_V2B_SHADOW", "", f"Unavailable this run ({str(_fv2b_e)[:120]}).", ""]
-    try:                                               # 🌐 Oct-26 ML_REGIME_LINES — frozen momentum-long regime watch OBS-R1 / R1b / R2 (DECISION_LOG 382; frozen reads at N 15 / 30 → OPERATOR CALL; caches + budgeted public 5m; never breaks the run)
-        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
-            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        import scout_ml_regime_lines as _mlrl
-        _rg_sec += _mlrl.run(now_ms)
-    except Exception as _mlrl_e:
-        log(f"ML_REGIME_LINES line failed: {_mlrl_e}")
-        _rg_sec += ["## 🌐 ML_REGIME_LINES", "", f"Unavailable this run ({str(_mlrl_e)[:120]}).", ""]
+    # ⛔ scout_ml_regime_lines RETIRED 2026-11-11 (DECISION_LOG 530): ML regime lines OBS-R1/R1b/R2 — DECIDED RETIRE
     try:                                               # 🧷 Oct-26 ML_MATCHED_REFUSALS — refused C/W-matched momentum longs priced at today's ML exit vs the same-days unmatched control (DECISION_LOG 383; frozen cells, OPERATOR CALL; decisions + orders exports, caches + budgeted public 1m / 5m; never breaks the run)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -1480,14 +1416,7 @@ def run():
     except Exception as _wax_e:
         log(f"WILLY_ADX55 line failed: {_wax_e}")
         _rg_sec += ["## 👁 WILLY_ADX55", "", f"Unavailable this run ({str(_wax_e)[:120]}).", ""]
-    try:                                               # 👁 Oct-30 LITE_C_REVERT — was going back to +3 % right, frozen read per sleeve (DECISION_LOG 420; forward)
-        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
-            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        import scout_lite_c_revert_watch as _lcr
-        _rg_sec += _lcr.run(now_ms)
-    except Exception as _lcr_e:
-        log(f"LITE_C_REVERT line failed: {_lcr_e}")
-        _rg_sec += ["## 👁 LITE_C_REVERT", "", f"Unavailable this run ({str(_lcr_e)[:120]}).", ""]
+    # ⛔ scout_lite_c_revert_watch RETIRED 2026-11-11 (DECISION_LOG 530): LITE C revert watch — DECIDED REVERT CONFIRMED
     try:                                               # 👁 Nov-1 SURGE_WL — BTC RSI ≥ 78 · pair volume < $150M, frozen at zone N ≥ 15 on ≥ 8 windows (DECISION_LOG 427; forward)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -1496,22 +1425,9 @@ def run():
     except Exception as _swl_e:
         log(f"SURGE_WL line failed: {_swl_e}")
         _rg_sec += ["## 👁 SURGE_WL", "", f"Unavailable this run ({str(_swl_e)[:120]}).", ""]
-    try:
-        # 👁 Oct-31 WILLY_5X — back to 10× or review, frozen at the first 15 fills at 5× (DECISION_LOG 425; forward)
-        import scout_willy_5x_watch as _w5x
-        _rg_sec += _w5x.run(now_ms)
-    except Exception as _w5x_e:
-        log(f"WILLY_5X line failed: {_w5x_e}")
-        _rg_sec += ["## 👁 WILLY_5X", "", f"Unavailable this run ({str(_w5x_e)[:120]}).", ""]
+    # ⛔ scout_willy_5x_watch RETIRED 2026-11-11 (DECISION_LOG 530): WILLY 5× watch — DECIDED; size set by C5 (DL 528)
     # ⛔ LONG_ADX35 (DECISION_LOG 418) RETIRED 2026-11-11 (DECISION_LOG 526): its −4 exit era ended (DL 524) and it failed forward (zone 9 · −1.55 vs rest 6 · −2.18)
-    try:                                               # 👁 Nov-11 LONG_WEAK_FRENZY — FRENZY_LONG on a weak frenzy (volume ≤ 119×), frozen expectancy bar (DECISION_LOG 525; forward)
-        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
-            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        import scout_long_weak_frenzy_watch as _lwf
-        _rg_sec += _lwf.run(now_ms)
-    except Exception as _lwf_e:
-        log(f"LONG_WEAK_FRENZY line failed: {_lwf_e}")
-        _rg_sec += ["## 👁 LONG_WEAK_FRENZY", "", f"Unavailable this run ({str(_lwf_e)[:120]}).", ""]
+    # ⛔ scout_long_weak_frenzy_watch RETIRED 2026-11-11 (DECISION_LOG 530): LONG_WEAK_FRENZY — ARMED (DL 527): scout_blocked_filters
     try:                                               # 👁 Oct-30 FB_CONFIRM — FLATBASE entered after a 4-hour close below the signal vs today's entry, frozen bar (DECISION_LOG 417; forward, budgeted public 5m)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -1544,14 +1460,7 @@ def run():
     except Exception as _mla_e:
         log(f"ML_LEAD_A line failed: {_mla_e}")
         _rg_sec += ["## 👁 ML_LEAD_A", "", f"Unavailable this run ({str(_mla_e)[:120]}).", ""]
-    try:                                               # 👁 Oct-30 RETRY_BTC1H — FRENZY_LITE_RETRY with BTC 1 h slope ≤ 0, frozen expectancy bar (DECISION_LOG 415; forward)
-        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
-            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        import scout_retry_btc1h_watch as _rbt
-        _rg_sec += _rbt.run(now_ms)
-    except Exception as _rbt_e:
-        log(f"RETRY_BTC1H line failed: {_rbt_e}")
-        _rg_sec += ["## 👁 RETRY_BTC1H", "", f"Unavailable this run ({str(_rbt_e)[:120]}).", ""]
+    # ⛔ scout_retry_btc1h_watch RETIRED 2026-11-11 (DECISION_LOG 530): RETRY_BTC1H — ARMED (DL 527): read by scout_blocked_filters
     try:                                               # 👁🅰️ Nov-4 ALPHA_SLEEVES — every sleeve on Binance "Alpha" coins (tag at entry), per-sleeve frozen re-block gate (DECISION_LOG 464; orders exports + the cached ML_MKT_HOT breadth read for the 471 confound note; never breaks the run)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -1576,22 +1485,16 @@ def run():
     except Exception as _lbr_e:
         log(f"LITE_BTC1H_RISING line failed: {_lbr_e}")
         _rg_sec += ["## 👁 LITE_BTC1H_RISING", "", f"Unavailable this run ({str(_lbr_e)[:120]}).", ""]
-    try:                                               # 👁 Nov-10 LITE_BTC_EMA20_DOWN — FRENZY_LITE with BTC 5 m EMA20 slope ≤ 0, frozen expectancy bar (DECISION_LOG 522; forward)
+    # ⛔ scout_lite_btc_ema20_down_watch RETIRED 2026-11-11 (DECISION_LOG 530): LITE_BTC_EMA20_DOWN — ARMED (DL 527): scout_blocked_filters
+    try:                                               # 🧱💲 Nov-11 BLOCKED TRADES — the armed filters' refusals priced on today's exit + per-line revert gates (DECISION_LOG 529)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        import scout_lite_btc_ema20_down_watch as _lbe
-        _rg_sec += _lbe.run(now_ms)
-    except Exception as _lbe_e:
-        log(f"LITE_BTC_EMA20_DOWN line failed: {_lbe_e}")
-        _rg_sec += ["## 👁 LITE_BTC_EMA20_DOWN", "", f"Unavailable this run ({str(_lbe_e)[:120]}).", ""]
-    try:                                               # 👁 Nov-11 ML_BULL90 — momentum long with ≥ 90 % of coins bullish, frozen expectancy bar (DECISION_LOG 523; forward)
-        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
-            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        import scout_ml_bull90_watch as _mb90
-        _rg_sec += _mb90.run(now_ms)
-    except Exception as _mb90_e:
-        log(f"ML_BULL90 line failed: {_mb90_e}")
-        _rg_sec += ["## 👁 ML_BULL90", "", f"Unavailable this run ({str(_mb90_e)[:120]}).", ""]
+        import scout_blocked_filters as _sbf
+        _rg_sec += _sbf.run(now_ms)
+    except Exception as _sbf_e:
+        log(f"BLOCKED TRADES pricer failed: {_sbf_e}")
+        _rg_sec += ["## 🧱💲 BLOCKED TRADES", "", f"Unavailable this run ({str(_sbf_e)[:120]}).", ""]
+    # ⛔ scout_ml_bull90_watch RETIRED 2026-11-11 (DECISION_LOG 530): ML_BULL90 — ARMED (DL 527): scout_blocked_filters
     try:                                               # 🏦 Nov-9 MEGACAP_READMIT — top-10 momentum longs with the mega-cap block OFF, frozen bar (DECISION_LOG 506; forward)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -1600,14 +1503,7 @@ def run():
     except Exception as _mcr_e:
         log(f"MEGACAP_READMIT line failed: {_mcr_e}")
         _rg_sec += ["## 🏦 MEGACAP_READMIT", "", f"Unavailable this run ({str(_mcr_e)[:120]}).", ""]
-    try:                                               # 👁 Oct-30 WILLY_GAP — WILLY / HT with ADX > 55 or EMA8–13 gap ≤ 0.90, frozen expectancy bar per sleeve (DECISION_LOG 414; forward)
-        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
-            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        import scout_willy_gap_watch as _wgp
-        _rg_sec += _wgp.run(now_ms)
-    except Exception as _wgp_e:
-        log(f"WILLY_GAP line failed: {_wgp_e}")
-        _rg_sec += ["## 👁 WILLY_GAP", "", f"Unavailable this run ({str(_wgp_e)[:120]}).", ""]
+    # ⛔ scout_willy_gap_watch RETIRED 2026-11-11 (DECISION_LOG 530): WILLY_GAP — ARMED (DL 527): scout_blocked_filters
     try:                                               # 👁 Nov-9 WILLY_FAILED_SPIKE — WILLY dip at / below the spike VWAP + the pre-committed WILLY OFF trigger (DECISION_LOG 509; forward)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -1704,14 +1600,7 @@ def run():
     except Exception as _lrs_e:
         log(f"FRENZY_LONG re-size read failed: {_lrs_e}")
         _rg_sec += ["## 📏 FRENZY_LONG RE-SIZE read", "", f"Unavailable this run ({str(_lrs_e)[:120]}).", ""]
-    try:                                               # 🕰🧭 Oct-23 LITE_LATE_BTCFALL observe line (DECISION_LOG 353; master + orders exports, frozen gate; never breaks the run)
-        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
-            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        import scout_lite_late_btcfall as _llb
-        _rg_sec += _llb.run(now_ms)
-    except Exception as _llb_e:
-        log(f"LITE_LATE_BTCFALL line failed: {_llb_e}")
-        _rg_sec += ["## 🕰🧭 LITE_LATE_BTCFALL", "", f"Unavailable this run ({str(_llb_e)[:120]}).", ""]
+    # ⛔ scout_lite_late_btcfall RETIRED 2026-11-11 (DECISION_LOG 530): LITE_LATE_BTCFALL — no edge (DL 522), covered by the armed LITE_BTC_EMA20_DOWN
     try:                                               # 🩳 Oct-22 FLATBASE_SHORT gates + observe lines ① non-flat · ② missed · ③ blocked longs (DECISION_LOG 348; alert-only; never breaks the run)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

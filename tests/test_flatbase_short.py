@@ -1051,7 +1051,7 @@ def test_fbx_lines_counts_fresh_and_shows_straddlers(tmp_path):
                              pct=[-9.0, 4.9], net=[-9.0, 4.9], entry_price=[1.0, 2.0], quantity=[500.0, 250.0]))
     walks = {(real.o[1], "CUSDT"): {"LIVE": {"net_pct": 7.9, "bars": 30}, "TP5_SL10": {"net_pct": 4.92, "bars": 10}}}
     out = " ".join(SF2.fbx_lines(real, walks, int(sw.value // 1_000_000), state_path=str(tmp_path / "fbx.json")))
-    assert "fresh fills" in out and "priced 1" in out and "XANUSDT 10-29 08:00 booked -9.00" in out and "EARLY: COLLECTING" in out
+    assert "fresh fills" in out and "priced 1" in out and "XANUSDT 10-29 08:00 booked -9.00" in out and "EARLY RETIRED (DL 531): never frozen" in out
     assert "not in git" in " ".join(SF2.fbx_lines(real, walks, None))
 
 
@@ -1061,28 +1061,35 @@ def test_registry_flatbase_line_matches_the_live_exit():
     assert not [k for k, _, _ in d if k.startswith("flatbase_")]     # re-based on DL 408 (the WILLY leg's own era is separate)
 
 
-def test_fbx_lines_freeze_supersede_finals_and_open(tmp_path):
+def test_fbx_retired_and_risk_gate_freeze_once_finals_and_open(tmp_path):
+    """(DL 531) EARLY / FINAL retired (a frozen record shows as history, nothing new freezes); FBX_RISK: +8 / −15 at × 10/15 vs +5 / −10 on
+    the first 15 fills on ≥ 8 days since the DL 527 floor, decided once; an UNPRICEABLE_FINAL fill is out; an earlier open fill holds it."""
+    import json
     import scout_flatbase_short as SF2
     sw = pd.Timestamp("2026-10-29 12:00")
     sw_ms = int(sw.value // 1_000_000)
-    o = [sw + pd.Timedelta(hours=1 + 13 * i) for i in range(12)]
-    real = pd.DataFrame(dict(o=o, c=[x + pd.Timedelta(hours=2) for x in o], pair=[f"P{i}USDT" for i in range(12)], pct=[4.9] * 12,
-                             net=[4.9] * 12, entry_price=[1.0] * 12, quantity=[500.0] * 12))
+    o = [sw + pd.Timedelta(hours=1 + 13 * i) for i in range(16)]
+    real = pd.DataFrame(dict(o=o, c=[x + pd.Timedelta(hours=2) for x in o], pair=[f"P{i}USDT" for i in range(16)], pct=[4.9] * 16,
+                             net=[4.9] * 16, entry_price=[1.0] * 16, quantity=[500.0] * 16))
     wk = lambda a, b: {"LIVE": {"net_pct": a, "bars": 20}, "TP5_SL10": {"net_pct": b, "bars": 8}}
     walks = {(x, f"P{i}USDT"): wk(7.9, 4.9) for i, x in enumerate(o)}
     st = str(tmp_path / "fbx.json")
-    t1 = " ".join(SF2.fbx_lines(real, walks, sw_ms, state_path=st))
-    assert "EARLY: REVERT" in t1 and "FINAL: SUPERSEDED" in t1                     # +8 / −15 ahead by 3 pt → revert, final superseded
-    walks2 = {k: wk(0.0, 4.9) for k in walks}                                      # the data changes — the frozen reads do not
-    t2 = " ".join(SF2.fbx_lines(real, walks2, sw_ms, state_path=st))
-    assert "EARLY: REVERT" in t2 and "frozen" in t2 and "FINAL: SUPERSEDED" in t2
-    # an UNPRICEABLE_FINAL fill is out (counted); an earlier still-open fill holds the read
+    json.dump({"early": dict(verdict="REVERT", text="old", at="2026-11-08T00:00")}, open(st, "w"))
+    t1 = " ".join(SF2.fbx_lines(real, walks, sw_ms, state_path=st, risk_since_ms=sw_ms))
+    assert "EARLY RETIRED (DL 531): REVERT — old" in t1 and "FINAL RETIRED (DL 531): never frozen" in t1
+    assert "FBX_RISK" in t1 and "SWITCH CANDIDATE" in t1                           # 7.9 × 0.67 = 5.27 > 4.9 at risk-equal size
+    assert set(json.load(open(st))) == {"early", "risk531"}                        # no new EARLY / FINAL freeze
+    walks2 = {k: wk(6.0, 4.9) for k in walks}                                      # 6.0 × 0.67 = 4.0 < 4.9 — but the read is frozen
+    t2 = " ".join(SF2.fbx_lines(real, walks2, sw_ms, state_path=st, risk_since_ms=sw_ms))
+    assert "SWITCH CANDIDATE" in t2 and "frozen" in t2
+    assert "KEEP" in " ".join(SF2.fbx_lines(real, walks2, sw_ms, state_path=None, risk_since_ms=sw_ms))
     fin = {(o[0], "P0USDT")}
-    t3 = " ".join(SF2.fbx_lines(real, walks2, sw_ms, state_path=None, finals=fin))
-    assert "UNPRICEABLE_FINAL 1" in t3 and "EARLY: EARLY_OK" in t3
+    t3 = " ".join(SF2.fbx_lines(real, walks2, sw_ms, state_path=None, finals=fin, risk_since_ms=sw_ms))
+    assert "UNPRICEABLE_FINAL 1" in t3 and "15 fills on 8 days" in t3               # the out fill is skipped: the next 15 decide
     opn = pd.DataFrame(dict(o=[o[0] + pd.Timedelta(minutes=5)], pair=["OPENUSDT"]))
-    t4 = " ".join(SF2.fbx_lines(real, walks2, sw_ms, state_path=None, open_rows=opn))
-    assert "still open 1" in t4 and "EARLY: HOLD" in t4
+    t4 = " ".join(SF2.fbx_lines(real, walks2, sw_ms, state_path=None, open_rows=opn, risk_since_ms=sw_ms))
+    assert "still open 1" in t4 and "HOLD" in t4
+    assert SF2.fbx_risk_verdict([])[0] == "COLLECTING"
 
 
 def test_fbx_ran_eras():

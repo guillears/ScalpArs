@@ -21,6 +21,13 @@ FROZEN BAR the WILLY_GAP bar (DL 414), never re-fit: at the first prefix where t
            the forward fills KEPT by WILLY_GAP (outside its zone, since DL 414) and KEPT by WILLY_FAILED_SPIKE (stamp > 0, since DL 509): if BOTH have
            WR < 69.0 % and avg < 0 → WILLY OFF is the recommendation (operator switches it). FAILED_SPIKE-kept N < 5 at that moment → the GAP-kept read
            alone decides. Printed below, never acts.
+           ⛔ RETIRED 2026-11-11 (DECISION_LOG 531, operator): it fired MET (GAP-kept 11 · 55 % · −1.31 / FAILED_SPIKE-kept 5 · 40 % · −2.10) on
+           single-filter cohorts, but since DL 527 WILLY runs BOTH filters — the fills passing both since DL 414 were 4 · 100 % · +1.00 %. Its
+           frozen record is shown as history only (off_trigger(), kept for the record).
+🔒 WILLY OFF TRIGGER v2 (DL 531, pre-committed, operator 11-11): the first 15 CLOSED FRENZY_WILLY fills opened ≥ the DECISION_LOG 527 commit
+           + 10 min (both filters armed — every one passes WILLY_GAP and WILLY_FAILED_SPIKE), operator-closed out: WR < 69.0 % ∧ avg < 0 →
+           recommend WILLY OFF (operator switches it) · else WILLY STAYS. Decided ONCE (OFF_TRIGGER_531), after the newest export is ≥ the
+           15th fill + WILLY's max hold. Never acts.
 STATE      reports/SCOUT_WILLY_FAILED_SPIKE.json (gitignored).
 Usage: venv/bin/python -I scripts/scout_willy_failed_spike_watch.py
 """
@@ -209,7 +216,11 @@ def run(now_ms=None, paths=None, state_path=STATE, since_ms=None):
         L.append("")
     if changed and ok and state_path:
         NF.du_save_state(st, state_path)
-    L += off_trigger(now_ms, paths, state_path=state_path, frame=(c0, newest), vw_since=since_ms)
+    L += ["### ⛔ WILLY OFF trigger (DL 509) — RETIRED (DL 531): superseded by both filters armed; history only", ""]
+    _old, _ok = NF.du_load_state(state_path, now_ms) if state_path else ({}, True)
+    if _ok and isinstance(_old.get("OFF_TRIGGER"), dict):
+        L += [f"Frozen {_old['OFF_TRIGGER'].get('at')}: {_old['OFF_TRIGGER'].get('result')} · {_old['OFF_TRIGGER'].get('detail')} — never acted on.", ""]
+    L += off_trigger_v2(now_ms, state_path=state_path, frame=(c0, newest))
     if not ok:
         L.append(f"⚠ frozen state corrupt — operator restore needed ({os.path.basename(state_path)}.*.bad); freezing skipped this run.")
     L += [f"Evidence: {REGISTRATION}.",
@@ -282,6 +293,44 @@ def off_trigger(now_ms, paths=None, gap_state=None, state_path=STATE, frame=None
                                   at=pd.Timestamp(now_ms, unit="ms").strftime("%Y-%m-%d %H:%M UTC"))
         NF.du_save_state(own, state_path)
     return L + [f"**WILLY_GAP frozen ({g.get('state')}) → {result}** · {det}", rule, ""]
+
+
+V2_DL, V2_N = 527, 15
+
+
+def off_trigger_v2(now_ms, state_path=STATE, frame=None, since_ms=None, paths=None):
+    """🔒 (DL 531) WILLY OFF v2 on the both-filters cohort: the first V2_N CLOSED FRENZY_WILLY fills ≥ the DL 527 commit + 10 min →
+    WR < BE_WR ∧ avg < 0 → recommend OFF. Decided once under OFF_TRIGGER_531; never acts."""
+    L = [f"### 🔒 WILLY OFF trigger v2 (DL 531, pre-committed — decided once)", ""]
+    rule = (f"Rule: the first {V2_N} CLOSED FRENZY_WILLY fills since the DL {V2_DL} commit + 10 min (both filters armed): WR < {BE_WR:.1%} ∧ "
+            "avg < 0 → recommend WILLY OFF (operator switches it); else WILLY stays.")
+    since_ms = _GK.dl_deploy_ms(V2_DL, lag_min=10, label="WILLY OFF v2 (armed filters)") if since_ms is None else since_ms
+    if since_ms is None:
+        return L + [f"⚠ NOT EVALUABLE — the DL {V2_DL} commit is not in git; the trigger is not read.", rule, ""]
+    c, newest = frame if frame is not None else load(paths)
+    c = c[c.entry_strategy.astype(str) == "FRENZY_WILLY"] if len(c) else c
+    if len(c):
+        c, _ox = _GK.split_operator_closed(c)
+    c = c[c.o >= pd.Timestamp(int(since_ms), unit="ms")].sort_values(["o", "pair"]) if len(c) else c
+    pre = c.iloc[:V2_N] if len(c) else c
+    f = lambda g: f"{len(g)} · {(g.pct > 0).mean():.0%} · {g.pct.mean():+.3f} %" if len(g) else "0"
+    met = len(pre) > 0 and float((pre.pct > 0).mean()) < BE_WR and float(pre.pct.mean()) < 0
+    own, own_ok = NF.du_load_state(state_path, now_ms) if state_path else ({}, True)
+    rec = own.get("OFF_TRIGGER_531") if own_ok else None
+    if rec:
+        return L + [f"**Frozen ({rec.get('at')}): {rec.get('result')}** · {rec.get('detail')}", f"Live (never re-decides): {f(c)}", rule, ""]
+    if len(pre) < V2_N:
+        return L + [f"⏳ COLLECTING — {f(pre)} of {V2_N} (would be {'MET' if met else 'not met'} now).", rule, ""]
+    last = pre.o.max()
+    if newest is None or newest < last + pd.Timedelta(minutes=cap_minutes()):
+        return L + [f"⏸ deciding deferred — the newest export is older than the 15th fill + the max hold. Now: {f(pre)}.", rule, ""]
+    result = "MET — recommend WILLY OFF (operator switches it)" if met else "NOT MET — WILLY stays"
+    if state_path and own_ok:
+        own["OFF_TRIGGER_531"] = dict(result=result, detail=f(pre), at=pd.Timestamp(now_ms, unit="ms").strftime("%Y-%m-%d %H:%M UTC"))
+        NF.du_save_state(own, state_path)
+    elif not own_ok:
+        return L + [f"⚠ own state corrupt — not frozen this run. Now: {f(pre)}.", rule, ""]
+    return L + [f"**{result}** · {f(pre)}", rule, ""]
 
 
 if __name__ == "__main__":

@@ -70,7 +70,7 @@ def test_hook_registry_and_zone():
     src = open(os.path.join(ROOT, "scripts", "opportunity_scout.py")).read()
     assert "import scout_willy_failed_spike_watch as _wvw" in src and "_wvw.run(now_ms)" in src
     import observe_registry as R
-    assert "scout_willy_failed_spike_watch.py" in R.BOOKED and R.BOOKED["scout_willy_failed_spike_watch.py"] == R.BOOKED["scout_willy_gap_watch.py"]
+    assert "scout_willy_failed_spike_watch.py" in R.BOOKED and R.diffs(R.BOOKED["scout_willy_failed_spike_watch.py"], R.thresholds()) == [] and "scout_willy_gap_watch.py" in R.NONE
     d = pd.DataFrame(dict(entry_frenzy_vs_vwap_pct=[-0.1, 0.0, 0.2, None]))
     assert WZ.zones(d)["FRENZY_WILLY"]["WILLY_FAILED_SPIKE"].tolist() == [True, True, False, False]   # NaN → never in the zone
     sys.path.insert(0, os.path.join(ROOT, "scripts", "best_case"))
@@ -118,3 +118,26 @@ def test_ht_counts_from_its_own_commit_and_best_case_freeze(tmp_path, monkeypatc
     sys.path.insert(0, os.path.join(ROOT, "scripts", "best_case"))
     import confidence as CF
     assert CF.freeze_spec("WILLY_FAILED_SPIKE", "FRENZY_WILLY_HT") == 511 and CF.freeze_spec("WILLY_FAILED_SPIKE", "FRENZY_WILLY") == 509
+
+
+def test_off_trigger_v2_both_filters_cohort_freezes_once(tmp_path):
+    """(DL 531) WILLY OFF v2: the first 15 FRENZY_WILLY fills since the DL 527 floor, WR < 69 % ∧ avg < 0 → MET; decided once; the retired
+    DL 509 record shows as history in run()."""
+    import json
+    since = int(T0.value // 10**6)
+    now = int((T0 + pd.Timedelta(days=30)).value // 10**6)
+    pre = _fills([(-1, "OLDUSDT", 0.5, 30, -4.0)])                                     # before the floor: never counted
+    bad = _fills([(i % 8, f"P{i}USDT", 0.5, 30, -4.0 if i % 2 else 1.0) for i in range(16)])
+    own = str(tmp_path / "own.json")
+    c, newest = V.load(_write(tmp_path, pd.concat([pre, bad])))
+    out = "\n".join(V.off_trigger_v2(now, state_path=own, frame=(c.iloc[:10], newest), since_ms=since))
+    assert "COLLECTING" in out and not os.path.exists(own)
+    out = "\n".join(V.off_trigger_v2(now, state_path=own, frame=(c, newest), since_ms=since))
+    assert "MET — recommend WILLY OFF" in out and json.load(open(own))["OFF_TRIGGER_531"]["detail"].startswith("15 · ")
+    good = c.assign(pct=1.0)
+    out = "\n".join(V.off_trigger_v2(now, state_path=own, frame=(good, newest), since_ms=since))
+    assert "Frozen" in out and "MET" in out                                             # decided once
+    assert "NOT MET" in "\n".join(V.off_trigger_v2(now, state_path=None, frame=(good, newest), since_ms=since))
+    json.dump({"OFF_TRIGGER": dict(result="MET — old", detail="d", at="x")}, open(own, "w"))
+    o2 = "\n".join(V.run(now_ms=now, paths=_write(tmp_path, bad), state_path=own, since_ms=since))
+    assert "RETIRED (DL 531)" in o2 and "MET — old" in o2 and "WILLY OFF trigger v2" in o2

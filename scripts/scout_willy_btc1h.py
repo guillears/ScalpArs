@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""🧭🎲 Scout — WILLY_BTC1H observe line (pre-registered 2026-10-12, DECISION_LOG 275; OBSERVE ONLY — never changes config, no bot API).
+"""⛔ RETIRED 2026-11-11 (DECISION_LOG 530): decided. Unhooked from the opportunity scout; still runnable standalone.
+🧭🎲 Scout — WILLY_BTC1H observe line (pre-registered 2026-10-12, DECISION_LOG 275; OBSERVE ONLY — never changes config, no bot API).
 
 HYPOTHESIS     FRENZY_WILLY does worse when BTC's 1-hour EMA20 slope is ≤ 0 at entry. Market-wide variable → a WILLY on/off switch, not
                a trade filter (CLAUDE.md WINDOW-UNITS RULE): evidence counts in DAY units (same-day fills = one observation).

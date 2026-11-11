@@ -57,9 +57,7 @@ def test_dip_sub_pinned():
 
 def test_hook_after_lite_stretch_and_guarded():
     src = open(os.path.join(HERE, "scripts", "opportunity_scout.py")).read()
-    i, j = src.index("import scout_lite_stretch_reentry as _lsr"), src.index("import scout_willy_btc1h as _wb1h")
-    assert i < j and src.index("except Exception as _lsr_e") < j
-    assert "try:" in src[src.index("except Exception as _lsr_e"):j] and "except Exception as _wb1h_e" in src[j:j + 400] and "_wb1h.run(now_ms)" in src[j:j + 200]
+    assert "import scout_willy_btc1h as" not in src and "scout_willy_btc1h RETIRED 2026-11-11 (DECISION_LOG 530)" in src   # DL 530: unhooked
 
 
 def test_state_file_gitignored():
@@ -108,7 +106,7 @@ def test_ran_v2b_and_registry_matches_live_exit():
     assert not WB.ran_v2b(_row(te=ms, frenzy_willy_tp_target_pct=2.0), None)
     import observe_registry as OR
     th = OR.thresholds()
-    assert OR.diffs(OR.EXIT["scout_willy_btc1h.py"]["walks"], th) == []
+    assert "scout_willy_btc1h.py" in OR.NONE                                              # DL 530: retired (decided)
     assert (WB.V2B_K, WB.V2B_CAP) == (float(th["frenzy_willy_high_k_pct"]), int(th["frenzy_willy_max_hold_minutes"]))
 
 

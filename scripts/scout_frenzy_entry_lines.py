@@ -75,6 +75,20 @@ def deploy_ts(log=None):
     return pd.Timestamp(int(t), unit="ms")
 
 
+LONG_REBASE_DL = 524   # 🔁 (DL 530) STRETCHED re-based on the −3 FRENZY_LONG stop (DL 524): fresh count from that deploy + 10 min
+
+
+def rebase_ts(notes=None):
+    """the DL 524 (FRENZY_LONG −4 → −3) deploy + 10 min — STRETCHED counts only fills that ran today's LONG exit. Not in git → 2100 (nothing
+    counted, LOUD)."""
+    t = _GK.dl_deploy_ms(LONG_REBASE_DL, 10, label="FRENZY_STRETCHED re-base on −3 (DECISION_LOG 524 / 530)")
+    if t is None:
+        if notes is not None:
+            notes.append("⛔ STRETCHED NOT EVALUABLE — the DECISION_LOG 524 deploy is not in git")
+        return pd.Timestamp("2100-01-01")
+    return pd.Timestamp(int(t), unit="ms")
+
+
 def gvol_off_ts():
     """the market-volume-gate-OFF deploy = the DECISION_LOG 263 commit (ec98aea '(DECISION_LOG 261, 262, 263)') + 10 min via
     scout_gatekit (DECISION_LOG 331 — the literal-tag grep never matched it); not in git → None after a LOUD warning (the era note
@@ -343,9 +357,11 @@ def run(now_ms=None, orders=None, state_paths=None, open_ts=None, deploy=None):
             c["grp"], c["why"] = reentry_group(c, fam) if len(c) else (np.array([], dtype=object), [])
             r["grp"], r["why"] = reentry_group(r, fam) if len(r) else (np.array([], dtype=object), [])
         else:
+            rb = max(dep, rebase_ts(notes)) if deploy is None else dep      # (DL 530) re-based on −3; an explicit deploy (tests) wins
+            c, r = c[c.ts >= rb].copy(), r[r.ts >= rb].copy()
             c["grp"], r["grp"] = stretched_group(c.vwap), stretched_group(r.vwap)
             c["why"], r["why"] = "", ""
-        out += _section(key, c, r, now_ms, sp[key], open_ts, dep, off)
+        out += _section(key, c, r, now_ms, sp[key], open_ts, rb if key == "STRETCHED" else dep, off)
     return out + ([f"Data: {' · '.join(notes)}.", ""] if notes else [])
 
 

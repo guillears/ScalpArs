@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""📐🔁 Scout — LITE_STRETCH_REENTRY observe line (pre-registered 2026-10-12, DECISION_LOG 272; OBSERVE only — never changes config, no bot
+"""⛔ RETIRED 2026-11-11 (DECISION_LOG 530): 2 of 15 in a month — cannot decide. Unhooked from the opportunity scout; still runnable standalone.
+📐🔁 Scout — LITE_STRETCH_REENTRY observe line (pre-registered 2026-10-12, DECISION_LOG 272; OBSERVE only — never changes config, no bot
 API, NO network: the orders exports + the shared tick / 1m / 5m caches other lines fill).
 
 ZONE (FROZEN)  a FRENZY_LITE fill whose pair EMA13 − EMA50 gap at entry is > GAP_CUT (1.87 %, strictly) AND which is NOT the first non-WILLY

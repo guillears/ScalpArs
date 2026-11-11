@@ -43,6 +43,11 @@ DL 356 file can leak; operator decides — nothing automatic). Δ = live (booked
   V2B_MAIN  — the shortest prefix of ≥ 15 runner fills on ≥ 6 UTC days: Σ Δ < 0 → REVERT to +1.25 (frenzy_willy_high_target_enabled
               false) · else PASS
   V2B_FINAL — the first 25 runner fills: Σ Δ < 0 → REVERT · else PASS
+  ⛔ EARLY / MAIN / FINAL RETIRED 2026-11-11 (DECISION_LOG 531, operator): FINAL froze REVERT (Σ −1.19) but 24 of its 25 runner fills are
+     now refused by the armed WILLY filters (DL 527); on the 25 fills the filters keep, V2b led the +1.25 exit by Σ +30.3 pts (master CF).
+     Their frozen records show as history only.
+  V2B_B26 (DL 531) — the first 15 runner fills (WILLY + HT) opened ≥ the DECISION_LOG 527 commit + 10 min (both filters armed): Σ Δ < 0 →
+     REVERT to +1.25 · else PASS. Decided once.
 🔒 FROZEN read per shadow (b)(c)(d) (V2B_SH_<name>): at the shortest prefix of ≥ 15 runner fills on ≥ 6 UTC days → CANDIDATE (operator
 decides an engine change) iff avg Δ (shadow − live re-walk) ≥ +0.10 %/fill ∧ no single fill carries ≥ 50 % of the positive Δ; else KEEP.
 A runner fill without a priced path / with an unresolved walk holds the freeze of any read whose sample it belongs to."""
@@ -79,6 +84,14 @@ PARITY_TOL, PARITY_MIN = 0.15, 0.90
 EARLY_N, EARLY_GAP = 10, 0.15
 MAIN_N, MAIN_DAYS = 15, 6
 FINAL_N = 25
+B26_N, B26_DL = 15, 527                   # 🔒 (DL 531) the re-based gate on the armed-filter cohort
+RETIRED_531 = (KEY + "EARLY", KEY + "MAIN", KEY + "FINAL")
+
+
+def _b26_floor():
+    """the DL 527 commit + LAG_MIN as a Timestamp; not in git → None (the gate is then NOT EVALUABLE)."""
+    t = _GK.dl_deploy_ms(B26_DL, LAG_MIN, label="V2B_B26 (armed WILLY filters)")
+    return None if t is None else pd.Timestamp(int(t), unit="ms")
 MIN = 60_000
 # 🪜 ladder shadows (DL 357) — frozen
 LADDERS = {
@@ -390,7 +403,7 @@ def _prefix(a, n, days):
     return None
 
 
-def reads(c):
+def reads(c, floor=None):
     """the three FROZEN gate reads on the RUNNER fills (in open order) → {name: (verdict, text, sample_complete)}."""
     a = _runners(c)
     out = {}
@@ -427,6 +440,19 @@ def reads(c):
         sd = float(f.delta.sum())
         out[KEY + "FINAL"] = (("REVERT" if sd < 0 else "PASS"), f"final read (first {FINAL_N} runner fills): Σ(live − shadow) {sd:+.2f} pts → "
                               + ("🛑 REVERT to +1.25 (frenzy_willy_high_target_enabled false)" if sd < 0 else "PASS (keep V2b)"), True)
+    fl = _b26_floor() if floor is None else floor
+    if fl is None:
+        out[KEY + "B26"] = ("COLLECTING", f"B26 read: NOT EVALUABLE — the DL {B26_DL} commit is not in git", False)
+        return out
+    b = a[pd.to_datetime(a.ts) >= fl].head(B26_N) if len(a) else a
+    if len(b) < B26_N:
+        out[KEY + "B26"] = ("COLLECTING", f"B26 read: {len(b)}/{B26_N} runner fills since the DL {B26_DL} filters", False)
+    elif not _sample_ok(b):
+        out[KEY + "B26"] = ("HOLD", f"B26 read sample: {int(b.shadow.isna().sum())} unpriced — held", False)
+    else:
+        sd = float(b.delta.sum())
+        out[KEY + "B26"] = (("REVERT" if sd < 0 else "PASS"), f"B26 read (first {B26_N} runner fills since the DL {B26_DL} filters): Σ(live − shadow) "
+                            f"{sd:+.2f} pts → " + ("🛑 REVERT to +1.25 (frenzy_willy_high_target_enabled false)" if sd < 0 else "PASS (keep V2b)"), True)
     return out
 
 
@@ -611,6 +637,11 @@ def run(now_ms=None, paths=None, raw=None, floor_ms="auto", path_fn=None, fetch=
     L += [""] + batch_table(c) + [""]
     L.append("🔒 FROZEN gates + shadow reads (operator decides; persisted once decided):")
     for name, (vv, txt, complete) in list(reads(c).items()) + list(shadow_reads(c).items()):
+        if name in RETIRED_531:                               # (DL 531) history only — never freezes anything new
+            fv, ft = frozen(state_path, name, vv, txt, False, False)
+            L.append(f"  {name}: {ft} — ⛔ RETIRED (DL 531): history only, never freezes" if "(frozen " in ft else
+                     f"  {name}: ⛔ RETIRED (DL 531): never frozen (now {vv}: {txt.split(' → ')[0]})")
+            continue
         if not pok and complete:   # (review) a verdict frozen earlier still shows; the parity guard only blocks NEW freezes
             fv, ft = frozen(state_path, name, vv, txt, False, False)
             L.append(f"  {name}: {ft}" if "(frozen " in ft else f"  {name}: no verdict (parity) — {txt}")

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""👁 Scout — ML_BULL90 watch line (pre-registered 2026-11-11, DECISION_LOG 523, operator "yes build it and update best case"; OBSERVE ONLY — never
+"""⛔ RETIRED 2026-11-11 (DECISION_LOG 530): ARMED (DL 527) — verdict in scout_blocked_filters. Unhooked from the opportunity scout; still runnable standalone.
+👁 Scout — ML_BULL90 watch line (pre-registered 2026-11-11, DECISION_LOG 523, operator "yes build it and update best case"; OBSERVE ONLY — never
 changes config, no bot API, no network).
 
 QUESTION   Do MOMENTUM LONGs lose when the market is already stretched — ≥ 90 % of the scanned coins bullish at entry (entry_bull_pct ≥ 90)?

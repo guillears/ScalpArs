@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""👁 Scout — WILLY_GAP watch line (pre-registered 2026-10-30, DECISION_LOG 414; OBSERVE ONLY — never changes config, no bot API, no network).
+"""⛔ RETIRED 2026-11-11 (DECISION_LOG 530): ARMED (DL 527) — verdict in scout_blocked_filters. Unhooked from the opportunity scout; still runnable standalone.
+👁 Scout — WILLY_GAP watch line (pre-registered 2026-10-30, DECISION_LOG 414; OBSERVE ONLY — never changes config, no bot API, no network).
 
 QUESTION   ADX > 55 alone leaves B25 WILLY negative (operator 10-30). Does also refusing a coin whose short-term trend is weak fix it? zone = entry_adx
            > 55 OR entry_ema_gap_8_13 ≤ 0.90. Theory: WILLY buys a dip on a hot coin; a narrow EMA8–13 gap means there is little trend left to bounce on. The stamp is ABSOLUTE % of EMA13 (sign not stamped); a signed read needs a klines rebuild.

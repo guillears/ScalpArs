@@ -140,7 +140,8 @@ def test_cohort_splits_v2_era_transition_and_v2b():
     assert len(co["kept"]) == 17 and list(co["ox"].pair) == ["OPUSDT"]
 
 
-def test_run_mixed_book_reverts_and_floor_shadows_become_candidates(tmp_path):
+def test_run_mixed_book_reverts_and_floor_shadows_become_candidates(tmp_path, monkeypatch):
+    monkeypatch.setattr(S, "_b26_floor", lambda: pd.Timestamp("2026-11-11 16:44"))       # hermetic: no git lookup (staged-copy run)
     rows, paths = _book()
     state = str(tmp_path / "g.json")
     out = "\n".join(S.run(raw=_exports(rows), floor_ms=FLOOR_MS, path_fn=_fn(paths), fetch=False, state_path=state))
@@ -153,9 +154,9 @@ def test_run_mixed_book_reverts_and_floor_shadows_become_candidates(tmp_path):
     assert "runner fills (target > +1.25): 16" in out
     assert "parity (V2b re-walk vs booked, ±0.15): 17/17 = 100 %" in out
     # gates on runner fills: first 10 = 5 TP + 5 stops: live −0.300 vs shadow +1.250 → ALERT · 15 on 8 days: 8×2.25 + 7×(−5.35) = −19.45
-    assert "V2B_EARLY: first 10 runner fills: live -0.300 vs shadow +1.250 %/fill (alert if < shadow − 0.15) → ⚠ ALERT: review WILLY exit V2b" in out
-    assert "V2B_MAIN: main read (15 runner fills on 8 days): Σ(live − shadow) -19.45 pts → 🛑 REVERT to +1.25 (frenzy_willy_high_target_enabled false)" in out
-    assert "V2B_FINAL: final read: 16/25 runner fills" in out
+    assert "V2B_EARLY: ⛔ RETIRED (DL 531): never frozen (now " in out and "first 10 runner fills: live -0.300 vs shadow +1.250 %/fill (alert if < shadow − 0.15)" in out
+    assert "V2B_MAIN: ⛔ RETIRED (DL 531): never frozen (now " in out and "main read (15 runner fills on 8 days): Σ(live − shadow) -19.45 pts" in out
+    assert "V2B_FINAL: ⛔ RETIRED (DL 531): never frozen (now " in out and "final read: 16/25 runner fills" in out
     # shadows: a stop fill saved by a floor at +0.85 → Δ +4.95 × 7 over 15 = +2.310; NOLATE = live (Δ 0) → KEEP
     for k in ("FLOOR10", "STEPS", "TRAIL10", "TRAIL15", "HALF"):
         assert f"V2B_SH_{k}: 15 runner fills on 8 days: avg Δ (shadow − live V2b) +2.310 %/fill · top fill 14% of the gain → CANDIDATE" in out, k
@@ -169,21 +170,39 @@ def test_run_mixed_book_reverts_and_floor_shadows_become_candidates(tmp_path):
     assert out.count("per fill (last 20): ") == 1 and out.split("per fill (last 20): ")[1].split("\n")[0].count(" | a ") == 16
     assert "| ALL | falling |" in out and "| ALL | rising |" in out
     st = json.load(open(state))
-    assert all(k.startswith("V2B_") for k in st) and st["V2B_MAIN"]["verdict"] == "REVERT" and "V2B_FINAL" not in st
+    assert all(k.startswith("V2B_") for k in st) and not ({"V2B_EARLY", "V2B_MAIN", "V2B_FINAL"} & set(st))   # (DL 531) retired: never freeze
+    assert "⛔ RETIRED (DL 531)" in out and "V2B_B26: B26 read: 0/15 runner fills" in out
     assert {f"V2B_SH_{k}" for k in S.SHADOWS} <= set(st) and st["V2B_SH_NOLATE"]["verdict"] == "KEEP"
     # frozen: a later all-TP book keeps the decided verdicts
     rows2, paths2 = _book(stop_every=0)
     out2 = "\n".join(S.run(raw=_exports(rows2), floor_ms=FLOOR_MS, path_fn=_fn(paths2), fetch=False, state_path=state))
-    assert "V2B_MAIN: main read (15 runner fills on 8 days): Σ(live − shadow) -19.45 pts" in out2 and "(frozen " in out2
+    assert "main read (15 runner fills on 8 days): Σ(live − shadow) +33.75 pts" in out2 and "RETIRED (DL 531)" in out2   # retired: live text only
+    st0 = {"V2B_FINAL": dict(verdict="REVERT", text="final read: Σ −1.19", at="2026-11-03 00:00")}
+    json.dump(st0, open(state, "w"))
+    out3 = "\n".join(S.run(raw=_exports(rows2), floor_ms=FLOOR_MS, path_fn=_fn(paths2), fetch=False, state_path=state))
+    assert "V2B_FINAL: final read: Σ −1.19 (frozen" in out3 and "RETIRED (DL 531)" in out3              # the old record shows as history
+    assert not ({"V2B_EARLY", "V2B_MAIN"} & set(json.load(open(state))))                             # no retired gate freezes
+
+
+def test_b26_gate_on_the_armed_filter_cohort():
+    """(DL 531) V2B_B26: the first 15 runner fills since the DL 527 floor — Σ(live − +1.25 shadow) < 0 → REVERT, else PASS."""
+    fl = pd.Timestamp("2026-11-11 17:00")
+    ts = [fl - pd.Timedelta(hours=1)] + [fl + pd.Timedelta(hours=i) for i in range(15)]
+    c = pd.DataFrame(dict(ts=ts, pair=[f"P{i}" for i in range(16)], runner=True, live=[-9.0] + [2.0] * 15, shadow=1.25,
+                          delta=[-10.25] + [0.75] * 15))
+    assert S.reads(c, floor=fl)["V2B_B26"][0] == "PASS"                     # the pre-floor loser is not counted
+    assert S.reads(c.assign(delta=-0.1), floor=fl)["V2B_B26"][0] == "REVERT"
+    assert S.reads(c.iloc[:10], floor=fl)["V2B_B26"][0] == "COLLECTING"
+    assert S.reads(c.assign(shadow=[1.25] * 15 + [None]), floor=fl)["V2B_B26"][0] == "HOLD"
 
 
 def test_run_all_runners_win_passes_and_shadows_keep(tmp_path):
     rows, paths = _book(stop_every=0, n=26)
     state = str(tmp_path / "g.json")
     out = "\n".join(S.run(raw=_exports(rows), floor_ms=FLOOR_MS, path_fn=_fn(paths), fetch=False, state_path=state))
-    assert "V2B_EARLY: first 10 runner fills: live +3.500 vs shadow +1.250" in out and "no alert" in out
-    assert "V2B_MAIN: main read (15 runner fills on 8 days): Σ(live − shadow) +33.75 pts → PASS (keep V2b)" in out
-    assert "V2B_FINAL: final read (first 25 runner fills): Σ(live − shadow) +56.25 pts → PASS (keep V2b)" in out
+    assert "V2B_EARLY: ⛔ RETIRED (DL 531): never frozen (now " in out and "first 10 runner fills: live +3.500 vs shadow +1.250" in out
+    assert "V2B_MAIN: ⛔ RETIRED (DL 531): never frozen (now " in out and "main read (15 runner fills on 8 days): Σ(live − shadow) +33.75 pts" in out
+    assert "V2B_FINAL: ⛔ RETIRED (DL 531): never frozen (now " in out and "final read (first 25 runner fills): Σ(live − shadow) +56.25 pts" in out
     for k in S.SHADOWS:
         if k in S.TARGET_KS:      # (e) every TP fill books the lower target instead of +3.5
             d = S.target_at_k(rows[2], S.TARGET_KS[k]) - 3.5
@@ -198,7 +217,7 @@ def test_parity_fail_blocks_freeze(tmp_path):
     rows = [dict(r, pnl_percentage=2.0) if str(r["pair"]).startswith("R") else r for r in rows]   # booked +2.0, the path says +3.5
     state = str(tmp_path / "g.json")
     out = "\n".join(S.run(raw=_exports(rows), floor_ms=FLOOR_MS, path_fn=_fn(paths), fetch=False, state_path=state))
-    assert "→ no verdict (parity)" in out and "V2B_EARLY: no verdict (parity)" in out and "V2B_SH_FLOOR10: no verdict (parity)" in out
+    assert "V2B_EARLY: ⛔ RETIRED (DL 531): never frozen (now " in out and "no verdict (parity)" in out and "V2B_SH_FLOOR10: no verdict (parity)" in out
     assert not os.path.exists(state)
 
 
@@ -207,7 +226,7 @@ def test_unpriced_runner_holds_the_reads(tmp_path):
     fn = _fn(paths)
     out = "\n".join(S.run(raw=_exports(rows), floor_ms=FLOOR_MS, path_fn=lambda r: None if r["pair"] == "R3USDT" else fn(r),
                           fetch=False, state_path=str(tmp_path / "g.json")))
-    assert "V2B_MAIN: main read sample (15): 1 unpriced — held" in out and "V2B_SH_FLOOR10: sample (15): 1 unpriced" in out
+    assert "V2B_MAIN: ⛔ RETIRED (DL 531): never frozen (now " in out and "main read sample (15): 1 unpriced — held" in out and "V2B_SH_FLOOR10: sample (15): 1 unpriced" in out
 
 
 def test_not_evaluable_without_deploy():

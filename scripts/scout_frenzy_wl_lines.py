@@ -55,6 +55,7 @@ if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
 import scout_b1h_negflank as NF                     # noqa: E402  (bootstrap, gross-loss share, freeze hold, state I/O, shared cooldown)
 
 LINES = ("LITE_BTC1H_FALLING", "LONG_NONTOP50")
+LONG_REBASE_DL = 524   # 🔁 (DL 530) LONG_NONTOP50 counts FRENZY_LONG fills from the −3 stop deploy (DL 524) + 10 min — the −4-era fills are dropped
 SLEEVE = {"LITE_BTC1H_FALLING": "FRENZY_LITE", "LONG_NONTOP50": "FRENZY_LONG"}
 SLOPE_CUT = 0.0                                      # zone = entry_btc_1h_slope ≤ 0 (frozen; the study's sign cut)
 TOP_N = 50
@@ -428,6 +429,11 @@ def run(now_ms=None, orders=None, state_path=None, open_ts=None, EX=None, retry=
     for line in LINES:
         sl = SLEEVE[line]
         c = o[o.strat == sl].copy()
+        if line == "LONG_NONTOP50" and deploy is None:                     # 🔁 (DL 530) re-based on the −3 LONG stop (DL 524): fresh count
+            _rb = _GK.dl_deploy_ms(LONG_REBASE_DL, 10, label="LONG_NONTOP50 re-base on −3 (DECISION_LOG 524 / 530)")
+            c = c[c.ts >= (pd.Timestamp(int(_rb), unit="ms") if _rb is not None else pd.Timestamp("2100-01-01"))].copy()
+            if _rb is None:
+                notes.append("⛔ LONG_NONTOP50 NOT EVALUABLE — the DECISION_LOG 524 deploy is not in git")
         if line == "LITE_BTC1H_FALLING":
             c["grp"] = lite_group(c.slope) if len(c) else np.array([], dtype=object)
             c["pend"] = False

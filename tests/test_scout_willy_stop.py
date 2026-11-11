@@ -23,8 +23,7 @@ def test_frozen_rule_pinned():
 
 def test_hook_after_timecap_guarded_and_offline():
     src = open(os.path.join(HERE, "scripts", "opportunity_scout.py")).read()
-    i, j = src.index("import scout_willy_timecap as _wt"), src.index("import scout_willy_stop as _wst")
-    assert i < j and "except Exception as _wst_e" in src[j:j + 400]
+    assert "import scout_willy_stop as" not in src and "scout_willy_stop RETIRED 2026-11-11 (DECISION_LOG 530)" in src   # DL 530: unhooked
     mod = open(os.path.join(HERE, "scripts", "scout_willy_stop.py")).read()
     assert "ensure_data" not in mod and "urllib" not in mod
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""⚡ Scout — SURGE_LONG comparison OBSERVATION (pre-registered 2026-10-04, operator; DECISION_LOG 202). OBSERVE only — never a trade.
+"""⛔ RETIRED 2026-11-11 (DECISION_LOG 530): no verdict since 10-04. Unhooked from the opportunity scout; still runnable standalone.
+⚡ Scout — SURGE_LONG comparison OBSERVATION (pre-registered 2026-10-04, operator; DECISION_LOG 202). OBSERVE only — never a trade.
 
 Live SURGE_LONG runs option B (0.3 % · 5× · strict 24 h high · market volume ≥ 1 · spacing only after a fill). This section tracks the
 runner-up, option A, on the same tape so the two can be compared at 30 triggers. Called by scripts/opportunity_scout.py every run.

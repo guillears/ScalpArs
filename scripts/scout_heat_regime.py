@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""🌡 Scout — HEAT-BLOCK × BTC REGIME observation (pre-registered 2026-10-05, operator; OBSERVE only — never changes config).
+"""⛔ RETIRED 2026-11-11 (DECISION_LOG 530): 1 of 8 days since 10-05. Unhooked from the opportunity scout; still runnable standalone.
+🌡 Scout — HEAT-BLOCK × BTC REGIME observation (pre-registered 2026-10-05, operator; OBSERVE only — never changes config).
 
 Question (operator: "there must be a macro BTC variable that says which rule makes sense in each period"): the full-year filter × regime
 matrix (reports/FILTER_REGIME_MATRIX_2026-10-05.md, 40 gates × 21 BTC splits, 500-round shuffled-day null) found NO robust regime-conditional

@@ -22,6 +22,10 @@ BAR         🔒 FROZEN, pre-registered 2026-10-12 (DECISION_LOG 283) — for PO
               else KEEP +1.5.
             Never frozen on a failed parity (< 90 %) or integrity check; deferred while a fill of that group opened ≤ the prefix end is OPEN,
             unscored-but-not-final, has an undecided exit, or is 1m-provisional with its tick archive pending. State reports/SCOUT_FRENZY_TP_REVERT.json.
+🔁 RE-BASED 2026-11-11 (DECISION_LOG 531, operator): the gate showed REVERT on 28 LONG fills but 7.51 of its 8.89 pts sat in fills the armed
+            LONG_WEAK_FRENZY filter (DL 527) now refuses, and 13 ran the old −4 stop (parity 45 %, never frozen). It now counts only fills opened
+            ≥ the DECISION_LOG 527 commit + 10 min (the −3 stop since DL 524, the weak-frenzy filter armed — every counted LONG passes it), on a
+            fresh state file; the frozen bar above is unchanged. The pre-531 read is history (reports/SCOUT_FRENZY_TP_REVERT.json, never read).
 Usage: venv/bin/python scripts/scout_frenzy_tp_revert.py [--selftest]
 """
 import os
@@ -51,7 +55,8 @@ DEPLOY_PIN = "2026-10-12 23:00:00"                  # PLACEHOLDER commit time (U
 LAG_MIN = 10
 REVERT, KEEP = "REVERT frenzy_tp_pct → 3 (operator acts)", "KEEP +1.5"
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-STATE = os.path.join(_ROOT, "reports", "SCOUT_FRENZY_TP_REVERT.json")
+STATE = os.path.join(_ROOT, "reports", "SCOUT_FRENZY_TP_REVERT_531.json")    # (DL 531) fresh count — the pre-531 file is history
+REBASE_DL = 527                                     # 🔁 (DL 531) counted from the armed-filter deploy + LAG_MIN
 
 
 def _git_ct(grep):
@@ -68,9 +73,13 @@ def _git_ct(grep):
 
 
 def deploy_ts():
-    """the counted floor = the "(DECISION_LOG 283)" commit time + 10 min (deploy lag); not found → DEPLOY_PIN + 10 min."""
+    """the counted floor = the later of the "(DECISION_LOG 283)" commit + 10 min (not found → DEPLOY_PIN + 10 min) and (DL 531 re-base)
+    the DECISION_LOG 527 commit + 10 min. 527 not in git → 2100-01-01 (nothing counted, LOUD) — never the old cohort."""
+    import scout_gatekit as _GK
     t = _git_ct(DEPLOY_GREP)
-    return (pd.Timestamp(DEPLOY_PIN) if t is None else t) + pd.Timedelta(minutes=LAG_MIN)
+    base = (pd.Timestamp(DEPLOY_PIN) if t is None else t) + pd.Timedelta(minutes=LAG_MIN)
+    rb = _GK.dl_deploy_ms(REBASE_DL, LAG_MIN, label="FRENZY_TP_REVERT re-base (DECISION_LOG 527 / 531)")
+    return max(base, pd.Timestamp(int(rb), unit="ms") if rb is not None else pd.Timestamp("2100-01-01"))
 
 
 dl283_floor = deploy_ts
@@ -212,7 +221,7 @@ def run(now_ms=None, orders=None, fetch=True, state_path=None, open_ts=None, th=
     new_lab = f"+{live[0]:g} / −{live[1]:g} / {live[2]} min" if live[1] else f"+{live[0]:g} / no stop / {live[2]} min"
     old_lab = f"+{OLD_EXIT[0]:g} / −{OLD_EXIT[1]:g} / {OLD_EXIT[2]} min"
     L = [f"## 🎯↩ FRENZY_TP_REVERT — does the old FRENZY exit ({old_lab}) beat today's ({new_lab})? (DECISION_LOG 283 revert gate, OBSERVE only)", "",
-         f"Cohort: CLOSED non-MANUAL FRENZY_LONG / WIDE / LITE fills opened ≥ {floor:%Y-%m-%d %H:%M:%S} UTC (the \"{DEPLOY_GREP}\" commit + "
+         f"Cohort (re-based DL 531 on the DL {REBASE_DL} armed-filter commit + 10 min): CLOSED non-MANUAL FRENZY_LONG / WIDE fills opened ≥ {floor:%Y-%m-%d %H:%M:%S} UTC (the \"{DEPLOY_GREP}\" commit + "
          f"{LAG_MIN} min" + ("" if _git_ct(DEPLOY_GREP) is not None else f"; commit not found → PLACEHOLDER pin {DEPLOY_PIN} UTC") +
          "), each re-walked from its own entry on ONE hybrid path (ticks first, then the 1m tail = provisional — DECISION_LOG 272) under "
          "today's exit (NEW, parity vs the actual exit) and the old one (OLD); Δ = OLD − NEW per fill. Untouched = NEW closed at the stop or "
@@ -296,7 +305,7 @@ def selftest():
     chk((OLD_EXIT, N_MIN, DAYS_MIN, P_MIN, SHARE_MAX, PARITY_MIN, BOOT_N, BOOT_SEED, DEPLOY_GREP, LAG_MIN, GROUPS) ==
         ((3.0, 3.0, 720), 20, 8, 0.90, 0.50, 0.90, 4000, 7, "(DECISION_LOG 283)", 10,
          ("POOLED", "FRENZY_LONG", "FRENZY_WIDE")), "pre-registered constants pinned (LITE out since 284)")
-    chk(deploy_ts() >= pd.Timestamp("2026-10-12") + pd.Timedelta(minutes=LAG_MIN), "floor = the DL 283 commit (or the pin) + 10 min")
+    chk(deploy_ts() >= pd.Timestamp("2026-11-11"), "floor = the DL 527 commit + 10 min (DL 531 re-base)")
 
     def coh(new, old, n=20, days=8, **kw):
         dd = [f"2026-10-{13 + i % days:02d}" for i in range(n)]

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""👁 Scout — LITE_BTC_EMA20_DOWN watch line (pre-registered 2026-11-10, DECISION_LOG 522, operator "yes build the LITE line"; OBSERVE ONLY — never changes
+"""⛔ RETIRED 2026-11-11 (DECISION_LOG 530): ARMED (DL 527) — verdict in scout_blocked_filters. Unhooked from the opportunity scout; still runnable standalone.
+👁 Scout — LITE_BTC_EMA20_DOWN watch line (pre-registered 2026-11-10, DECISION_LOG 522, operator "yes build the LITE line"; OBSERVE ONLY — never changes
 config, no bot API, no network).
 
 QUESTION   Does FRENZY_LITE lose when BTC is dipping RIGHT NOW — BTC's 5 m EMA20 slope at entry ≤ 0 (entry_btc_ema20_slope = the % change of BTC's 5 m EMA20

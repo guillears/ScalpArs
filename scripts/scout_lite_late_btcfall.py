@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""🕰🧭 Scout — LITE_LATE_BTCFALL observe line (DECISION_LOG 353, operator 2026-10-23: "I consider it a serious filter … add the historic
+"""⛔ RETIRED 2026-11-11 (DECISION_LOG 530): no edge (DL 522); covered by the armed LITE_BTC_EMA20_DOWN. Unhooked from the opportunity scout; still runnable standalone.
+🕰🧭 Scout — LITE_LATE_BTCFALL observe line (DECISION_LOG 353, operator 2026-10-23: "I consider it a serious filter … add the historic
 trades (master batch) as part of the observation"). OBSERVE only — never changes config, never calls the bot API, no network.
 
 WHY             AVAUSDT FRENZY_LITE 10-23 03:00 UTC: a LITE entry 14.9 h after the spike with BTC's 1 h EMA20 slope falling (−0.085) → −3

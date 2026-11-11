@@ -283,7 +283,7 @@ def test_config_ui_exports_and_stamp_contract():
     assert html.count("lines.push(...trackRecordReportLines(hr2));") == 2 and 'id="track-record-status"' in html
     main = open(os.path.join(ROOT, "main.py"), encoding="utf-8").read()
     assert "backup_s3_bucket: Optional[str] = None" in main and '@app.get("/api/track-record")' in main
-    assert 'e="EXCHANGE_DAY"' in main and 'e="BACKUP"' in main and "+ _mr_cols + _xd_cols" in main
+    assert 'e="EXCHANGE_DAY"' in main and 'e="BACKUP"' in main and "+ _mr_cols + _bl_cols + _xd_cols" in main
     assert "track_record_loop as _track_record_loop" in main
     import models
     from services.trading_engine import TradingEngine

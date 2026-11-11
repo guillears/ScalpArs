@@ -113,5 +113,7 @@ def test_capped_loser_with_unknown_cap_notional_is_not_shrunk():
     p = os.path.join(ROOT, "reports", "MASTER_POOL_stacked.csv")
     if os.path.exists(p):
         m = [r for r in csv.DictReader(open(p, encoding="utf-8")) if r["pair"] == "KOMAUSDT" and r["opened_at"].startswith("2026-10-07T11:06:01")]
-        if m:
+        if m and m[0]["stack_keep"] == "True":
             assert float(m[0]["stack_pnl"]) == pytest.approx(-266.13, abs=0.011) and "BRACKET_CAP" not in m[0]["size_note"]
+        elif m:   # (DL 527) KOMA 10-07 is refused by the armed fade OBS-F1 filter — the bracket rule stays pinned by bracket_cap_row above
+            assert m[0]["stack_block_reason"].startswith("SPIKE_FADE_BLOCK_") and "BRACKET_CAP" not in m[0]["size_note"]

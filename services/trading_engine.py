@@ -20,7 +20,7 @@ from sqlalchemy.orm.attributes import set_committed_value   # ➕ (324 R5)
 from sqlalchemy import inspect as sa_inspect   # ➕ (324 round-3 #5)
 from sqlalchemy.orm.base import NO_VALUE   # ➕ (324 round-4)
 
-from models import Order, Transaction, BotState, PairData, BnbSwapLog, FundExpense, PhantomFlip, MonitorPeriod, BearMonitorPeriod, SurgeTrigger, FrenzyBreak, FrenzyFlag, WillyHoldBlock, FlatbaseEpisode, MatchedLongRefusal
+from models import Order, Transaction, BotState, PairData, BnbSwapLog, FundExpense, PhantomFlip, MonitorPeriod, BearMonitorPeriod, SurgeTrigger, FrenzyBreak, FrenzyFlag, WillyHoldBlock, FlatbaseEpisode, MatchedLongRefusal, BlockedSignal
 from database import AsyncSessionLocal, locked_commit, locked_execute_commit, locked_write_commit
 import config
 from config import save_trading_config, TradingConfig
@@ -32,6 +32,7 @@ from services.orderbook_stats import orderbook_metrics, OB_FIELDS
 from services.frenzy import frenzy_catchup_check, frenzy_catchup_moved, frenzy_vol24_at, FRENZY_CATCHUP_STALE, frenzy_tp_for
 from services.frenzy import frenzy_lite_c_tp, frenzy_lite_c_enabled, frenzy_lite_tp_override   # 🎯 (DECISION_LOG 301) LITE C
 from services.frenzy import frenzy_stop_for   # 🛑 (DECISION_LOG 317) FRENZY_LONG's own stop
+from services.watch_filters import frenzy_blocks as watch_frenzy_blocks, ml_blocks as watch_ml_blocks, fade_blocks as watch_fade_blocks, block_code as watch_block_code   # 🧱 (DECISION_LOG 527) armed watch-line filters
 from services.frenzy import FRENZY_WILLY_HT, WILLY_EXIT_CLASS, frenzy_willy_ht_frac   # 🎲¼ (DECISION_LOG 341) the quarter-size WILLY
 from services.flatbase import (FLATBASE_SHORT, FLATBASE_CLASS, flatbase_enabled, flatbase_params, flatbase_exit_for,   # 🩳 (DECISION_LOG 348)
                                flat14_from_bars, flat_ok, s4_scan, is_boundary_close, turnover_route, base_close_ms, max_hold_minutes as flatbase_max_hold_minutes,
@@ -277,6 +278,12 @@ _zone_stamps_at: float = 0.0
 # None on any failure (never stale — the fade gate refuses a reading older than 30 min and fails OPEN).
 _current_btc_4h_ema50_200_gap_pct: Optional[float] = None
 _btc_4h_gap_at: float = 0.0
+# 🧱 (DECISION_LOG 527) BTC 1 d EMA50 / EMA200 gap (%) on CLOSED daily bars — the late-tape leg of the armed fade OBS-F1 filter
+# (services/watch_filters.fade_blocks; the scout's definition: last daily bar CLOSED before the decision). Fetched only while that filter is on,
+# refreshed at most every 30 min (1000 daily bars); None on any failure; the filter reads it only while ≤ 2 h old (else fail-open).
+_current_btc_1d_ema50_200_gap_pct: Optional[float] = None
+_btc_1d_gap_at: float = 0.0          # the last SUCCESSFUL read (freshness)
+_btc_1d_try_at: float = 0.0          # the last attempt (a failed read retries ≥ 5 min later, across midnight too)
 _fade_lag_ndi_cache: Dict[str, tuple] = {}   # symbol → (read_at, −DI) — daily bars change once a day; 60-min TTL
 
 
@@ -11338,6 +11345,65 @@ class TradingEngine:
     # ── 🧷 (DECISION_LOG 383) matched momentum-long refusal recorder (observe-only) ────────────────────────────────────────────────────────────
     ML_REFUSAL_SEEN_MAX = 5000   # in-memory dedupe keys kept (an OrderedDict: oldest keys dropped first beyond this — O(1) per refusal)
 
+    BLOCKED_SEEN_MAX = 4000
+
+    def _blocked_record(self, sleeve, direction, pair, price, lines, entry_fields, bar_ms=None, now_ms=None) -> bool:
+        """🧱 (DECISION_LOG 527) queue ONE blocked_signals row for an armed watch-line refusal — at most one per (pair, sleeve, bar): the first
+        refusal of the bar wins (in-memory dedupe + the table's unique key across restarts). The insert runs in a background task with its own
+        short session (never blocks the scan, never changes the decision). → True when queued. Never raises."""
+        try:
+            now_ms = int(now_ms if now_ms is not None else _leash_time.time() * 1000)
+            bar = int(bar_ms) if bar_ms is not None else (now_ms // 300_000) * 300_000
+            seen = self.__dict__.get('_bl_seen')
+            if not isinstance(seen, collections.OrderedDict):
+                seen = self.__dict__['_bl_seen'] = collections.OrderedDict()
+            key = (str(pair), str(sleeve), bar)
+            if key in seen:
+                return False
+
+            def _clean(v):
+                if isinstance(v, float) and not math.isfinite(v):
+                    return None
+                if isinstance(v, datetime):
+                    return v.strftime('%Y-%m-%dT%H:%M:%S')
+                return v if isinstance(v, (bool, int, float, str)) or v is None else str(v)[:60]
+            ef = {str(k): _clean(v) for k, v in (entry_fields or {}).items()}
+            ln = [str(x) for x in (lines or []) if x]
+            row = dict(pair=str(pair)[:30], sleeve=str(sleeve)[:30], direction=str(direction)[:5], at=datetime.utcfromtimestamp(now_ms / 1000),
+                       bar_at=datetime.utcfromtimestamp(bar / 1000), price=(float(price) if price else None), lines="+".join(ln)[:80],
+                       sole=(len(ln) == 1), entry_fields_json=json.dumps(ef, separators=(',', ':'), allow_nan=False),
+                       is_paper=bool(self.is_paper_mode))
+            while len(seen) >= self.BLOCKED_SEEN_MAX:
+                seen.popitem(last=False)
+            seen[key] = now_ms   # review: the key is taken only once the row built (a bad row never burns the bar)
+            self._wh_spawn(self._blocked_insert(row, key))
+            return True
+        except Exception as e:
+            logger.warning(f"[BLOCKED_SIGNAL] {pair} {sleeve}: not queued ({str(e)[:100]})")
+            return False
+
+    async def _blocked_insert(self, row, key=None) -> bool:
+        """🧱 own short session; a row a previous process already wrote for the same (pair, sleeve, bar) is left as it is. A failed insert
+        drops its dedupe key so the next refusal of that pair / sleeve in the same bar retries. Never raises."""
+        try:
+            async with AsyncSessionLocal() as _bs:
+                _hit = (await _bs.execute(select(BlockedSignal.id).where(and_(
+                    BlockedSignal.pair == row['pair'], BlockedSignal.sleeve == row['sleeve'], BlockedSignal.bar_at == row['bar_at'],
+                    BlockedSignal.is_paper == row['is_paper'])))).first()
+                if _hit is not None:
+                    return False
+                _bs.add(BlockedSignal(**row))
+                await asyncio.wait_for(locked_commit(_bs), 10.0)
+            return True
+        except Exception as e:
+            if key is not None and 'UNIQUE' not in str(e).upper():
+                try:
+                    self.__dict__.get('_bl_seen', {}).pop(key, None)
+                except Exception:
+                    pass
+            logger.warning(f"[BLOCKED_SIGNAL] {row.get('pair')} {row.get('sleeve')}: insert failed ({str(e)[:100]})")
+            return False
+
     def _ml_refusal_record(self, pair, price, confidence, labels, c_any, w_any, entry_fields, open_count=None, max_positions=None,
                            btc_regime=None, btc_slope=None, btc_rsi_prev=None, bull_pct=None, pair_rank=None, probe=False, now_ms=None) -> bool:
         """🧷 queue ONE ml_matched_refusals row for this LONG_UNMATCHED_ONLY refusal — at most one per (pair, 5m bar): the first refusal of the
@@ -11372,6 +11438,12 @@ class TradingEngine:
                 try:
                     if not post and long_megacap_block(th, pair_rank):
                         post = "LONG_MEGACAP_BLOCK"
+                except Exception:
+                    pass
+                try:   # 🧱 (DECISION_LOG 527) the armed ML filters refuse later in open_position too
+                    _wml = watch_ml_blocks(th, mkt_up4h_stamp(now_ms).get('entry_mkt_up4h_pct'), bull_pct)
+                    if not post and _wml:
+                        post = watch_block_code("MOMENTUM_LONG", _wml)[:40]
                 except Exception:
                     pass
             if not btc_regime:
@@ -12092,6 +12164,33 @@ class TradingEngine:
                     self._record_filter_block("FRENZY_BEARISH_UNREAD", "LONG")
                     logger.warning(f"[{_es}] {pair}: bearish-day gate UNREAD (btc_1d_ret_pct={_b1d} btc_trend_gap_pct={_btg} · zone stamps "
                                    f"{'fresh' if _zfresh else 'stale / off'}) — fail-open, entries proceed (logged once per bar)")
+            # 🧱 (DECISION_LOG 527) ARMED WATCH-LINE FILTERS — judged LAST, after the bearish-day gate, so a counted block is a trade that would
+            # otherwise have reached open_position. The values are the ones this fill would be stamped with: ADX (indicators), the EMA8−13 gap
+            # (_ef), the spike-VWAP distance / volume multiple (flag), BTC 1 h slope (_ef / the scan global) and the RAW BTC 5 m EMA20 slope (the
+            # display global reads an unreadable slope as 0). Rules + frozen cuts: services/watch_filters.py (an unreadable input never blocks).
+            # A refusal ends the entry like every other refusal here (WILLY's pending entry, LITE's stretch, the retry) and is recorded as a
+            # blocked signal (decisions BLOCKED row) for the scout to price on today's exit.
+            _wfl = watch_frenzy_blocks(
+                th, _es, adx=(indicators or {}).get('adx'), ema_gap_8_13=_ef.get('entry_ema_gap_8_13'),
+                vs_vwap_pct=(round(flag['vs_vwap_pct'], 3) if flag.get('vs_vwap_pct') is not None else None),   # review: the stamp's rounding
+                btc_1h_slope=(_ef.get('entry_btc_1h_slope') if _ef.get('entry_btc_1h_slope') is not None else _g.get('_current_btc_1h_slope')),
+                btc_ema20_slope_raw=_g.get('_btc_ema20_slope_pct_raw'),
+                frenzy_vol_mult=(round(flag['vol_mult'], 1) if flag.get('vol_mult') is not None else None))
+            if _wfl:
+                _wcode = watch_block_code(_es, _wfl)
+                self._record_filter_block(_wcode, "LONG")
+                flag[_lfk] = f"{_bar_dt:%m-%d %H:%M} {_tg}refused: armed filter {' + '.join(_wfl)}"
+                logger.info(f"[{_es}] {pair}: {_sig} but armed filter {' + '.join(_wfl)} — skipped ({_wcode}; adx={(indicators or {}).get('adx')} "
+                            f"gap8_13={_ef.get('entry_ema_gap_8_13')} vs_vwap={flag.get('vs_vwap_pct')} vol={flag.get('vol_mult')} "
+                            f"btc1h={_ef.get('entry_btc_1h_slope')} btc_ema20_raw={_g.get('_btc_ema20_slope_pct_raw')})")
+                _wef = dict(_ef)
+                _wef.update(entry_adx=(indicators or {}).get('adx'), entry_rsi=(indicators or {}).get('rsi'), entry_atr_pct=atr,
+                            entry_frenzy_vs_vwap_pct=flag.get('vs_vwap_pct'), entry_frenzy_vol_mult=flag.get('vol_mult'),
+                            entry_frenzy_hours=flag.get('hours'), entry_frenzy_spike_at=flag.get('spike_ts'), entry_frenzy_stop_pct=_stop,
+                            entry_btc_ema20_slope_raw=_g.get('_btc_ema20_slope_pct_raw'), entry_pair_volume_24h_usd=flag.get('volume_24h'),
+                            entry_bull_pct=_g.get('_market_bull_pct'), entry_bear_pct=_g.get('_market_bear_pct'))
+                self._blocked_record(_es, "LONG", pair, price, _wfl, _wef, bar_ms=(int(catchup_now) if _cu else int(bar_open)))
+                return
             _pvr = ((indicators.get('volume') or 0) / indicators['avg_volume']) if (indicators and indicators.get('avg_volume')) else None
             if _wl:   # 🎲 (251) the operator's log line: "[FRENZY_WILLY] PAIR: entry A (new flag) → opening" / "entry B (ON not taken: <reason>) → opening"
                 logger.info(f"[{_es}] {pair}: {_sig} → opening")
@@ -14080,6 +14179,46 @@ class TradingEngine:
                         f"<= {getattr(config.trading_config.thresholds, 'long_megacap_rank_max', 0)} (mega-cap = BTC beta)")
             try:
                 self._record_filter_block("LONG_MEGACAP_BLOCK", "LONG")
+            except Exception:
+                pass
+            return None
+
+        # 🧱 (DECISION_LOG 527) ARMED WATCH-LINE FILTERS on open_position's two hosts (services/watch_filters.py, frozen cuts, unreadable = no
+        # block): momentum LONG (the heat / mega-cap exemption guard — every sleeve, probe, spike and flip passes) → ML_MKT_HOT (the rolling
+        # top-100 market-hot share this fill would be stamped with — services/mkt_up4h, which feeds this gate since DL 527) and ML_BULL90
+        # (entry_bull_pct) · SPIKE_FADE (both entry paths reach here with spike_fade=True) → OBS-F1 (BTC 1 d EMA50 > EMA200 ∧ +DI ≤ 48.5 ∧
+        # ≤ 1.80 % above the pair's EMA13). A refusal is counted, journaled and recorded as a blocked signal for the scout to price.
+        _wf_th = config.trading_config.thresholds
+        _wf_lines, _wf_sleeve = [], None
+        try:
+            if (direction == "LONG" and not flip_source and not bull_long and not bounce_long
+                    and not bullrun_long and not _surge and not spike_chase_probe and not spike_fade and not spike_bounce
+                    and not (gap_probe or gapmin_probe or slopegate_probe or rsiadx_probe or deadband_probe or rsiceil_probe
+                             or gminflat_probe or adxmax_probe or dbdown_probe or adxmax2_probe or deepgap_probe or majors_probe)):
+                _wf_lines = watch_ml_blocks(_wf_th, mkt_up4h_stamp().get('entry_mkt_up4h_pct'), entry_bull_pct); _wf_sleeve = "MOMENTUM_LONG"
+            elif spike_fade and direction == "SHORT":
+                _g1 = globals()
+                _gat = (_g1.get('_btc_1d_gap_at') or 0)
+                _gap1d = (_g1.get('_current_btc_1d_ema50_200_gap_pct')
+                          if ((time.time() - _gat) <= 7200 and int(time.time() // 86400) == int(_gat // 86400)) else None)   # same UTC day only
+                _wf_lines = watch_fade_blocks(_wf_th, _gap1d, entry_pos_di, entry_dist_from_ema13_pct); _wf_sleeve = "SPIKE_FADE"
+        except Exception as _wf_err:
+            logger.error(f"[WATCH_FILTER] {pair}: eval failed ({_wf_err}) — fail-open")
+            _wf_lines = []
+        if _wf_lines:
+            _wf_code = watch_block_code(_wf_sleeve, _wf_lines)
+            logger.info(f"[WATCH_FILTER] {pair}: {_wf_sleeve} {direction} blocked by {' + '.join(_wf_lines)} ({_wf_code}) px={current_price} "
+                        f"bull={entry_bull_pct} pos_di={entry_pos_di} ext13={entry_dist_from_ema13_pct}")
+            try:
+                self._record_filter_block(_wf_code, direction)
+            except Exception:
+                pass
+            try:
+                _wf_ef = {k: v for k, v in locals().items() if k.startswith('entry_') and not callable(v)}
+                _wf_ef.update(mkt_up4h_stamp())
+                if _wf_sleeve == "SPIKE_FADE":
+                    _wf_ef['entry_btc_1d_ema50_200_gap_pct'] = globals().get('_current_btc_1d_ema50_200_gap_pct')
+                self._blocked_record(_wf_sleeve, direction, pair, current_price, _wf_lines, _wf_ef)
             except Exception:
                 pass
             return None
@@ -21139,6 +21278,16 @@ class TradingEngine:
             except Exception as _e:
                 _current_btc_4h_ema50_200_gap_pct = None; logger.debug(f'[FADE_LAGGARD] BTC 4h fetch failed: {_e}')
             _btc_4h_gap_at = time.time() if _current_btc_4h_ema50_200_gap_pct is not None else 0.0
+        global _current_btc_1d_ema50_200_gap_pct, _btc_1d_gap_at, _btc_1d_try_at   # 🧱 (527) the fade OBS-F1 late-tape leg
+        if (bool(getattr(config.trading_config.thresholds, 'watch_block_fade_late_weak', False)) and (time.time() - _btc_1d_try_at) > 300
+                and ((time.time() - _btc_1d_gap_at) > 1800 or int(time.time() // 86400) != int(_btc_1d_gap_at // 86400))):   # review: re-read when the UTC day rolls · ≥ 5 min between attempts
+            _btc_1d_try_at = time.time()
+            try:
+                _current_btc_1d_ema50_200_gap_pct = closed_ema_gap_pct(await binance_service.get_ohlcv('BTC/USDT:USDT', '1d', 1000), 50, 200)
+            except Exception as _e:
+                _current_btc_1d_ema50_200_gap_pct = None; logger.debug(f'[WATCH_FADE] BTC 1d fetch failed: {_e}')
+            if _current_btc_1d_ema50_200_gap_pct is not None:
+                _btc_1d_gap_at = time.time()   # a failed read keeps the old timestamp (the filter's same-UTC-day check then fails open)
         if btc_ema13 is not None and btc_ema50 is not None and btc_ema50 != 0:
             # Trend gap = (EMA13 - EMA50) / EMA50 × 100. EMA13 spans ~65 min on 5m chart;
             # EMA50 spans ~250 min (~4 hours). Gap > 0 = BTC in 4hr uptrend, gap < 0 = downtrend.

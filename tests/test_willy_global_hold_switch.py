@@ -204,6 +204,7 @@ def test_frenzy_open_off_lite_retry_and_long_not_refused_for_the_hold(monkeypatc
     monkeypatch.setattr(TE, "FRENZY_ENTRY_MAX_LATE_S", 10**12)
     monkeypatch.setattr(TE, "_current_btc_trend_gap_pct", 0.5)
     monkeypatch.setattr(TE, "_current_btc_1d_ret_pct", 1.0)
+    monkeypatch.setattr(TE, "watch_frenzy_blocks", lambda *a, **k: [])   # (DL 527) the armed watch filters are pinned in tests/test_watch_filters.py
 
     async def go(kw):
         eng, SL = await _hold_db(monkeypatch, open_willy=True)()

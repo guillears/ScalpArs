@@ -32,7 +32,9 @@ _P0 = pd.read_csv("reports/MASTER_POOL_stacked.csv", low_memory=False)
 # 10-05b: + the LONG_HEAT_BLOCK rows the breadth-only re-scope KEPT (bull < 85) — the 3-leg rule is back (DECISION_LOG 208) and refuses
 # BONK 07-22 / STX 08-24 / DOGE + PENGU 09-29, real fills the 10-04a/10-05a artifacts hold. Heat rows the re-scope already blocked stay out.
 _heat_new = (_P0.stack_block_reason == "LONG_HEAT_BLOCK") & (pd.to_numeric(_P0.entry_bull_pct, errors="coerce") < 85)
-MPROV = pd.concat([M, _P0[((_P0.stack_block_reason == "LONG_CHOP_BURST") | _heat_new) & (_P0.status == "CLOSED")]], ignore_index=True)
+# 11-11a (DECISION_LOG 527): + the rows the ARMED WATCH-LINE FILTERS refuse (<SLEEVE>_BLOCK_<lines>) — real as-traded fills a later gate refuses.
+_watch_new = _P0.stack_block_reason.astype(str).str.contains(r"_BLOCK_(?:WILLY_|RETRY_BTC1H|LITE_BTC_EMA20_DOWN|LONG_WEAK_FRENZY|FADE_LATE_WEAK|ML_)", regex=True)
+MPROV = pd.concat([M, _P0[((_P0.stack_block_reason == "LONG_CHOP_BURST") | _heat_new | _watch_new) & (_P0.status == "CLOSED")]], ignore_index=True)
 
 
 def check(name, ok, detail):

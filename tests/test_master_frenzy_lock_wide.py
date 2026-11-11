@@ -38,9 +38,13 @@ def test_frenzy_fixed_tp_pricing():
     hit = f[reached & ~cf]
     assert len(hit) >= 4 and np.allclose(hit.stack_pct, tps[reached & ~cf])
     three = f[lite & np.isclose(f.stack_pct, 3.0)]
-    assert {"METUSDT", "HEMIUSDT", "DEEPUSDT"} <= set(three.pair)                 # 420: the capped ones back at +3
+    _wb = set(M[M.stack_block_reason.astype(str).str.startswith("FRENZY_LITE_BLOCK_")].pair)   # (DL 527) refused by the armed LITE filter
+    assert {"METUSDT", "HEMIUSDT", "DEEPUSDT"} <= set(three.pair) | _wb             # 420: the capped ones back at +3 (or watch-blocked since 527)
+    assert {"HEMIUSDT", "DEEPUSDT"} <= set(three.pair) and "METUSDT" in _wb      # MET 10-07: BTC EMA20 −0.0063 → LITE_BTC_EMA20_DOWN
     assert (f[f.pair.isin(["BTWUSDT", "EPICUSDT"]) & lite].stack_pct < 0).any()   # 420: the saved ones back to the stop
-    rest = f[~reached & ~cf]
+    _l4 = (f.entry_strategy.astype(str) == "FRENZY_LONG") & (pd.to_numeric(f.entry_frenzy_stop_pct, errors="coerce") >= 3.5)   # (527) −4 era → −3
+    assert np.allclose(f[_l4 & ~reached].stack_pct, -3.0, atol=0.05)              # B25's −4 LONG losers on today's −3 (own slip kept)
+    rest = f[~reached & ~cf & ~_l4]
     assert len(rest) > 0 and np.allclose(rest.stack_pct, rest.pnl_percentage)    # stops before +3 stay as traded
     assert (np.sign(f.stack_pnl) == np.sign(f.stack_pct)).all()
 
@@ -75,7 +79,10 @@ def test_bearish_day_stack_block():
     kept = f[f.stack_keep == True]
     assert len(kept) >= 8 and not ((pd.to_numeric(kept.entry_btc_1d_ret_pct, errors="coerce") < 0)
                                    & (pd.to_numeric(kept.entry_btc_trend_gap_pct, errors="coerce") < 0)).any()   # every kept fill is non-bearish
-    assert ((kept.pair == "ENJUSDT") & (pd.to_numeric(kept.entry_btc_1d_ret_pct) < 0)).any()                    # ENJ 10-03: day < 0 but gap > 0 → kept
+    enj = f[(f.pair == "ENJUSDT") & (pd.to_numeric(f.entry_btc_1d_ret_pct, errors="coerce") < 0)]
+    # ENJ 10-03: day < 0 but gap > 0 → never refused as a bearish day (kept, or since DL 527 refused by the armed LONG_WEAK_FRENZY filter — 100.7×)
+    assert len(enj) and not (enj.stack_block_reason.astype(str) == "FRENZY_BEARISH_DAY").any()
+    assert ((enj.stack_keep == True) | enj.stack_block_reason.astype(str).str.startswith("FRENZY_LONG_BLOCK_")).all()
 
 
 def test_wide_off_refused_in_master():
@@ -88,7 +95,7 @@ def test_wide_off_refused_in_master():
     assert len(w) >= 12 and not (w.stack_keep == True).any() and (w.stack_pnl == 0).all() and w.stack_pct.isna().all()
     assert set(w.stack_block_reason) <= {"FRENZY_WIDE_OFF", "PAIR_BLACKLIST", "SLEEVE_PAIR_BLACKLIST"} and (w.stack_block_reason == "FRENZY_WIDE_OFF").sum() >= 12
     bld = open(os.path.join(ROOT, "scripts", "build_master_pool.py"), encoding="utf-8").read()
-    assert "k, why = False, 'FRENZY_WIDE_OFF'" in bld and (M.stack_version == "2026-11-10b").all()
+    assert "k, why = False, 'FRENZY_WIDE_OFF'" in bld and (M.stack_version == "2026-11-11a").all()
     assert os.path.exists(os.path.join(ROOT, "reports", "WIDE_STREAK_REBUILD.csv"))   # the hold-green replay input stays (re-enable path)
 
 
@@ -96,7 +103,7 @@ def test_b17_archived():
     M = _m()
     assert (M.era == "B17").sum() == 25 and os.path.exists(os.path.join(ROOT, "reports", "BASELINE17_batch1003-1006_orders.csv"))
     bld = open(os.path.join(ROOT, "scripts", "build_master_pool.py")).read()
-    assert 'STACK_VERSION = "2026-11-10b"' in bld and "frenzy_fixed_pct(strat," in bld and 'reason[n] = "FRENZY_BEARISH_DAY"' in bld
+    assert 'STACK_VERSION = "2026-11-11a"' in bld and "frenzy_fixed_pct(strat," in bld and 'reason[n] = "FRENZY_BEARISH_DAY"' in bld
     assert "WIDE_HG_MAX_ATR_FROZEN = 12.0, 3.0" in bld and "Prior 10-06d — 10-06d:" in bld   # the STACK history keeps every step
 
 

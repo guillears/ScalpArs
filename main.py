@@ -27,7 +27,7 @@ from sqlalchemy import select, and_, or_, func, desc, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import init_db, get_db, AsyncSessionLocal, locked_commit, locked_execute_commit
-from models import Order, Transaction, BotState, PairData, ConfigChangeLog, BnbSwapLog, Investor, InvestorLedger, FundExpense, PhantomFlip, NavSnapshot, MonitorPeriod, BearMonitorPeriod, SurgeTrigger, OrderbookSnap, WillyHoldBlock, FlatbaseEpisode, MatchedLongRefusal, ExchangeDay, BackupRun, AltCorrUniverse
+from models import Order, Transaction, BotState, PairData, ConfigChangeLog, BnbSwapLog, Investor, InvestorLedger, FundExpense, PhantomFlip, NavSnapshot, MonitorPeriod, BearMonitorPeriod, SurgeTrigger, OrderbookSnap, WillyHoldBlock, FlatbaseEpisode, MatchedLongRefusal, BlockedSignal, ExchangeDay, BackupRun, AltCorrUniverse
 import config
 from config import (
     trading_config, save_trading_config, load_trading_config,
@@ -267,6 +267,7 @@ async def orderbook_loop():
     from services.trading_engine import _frenzy_flags
     await asyncio.sleep(30)
     _last_prune = 0.0
+    _last_bl_prune = 0.0
     while not should_stop:
         try:
             _now = time.time()
@@ -425,6 +426,16 @@ async def alt_corr_loop():
                 raise
             except Exception as e:
                 logger.warning(f"[ML_MATCHED_REFUSAL] prune skipped: {str(e)[:120]}")
+            try:
+                if time.time() - _last_bl_prune > 3600:   # 🧱 (527) its own hourly timer
+                    _last_bl_prune = time.time()
+                    async with AsyncSessionLocal() as db:
+                        await locked_execute_commit(db, delete(BlockedSignal).where(   # 🧱 (527) blocked signals kept 180 days
+                            BlockedSignal.at < datetime.utcnow() - timedelta(days=180)))
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.warning(f"[BLOCKED_SIGNAL] prune skipped: {str(e)[:120]}")
             try:
                 if time.time() - _last_uni_prune > 3600:
                     _last_uni_prune = time.time()
@@ -3263,6 +3274,19 @@ ML_MATCHED_EXPORT_COLS = ["mr_bar_at", "mr_labels", "mr_family", "mr_c_any", "mr
                           "mr_room", "mr_post_gate", "mr_btc_off30d_pct", "mr_alt_corr24", "mr_alt_beta24", "mr_is_paper", "mr_entry_fields"]
 
 
+# 🧱 (DECISION_LOG 527) BLOCKED rows of the Decisions CSV (one per blocked_signals row — an armed watch-line refusal): t = the refusal, pair /
+# dir / price / gate (= the refusing lines) in the shared columns, the rest in bl_* columns (bl_entry_fields = the JSON entry_* snapshot the fill
+# would have carried). Read and priced by scripts/scout_blocked_filters.py (the per-line revert gates).
+BLOCKED_EXPORT_DAYS = 60
+BLOCKED_EXPORT_COLS = ["bl_sleeve", "bl_bar_at", "bl_lines", "bl_sole", "bl_is_paper", "bl_entry_fields"]
+
+
+def blocked_export_row(b, fmt) -> dict:
+    return dict(t=fmt(b.at), e="BLOCKED", pair=b.pair, dir=b.direction, gate=b.lines, strategy=b.sleeve, price=b.price,
+                bl_sleeve=b.sleeve, bl_bar_at=fmt(b.bar_at), bl_lines=b.lines, bl_sole=b.sole, bl_is_paper=b.is_paper,
+                bl_entry_fields=b.entry_fields_json)
+
+
 def ml_matched_export_row(b, fmt) -> dict:
     return dict(t=fmt(b.at), e="ML_MATCHED", pair=b.pair, dir="LONG", gate="LONG_UNMATCHED_ONLY", strategy="MOMENTUM", price=b.price,
                 conf=b.confidence, room=b.room, mr_bar_at=fmt(b.bar_at), mr_labels=b.labels, mr_family=b.family, mr_c_any=b.c_any,
@@ -3375,6 +3399,15 @@ async def export_decisions_csv(days: Optional[int] = None, db: AsyncSession = De
             rows.append(ml_matched_export_row(b, _fmt_mr))
     except Exception as _e:
         logger.warning(f"[DECISIONS_EXPORT] ML_MATCHED rows skipped: {_e}")
+    _bl_cols = BLOCKED_EXPORT_COLS   # 🧱 (527) the armed filters' blocked signals
+    try:
+        _since_bl = datetime.utcnow() - timedelta(days=max(days, BLOCKED_EXPORT_DAYS))
+        for b in (await db.execute(select(BlockedSignal).where(and_(BlockedSignal.is_paper == trading_engine.is_paper_mode,
+                                                                    BlockedSignal.at >= _since_bl))
+                                   .order_by(BlockedSignal.at.desc()).limit(20000))).scalars().all()[::-1]:
+            rows.append(blocked_export_row(b, _fmt_mr))
+    except Exception as _e:
+        logger.warning(f"[DECISIONS_EXPORT] BLOCKED rows skipped: {_e}")
     # 🏦 (DECISION_LOG 436) the daily Binance record rides this file as EXCHANGE_DAY rows (every recorded day, both modes — it is the
     # live ACCOUNT's record) and every backup attempt as BACKUP rows: the CSV carries the track record like the dashboard does (D12)
     _xd_cols = TRACK_RECORD_EXPORT_COLS
@@ -3387,7 +3420,7 @@ async def export_decisions_csv(days: Optional[int] = None, db: AsyncSession = De
                              reason=_b.error, bk_day=_b.day, bk_bytes=_b.bytes, bk_s3_key=_b.s3_key, bk_code_version=_b.code_version))
     except Exception as _e:
         logger.warning(f"[DECISIONS_EXPORT] track-record rows skipped: {_e}")
-    _cols = list(_dj.EXPORT_COLS) + _ob_cols + _wh_cols + _fb_cols + _mr_cols + _xd_cols
+    _cols = list(_dj.EXPORT_COLS) + _ob_cols + _wh_cols + _fb_cols + _mr_cols + _bl_cols + _xd_cols
 
     def _write_csv():   # off the event loop: up to ~50k BOOK rows (deep review)
         buf = io.StringIO()

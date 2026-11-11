@@ -27,13 +27,16 @@ def test_stack_pct_ignores_size_reprices():
     # 10-21b: the LITE family (FRENZY_LITE + FRENZY_LITE_RETRY, DECISION_LOG 316 — the retry runs LITE's exit) prices at the LITE TP
     tps = pd.Series(np.where(k.entry_strategy.astype(str).isin(["FRENZY_LITE", "FRENZY_LITE_RETRY"]) & (lt > 0), lt_row, tp), index=k.index)
     frenzy_tp = k.entry_strategy.astype(str).str.startswith("FRENZY") & (tps > 0) & (pd.to_numeric(k.peak_pnl, errors="coerce") >= tps)
-    assert frenzy_tp.sum() > 0 and np.allclose(k.stack_pct[frenzy_tp & (k.entry_strategy.astype(str) != "FRENZY_WILLY")], tps[frenzy_tp & (k.entry_strategy.astype(str) != "FRENZY_WILLY")])       # 10-08a: peak ≥ +3 books +3 (every era)
-    willy = k.entry_strategy.astype(str) == "FRENZY_WILLY"                     # 10-12c (282): today's WILLY exit re-walked (WILLY_EXIT_CF.csv)
+    _wx = ~k.entry_strategy.astype(str).isin(["FRENZY_WILLY", "FRENZY_WILLY_HT"])   # WILLY + HT: their own V2b exit (B25 brought the first HT rows)
+    assert frenzy_tp.sum() > 0 and np.allclose(k.stack_pct[frenzy_tp & _wx], tps[frenzy_tp & _wx])       # 10-08a: peak ≥ +3 books +3 (every era)
+    willy = k.entry_strategy.astype(str).isin(["FRENZY_WILLY", "FRENZY_WILLY_HT"])   # 10-12c (282): today's WILLY exit re-walked (WILLY_EXIT_CF.csv) — HT too (DL 341; first HT rows: B25)
     frenzy_tp = frenzy_tp & ~willy
     _lcf = pd.read_csv(os.path.join(ROOT, "reports", "LITE_C_REVERT_CF.csv"))   # 10-30a (420): fills that really closed at +2, re-walked at +3 / −3
     _lcf = set(zip(_lcf.opened_at.astype(str).str[:19], _lcf.pair))
     cf_row = pd.Series([(str(a)[:19], p) in _lcf for a, p in zip(k.opened_at, k.pair)], index=k.index)
-    plain = k[~path & ~frenzy_tp & ~willy & ~cf_row]
+    _l4 = (k.entry_strategy.astype(str) == "FRENZY_LONG") & (pd.to_numeric(k.entry_frenzy_stop_pct, errors="coerce") >= 3.5)   # (527) −4 era → today's −3
+    _fb = k.entry_strategy.astype(str) == "FLATBASE_SHORT"                                                                   # (527) FB_CONFIRM + +5 / −10
+    plain = k[~path & ~frenzy_tp & ~willy & ~cf_row & ~_l4 & ~_fb]
     assert np.allclose(plain.stack_pct, plain.pnl_percentage)          # size-only rows keep the live pct
     resized = plain[(plain.stack_pnl - plain.pnl).abs() > 0.05]        # e.g. 2× rows re-priced to 1× / 1.5×
     assert len(resized) > 0 and np.allclose(resized.stack_pct, resized.pnl_percentage)

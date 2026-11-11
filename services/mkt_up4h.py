@@ -23,7 +23,9 @@ HOW   MktUp4hTracker.refresh() runs once per hour in its own task (main.mkt_up4h
       + historical klines (endTime), the same functions. Paper and live read the same tracker (mode-agnostic).
 FAIL-SAFE  a failed member read is retried once; still > MAX_FAILED_READS failures → no value for that hour (never a share built on a
            visibly partial list → NULL stamps, repaired later); ≤ MAX_FAILED_READS failures count as "no data" exactly like the rebuild.
-           Nothing in the trading path reads these values.
+           🧱 Since DECISION_LOG 527 the trading path READS stamp() once: the armed ML_MKT_HOT filter (services/watch_filters.ml_blocks via
+           TradingEngine.open_position) refuses a momentum LONG when the share is > 0.50. A NULL stamp (start of the hour, a failed read,
+           switched off) never blocks — fail-open, the filter simply does not fire.
 """
 import asyncio
 import json

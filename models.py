@@ -1515,6 +1515,28 @@ class MatchedLongRefusal(Base):
     is_paper = Column(Boolean, nullable=False, default=True)
 
 
+class BlockedSignal(Base):
+    """🧱 (DECISION_LOG 527) BLOCKED-SIGNAL RECORDER for the ARMED watch-line filters (services/watch_filters.py). One row per refused entry, at most
+    one per (pair, sleeve, 5m bar, is_paper): the FIRST refusal of the bar is kept (its price / lines / snapshot). Written fire-and-forget by
+    TradingEngine._blocked_record (never blocks or changes the decision); rides the Decisions CSV export as e=BLOCKED rows (bl_* columns — the
+    pattern of ml_matched_refusals, DECISION_LOG 383); priced by scripts/scout_blocked_filters.py on TODAY's exit of the sleeve (the revert gates
+    read those prices). Kept 180 days (main.alt_corr_loop prunes)."""
+    __tablename__ = "blocked_signals"
+    __table_args__ = (UniqueConstraint("pair", "sleeve", "bar_at", "is_paper", name="uq_blocked_signal"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    pair = Column(String(30), nullable=False, index=True)
+    sleeve = Column(String(30), nullable=False, index=True)        # the entry_strategy it would have opened as (FRENZY_WILLY, MOMENTUM_LONG, SPIKE_FADE …)
+    direction = Column(String(5), nullable=False)
+    at = Column(DateTime, nullable=False, index=True)              # the refusal (naive UTC)
+    bar_at = Column(DateTime, nullable=False)                      # the signal bar (FRENZY: the ON / signal bar's open ms · others: the 5m bucket)
+    price = Column(Float, nullable=True)                           # the decision price the open would have used
+    lines = Column(String(80), nullable=True)                      # every refusing line, "+"-joined, e.g. "WILLY_GAP+WILLY_FAILED_SPIKE"
+    sole = Column(Boolean, nullable=True)                          # exactly one line refused it (removing that line alone frees the trade)
+    entry_fields_json = Column(Text, nullable=True)                # the entry_* snapshot the fill would have been stamped with (JSON object)
+    is_paper = Column(Boolean, nullable=False, default=True)
+
+
 class StampGapAck(Base):
     """🚨✅ (DECISION_LOG 446) the operator's "known gap, accepted" marks for the stamp-gap banner (DECISION_LOG 405): a fill whose missing
     columns are ALL accepted leaves the banner; the server log keeps listing it as accepted. Keyed (order_id, opened_at) — ids reset on a paper

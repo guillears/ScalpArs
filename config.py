@@ -1733,6 +1733,24 @@ class SignalThresholds(BaseModel):
     # Gap CI spans 0 → below the locked expectancy bar = declared override. 🔒 REVERT (scout FRENZY_BEARISH_BLOCKED): at ≥ 15 counted blocked
     # signals on ≥ 8 days priced as if opened (fixed +3 / −3), blocked mean > 0 → turn this off. False = off.
     frenzy_bearish_day_block: bool = False
+    # 🧱 (DECISION_LOG 527, 2026-11-11, operator: "ship this filters, and track the block trades") ARMED WATCH-LINE FILTERS — a DECLARED
+    # OVERRIDE: the best-case lines armed before their clean checkpoints (only WILLY_GAP had PASSED clean; in-sample, 30–50 % haircut). Rules +
+    # frozen cuts: services/watch_filters.py (one definition for engine / master builder / best case / tests); an unreadable input never blocks.
+    # Every refusal is counted (<SLEEVE>_BLOCK_<lines>), journaled (decisions BLOCK row) and recorded in blocked_signals (decisions BLOCKED row,
+    # bl_* columns) — the blocked trades are priced by scripts/scout_blocked_filters.py (today's exit, 8 s + ≥ 0.10 slip). Evidence (B25 best case,
+    # one size, current batch / master %/day): WILLY GAP + FAILED_SPIKE −1.68 → +0.20 / +1.73 → +1.77 · HT FAILED_SPIKE +0.12 → +0.31 · RETRY_BTC1H
+    # −0.21 → +1.56 · LITE_BTC_EMA20_DOWN +1.96 → +2.34 · LONG_WEAK_FRENZY −0.05 → +0.00 · fade OBS-F1 +0.19 → +0.76 · ML_MKT_HOT + ML_BULL90
+    # +0.01 → +0.12. 🔒 REVERT per line (pre-committed): at 15 blocked signals on 8 UTC days, the blocked trades priced on today's exit average
+    # above 0 OR better than the same sleeve's kept fills over the same period → that line off (operator; never automatic). False = off.
+    watch_block_willy_gap: bool = False                 # FRENZY_WILLY: coin ADX > 55 or EMA8−13 gap ≤ 0.90 % (DL 414)
+    watch_block_willy_failed_spike: bool = False        # FRENZY_WILLY: signal bar at / below the spike VWAP (DL 509)
+    watch_block_willy_ht_failed_spike: bool = False     # FRENZY_WILLY_HT: the same (DL 511)
+    watch_block_retry_btc1h: bool = False               # FRENZY_LITE_RETRY: BTC 1 h EMA20 slope ≤ 0 (DL 415)
+    watch_block_lite_btc_ema20_down: bool = False       # FRENZY_LITE: BTC 5 m EMA20 slope ≤ 0, raw slope (DL 522)
+    watch_block_long_weak_frenzy: bool = False          # FRENZY_LONG: frenzy volume ≤ 119× normal (DL 525)
+    watch_block_fade_late_weak: bool = False            # SPIKE_FADE OBS-F1: BTC 1 d EMA50 > EMA200 ∧ +DI ≤ 48.5 ∧ ≤ 1.80 % above EMA13 (DL 384)
+    watch_block_ml_mkt_hot: bool = False                # MOMENTUM LONG: > 50 % of the rolling top-100 up over 4 h (DL 416 / 489)
+    watch_block_ml_bull90: bool = False                 # MOMENTUM LONG: ≥ 90 % of the scanned coins bullish (DL 523)
     # ⏪ Oct-6 FRENZY CATCH-UP (operator-approved build): FRENZY_LONG / FRENZY_WIDE get ONE chance per setup — the 5m bar it turns ON. When that
     # bar closed while no pass judged (bot paused, restarting after a deploy, an outage) the pair showed "ON (entry bar passed)" forever. Live case:
     # NMRUSDT 2026-10-06, fresh bar closed 13:40 UTC (streak 25, 2.0 h, vol 343×, ATR 2.1 %) while the bot was paused 13:25→13:53. NOTE (deep

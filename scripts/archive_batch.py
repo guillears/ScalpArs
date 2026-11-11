@@ -395,6 +395,11 @@ def batch_report(d, era, master=None):
             _p = pd.to_numeric(_g.pnl_percentage, errors="coerce"); _u = pd.to_numeric(_g.pnl, errors="coerce")
             L.append(f"{_rs} (reduced size, separate line): N {len(_g)} · WR {100 * (_u > 0).mean():.0f}% · avg {_p.mean():+.2f} % · "
                      f"Σ {_p.sum():+.2f} % · ${_u.sum():+.2f}")
+    _all = d[~manual]   # (DECISION_LOG 527, operator 11-11: "this is wrong") the dashboard total — every bot fill, reduced-size lines and probes included
+    if len(_all):
+        _p = pd.to_numeric(_all.pnl_percentage, errors="coerce"); _u = pd.to_numeric(_all.pnl, errors="coerce")
+        L.append(f"ALL BOT TRADES (= the dashboard total: full-size table + reduced-size lines + probes): N {len(_all)} · "
+                 f"WR {100 * (_p > 0).mean():.1f}% · avg {_p.mean():+.3f} % · Σ {_p.sum():+.2f} % · ${_u.sum():+,.2f}")
 
     def _lst(g, extra=None):
         return ", ".join(f"{p} {str(o)[5:16].replace('T', ' ')} {s}" + (f" ({extra(r)})" if extra else "")

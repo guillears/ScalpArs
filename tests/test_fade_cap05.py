@@ -44,10 +44,11 @@ def test_master_csv_scale_invariants():
     assert nf.stack_keep.all() and nf.stack_block_reason.astype(str).str.contains("ARM040|LATE_ARM|FADE_SL").all()
     s = m[(m.stack_ticket_scale != 1.0) & (m.entry_strategy == "SPIKE_FADE")]
     assert (s.stack_ticket_scale >= 1.0).all()
-    assert len(s) and s.stack_keep.all() and not s.is_probe.any() and (s.entry_strategy == "SPIKE_FADE").all()
+    _wb = s.stack_block_reason.astype(str).str.startswith("SPIKE_FADE_BLOCK_")   # (DL 527) refused by the armed fade filter, ticket scale kept
+    assert len(s) and (s.stack_keep | _wb).all() and s.stack_keep.any() and not s.is_probe.any() and (s.entry_strategy == "SPIKE_FADE").all()
     assert s.liquidity_capped.astype(str).str.lower().eq("true").all()
     assert m.stack_keep.dtype == bool and m.is_probe.dtype == bool
-    assert set(s.stack_block_reason) <= {"CF_FADE_CAP05", "CF_FADE_SL15", "CF_FADE_LATE_ARM"}   # tripwire: a new CF tag on a scaled fade must be reviewed
+    assert set(s.stack_block_reason) <= {"CF_FADE_CAP05", "CF_FADE_SL15", "CF_FADE_LATE_ARM", "SPIKE_FADE_BLOCK_FADE_LATE_WEAK"}   # tripwire: a new CF tag on a scaled fade must be reviewed · (DL 527) the armed fade filter, reviewed
     assert ((s.notional_value * s.stack_ticket_scale) <= 0.005 * s.entry_pair_volume_24h_usd * 1.001).all()
     u = s[s.stack_block_reason == "CF_FADE_CAP05"]                      # untagged before: lived P&L × scale, so the pct is the lived pct
     assert ((u.stack_pnl / u.stack_ticket_scale - u.pnl).abs() < 0.02).all()

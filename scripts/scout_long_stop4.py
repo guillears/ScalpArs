@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""👁 Scout — LONG_STOP4 observe line (DECISION_LOG 315, operator 2026-10-19: "add LONG_STOP4 and LITE_GREEN_RETRY watch lines").
+"""⛔ RETIRED 2026-11-11 (DECISION_LOG 526) — LONG_STOP4 no longer reads outcomes (its DL 317 gate decided REVERT, DL 524); kept as the shared kline / path library.
+👁 Scout — LONG_STOP4 observe line (DECISION_LOG 315, operator 2026-10-19: "add LONG_STOP4 and LITE_GREEN_RETRY watch lines").
 OBSERVE ONLY — never changes config, never calls the bot API.
 LIVE −4 NOTE (2026-10-19, DECISION_LOG 317): live FRENZY_LONG now runs −4 (frenzy_long_stop_pct) from the DL 317 deploy. A fill stamped
 entry_frenzy_stop_pct ≥ 3.5 is a LIVE −4 fill: the −4 walk is its live replica (parity vs booked) and the −3 walk becomes the SHADOW; its

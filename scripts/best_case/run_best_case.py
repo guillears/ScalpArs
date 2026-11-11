@@ -10,9 +10,11 @@ Two tables, in-sample upper bound — every current watch line switched on from 
      🎲 LUCK-CHECKED (DECISION_LOG 473): every line whose built-on history does not beat the same search on day-shuffled results
      (scripts/best_case/luck_test.py, run inside best_dcr.py → luck.csv) switched off; ③ shows each line's luck test + when its theory was written.
 
+①a (operator 11-11): the dashboard strategy table before → after + best / worst day (best_stats.csv).
 Pipeline (outputs in reports/best_case/): fb_combo.py (FB_CONFIRM per Flatbase fill) → flip_exits.py (each flip on its own
 1m path under TP 1.5 / 2 / 3) → best_dcr.py (with flip exits; also best_hold.csv = ①b hold time + trades/day) → best_dcr_noflip.py → confidence.py (③ how much to trust each line). Writes reports/best_case/BEST_CASE_<export stamp>.md.
-Every fill is priced on TODAY's exit (master_exits.py, DECISION_LOG 448): master FRENZY_LONG at −4, current-batch LITE C +2 closes at +3,
+Every fill is priced on TODAY's exit (master_exits.py, DECISION_LOG 448): FRENZY_LONG on the live stop (−3 since DL 524: current-batch −4 fills
+from their own −3 touch stamp; master as traded), current-batch LITE C +2 closes at +3,
 current-batch Flatbase at +5 / −10. A run STOPS on an unpriced fill or an incomplete market-breadth read (Binance per-minute weight: re-run).
 ⚠ Batch constants are hard-coded — update ALL of them for a new batch, or the cohort is silently wrong: best_dcr*.py (B0 = batch start,
   FLOWS = top-ups, START = 2,900, the 2,900 → 10,000 equity step date) · fb_combo.py (the previous batch's BASELINE archive file and the
@@ -36,7 +38,8 @@ NAMES = {"FRENZY_WILLY": "WILLY", "SPIKE_FADE": "Spike Fade", "FLATBASE_SHORT": 
          "FRENZY_LITE_RETRY": "LITE RETRY", "FRENZY_WILLY_HT": "WILLY_HT", "SURGE_LONG": "SURGE Long", "MOMENTUM_LONG": "Momentum Long",
          "FRENZY_LONG": "FRENZY_LONG", "FRENZY_LITE": "LITE", "MOMENTUM_SHORT": "Momentum Short", "BEARRUN_SHORT": "Bear-Run Short"}
 LABELS = {"EXIT TP1.5": "Exit TP +1.5", "EXIT TP2": "Exit TP +2", "EXIT TP3": "Exit TP +3", "SURGE_BTC_HOT": "BTC RSI ≥ 78",
-          "MKT_HOT": "Market-hot", "FB_CONFIRM": "FB_CONFIRM (live)"}
+          "MKT_HOT": "Market-hot", "FB_CONFIRM": "FB_CONFIRM (live)", "ML_BULL90": "ML_BULL90 (≥ 90 % coins bullish)",
+          "LONG_WEAK_FRENZY": "LONG_WEAK_FRENZY (volume ≤ 119×)", "LITE_BTC_EMA20_DOWN": "LITE_BTC_EMA20_DOWN (BTC 5 m dipping)"}
 NUM = r"([-+]?(?:\d+\.?\d*|nan|inf))"
 # 📏 (DECISION_LOG 503, operator 11-08) re-size rows = the DL 502 5 % cap (one stop = 5 % of the account): RETRY / Flatbase up (above
 # breakeven), LITE down; the old WILLY 8× / 10×, FRENZY_LONG ×5, Flatbase 0.5 examples are retired (Momentum Long ×5 / ×10 back as C3 / C4, DL 504) (WILLY and
@@ -91,6 +94,83 @@ def dur(m):
     if m != m:
         return "–"
     return f"{m:.0f} min" if m < 90 else f"{m / 60:.1f} h"
+
+
+ORDER = ["MOMENTUM_LONG", "MOMENTUM_SHORT", "SPIKE_FADE", "BEARRUN_SHORT", "SURGE_LONG", "FRENZY_LONG", "FRENZY_LITE", "FRENZY_LITE_RETRY",
+         "FRENZY_WILLY", "FRENZY_WILLY_HT", "FLATBASE_SHORT", "FLIP:FAN_RATIO_GATE"]   # the dashboard's strategy-table order
+
+
+def stats_section():
+    """①a 📋 the dashboard strategy table, before → after (operator 11-11) — from best_dcr.py's best_stats.csv (scenario B)."""
+    p = os.path.join(OUT, "best_stats.csv")
+    if not os.path.exists(p):
+        sys.exit("best_stats.csv missing — best_dcr.py did not write ①a")
+    S = pd.read_csv(p, keep_default_na=False, na_values=[""])
+    S["_o"] = S.sleeve.map({s_: i for i, s_ in enumerate(ORDER + ["TOTAL"])}).fillna(len(ORDER) - 0.5)
+    def cell(r, k, bold=False):
+        n = int(getattr(r, f"{k}_n"))
+        if not n:
+            return "0"
+        t = f"{n} · {getattr(r, f'{k}_wr'):.0f} % · {f(getattr(r, f'{k}_avg'))} · Σ {f(getattr(r, f'{k}_sum'))}"
+        return f"**{t}**" if bold else t
+    def pn(r, k):
+        return f"{int(getattr(r, f'{k}_pos_days'))} / {int(getattr(r, f'{k}_neg_days'))}"
+    def day(r, k, w):
+        v = getattr(r, f"{k}_{w}")
+        return "–" if v != v else f"{f(v)} ({str(getattr(r, f'{k}_{w}_day'))[5:]})"
+    L = ["", "## ①a 📋 Strategy table, before → after (current batch)", "",
+         "The dashboard's strategy table with ①'s best line on. Each cell: trades · win rate · avg % per trade · Σ % (sum of per-trade %). "
+         "As traded = the dashboard (booked %) · Today's exit = the same trades re-priced on today's exits (LITE C +2 closes at +3, Flatbase "
+         "at +5 / −10, FRENZY_LONG −4 fills at −3 from their own touch stamp — ①'s 'before') · Best line = the trades the line keeps (an exit line at its own exit). Best / worst day = the day's Σ of "
+         "per-trade % over the trades that closed that UTC day (date in brackets; days with no trade not counted; a trade under an exit line "
+         "keeps its own close day). Days + / − = days whose Σ is positive / negative (days with no trade, or only blocked trades, count in neither). Sum of %, not account %: sizes differ by sleeve — ② has the account view. In-sample (30–50 % cut).", "",
+         "| Sleeve | Line switched on | As traded (dashboard) | Today's exit | Best line | Best day: as traded → best line | Worst day: as traded → best line "
+         "| Days + / −: as traded → best line |",
+         "|---|---|---|---|---|---|---|---|"]
+    for r in S.sort_values("_o").itertuples():
+        tot = r.sleeve == "TOTAL"
+        ln = r.lines if isinstance(r.lines, str) and r.lines else ("all best lines" if tot else "no line helps")
+        ln = " + ".join(LABELS.get(x, x) for x in ln.split(" + "))
+        nm = "**Total**" if tot else NAMES.get(r.sleeve, r.sleeve)
+        L.append(f"| {nm} | {ln} | {cell(r, 'tr')} | {cell(r, 'td')} | {cell(r, 'kp', True)} | {day(r, 'tr', 'best')} → {day(r, 'kp', 'best')} "
+                 f"| {day(r, 'tr', 'worst')} → {day(r, 'kp', 'worst')} | {pn(r, 'tr')} → **{pn(r, 'kp')}** |")
+    return L + worst_days(S)
+
+
+def worst_days(S):
+    """①a detail (operator 11-11: "number of trades per sleeve of the worst day … what happened or something could be done differently"):
+    the all-sleeve worst day as traded and with the best lines on, sleeve by sleeve — from best_dcr.py's best_fills.csv."""
+    p = os.path.join(OUT, "best_fills.csv")
+    if not os.path.exists(p):
+        sys.exit("best_fills.csv missing — best_dcr.py did not write the worst-day detail")
+    F = pd.read_csv(p)
+    tot = S[S.sleeve == "TOTAL"]
+    if not len(tot):
+        return []
+    tot = tot.iloc[0]
+    L = []
+    for lab, dd, dcol in (("as traded", tot.tr_worst_day, "day_traded"), ("with the best lines on", tot.kp_worst_day, "day")):
+        g = F[F[dcol if dcol in F else "day"] == dd]   # as traded = the export's own close day; best line = today's-exit close day
+        if not len(g):
+            continue
+        L += ["", f"### Worst day {lab}: {dd} — every sleeve that closed trades that day", "",
+              "Trades = closed that UTC day · W/L = winners / losers as traded · Σ % per column (sum of per-trade %) · Best line = the trades the line "
+              "keeps (blocked = trades the line would have skipped) · Worst trade = as traded.", "",
+              "| Sleeve | Trades | W / L as traded | Σ as traded | Σ today's exit | Best line: kept · blocked · Σ | Worst trade (as traded) |",
+              "|---|---|---|---|---|---|---|"]
+        for sl, h in sorted(g.groupby("sleeve"), key=lambda kv: kv[1].traded.sum()):
+            w = h.loc[h.traded.idxmin()]
+            L.append(f"| {NAMES.get(sl, sl)} | {len(h)} | {(h.traded > 0).sum()} / {(h.traded <= 0).sum()} | {f(h.traded.sum())} | {f(h.today.sum())} | "
+                     f"{(~h.blocked).sum()} · {h.blocked.sum()} · {f(h.best.sum())} | {w.pair} {f(w.traded)} ({w.close_reason}) |")
+        L.append(f"| **All** | {len(g)} | {(g.traded > 0).sum()} / {(g.traded <= 0).sum()} | {f(g.traded.sum())} | {f(g.today.sum())} | "
+                 f"{(~g.blocked).sum()} · {g.blocked.sum()} · **{f(g.best.sum())}** | |")
+        if lab.startswith("with"):   # (operator 11-11) every trade behind the best-line worst day
+            L += ["", f"Every trade of {dd}, worst first under the best lines (blocked = the line skips it, counts 0):", "",
+                  "| Sleeve | Coin | Opened (UTC) | As traded | Best line | Close |", "|---|---|---|---|---|---|"]
+            for r in g.assign(_b=g.best.fillna(0)).sort_values(["_b", "traded"]).itertuples():
+                L.append(f"| {NAMES.get(r.sleeve, r.sleeve)} | {r.pair} | {str(r.opened_at)[5:16].replace('T', ' ')} | {f(r.traded)} | "
+                         f"{'blocked' if r.blocked else ('unpriced' if r.best != r.best else f(r.best))} | {r.close_reason} |")
+    return L
 
 
 def caps_section():
@@ -224,13 +304,14 @@ def main(exp, review=None):
     if alt:
         L += ["", "Runner-up — the line that is best on the current batch alone, where it differs from ① (it fails ①'s master / pooled check):", "",
               "| Sleeve | Line | Current batch, before → best | Master, before → best |", "|---|---|---|---|"] + alt
+    L += stats_section()
     H = pd.read_csv(os.path.join(OUT, "best_hold.csv")).set_index("sleeve")
     L += ["", "## ①b Hold time and trades per day, before → best", "",
           "Same best line as ①. Hold = average time from entry to exit; an exit line holds to its own exit (FAN flips TP +2: first touch of "
           "+2 or the stop on the 1m path), FB_CONFIRM from its confirmed entry. Trades per day: current batch = trades ÷ "
           f"{H.b25_days.iloc[0]:.1f} days since the batch start · master = trades ÷ the calendar days of the batches the sleeve traded in "
           "(its own live days) — the two bases are not directly comparable. Trade counts in brackets. Master hold = as traded: re-priced "
-          "master exits (most WILLY, FRENZY_LONG −4, some LITE and fades) and current-batch LITE C re-walks keep their traded hold.", "",
+          "master exits (most WILLY, some LITE and fades), current-batch LITE C re-walks and FRENZY_LONG −4 → −3 re-pricing keep their traded hold.", "",
           "| Sleeve | Line switched on | Avg hold, current batch | Avg hold, master | Trades/day, current batch | Trades/day, master |",
           "|---|---|---|---|---|---|"]
     for r in t.sort_values("gain", ascending=False).itertuples():

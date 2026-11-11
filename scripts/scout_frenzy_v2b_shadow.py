@@ -38,7 +38,7 @@ PER FILL
   SHADOWS   V2B      T = max(+1.25, min(+8, net at H × 0.99)) (frenzy_willy_high_target on PINNED V2b params), resting TP at T, stop −4,
                      late TP +0.25 after 30 min, cap 90, no floor (DL 356 → 358)
             V2B_OWN  the same with LITE's stop −3 (LONG's stop IS −4 → not a separate shadow)
-            TPx      fixed +x / TODAY's sleeve stop (LITE −3 · LONG −4) / 12 h (LITE TP4 TP5 TP6 · LONG TP2 TP3 TP4)
+            TPx      fixed +x / TODAY's sleeve stop (LITE −3 · LONG −3 since DL 524) / 12 h (LITE TP4 TP5 TP6 · LONG TP2 TP3 TP4)
             Δ = shadow − TODAY, paired on the same path.
   COMPLETE  a fill counts for a sleeve's gate only when TODAY and EVERY shadow of that sleeve resolved (H found) — the SAME fills for every
             shadow. An incomplete fill < 3 days old → the read HOLDs; older → counted and printed as "not evaluable" (never a silent drop).
@@ -84,8 +84,9 @@ CAP_LIVE = 720
 V2B_STOP, V2B_CAP, V2B_LATE_MIN, V2B_LATE_TP = 4.0, 90, 30.0, 0.25
 V2B_TH = SimpleNamespace(frenzy_willy_high_target_enabled=True, frenzy_willy_tp_pct=1.25, frenzy_willy_stop_pct=4.0,
                          frenzy_willy_max_hold_minutes=90, frenzy_willy_high_k_pct=1.0, frenzy_willy_high_tp_max_pct=8.0)
-OWN_STOP = {"LITE": 3.0, "LONG": 4.0}                     # TODAY's sleeve stops (frenzy_stop_pct 3 · frenzy_long_stop_pct 4, DL 317)
-TODAY_LONG = (1.5, 4.0)                                   # TODAY's LONG exit — HARDCODED (no stored LONG TP column; parity guards it)
+OWN_STOP = {"LITE": 3.0, "LONG": 3.0}                     # TODAY's sleeve stops (frenzy_stop_pct 3 · frenzy_long_stop_pct 3 since DL 524; was 4, DL 317)
+TODAY_LONG = (1.5, 3.0)                                   # TODAY's LONG exit — HARDCODED (no stored LONG TP column; parity guards it) — −3 since DL 524
+LONG_REBASE_DL = 526                                      # 🔁 (DL 526) LONG re-based on −3: its GATE counts LONG fills from this commit + LAG_MIN (fresh count); older LONG fills → reference
 FIXED_TP = {"TP2": 2.0, "TP3": 3.0, "TP4": 4.0, "TP5": 5.0, "TP6": 6.0}
 SHADOWS = {"LITE": ("V2B", "V2B_OWN", "TP4", "TP5", "TP6"), "LONG": ("V2B", "TP2", "TP3", "TP4")}
 ALL_SHADOWS = ("V2B", "V2B_OWN", "TP2", "TP3", "TP4", "TP5", "TP6")
@@ -110,7 +111,7 @@ THEORY = [
     "(< 3 %) Δ > far-H (≥ 6 %) Δ.",
     "THEORY T2 (fixed TPs, DL 284): LITE is all-or-nothing (winners all ran to +3, losers never passed +0.68) → a higher TP costs only the "
     "winners that stall between +3 and the new TP (reads how far LITE winners keep running). LONG is bounce-then-collapse (why +1.5) → "
-    "PREDICTION: higher TPs are WORSE for LONG; a LONG TPx beating TODAY's +1.5 / −4 REFUTES the theory.",
+    "PREDICTION: higher TPs are WORSE for LONG; a LONG TPx beating TODAY's +1.5 / −3 REFUTES the theory.",
 ]
 
 
@@ -220,7 +221,7 @@ def live_exit(r, era=None):
 
 def today_exit(r):
     """→ (tp, stop) of TODAY's live exit for this fill — the Δ BASELINE: LITE (+ RETRY) +3 / −3 (LITE C off since DL 420: old fills are compared with today's +3 too) ·
-    LONG +1.5 / −4 (HARDCODED — no stored LONG TP column; update on a LONG TP change)."""
+    LONG +1.5 / −3 since DL 524 (HARDCODED — no stored LONG TP column; update on a LONG TP / stop change)."""
     if SLEEVE_OF.get(str(r.get("entry_strategy")), "LONG") == "LONG":
         return TODAY_LONG
     return float(LITE_C.frenzy_lite_tp_pct), OWN_STOP["LITE"]
@@ -244,7 +245,7 @@ def walk_v2b(P, T, sl=V2B_STOP):
 
 
 def shadow_pct(P, name, sleeve, T, own_stop=None):
-    """one shadow's booked % on the path (nan = undecided / unpriceable). own_stop default = TODAY's sleeve stop (LITE −3 / LONG −4) —
+    """one shadow's booked % on the path (nan = undecided / unpriceable). own_stop default = TODAY's sleeve stop (LITE −3 / LONG −3 since DL 524) —
     V2B_OWN and the TPx shadows run it, so Δ vs TODAY isolates the take-profit change."""
     if name not in SHADOWS[sleeve]:
         return float("nan")
@@ -532,7 +533,7 @@ def t2_check(g, sleeve):
     av = {k: float(pd.to_numeric(p[f"d_{k}"]).mean()) for k in ks}
     if sleeve == "LONG":
         bad = [k for k, v in av.items() if v > 0]
-        return "      T2 check (LONG, predicted worse than TODAY's +1.5 / −4): " + " · ".join(f"{k} Δ {v:+.3f}" for k, v in av.items()) + (
+        return "      T2 check (LONG, predicted worse than TODAY's +1.5 / −3): " + " · ".join(f"{k} Δ {v:+.3f}" for k, v in av.items()) + (
             f" → REFUTES T2 ({', '.join(bad)} beat +1.5)" if bad else " → CONSISTENT with T2 (no higher TP beats +1.5)")
     return "      T2 check (LITE, how far winners run vs TODAY's +3 / −3): " + " · ".join(f"{k} Δ {v:+.3f}" for k, v in av.items())
 
@@ -676,14 +677,23 @@ def run(now_ms=None, raw=None, floor_ms="auto", path_fn=None, h_fn=None, fetch=T
     L = [f"## 🎲🪶 FRENZY_V2B_SHADOW — LITE / LONG on WILLY's V2b exit + fixed higher TPs (DECISION_LOG {DL}, observe-only; frozen "
          f"gate, OPERATOR CALL)", ""] + THEORY + [
         f"Shadows: LITE {', '.join(SHADOWS['LITE'])} · LONG {', '.join(SHADOWS['LONG'])}. V2B = T max(+1.25, min(+8, net@H×0.99)) / −4 / "
-        f"late +0.25 @30 / 90 · V2B_OWN = same with −3 · TPx = fixed +x / today's sleeve stop (LITE −3 · LONG −4) / 12 h. Δ = shadow − "
-        f"TODAY's live exit re-walked on the same path (LITE: +3 / −3 · LONG +1.5 / −4); the era replica is the parity check "
+        f"late +0.25 @30 / 90 · V2B_OWN = same with −3 · TPx = fixed +x / today's sleeve stop (LITE −3 · LONG −3) / 12 h. Δ = shadow − "
+        f"TODAY's live exit re-walked on the same path (LITE: +3 / −3 · LONG +1.5 / −3, LONG gate re-based DL 526); the era replica is the parity check "
         f"only. Numbers move as paths arrive (1m tails → ticks, H pages)."]
     if raw is None:
         raw = read_sources()
+    rebase_long = floor_ms == "auto"   # 🔁 (DL 526) the LONG re-base floor applies to the live (auto-floor) read; an explicit floor_ms = a hermetic read
     if floor_ms == "auto":
         floor_ms = _GK.dl_deploy_ms(DL, lag_min=LAG_MIN, label="FRENZY_V2B_SHADOW")
     co = cohort(raw, floor_ms)
+    if rebase_long and floor_ms is not None and len(co["gate"]):   # 🔁 (DL 526) LONG re-based on −3: LONG fills before the re-base commit move to the reference block
+        _rb = _GK.dl_deploy_ms(LONG_REBASE_DL, lag_min=LAG_MIN, label="FRENZY_V2B_SHADOW LONG re-base on −3")
+        _s4 = lambda fr: (pd.to_numeric(fr["entry_frenzy_stop_pct"], errors="coerce") >= 3.5) if "entry_frenzy_stop_pct" in fr else False   # −4 stamp: exact (review)
+        _old = (co["gate"].sleeve == "LONG") & (((co["gate"].te < _rb) if _rb is not None else True) | _s4(co["gate"]))
+        co["ref"] = pd.concat([co["ref"], co["gate"][_old]]).sort_values("te") if _old.any() else co["ref"]
+        co["gate"] = co["gate"][~_old]
+        if len(co["open"]):
+            co["open"] = co["open"][~((co["open"].sleeve == "LONG") & (((co["open"].te < _rb) if _rb is not None else True) | _s4(co["open"])))]
     e250 = (eras() if era is None else era).get(250)
     ref0 = co["ref"]
     trail = ref0[ref0.te < e250] if (e250 is not None and len(ref0)) else ref0.iloc[0:0]

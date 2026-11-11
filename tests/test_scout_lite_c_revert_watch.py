@@ -96,7 +96,7 @@ def test_switch_master_lines_hook_and_registry(monkeypatch):
     assert "reports/SCOUT_LITE_C_REVERT.json" in open(os.path.join(ROOT, ".gitignore")).read().split("\n")
     import observe_registry as OR
     st = {r[0]: r for r in OR.status(OR.thresholds())}
-    assert st["scout_lite_c_revert_watch.py"][4] == "OK" and st["scout_retry_btc1h_watch.py"][4] == "OK" and st["scout_frenzy_v2b_shadow.py"][4] == "OK"
+    assert st["scout_lite_c_revert_watch.py"][4] == "OK" and st["scout_retry_btc1h_watch.py"][4] == "OK" and st["scout_frenzy_v2b_shadow.py"][4] == "OK"   # (DL 526) LONG re-based on −3
     assert st["scout_lite_c.py"][4] == "STALE" and st["scout_lite_green_retry.py"][4] == "STALE"     # resolved / measures the old rule: never read again
     import build_master_pool as B
     assert B.FRENZY_LITE_C_ENABLED_FROZEN is False

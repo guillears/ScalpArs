@@ -169,7 +169,7 @@ def test_config_ui_parity():
     import config as C
     assert C.SignalThresholds.model_fields["frenzy_long_stop_pct"].default == 0.0
     cfg = json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
-    assert cfg["frenzy_long_stop_pct"] == 4.0 and cfg["frenzy_stop_pct"] == 3.0
+    assert cfg["frenzy_long_stop_pct"] == 3.0 and cfg["frenzy_stop_pct"] == 3.0   # (DL 524) the DL 317 gate fired → reverted to −3 (= the shared stop)
     assert "DECISION_LOG 317" in open(os.path.join(ROOT, "config.py"), encoding="utf-8").read()
     assert frenzy_long_stop_config_errors(NS(frenzy_long_stop_pct=4.0)) == [] and frenzy_long_stop_config_errors(NS(frenzy_long_stop_pct=0)) == []
     assert frenzy_long_stop_config_errors(NS(frenzy_long_stop_pct=0.5)) and frenzy_long_stop_config_errors(NS(frenzy_long_stop_pct=12))

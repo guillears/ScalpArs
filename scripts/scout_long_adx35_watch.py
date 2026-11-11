@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""👁 Scout — LONG_ADX35 watch line (pre-registered 2026-10-30, DECISION_LOG 418; OBSERVE ONLY — never changes config, no bot API, no network).
+"""⛔ RETIRED 2026-11-11 (DECISION_LOG 526) — LONG_ADX35 no longer reads outcomes (unhooked from the opportunity scout; −4 era over, failed forward).
+👁 Scout — LONG_ADX35 watch line (pre-registered 2026-10-30, DECISION_LOG 418; OBSERVE ONLY — never changes config, no bot API, no network).
 
 QUESTION   Do FRENZY_LONG entries with coin ADX > 35 lose where the rest earn? zone = entry_adx > 35. Theory: FRENZY_LONG buys a bounce; a high ADX means the coin's trend is already old and stretched, so less is left.
 EVIDENCE   (in-sample, NEVER counted) master on today's stack re-walked at the −4 stop (1m): zone 11 on 7 days · 64 % · −0.50 %/fill vs 18 · 100 % · +1.50, day-bootstrap P(zone < rest) 0.99; daily compound

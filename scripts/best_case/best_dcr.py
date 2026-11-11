@@ -15,6 +15,7 @@ A = pd.read_csv(EXP, low_memory=False)
 A = A[(A.status == "CLOSED") & (pd.to_datetime(A.opened_at, format="mixed") >= B0)].copy()
 A["o"] = pd.to_datetime(A.opened_at, format="mixed", utc=True).dt.tz_convert(None)
 A["pct"] = num(A, "pnl_percentage"); A["u"] = num(A, "pnl"); A["sl"] = sleeve(A); A["src"] = "B25"; A["era"] = "B25"
+A["pct_traded"] = A["pct"]   # 📋 (operator 11-11) the dashboard's booked %, kept before the exit re-pricing below
 A["kk"] = A.opened_at.astype(str).str.replace(" ", "T").str[:19] + A.pair
 _A_RAW = A[["closed_at", "pnl"]].copy()   # 📏 (503 deep review) the REAL account path: raw closes + pnl, before the exit re-pricing below
 A, _b25_moved = MX.reprice_b25_exits(A, os.path.join(SC, "fb_combo.csv"))   # LITE C +2 closes → +3 · Flatbase → +5 / −10 (exits retired mid-batch)
@@ -24,7 +25,7 @@ span = M.assign(o=pd.to_datetime(M.opened_at, format="mixed", utc=True).dt.tz_co
 M = M[(M.stack_keep == True) & (M.is_probe != True)].copy()
 M["o"] = pd.to_datetime(M.opened_at, format="mixed", utc=True).dt.tz_convert(None)
 M["pct"] = num(M, "stack_pct"); M["sl"] = sleeve(M); M["src"] = "MASTER"
-M, _n_long4 = MX.reprice_long_stop4(M)   # FRENZY_LONG master on the live −4 stop (master stack keeps the traded −3)
+M, _n_long4 = MX.reprice_long_stop4(M)   # FRENZY_LONG master on the LIVE stop: −4 re-walk only while −4 runs (DL 524: live −3 → as traded)
 SLEEVES = sorted(A.sl.unique())
 M = M[M.sl.isin(SLEEVES)]
 # ── zone inputs
@@ -155,7 +156,9 @@ SCEN = {"A": ({}, set(), {}), "B": ({}, set(), {})}
 # master + current batch POOLED (Σ % per fill over the kept fills of both, today's exits) instead — 2 master fills must not outvote 19.
 MASTER_MIN_CHANGED = 5
 BASIS, NCHG = {}, {}
-REAL, KSUM = {}, {}   # 📏 (503) per (scen, sleeve): as-traded DCR before / best · kept Σ % before / best / N
+REAL, KSUM, KSTAT, FROWS = {}, {}, {}, []
+_DAY_RAW = pd.to_datetime(_A_RAW.closed_at, format="mixed", utc=True).dt.strftime("%Y-%m-%d")   # 📋 as traded: the export's own close day
+_DAY_NOW = pd.to_datetime(A.closed_at, format="mixed", utc=True).dt.strftime("%Y-%m-%d")        # 📋 today's exits / best line (re-walk closes)   # 📏 (503) per (scen, sleeve): as-traded DCR before / best · kept Σ % before / best / N · 📋 KSTAT (operator 11-11): the per-fill % as traded / today's exit / best line
 print(f"Market-hot read complete={complete} · X (notional/account) = " + ", ".join(f"{k} {v:.2f}" for k, v in X.items()))
 for sl in SLEEVES:
     msk = A.sl == sl
@@ -210,6 +213,15 @@ for sl in SLEEVES:
         _k = [v for i, v in _aft.items() if v is not None] + [A.loc[i, "pct"] for i in A.index[msk] if i not in _aft]
         _k = [v for v in _k if v == v]   # (503 review) an unpriced (NaN) fill counts neither in N nor in Σ
         KSUM[(tag, sl)] = (float(np.nansum(A[msk].pct)), float(np.nansum(_k)), len(_k))
+        _day = _DAY_NOW            # close day, UTC, on today's exits (a re-walked Flatbase fill moves; an exit line keeps the fill's own close day)
+        _kd = [(_day[i], float(v)) for i, v in _aft.items() if v is not None and v == v] + \
+              [(_day[i], float(A.at[i, "pct"])) for i in A.index[msk] if i not in _aft and A.at[i, "pct"] == A.at[i, "pct"]]
+        if tag == "B":   # 📋 per fill (operator 11-11, worst-day detail): traded % · today's exit % · best line % (NaN = blocked by the line)
+            FROWS.extend(dict(sleeve=sl, pair=A.at[i, "pair"], opened_at=A.at[i, "opened_at"], day=_day[i], day_traded=_DAY_RAW[i], traded=A.at[i, "pct_traded"],
+                              today=A.at[i, "pct"], best=(np.nan if (i in _aft and _aft[i] is None) else float(_aft.get(i, A.at[i, "pct"]))),
+                              blocked=bool(i in _aft and _aft[i] is None), close_reason=A.at[i, "close_reason"]) for i in A.index[msk])
+        KSTAT[(tag, sl)] = ([(_DAY_RAW[i], float(A.at[i, "pct_traded"])) for i in A.index[msk] if A.at[i, "pct_traded"] == A.at[i, "pct_traded"]],   # as traded on its REAL close day (review)
+                            [(_day[i], float(A.at[i, "pct"])) for i in A.index[msk] if A.at[i, "pct"] == A.at[i, "pct"]], _kd)
         if ex:
             SCEN[tag][2].update({i: float(fxm[M.loc[i, "kk"]][ex]) for i in M.index[M.sl == sl]})
         z = pd.Series(False, index=M.index)
@@ -394,6 +406,28 @@ pd.DataFrame(rows, columns=["scen", "sleeve", "b25_before", "b25_best", "m_befor
     b25_before_real=[REAL[(r[0], r[1])][0] for r in rows], b25_best_real=[REAL[(r[0], r[1])][1] for r in rows],
     b25_sum_before=[KSUM[(r[0], r[1])][0] for r in rows], b25_sum_best=[KSUM[(r[0], r[1])][1] for r in rows],
     b25_n_best=[KSUM[(r[0], r[1])][2] for r in rows]).to_csv(os.path.join(SC, "best_dcr.csv"), index=False)
+# 📋 (operator 11-11: "add this table, before and after") the dashboard strategy table per sleeve — N · WR · avg · Σ % on the current batch:
+# as traded (the dashboard) · today's exit (re-priced, ①'s "before") · best line (①'s kept fills, an exit line at its own exit). Scenario B only.
+# Best / worst day + positive / negative days (operator 11-11: "aiming to not even having negative days") = the day's Σ of the sleeve's per-fill % over the fills closed that UTC day (no-fill days not counted).
+_STATS = ("n", "wr", "avg", "sum", "best", "best_day", "worst", "worst_day", "pos_days", "neg_days")
+def _st(dv):
+    if not dv:
+        return (0, np.nan, np.nan, 0.0, np.nan, "", np.nan, "", 0, 0)
+    v = np.array([x for _, x in dv], float)
+    ds = pd.Series(v).groupby([d for d, _ in dv]).sum()
+    return (len(v), float((v > 0).mean() * 100), float(v.mean()), float(v.sum()), float(ds.max()), ds.idxmax(), float(ds.min()), ds.idxmin(),
+            int((ds > 1e-9).sum()), int((ds < -1e-9).sum()))   # days with a positive / negative Σ (a day of only blocked fills = 0 → neither)
+_SR, _ALL = [], {"tr": [], "td": [], "kp": []}
+for (tag, sl), trio in KSTAT.items():
+    if tag != "B":
+        continue
+    for p_, dv in zip(("tr", "td", "kp"), trio):
+        _ALL[p_] += dv
+    _SR.append(dict(sleeve=sl, lines=next((r[6] for r in rows if r[0] == "B" and r[1] == sl), ""),
+                    **{f"{p_}_{m}": x for p_, dv in zip(("tr", "td", "kp"), trio) for m, x in zip(_STATS, _st(dv))}))
+_SR.append(dict(sleeve="TOTAL", lines="", **{f"{p_}_{m}": x for p_, dv in _ALL.items() for m, x in zip(_STATS, _st(dv))}))
+pd.DataFrame(_SR).to_csv(os.path.join(SC, "best_stats.csv"), index=False)
+pd.DataFrame(FROWS).to_csv(os.path.join(SC, "best_fills.csv"), index=False)
 
 # ── re-sizing on top of scenario B — the DL 502 5 % cap (📏 DL 503): RETRY / Flatbase up, LITE down; WILLY / WILLY_HT up in C5 (DL 514); FRENZY_LONG never sized up
 def b25_sized(after, size):

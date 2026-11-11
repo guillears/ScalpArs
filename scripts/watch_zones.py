@@ -47,15 +47,17 @@ def zones(d, hot=None, late=None, cool=None):
         "FRENZY_WILLY_HT": {"WILLY_GAP": wgap, "MKT_HOT": hotz,
                             "WILLY_FAILED_SPIKE": _num(d, "entry_frenzy_vs_vwap_pct") <= 0},   # DL 511
         "MOMENTUM_LONG": {"ML_MKT_HOT": hotz, "ML_W4": w4, "STOP_COOLDOWN": coolz,
-                          "PAIR_1H_DOWNTREND": _num(d, "entry_pair_1h_ema20_200_gap_pct") <= 0},
+                          "PAIR_1H_DOWNTREND": _num(d, "entry_pair_1h_ema20_200_gap_pct") <= 0,
+                          "ML_BULL90": _num(d, "entry_bull_pct") >= 90},   # DL 523 (scout_ml_bull90_watch)
         "FRENZY_LITE": {"LITE_LATE_BTCFALL": (fh >= 12) & (b1h <= 0), "LITE_BTC1H_RISING": b1h > 0,   # RISING: DL 437 (scout_lite_btc1h_rising_watch)
                         "LITE_BTC_EMA20_DOWN": _num(d, "entry_btc_ema20_slope") <= 0},   # DL 522 (scout_lite_btc_ema20_down_watch)
         "FRENZY_LITE_RETRY": {"RETRY_BTC1H": b1h <= 0, "LATE_BTCFALL": (fh >= 12) & (b1h <= 0)},
-        "FRENZY_LONG": {"LONG_ADX35": ax > 35},
+        "FRENZY_LONG": {"LONG_WEAK_FRENZY": _num(d, "entry_frenzy_vol_mult") <= 119},   # DL 525 (scout_long_weak_frenzy_watch)
         "SURGE_LONG": {"SURGE_BTC_HOT": _num(d, "entry_btc_rsi") >= 78, "SURGE_THIN": _num(d, "entry_pair_volume_24h_usd") < 150e6},
     }
 
 
 ZONE_COLS = ("entry_btc_regime", "entry_adx_delta", "entry_adx", "entry_btc_adx_prev", "entry_pos_di", "entry_dist_from_ema13_pct",
              "entry_btc_rsi_1h", "entry_ema_gap_8_13", "entry_pattern_w4_match", "entry_pair_1h_ema20_200_gap_pct", "entry_btc_1h_slope",
-             "entry_frenzy_hours", "entry_btc_rsi", "entry_pair_volume_24h_usd", "entry_frenzy_vs_vwap_pct", "entry_btc_ema20_slope")
+             "entry_frenzy_hours", "entry_btc_rsi", "entry_pair_volume_24h_usd", "entry_frenzy_vs_vwap_pct", "entry_btc_ema20_slope",
+             "entry_bull_pct", "entry_frenzy_vol_mult")

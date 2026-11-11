@@ -752,7 +752,7 @@
     "frenzy_max_atr_pct": 3.0,
     "frenzy_long_skip_green_bar": true,
     "frenzy_stop_pct": 3.0,
-    "frenzy_long_stop_pct": 4.0,
+    "frenzy_long_stop_pct": 3.0,
     "frenzy_trail_arm_pct": 5.0,
     "frenzy_trail_giveback_pct": 1.5,
     "frenzy_tp_pct": 1.5,

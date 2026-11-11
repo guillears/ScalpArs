@@ -14,6 +14,7 @@ real result. A fill a re-walk does not cover stops the run (never kept on the ol
 Caveat: re-priced LITE and master LONG fills keep their as-traded close time (the walks carry no exit time) — a day-boundary shift is
 possible in the daily compound; Flatbase moves its close time.
 """
+import json
 import os
 import sys
 
@@ -27,6 +28,16 @@ LONG_STOP4_UTC = pd.Timestamp("2026-10-19 17:00")                        # DL 31
 FB_EXIT_UTC = pd.Timestamp("2026-10-28 21:37")                           # DL 408 commit (18:27 −03:00) + 10 min: later fills ran +5 / −10
 LITE_TP_LIVE = 3.0                                                       # today's LITE / RETRY take profit — a TP close below it is LITE C
 LITE = ("FRENZY_LITE", "FRENZY_LITE_RETRY")
+CONFIG = os.path.join(ROOT, "trading_config.json")
+
+
+def live_long_stop(cfg=CONFIG):
+    """FRENZY_LONG's live stop % from trading_config.json: frenzy_long_stop_pct when > 0, else the shared frenzy_stop_pct (the engine's
+    frenzy_stop_for). (DECISION_LOG 524, 2026-11-11: the DL 317 gate fired → frenzy_long_stop_pct 3 = back on −3.)"""
+    with open(cfg) as f:
+        th = json.load(f).get("thresholds", {})
+    v = abs(float(th.get("frenzy_long_stop_pct") or 0))
+    return v if v > 0 else (abs(float(th.get("frenzy_stop_pct") or 0)) or LONG_SL_OLD)
 
 
 def key(ts, pair):
@@ -38,9 +49,12 @@ def _is_stop(reason):
     return "STOP" in str(reason).upper()
 
 
-def reprice_long_stop4(M):
+def reprice_long_stop4(M, live_stop=None):
     """M = master rows (opened_at, o, pair, sl, pct, close_reason[, entry_frenzy_stop_pct]) → (M with −3-era FRENZY_LONG stops on the
-    −4 exit, n moved)."""
+    −4 exit, n moved). Only while the LIVE stop is −4 (live_stop None → trading_config.json): on −3 (DL 524) the master keeps its traded
+    −3 stops unchanged (0 moved)."""
+    if (live_long_stop() if live_stop is None else float(live_stop)) < LONG_SL_LIVE - 1e-9:
+        return M.copy(), 0
     T = pd.read_csv(TOUCHES, low_memory=False)
     T = T[(T.block == "REAL") & (T.sleeve == "FRENZY_LONG")]
     why = {key(*k.split("|")[:2]): w for k, w in zip(T.key, T.why4)}
@@ -63,10 +77,24 @@ def reprice_long_stop4(M):
     return M, int(old.sum())
 
 
-def reprice_b25_exits(A, fb_csv):
+def _long_slip(A):
+    """median stop slippage of the current batch's −4-era FRENZY_LONG stop closes (booked + 4, ≤ 0); 0 when there are none."""
+    st = pd.to_numeric(A["entry_frenzy_stop_pct"], errors="coerce") if "entry_frenzy_stop_pct" in A else pd.Series(float("nan"), index=A.index)
+    m = (A.sl == "FRENZY_LONG") & (st >= 3.5) & A.close_reason.map(_is_stop) & (A.pct < -LONG_SL_OLD)
+    s = (A.pct[m] + LONG_SL_LIVE).clip(upper=0)
+    return float(s.median()) if len(s) else 0.0
+
+
+def reprice_b25_exits(A, fb_csv, live_stop=None):
     """A = current-batch rows (o, opened_at, closed_at, close_reason, pair, sl, pct, u, notional_value) → (A on today's exits,
     {sleeve: n moved}). LITE / RETRY: a take-profit closed below today's +3 (= LITE C +2) → its +3 / −3 walk (LITE_C_REVERT_CF.csv).
-    FLATBASE_SHORT opened before the DL 408 switch → its +5 / −10 walk from entry (fb_combo.csv now510, close at entry + h_now510)."""
+    FLATBASE_SHORT opened before the DL 408 switch → its +5 / −10 walk from entry (fb_combo.csv now510, close at entry + h_now510).
+    FRENZY_LONG that ran the −4 stop (entry_frenzy_stop_pct ≥ 3.5) while the LIVE stop is −3 (DL 524; live_stop None → trading_config.json)
+    → its −3 result from its OWN first −3 touch stamp (touch3_at, services/touch_snapshot.py — no re-walk): no −3 touch = as traded ·
+    else the −3 stop: a −4 stop close keeps its own fill slippage (booked + 1); a fill that recovered after the touch books −3 + the
+    batch's median −4 stop slip (_long_slip). No TP credit from a pre-touch peak (TP +1.5 in both eras — review). Close time stays as traded."""
+    ls = live_long_stop() if live_stop is None else float(live_stop)
+    slip3 = _long_slip(A)   # once, on the AS-TRADED rows (computing it inside the loop would read rows already re-priced to −3)
     cf = pd.read_csv(LITE_CF)
     lite = {key(a, p): v for a, p, v in zip(cf.opened_at, cf.pair, cf.cf_pct)}
     fb = pd.read_csv(fb_csv)
@@ -80,6 +108,18 @@ def reprice_b25_exits(A, fb_csv):
             v = lite.get(k)
         elif sl == "FLATBASE_SHORT" and A.at[i, "o"] < FB_EXIT_UTC:
             v, h = fbx.get(k, (None, None))
+        elif (sl == "FRENZY_LONG" and ls < LONG_SL_LIVE - 1e-9
+              and float(pd.to_numeric(pd.Series([A.at[i, "entry_frenzy_stop_pct"] if "entry_frenzy_stop_pct" in A else None]), errors="coerce").iloc[0] or 0) >= 3.5):
+            t3 = A.at[i, "touch3_at"] if "touch3_at" in A else None
+            if t3 is None or t3 != t3 or str(t3) in ("", "None"):
+                if A.at[i, "pct"] <= -LONG_SL_OLD:   # booked through −3 without a touch stamp → cannot place it
+                    v = None
+                else:
+                    continue                          # never touched −3: the −3 stop changes nothing
+            elif _is_stop(A.at[i, "close_reason"]) and A.at[i, "pct"] < -LONG_SL_OLD:
+                v = float(A.at[i, "pct"]) + (LONG_SL_LIVE - LONG_SL_OLD)
+            else:                                     # touched −3, recovered live: the −3 stop with the batch's median −4 stop slip (review)
+                v = -LONG_SL_OLD + slip3
         else:
             continue
         if v is None or v != v or (h is not None and h != h):

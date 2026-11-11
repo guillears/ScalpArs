@@ -20,7 +20,7 @@ Per sleeve (FRENZY_LITE · FRENZY_LITE_RETRY · FRENZY_LONG · FRENZY_WILLY · F
      fill's own exit price vs this ruler's price at its real close. Either off → ② is not read.
 
 EXIT ERAS: LITE / RETRY fills opened before the LITE C revert (DECISION_LOG 420 deploy + 10 min) booked the old +2 TP out of zone — their
-rows are split pre / post, never mixed (ENTRY × EXIT rule ④).
+rows are split pre / post, never mixed (ENTRY × EXIT rule ④). FRENZY_LONG likewise at the −4 → −3 revert (DECISION_LOG 524; re-based DL 526).
 
 Blocks: CURRENT BATCH (the newest orders export, fills opened ≥ sweep_separators.BATCH_START) and MASTER (reports/MASTER_POOL_stacked.csv,
 stack_keep rows, WR / avg on stack_pct = today's stack). ⚠ The master shows the hold PROFILE only: most FRENZY master rows are re-priced on
@@ -52,6 +52,7 @@ MASTER = os.path.join(ROOT, "reports", "MASTER_POOL_stacked.csv")
 SLEEVES = ("FRENZY_LITE", "FRENZY_LITE_RETRY", "FRENZY_LONG", "FRENZY_WILLY", "FRENZY_WILLY_HT")
 LITE_FAMILY = ("FRENZY_LITE", "FRENZY_LITE_RETRY")
 LITE_ERA_DL = 420                                                   # LITE C revert: +2 out of zone → +3 for every fill
+LONG_ERA_DL = 524                                                   # 🔁 (DL 526 re-base) FRENZY_LONG stop −4 → −3: rows split pre / post, never mixed
 CAP_KEY = {"FRENZY_LITE": "frenzy_max_hold_minutes", "FRENZY_LITE_RETRY": "frenzy_max_hold_minutes", "FRENZY_LONG": "frenzy_max_hold_minutes",
            "FRENZY_WILLY": "frenzy_willy_max_hold_minutes", "FRENZY_WILLY_HT": "frenzy_willy_max_hold_minutes"}
 XS = (15, 30, 60, 120, 240, 360, 480)
@@ -371,10 +372,10 @@ def sleeve_block(f, cap, title, account=None, priced=True):
     return L
 
 
-def _era_ms():
+def _era_ms(dl=LITE_ERA_DL, label="FRENZY duration LITE era split"):
     try:
         import scout_gatekit as GK
-        return GK.dl_deploy_ms(LITE_ERA_DL, lag_min=10, label="FRENZY duration LITE era split")
+        return GK.dl_deploy_ms(dl, lag_min=10, label=label)
     except Exception:
         return None
 
@@ -392,6 +393,7 @@ def main(argv):
         files = ex[-1:]
     cap = caps()
     era = _era_ms()
+    era_long = _era_ms(LONG_ERA_DL, "FRENZY duration LONG −3 era split")
     notes, bud = [], {}
     out = ["# ⏱ FRENZY MAX DURATION — per sleeve (DECISION_LOG 496 · plan ②z3)", "",
            "Live caps: " + " · ".join(f"{s} {_m(c)}" for s, c in cap.items())
@@ -430,6 +432,15 @@ def main(argv):
                     lbl = f"{pd.Timestamp(era, unit='ms'):%m-%d %H:%M} UTC"
                     parts = [(f"{s} — after the LITE C revert (opened ≥ {lbl}, today's +3 TP)", f[post.values].reset_index(drop=True)),
                              (f"{s} — BEFORE the LITE C revert (old +2 TP out of zone — another exit era, context only)", f[~post.values].reset_index(drop=True))]
+            if s == "FRENZY_LONG" and len(f):   # 🔁 (DL 526) re-based on the −3 stop of DL 524
+                if era_long is None:
+                    parts = [(f"{s} — the −4 stop era (context only: the −3 era starts at the DL {LONG_ERA_DL} commit, not in git yet)", f)]
+                else:
+                    _st = pd.to_numeric(f["entry_frenzy_stop_pct"], errors="coerce") if "entry_frenzy_stop_pct" in f else pd.Series(float("nan"), index=f.index)
+                    post = pd.Series([(to_ms(o) or 0) >= era_long and not (s4 >= 3.5) for o, s4 in zip(f.opened_at, _st)])   # the stop stamp is exact (review)
+                    lbl = f"{pd.Timestamp(era_long, unit='ms'):%m-%d %H:%M} UTC"
+                    parts = [(f"{s} — on today's −3 stop (opened ≥ {lbl}, stamped stop < 3.5)", f[post.values].reset_index(drop=True)),
+                             (f"{s} — BEFORE the −3 revert (the −4 stop of DL 317 — another exit era, context only)", f[~post.values].reset_index(drop=True))]
             for title, part in parts:
                 out += sleeve_block(part, cap[s], title, (acc, t0, t1, fill_key(part), xs1) if (len(part) and acc is not None) else None)
     else:

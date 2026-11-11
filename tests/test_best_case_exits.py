@@ -1,4 +1,4 @@
-"""Best-case view on TODAY's exits (DECISION_LOG 448): master FRENZY_LONG −3-era stops on the live −4 stop, current-batch LITE C +2
+"""Best-case view on TODAY's exits (DECISION_LOG 448): FRENZY_LONG on the live stop (−3 since DL 524; −4 re-walk only while −4 runs), current-batch LITE C +2
 take-profits on +3, current-batch Flatbase opened before the +5 / −10 switch on its walk — fills that ran today's exit keep their real
 result, and a fill the re-walk does not cover stops the run (never kept on the old exit)."""
 import os
@@ -36,7 +36,7 @@ def test_long_stop4_tp_and_deeper_stop(tmp_path, monkeypatch):
             ("2026-10-29 00:55:09", "EVAAUSDT", "FRENZY_LONG", -4.004819, "STOP_LOSS", 4.0),
             ("2026-10-12 10:00:00", "TIMEUSDT", "FRENZY_LONG", -1.2, "TIME_EXIT", None),          # not a stop: never re-walked
             ("2026-10-17 19:40:10", "ALTUSDT", "FRENZY_WILLY", -4.0, "STOP_LOSS", None)])
-    out, n = MX.reprice_long_stop4(M)
+    out, n = MX.reprice_long_stop4(M, live_stop=4.0)
     assert n == 2
     assert out.pct.tolist()[:3] == [1.5, pytest.approx(-4.018583), 1.5]   # TP books the line · STOP keeps its own slip, one point deeper
     assert out.pct.tolist()[3:] == [pytest.approx(-4.004819), -1.2, -4.0]  # −4 era, a non-stop loss, other sleeves: untouched
@@ -46,7 +46,7 @@ def test_long_stop4_tp_and_deeper_stop(tmp_path, monkeypatch):
 def test_long_stop4_missing_rewalk_stops(tmp_path, monkeypatch):
     monkeypatch.setattr(MX, "TOUCHES", _touches(tmp_path, [("REAL", "FRENZY_LONG", "2026-10-18T00:30:09|AGTUSDT|LONG", "TP")]))
     with pytest.raises(SystemExit):
-        MX.reprice_long_stop4(_M([("2026-10-15 01:00:00", "XUSDT", "FRENZY_LONG", -3.0, "STOP_LOSS", 3.0)]))
+        MX.reprice_long_stop4(_M([("2026-10-15 01:00:00", "XUSDT", "FRENZY_LONG", -3.0, "STOP_LOSS", 3.0)]), live_stop=4.0)
 
 
 def test_long_stop4_real_master_pinned():
@@ -56,10 +56,44 @@ def test_long_stop4_real_master_pinned():
     M["o"] = pd.to_datetime(M.opened_at, format="mixed", utc=True).dt.tz_convert(None)
     M["pct"] = pd.to_numeric(M.stack_pct, errors="coerce")
     M["sl"] = M.entry_strategy.astype(str)
-    out, n = MX.reprice_long_stop4(M)
+    out, n = MX.reprice_long_stop4(M, live_stop=4.0)
     g = out[out.sl == "FRENZY_LONG"].pct
     assert n == 9 and len(g) == 29
     assert round((g > 0).mean(), 3) == 0.862 and round(g.mean(), 2) == 0.74
+    out3, n3 = MX.reprice_long_stop4(M, live_stop=3.0)                     # (DL 524) live −3: the master keeps its traded −3 stops
+    g3 = out3[out3.sl == "FRENZY_LONG"].pct
+    assert n3 == 0 and round((g3 > 0).mean(), 3) == 0.69 and round(g3.mean(), 2) == 0.13
+
+
+def test_live_long_stop_reads_config(tmp_path):
+    import json
+    p = tmp_path / "c.json"
+    for th, want in (({"frenzy_long_stop_pct": 0.0, "frenzy_stop_pct": 3.0}, 3.0), ({"frenzy_long_stop_pct": 4.0, "frenzy_stop_pct": 3.0}, 4.0)):
+        p.write_text(json.dumps({"thresholds": th}))
+        assert MX.live_long_stop(str(p)) == want
+
+
+def test_b25_long_minus4_repriced_to_minus3(tmp_path, monkeypatch):
+    """(DL 524) a −4-era FRENZY_LONG fill on the live −3 stop: its own touch3 stamp decides — no touch = as traded · touch after the +1.5 TP
+    a −4 stop close = booked + 1 (own slip kept, even after a +1.5 peak — no TP credit) · touched then recovered = −3 + the median −4 stop slip ·
+    a −4 stop without a stamp stops."""
+    rows = [("2026-11-01T02:10:08", "2026-11-01T03:00:00", "FRENZY_TP", "POWRUSDT", "FRENZY_LONG", 1.51, 1.0, 100.0, 4.0, None, None),
+            ("2026-11-03T13:20:07", "2026-11-03T14:00:00", "STOP_LOSS", "BMTUSDT", "FRENZY_LONG", -4.02, -4.0, 100.0, 4.0, "2026-11-03T13:30:59", 0.21),
+            ("2026-11-06T23:30:07", "2026-11-07T01:00:00", "FRENZY_TP", "ONEUSDT", "FRENZY_LONG", 1.51, 1.5, 100.0, 4.0, "2026-11-06T23:32:03", 0.27),
+            ("2026-11-07T10:00:00", "2026-11-07T11:00:00", "STOP_LOSS", "XUSDT", "FRENZY_LONG", -4.01, -4.0, 100.0, 4.0, "2026-11-07T10:30:00", 1.6)]
+    cols = ["opened_at", "closed_at", "close_reason", "pair", "sl", "pct", "u", "notional_value", "entry_frenzy_stop_pct", "touch3_at", "touch3_peak_before"]
+    A = pd.DataFrame(rows, columns=cols); A["o"] = pd.to_datetime(A.opened_at)
+    cf = tmp_path / "cf.csv"; pd.DataFrame(columns=["opened_at", "pair", "entry_strategy", "booked", "cf_pct"]).to_csv(cf, index=False)
+    fb = tmp_path / "fb.csv"; pd.DataFrame(columns=["k", "pair", "now510", "h_now510"]).to_csv(fb, index=False)
+    monkeypatch.setattr(MX, "LITE_CF", str(cf))
+    out, moved = MX.reprice_b25_exits(A, str(fb), live_stop=3.0)
+    assert out.pct.tolist() == [1.51, pytest.approx(-3.02), pytest.approx(-3.015), pytest.approx(-3.01)] and moved == {"FRENZY_LONG": 3}   # slip = median(−0.02, −0.01)
+    assert out.u.tolist()[1] == pytest.approx(-3.02)                                       # $ follows the new % on its notional
+    same, mv = MX.reprice_b25_exits(A, str(fb), live_stop=4.0)                              # live −4: every −4 fill as traded
+    assert same.pct.tolist() == A.pct.tolist() and mv == {}
+    bad = A.iloc[[1]].assign(touch3_at=None)
+    with pytest.raises(SystemExit):
+        MX.reprice_b25_exits(bad, str(fb), live_stop=3.0)
 
 
 def _b25(tmp_path, monkeypatch, A, cf_rows, fb_rows):

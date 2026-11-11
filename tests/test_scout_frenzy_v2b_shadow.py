@@ -51,7 +51,7 @@ def test_pinned_constants():
     assert (S.V2B_STOP, S.V2B_CAP, S.V2B_LATE_MIN, S.V2B_LATE_TP) == (4.0, 90, 30.0, 0.25)
     assert (S.V2B_TH.frenzy_willy_tp_pct, S.V2B_TH.frenzy_willy_high_k_pct, S.V2B_TH.frenzy_willy_high_tp_max_pct) == (1.25, 1.0, 8.0)
     assert S.SHADOWS == {"LITE": ("V2B", "V2B_OWN", "TP4", "TP5", "TP6"), "LONG": ("V2B", "TP2", "TP3", "TP4")}
-    assert S.OWN_STOP == {"LITE": 3.0, "LONG": 4.0}
+    assert S.OWN_STOP == {"LITE": 3.0, "LONG": 3.0} and S.TODAY_LONG == (1.5, 3.0) and S.LONG_REBASE_DL == 526   # (DL 524 / 526) LONG on −3
     assert (S.GATE_N, S.GATE_DAYS, S.MIN_GAIN, S.ALPHA, S.DAY_SHARE, S.PARITY_TOL, S.PARITY_MIN) == (30, 10, 0.10, 0.05, 0.50, 0.15, 0.90)
     assert S.DIST_EDGES == (3.0, 6.0) and S.WEIGHT_STOP_5M <= 600 and S.MAX_REQ_5M <= 20
     assert S.STATE.startswith(os.path.join(ROOT, "reports")) and S.CSV_OUT.startswith(os.path.join(ROOT, "reports"))
@@ -174,16 +174,16 @@ def test_wired_into_the_opportunity_scout():
 
 # ─────────────────────────── review fixes (dual review, DL 379) ───────────────────────────
 def test_delta_is_vs_today_not_the_era_replica(tmp_path):
-    """a pre-283 LONG fill ran +3 / −3: parity uses that era exit, Δ uses TODAY's +1.5 / −4 and the shadows today's −4."""
+    """a pre-283 LONG fill ran +3 / −3: parity uses that era exit, Δ uses TODAY's +1.5 / −3 (DL 524) and the shadows today's −3."""
     te = ERA[283] - DAY
     r = _row(te, pnl=-3.0, close_reason="STOP_LOSS", entry_frenzy_stop_pct=None)
     ev = [(5, 1.6, 1.6), (10, -3.2, -3.2), (30, 2.5, 2.5)]                 # TODAY: +1.5 TP · era (+3 / −3): stop −3.2
     c = S.price(S.cohort(pd.DataFrame([r]), None)["ref"], T0, path_fn=lambda x: _P(int(x["te"]), ev), h_fn=lambda x: (1.045, "t"),
                 fetch=False, era=ERA)
     x = c.iloc[0]
-    assert (x.tp_live, x.stop_live, x.tp_today, x.stop_today) == (3.0, 3.0, 1.5, 4.0)
+    assert (x.tp_live, x.stop_live, x.tp_today, x.stop_today) == (3.0, 3.0, 1.5, 3.0)
     assert x.rep_era == pytest.approx(-3.2) and x.rep == pytest.approx(1.5)
-    assert x.sh_TP2 == pytest.approx(2.0) and x.d_TP2 == pytest.approx(0.5)            # TP2 at −4 survives the −3.2 dip
+    assert x.sh_TP2 == pytest.approx(-3.2) and x.d_TP2 == pytest.approx(-4.7)          # TP2 at −3 is stopped by the −3.2 dip (it survived at −4)
     assert S.today_exit(_row(te, "FRENZY_LITE", entry_frenzy_vol_mult=25)) == (3.0, 3.0)
     assert S.today_exit(_row(te, "FRENZY_LITE", entry_frenzy_vol_mult=5)) == (3.0, 3.0)   # LITE C off since DL 420
     assert S.today_exit(_row(te, "FRENZY_LITE_RETRY", frenzy_lite_tp_used=3.0, entry_frenzy_vol_mult=5)) == (3.0, 3.0)
@@ -286,3 +286,27 @@ def test_h_fetch_budget_weight_stop_and_cooldown(monkeypatch, tmp_path):
     b.n = b.max_req                                                        # request cap
     assert S._h_from_5m("ZZTESTUSDT", T0, T0 + S.BAR5, T0 + DAY, b) is None and "request cap" in b.stop
     assert S._h_from_5m("ZZTESTUSDT", T0, T0 + (LJ.KL_MAX + 5) * S.BAR5, T0 + DAY, S._Bud(True)) is None     # window > one page
+
+
+def test_long_rebase_only_in_the_live_auto_floor_run(tmp_path, monkeypatch):
+    """(DL 526) the live (floor_ms='auto') read moves LONG fills before the re-base commit, or stamped −4, to the reference block; LITE is
+    untouched; a re-base commit not in git → every LONG fill to reference. An explicit floor_ms = a hermetic read (no re-base)."""
+    rb = T0 + 5 * DAY
+    rows = pd.DataFrame([_row(T0 + DAY, pair="OLDUSDT"),                                          # LONG before the re-base → reference
+                         _row(T0 + 6 * DAY, pair="NEWUSDT", entry_frenzy_stop_pct=3.0),           # LONG on −3 after it → gate
+                         _row(T0 + 6 * DAY + HOUR, pair="S4USDT", entry_frenzy_stop_pct=4.0),     # after it but stamped −4 → reference
+                         _row(T0 + DAY, "FRENZY_LITE", pair="LITUSDT")])                          # LITE: never moved
+    seen, real_cohort = {}, S.cohort
+    def fake_cohort(raw, floor_ms):
+        out = real_cohort(raw, floor_ms)
+        seen["co"] = out
+        return out
+    monkeypatch.setattr(S, "cohort", fake_cohort)
+    monkeypatch.setattr(S, "price", lambda c, *a, **k: c.iloc[0:0])
+    for rb_ms, want in ((rb, {"NEWUSDT"}), (None, set())):
+        monkeypatch.setattr(S._GK, "dl_deploy_ms", lambda n, lag_min=10, label="", _rb=rb_ms: T0 if n == S.DL else _rb)
+        S.run(now_ms=T0 + 30 * DAY, raw=rows, floor_ms="auto", fetch=False, state_path=str(tmp_path / "s.json"), csv_path=str(tmp_path / "o.csv"))
+        g = seen["co"]["gate"]
+        assert set(g[g.sleeve == "LONG"].pair) == want and set(g[g.sleeve == "LITE"].pair) == {"LITUSDT"}
+    S.run(now_ms=T0 + 30 * DAY, raw=rows, floor_ms=T0, fetch=False, state_path=str(tmp_path / "s.json"), csv_path=str(tmp_path / "o.csv"))
+    assert set(seen["co"]["gate"].pair) == {"OLDUSDT", "NEWUSDT", "S4USDT", "LITUSDT"}             # explicit floor: no re-base

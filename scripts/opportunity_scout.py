@@ -1503,14 +1503,15 @@ def run():
     except Exception as _w5x_e:
         log(f"WILLY_5X line failed: {_w5x_e}")
         _rg_sec += ["## 👁 WILLY_5X", "", f"Unavailable this run ({str(_w5x_e)[:120]}).", ""]
-    try:                                               # 👁 Oct-30 LONG_ADX35 — FRENZY_LONG with coin ADX > 35, frozen expectancy bar (DECISION_LOG 418; forward)
+    # ⛔ LONG_ADX35 (DECISION_LOG 418) RETIRED 2026-11-11 (DECISION_LOG 526): its −4 exit era ended (DL 524) and it failed forward (zone 9 · −1.55 vs rest 6 · −2.18)
+    try:                                               # 👁 Nov-11 LONG_WEAK_FRENZY — FRENZY_LONG on a weak frenzy (volume ≤ 119×), frozen expectancy bar (DECISION_LOG 525; forward)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        import scout_long_adx35_watch as _lax
-        _rg_sec += _lax.run(now_ms)
-    except Exception as _lax_e:
-        log(f"LONG_ADX35 line failed: {_lax_e}")
-        _rg_sec += ["## 👁 LONG_ADX35", "", f"Unavailable this run ({str(_lax_e)[:120]}).", ""]
+        import scout_long_weak_frenzy_watch as _lwf
+        _rg_sec += _lwf.run(now_ms)
+    except Exception as _lwf_e:
+        log(f"LONG_WEAK_FRENZY line failed: {_lwf_e}")
+        _rg_sec += ["## 👁 LONG_WEAK_FRENZY", "", f"Unavailable this run ({str(_lwf_e)[:120]}).", ""]
     try:                                               # 👁 Oct-30 FB_CONFIRM — FLATBASE entered after a 4-hour close below the signal vs today's entry, frozen bar (DECISION_LOG 417; forward, budgeted public 5m)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -1583,6 +1584,14 @@ def run():
     except Exception as _lbe_e:
         log(f"LITE_BTC_EMA20_DOWN line failed: {_lbe_e}")
         _rg_sec += ["## 👁 LITE_BTC_EMA20_DOWN", "", f"Unavailable this run ({str(_lbe_e)[:120]}).", ""]
+    try:                                               # 👁 Nov-11 ML_BULL90 — momentum long with ≥ 90 % of coins bullish, frozen expectancy bar (DECISION_LOG 523; forward)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_ml_bull90_watch as _mb90
+        _rg_sec += _mb90.run(now_ms)
+    except Exception as _mb90_e:
+        log(f"ML_BULL90 line failed: {_mb90_e}")
+        _rg_sec += ["## 👁 ML_BULL90", "", f"Unavailable this run ({str(_mb90_e)[:120]}).", ""]
     try:                                               # 🏦 Nov-9 MEGACAP_READMIT — top-10 momentum longs with the mega-cap block OFF, frozen bar (DECISION_LOG 506; forward)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

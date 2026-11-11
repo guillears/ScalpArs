@@ -12,6 +12,7 @@ mp = os.path.join(SC, "master_flips.csv"); M.to_csv(mp, index=False)
 m, _ = ES.load([mp])
 m = m.merge(M.assign(_k=M.opened_at.astype(str).str.replace(" ", "T").str[:19])[["_k", "pair", "era", "stack_pct"]], on=["_k", "pair"], how="left").assign(src="MASTER")
 P = pd.concat([b, m], ignore_index=True); P["kk"] = P["_k"]
+USED = ("TP1.5", "TP2", "TP3")   # = best_dcr.EXITS: the exits the best case reads (TP2_SL3 is the scout's, NaN when still undecided)
 bud = ES.LS.Budget(max_req=400) if "max_req" in ES.LS.Budget.__init__.__code__.co_varnames else ES.LS.Budget()
 def early(r):
     """(11-06) a flip still inside its 12 h window: price it on the path so far when EVERY exit is already decided (TP or stop touched —
@@ -27,8 +28,8 @@ def early(r):
         return None
     Pn = ES.to_net(raw, r.direction, getattr(r, "fin", ES.TAKER))
     ex = ES.exits_on(Pn, r)
-    if any(v != v for v in ex.values()):
-        return None
+    if any(ex.get(x, np.nan) != ex.get(x, np.nan) for x in USED):   # (operator 11-11) only the exits the best case prices must be decided; TP2_SL3's wider
+        return None                                  # stop can stay undecided for 12 h on a CLOSED flip (AVAX 11-11) and is not read here
     return dict(status="PRICED", exits=ex, parity=ES.parity_ok(Pn, r.sl, r.pct, r.close_reason, r.tc), hz=hz, path=Pn)
 
 

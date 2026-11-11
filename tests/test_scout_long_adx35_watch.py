@@ -126,13 +126,12 @@ def test_damaged_and_corrupt_state_never_refreeze(tmp_path, monkeypatch):
     assert "frozen state corrupt" in out and "Frozen verdict" not in out and not st.exists()
 
 
-def test_not_evaluable_hook_and_registry(monkeypatch):
+def test_not_evaluable_retired_unhooked_and_registry(monkeypatch):
+    """(DL 526) LONG_ADX35 is RETIRED: still runnable standalone, but unhooked from the opportunity scout and classified NONE."""
     monkeypatch.setattr(W._GK, "dl_deploy_ms", lambda *a, **k: None)
     assert "NOT EVALUABLE" in "\n".join(W.run(now_ms=0, paths=[], state_path=None))
     src = open(os.path.join(ROOT, "scripts", "opportunity_scout.py")).read()
-    j = src.index("import scout_long_adx35_watch as _lax")
-    assert "_lax.run(now_ms)" in src[j:j + 200] and "except Exception as _lax_e" in src[j:j + 400]
+    assert "import scout_long_adx35_watch" not in src and "LONG_ADX35 (DECISION_LOG 418) RETIRED" in src
     import observe_registry as OR
-    era = OR.BOOKED["scout_long_adx35_watch.py"]
-    assert era == {"frenzy_tp_pct": 1.5, "frenzy_long_stop_pct": 4.0, "frenzy_max_hold_minutes": 720, "frenzy_lock_arm_pct": 0.0}
-    assert OR.diffs(era, OR.thresholds()) == []
+    assert "scout_long_adx35_watch.py" in OR.NONE and "scout_long_adx35_watch.py" not in OR.BOOKED
+    assert "scout_long_stop4.py" in OR.NONE and "scout_long_stop4.py" not in OR.EXIT

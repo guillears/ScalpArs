@@ -24,7 +24,7 @@ span = M.assign(o=pd.to_datetime(M.opened_at, format="mixed", utc=True).dt.tz_co
 M = M[(M.stack_keep == True) & (M.is_probe != True)].copy()
 M["o"] = pd.to_datetime(M.opened_at, format="mixed", utc=True).dt.tz_convert(None)
 M["pct"] = num(M, "stack_pct"); M["sl"] = sleeve(M); M["src"] = "MASTER"
-M, _n_long4 = MX.reprice_long_stop4(M)   # FRENZY_LONG master on the live −4 stop (master stack keeps the traded −3)
+M, _n_long4 = MX.reprice_long_stop4(M)   # FRENZY_LONG master on the LIVE stop: −4 re-walk only while −4 runs (DL 524: live −3 → as traded)
 SLEEVES = sorted(A.sl.unique())
 M = M[M.sl.isin(SLEEVES)]
 # ── zone inputs

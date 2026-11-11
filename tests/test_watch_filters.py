@@ -175,3 +175,15 @@ def test_master_flatbase_confirm_and_long_minus3():
     assert len(b) == 22 and round(p.sum(), 2) == 93.74
     l4 = M[(M.entry_strategy == "FRENZY_LONG") & (pd.to_numeric(M.entry_frenzy_stop_pct, errors="coerce") >= 3.5) & (M.stack_keep == True)]   # noqa: E712
     assert len(l4) == 7 and (pd.to_numeric(l4.stack_pct) >= -3.05).all() and np.isclose(pd.to_numeric(l4.stack_pct).sum(), 1.48, atol=0.01)
+
+
+def test_blocked_prune_timer_lives_in_its_loop():
+    """(DL 528 hotfix) the blocked-signal prune's timer is initialised in alt_corr_loop itself (it was set in orderbook_loop → UnboundLocalError,
+    caught and logged every 5 min, no prune)."""
+    import ast
+    tree = ast.parse(_src("main.py"))
+    fn = next(n for n in ast.walk(tree) if isinstance(n, ast.AsyncFunctionDef) and n.name == "alt_corr_loop")
+    body = ast.unparse(fn)
+    assert body.index("_last_bl_prune = 0.0") < body.index("time.time() - _last_bl_prune > 3600")
+    ob = next(n for n in ast.walk(tree) if isinstance(n, ast.AsyncFunctionDef) and n.name == "orderbook_loop")
+    assert "_last_bl_prune" not in ast.unparse(ob)

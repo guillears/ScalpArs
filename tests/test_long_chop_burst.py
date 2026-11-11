@@ -171,7 +171,11 @@ def test_master_sleeve_sizes_frozen_match_live_json():
     m = _re.search(r"_th = dict\((.*?)\)\s*\n\s*SLEEVE_SIZE_FROZEN", bld, _re.S)
     frozen = {k: float(v) for k, v in _re.findall(r"(\w+)=([0-9.]+)\b", m.group(1))}
     assert len(frozen) >= 17 and "surge_long_lev_mult" in frozen
-    KNOWN_NOT_REPRICED = {"bearrun_invest_mult"}   # DL 360 Bear-Run 0.2 invest — STACK_VERSION records it as NOT re-priced
+    KNOWN_NOT_REPRICED = {"bearrun_invest_mult",   # DL 360 Bear-Run 0.2 invest — STACK_VERSION records it as NOT re-priced
+                          # DL 528 C5 re-size (live LITE 0.85 · RETRY 0.95 × 0.35 · Flatbase 0.4 · WILLY 1.0): declared NOT re-priced in the
+                          # master — its % are size-free; the $ re-freeze (momentum-long margin rule included) is its own reviewed step
+                          "frenzy_lite_invest_mult", "frenzy_lite_retry_invest_mult", "frenzy_lite_retry_lev_mult", "flatbase_invest_mult",
+                          "frenzy_willy_invest_mult"}
     for k, v in frozen.items():
         if k in KNOWN_NOT_REPRICED:
             continue

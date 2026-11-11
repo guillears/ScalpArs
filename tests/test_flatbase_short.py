@@ -534,7 +534,9 @@ def _e2e_open(monkeypatch, n_open=4, seed_strategy="MOMENTUM", th_kw=None, **kw)
 def test_open_no_slot_momentum_size_stop_and_backstop(monkeypatch):
     """the DL 348 lane (flatbase_shares_bot_slots False — DL 515's revert switch): a full book (4/4) never refuses it, it holds no slot."""
     now_ms = int(__import__("time").time() * 1000)
-    r, blocks, n_slot, n_bot, ref, ref_m = _e2e_open(monkeypatch, th_kw=dict(flatbase_shares_bot_slots=False), flatbase_short=True, flatbase_bar_close_ms=now_ms,
+    r, blocks, n_slot, n_bot, ref, ref_m = _e2e_open(monkeypatch, th_kw=dict(flatbase_shares_bot_slots=False, flatbase_invest_mult=0.2, flatbase_lev_mult=0.25,
+                                                                         momentum_long_invest_mult=0.2, momentum_long_lev_mult=0.25),   # the size MECHANICS (pinned equal; live sizes: DL 528)
+                                                    flatbase_short=True, flatbase_bar_close_ms=now_ms,
                                                     entry_frenzy_spike_at=dt.datetime(2026, 10, 22, 8, 0), entry_flatbase_flat14_pct=31.5,
                                                     entry_flatbase_flat_cov_pct=100.0, entry_flatbase_off_peak_pct=-22.0,
                                                     entry_flatbase_peak_age_h=7.5)
@@ -649,7 +651,7 @@ def test_exit_and_protection_sites_wired():
 
 FIELDS = {"flatbase_confirm_hours": 24.0, "flatbase_max_open": 0, "flatbase_shares_bot_slots": True, "flatbase_short_enabled": True, "flatbase_flat_max": 0.444, "flatbase_min_vol_usd": 20e6, "flatbase_turnover_min": 1.0,
           "flatbase_tp_pct": 5.0, "flatbase_stop_pct": 10.0, "flatbase_max_hold_hours": 72.0, "flatbase_min_hours_after_spike": 4.0,
-          "flatbase_max_hours_after_spike": 96.0, "flatbase_invest_mult": 0.2, "flatbase_lev_mult": 0.25, "resting_tp_flatbase_enabled": True}
+          "flatbase_max_hours_after_spike": 96.0, "flatbase_invest_mult": 0.4, "flatbase_lev_mult": 0.25, "resting_tp_flatbase_enabled": True}   # 0.4: DL 528 C5
 
 
 def test_config_defaults_json_ui_and_exports():
@@ -658,7 +660,7 @@ def test_config_defaults_json_ui_and_exports():
     cfg = json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
     for k, v in FIELDS.items():
         assert mf[k].default == v and cfg[k] == v, k
-    assert cfg["momentum_long_invest_mult"] == cfg["flatbase_invest_mult"] and cfg["momentum_long_lev_mult"] == cfg["flatbase_lev_mult"]
+    assert cfg["flatbase_invest_mult"] == 0.4 and cfg["momentum_long_invest_mult"] == 1.0   # DL 528 C5: Flatbase has its own size (no longer the momentum-long one)
     src = open(os.path.join(ROOT, "config.py"), encoding="utf-8").read()
     assert "DECISION_LOG 348" in src and "DISCIPLINE OVERRIDE" in src
     html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()

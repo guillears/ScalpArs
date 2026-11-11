@@ -1619,8 +1619,8 @@ class SignalThresholds(BaseModel):
     # → +3.70 (3/3 won, 1 skipped); 2026 backtest +1.25 → +1.30 %/trade (total lower, holds longer) — the caveat. 🔒 Revert gate
     # (scripts/scout_flatbase_confirm_watch.py): first 8 confirmed fills avg < 0 OR ≥ 3 of them stopped → revert to 0. 0 = enter at the S4 bar.
     flatbase_confirm_hours: float = 24.0
-    flatbase_invest_mult: float = 0.2             # = momentum_long_invest_mult (DL 298): the margin share
-    flatbase_lev_mult: float = 0.25               # = momentum_long_lev_mult: × the STRONG_BUY leverage (20 × 0.25 = 5×)
+    flatbase_invest_mult: float = 0.4             # DL 528 C5 (5 % cap: one −10 stop ≈ 4.8 % of the account) · was 0.2 = momentum_long_invest_mult (DL 298): the margin share
+    flatbase_lev_mult: float = 0.25               # × the STRONG_BUY leverage (20 × 0.25 = 5×) — its own field (momentum_long_lev_mult is 0.5 since DL 528)
     # its OWN optional open cap ON TOP of the shared bot slots (DL 515), 0 = no cap. Operator decided 10 on 2026-10-22 (the DL 348 no-slot lane): the study's bursts reached 24 open
     # (≈ $1.5k margin ≈ 46 % of the account at today's size) — a refusal at the cap ends that episode (FLATBASE_MAX_OPEN).
     flatbase_max_open: int = 0                  # operator 2026-10-22: cap 10 open; DL 515 (operator 11-09): 0 = no cap of its own — FLATBASE shares the bot slots below

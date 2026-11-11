@@ -258,7 +258,7 @@ def test_config_json_ui_and_exports():
     mf = type(C.trading_config.thresholds).model_fields
     assert mf["frenzy_willy_ht_enabled"].default is True and mf["frenzy_willy_ht_size_frac"].default == 0.5 and mf["frenzy_willy_ht_max_slots"].default == 1
     cfg = json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
-    assert cfg["frenzy_willy_ht_enabled"] is True and cfg["frenzy_willy_ht_size_frac"] == 0.5 and cfg["frenzy_willy_ht_max_slots"] == 1
+    assert cfg["frenzy_willy_ht_enabled"] is True and cfg["frenzy_willy_ht_size_frac"] == 1.0 and cfg["frenzy_willy_ht_max_slots"] == 1   # DL 528 C5 (0.5 before)
     assert "DECISION_LOG 341" in open(os.path.join(ROOT, "config.py"), encoding="utf-8").read()
     html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
     for _id in ("config-fz-willy-ht-enabled", "config-fz-willy-ht-size-frac", "config-fz-willy-ht-slots"):
@@ -279,7 +279,7 @@ def test_config_json_ui_and_exports():
 def test_monitor_payload_runs():
     import main as M
     p = M._frenzy_monitor_payload()
-    assert p.get("willy_ht_enabled") is True and p.get("willy_ht_size_frac") == 0.5 and p.get("willy_ht_max_slots") == 1
+    assert p.get("willy_ht_enabled") is True and p.get("willy_ht_size_frac") == 1.0 and p.get("willy_ht_max_slots") == 1   # DL 528 C5
 
 
 def test_size_frac_reader_and_gate():

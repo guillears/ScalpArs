@@ -370,7 +370,7 @@ def test_size_resolves_to_its_own_fields():
     import config as C
     th = C.trading_config.thresholds
     pref = FRENZY_LITE_RETRY.lower()
-    assert pref == "frenzy_lite_retry" and getattr(th, f"{pref}_lev_mult") == 0.2 and getattr(th, f"{pref}_invest_mult") == 1.0
+    assert pref == "frenzy_lite_retry" and getattr(th, f"{pref}_lev_mult") == 0.35 and getattr(th, f"{pref}_invest_mult") == 0.95   # DL 528 C5
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
     assert "_sg_pref = _fz_es.lower() if _frenzy else" in eng
     assert 'FRENZY_LITE_RETRY if (_frenzy and frenzy_lite and frenzy_lite_retry) else "FRENZY_LITE" if (_frenzy and frenzy_lite)' in eng
@@ -413,7 +413,7 @@ def test_config_d11():
     assert mf["resting_tp_lite_retry_enabled"].default is True
     cfg = json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
     assert cfg["frenzy_lite_retry_enabled"] is True and cfg["frenzy_lite_retry_wait_minutes"] == 15.0
-    assert cfg["frenzy_lite_retry_invest_mult"] == 1.0 and cfg["frenzy_lite_retry_lev_mult"] == 0.2 and cfg["resting_tp_lite_retry_enabled"] is True
+    assert cfg["frenzy_lite_retry_invest_mult"] == 0.95 and cfg["frenzy_lite_retry_lev_mult"] == 0.35 and cfg["resting_tp_lite_retry_enabled"] is True   # DL 528 C5: 7× at 0.95
     assert "DECISION_LOG 316" in open(os.path.join(ROOT, "config.py"), encoding="utf-8").read()
     assert frenzy_lite_retry_config_errors(NS(frenzy_lite_retry_enabled=True, frenzy_lite_retry_wait_minutes=15)) == []
     assert frenzy_lite_retry_config_errors(NS(frenzy_lite_retry_enabled="yes", frenzy_lite_retry_wait_minutes=120, frenzy_lite_retry_lev_mult=-1)) and \

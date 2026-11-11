@@ -1159,6 +1159,22 @@ def main(allow_proxy=False):
         else:
             _bd["kept"] += 1
     print(f"FRENZY_BEARISH_DAY: {_bd}")
+    # 📏 (DECISION_LOG 528) TRIPWIRE: the C5 re-size put momentum longs at 1 × 10× (and LITE / RETRY / WILLY / HT / Flatbase at new margins); this
+    # builder still freezes the 11-11a sizes and its momentum-long margin rule cannot price a fill above the leverage it traded at → a momentum
+    # long opened after the DL 528 deploy would be priced wrong SILENTLY. Stop instead, until the $ re-freeze (a reviewed step) ships.
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_gatekit as _GK528
+        _c5_ms = _GK528.dl_deploy_ms(528, lag_min=0, label="C5 re-size (master tripwire)")
+    except Exception:
+        _c5_ms = None
+    if _c5_ms is not None:
+        _o528 = pd.to_datetime(df.opened_at.astype(str).str.replace(" ", "T").str[:19], format="ISO8601", errors="coerce")
+        _late = df[(_o528 >= pd.Timestamp(_c5_ms, unit="ms")) & df.entry_strategy.astype(str).isin(["MOMENTUM", "FRENZY_LITE", "FRENZY_LITE_RETRY",
+                                                                                                    "FRENZY_WILLY", "FRENZY_WILLY_HT", "FLATBASE_SHORT"])]
+        if len(_late):
+            raise SystemExit(f"DL 528 tripwire: {len(_late)} fill(s) opened after the C5 re-size (e.g. {_late.pair.iloc[0]} {str(_late.opened_at.iloc[0])[:19]}) — "
+                             "re-freeze the builder's sleeve sizes + the momentum-long margin rule (new STACK_VERSION) before archiving them")
     # 🧱 11-11a (DECISION_LOG 527): the ARMED WATCH-LINE FILTERS — the engine's own pure rules (services/watch_filters.py, frozen cuts) on the
     # stamps each fill carries (the very values the live gates read); an unreadable input never blocks (fail-open, as live). Two inputs older
     # fills do not carry are rebuilt the best case's way: the market-hot share (scout_ml_mkt_hot_watch — a fill's own entry_mkt_up4h_pct stamp

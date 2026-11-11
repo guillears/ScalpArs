@@ -888,7 +888,7 @@ def test_sizing_1x_1_0():
 
 # ── config / UI / exports (D11 · D12) ──────────────────────────────────────────────────────────────────────────────────────────────
 
-FIELDS = {"frenzy_willy_enabled": True, "frenzy_willy_entry_a": True, "frenzy_willy_entry_b": False, "frenzy_willy_invest_mult": 0.5,
+FIELDS = {"frenzy_willy_enabled": True, "frenzy_willy_entry_a": True, "frenzy_willy_entry_b": False, "frenzy_willy_invest_mult": 1.0,   # DL 528 C5 (0.5: DL 487)
           "frenzy_willy_lev_mult": 0.25, "frenzy_willy_tp_pct": 1.25, "frenzy_willy_stop_pct": 4.0, "frenzy_willy_max_hold_minutes": 90,
           "frenzy_willy_max_slots": 1, "frenzy_willy_red_max_wait_minutes": 60, "frenzy_willy_a_cold_max_bars": 3}
 

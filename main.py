@@ -267,7 +267,6 @@ async def orderbook_loop():
     from services.trading_engine import _frenzy_flags
     await asyncio.sleep(30)
     _last_prune = 0.0
-    _last_bl_prune = 0.0
     while not should_stop:
         try:
             _now = time.time()
@@ -402,7 +401,7 @@ async def alt_corr_loop():
     🧷 ml_matched_refusals table to ML_REFUSAL_RETENTION_DAYS. Never stops on an error."""
     from services.trading_engine import alt_corr_tracker
     await asyncio.sleep(5)
-    _last_prune = _last_uni_prune = 0.0
+    _last_prune = _last_uni_prune = _last_bl_prune = 0.0   # 🧱 (527) _last_bl_prune: the blocked-signal prune's own hourly timer
     _last_repair = time.time() - ALT_CORR_REPAIR_EVERY_S + ALT_CORR_REPAIR_BOOT_S   # 🩹 the first repair pass ≥ 10 min after boot
     _repair_task = None
     try:

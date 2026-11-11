@@ -157,5 +157,5 @@ def test_willy_priced_at_todays_exit():
          for a, p, c, lp in zip(cf.opened_at, cf.pair, cf.cf_pct, cf.live_pct)}
     assert len(w) >= 14 and all(abs(r.stack_pct - m[(str(r.opened_at)[:19], r.pair)]) < 1e-9 for r in w.itertuples())
     lev = max(1, int(round(20 * float(th["frenzy_willy_lev_mult"]))))            # today's size: 5× at DL 425
-    inv_m = float(th["frenzy_willy_invest_mult"])                                # DL 487: half margin at 5×
+    inv_m = 0.5                                                                  # DL 487: half margin at 5× — the master's FROZEN size (live 1.0 since DL 528, not re-priced)
     assert all(abs(r.stack_pnl - round(r.stack_pct / 100 * r.investment / (float(r.cell_multiplier or 1) or 1) * inv_m * lev, 2)) < 0.02 for r in w.itertuples())

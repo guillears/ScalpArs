@@ -188,3 +188,93 @@ def test_run_freezes_once_and_hook_registry(tmp_path, monkeypatch):
     import scout_frenzy_v2b_shadow as VB
     assert all(w[k] == getattr(VB.V2B_TH, k) for k in ("frenzy_willy_tp_pct", "frenzy_willy_high_k_pct", "frenzy_willy_high_tp_max_pct"))
     assert {r[0]: r[4] for r in OR.status()}["scout_blocked_filters.py"] == "OK"
+
+
+def _topup_env(tmp_path, monkeypatch):
+    import pandas as pd
+    import scout_blocked_filters as M
+    import scout_willy_timecap as WT
+    import scout_b1h_negflank as NF
+    monkeypatch.setattr(WT, "MY_CACHE", str(tmp_path))
+    monkeypatch.setattr(WT, "_K1", {})
+    monkeypatch.setattr(NF, "_cooldown_until", lambda: 0)
+    return M, WT, NF, pd
+
+
+def test_topup_1m_fetches_missing_bars_for_unpriced_frenzy_rows(tmp_path, monkeypatch):
+    """🧱 (DL 538) an unpriced blocked FRENZY / fade row gets its missing closed 1m bars up to NOW (not only after the 20 h window);
+    an existing cache file is merged (old rows kept)."""
+    M, WT, NF, pd = _topup_env(tmp_path, monkeypatch)
+    MIN = 60_000
+    te = 1_800_000_000_000 - 30 * MIN
+    first = (te // MIN) * MIN
+    (tmp_path / "1m").mkdir()
+    pd.DataFrame([(first - 5 * MIN, 9.0, 9.0, 9.0, 9.0)], columns=["open_time", "o", "h", "l", "c"]).to_csv(tmp_path / "1m" / "ABCUSDT.csv", index=False)
+    calls = []
+
+    def fake(sym, start, lim, now):
+        calls.append((sym, start, lim))
+        return pd.DataFrame([(start + i * MIN, 1.0, 1.0, 1.0, 1.0) for i in range(lim)], columns=["open_time", "o", "h", "l", "c"]), 10
+    monkeypatch.setattr(WT, "_fetch_1m", fake)
+    fz = pd.DataFrame([dict(te=te, pair="ABCUSDT", sleeve="FRENZY_LITE")])
+    notes = M._topup_1m(fz, M.th(), te + 25 * MIN, state_path=str(tmp_path / "a.json"))
+    assert calls == [("ABCUSDT", first, 25)]                 # the entry minute + 24 closed bars after it
+    k = WT._read_k1(str(tmp_path / "1m" / "ABCUSDT.csv"))
+    assert len(k) == 26 and (k.open_time == first - 5 * MIN).any() and "1 public kline call" in " ".join(notes)
+    monkeypatch.setattr(NF, "_cooldown_until", lambda: 10**15)
+    assert "cooldown" in M._topup_1m(fz, M.th(), te + 25 * MIN)[0]
+
+
+def test_topup_rate_limit_cap_and_final_misses(tmp_path, monkeypatch):
+    import urllib.error
+    M, WT, NF, pd = _topup_env(tmp_path, monkeypatch)
+    MIN = 60_000
+    te = 1_800_000_000_000 - 30 * MIN
+    rows = pd.DataFrame([dict(te=te + i * MIN, pair=f"P{i}USDT", sleeve="FRENZY_LITE") for i in range(25)])
+    calls = []
+
+    def limited(sym, start, lim, now):
+        calls.append(sym)
+        raise NF.RateLimited("Binance 429 — stopped")
+    monkeypatch.setattr(WT, "_fetch_1m", limited)
+    assert "stopped" in " ".join(M._topup_1m(rows, M.th(), te + 60 * MIN, state_path=str(tmp_path / "a.json"))) and len(calls) == 1
+    calls.clear()
+
+    def empty(sym, start, lim, now):
+        calls.append(sym)
+        return pd.DataFrame(columns=["open_time", "o", "h", "l", "c"]), 10
+    monkeypatch.setattr(WT, "_fetch_1m", empty)
+    sp = str(tmp_path / "b.json")
+    M._topup_1m(rows, M.th(), te + 60 * MIN, state_path=sp)
+    assert len(calls) == M.TOPUP_MAX_CALLS                   # the per-run cap
+    for _ in range(3):
+        M._topup_1m(rows.iloc[:1], M.th(), te + 60 * MIN, state_path=sp)
+    calls.clear()
+    M._topup_1m(rows.iloc[:1], M.th(), te + 60 * MIN, state_path=sp)
+    assert calls == []                                       # answered empty 3× → given up, never re-fetched
+
+    def gone(sym, start, lim, now):
+        calls.append(sym)
+        raise urllib.error.HTTPError("u", 400, "bad symbol", {}, None)
+    monkeypatch.setattr(WT, "_fetch_1m", gone)
+    sp2 = str(tmp_path / "c.json")
+    M._topup_1m(rows.iloc[1:2], M.th(), te + 60 * MIN, state_path=sp2)
+    calls.clear()
+    M._topup_1m(rows.iloc[1:2], M.th(), te + 60 * MIN, state_path=sp2)
+    assert calls == []                                       # a 4xx symbol is final
+
+
+def test_1m_price_is_provisional_until_ticks_cover(monkeypatch):
+    """🧱 (DL 538 review) a FRENZY row priced on 1m bars carries the era suffix and is re-priced once the tick archive covers its days."""
+    import scout_blocked_filters as M
+    import scout_willy_timecap as WT
+    te = int(pd.Timestamp("2026-11-11 20:55").value // 10**6)
+    ex = int(pd.Timestamp("2026-11-12 00:30").value // 10**6)
+    have = {"2026-11-11"}
+    monkeypatch.setattr(WT, "_tick_file", lambda pair, d: ("x" if d in have else None))
+    assert M._ticks_cover("IDOLUSDT", te, ex) is False                 # the exit day has no ticks yet
+    have.add("2026-11-12")
+    assert M._ticks_cover("IDOLUSDT", te, ex) is True
+    assert M.ERA_1M == "|1m"
+    src = open(M.__file__).read()
+    assert 'eras.get(sl, "") + (ERA_1M if _SRC.get(k) == "1m" else "")' in src and "return not _ticks_cover(pair, te, store[k][2])" in src

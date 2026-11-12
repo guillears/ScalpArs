@@ -124,3 +124,4 @@ reports/best_case/*_out.txt
 reports/SCOUT_LEV_STEP.json
 reports/SCOUT_BRACKET_KEEP.json
 reports/SCOUT_WILLY_HT_EXIT_LINES.json
+reports/.blocked_topup_attempts.json

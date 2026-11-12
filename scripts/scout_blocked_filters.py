@@ -298,6 +298,7 @@ def price_frenzy(r, t, now_ms, path_cache, tcache, bud):
         w = SV.walk_v2(P, x["tp"], sl=x["sl"], cap=x["cap"], late=None, ztp=None)
     if w["why"] == "UNRES":
         return None, "UNRES", _late_over(now_ms, end), None
+    _SRC[r.get("key")] = "1m" if int(P.get("n_bar", 0) or 0) > 0 else "ticks"   # (538 review) a 1m price is re-priced once ticks cover it
     return float(w["pct"]), str(w["why"]), "PRICED", _frenzy_exit_ms(P, x, T)
 
 
@@ -434,13 +435,130 @@ def save_store(store, path=STORE):
     os.replace(tmp, path)
 
 
+_SRC = {}                       # key → the path source of this run's FRENZY price ("1m" / "ticks")
+ERA_1M = "|1m"                  # stored-era suffix: a FRENZY price made on 1m bars (provisional — re-priced when ticks cover its window)
+
+
+def _ticks_cover(pair, te, exit_ms):
+    """True when the tick archive covers every UTC day from the entry to the stored exit (→ a 1m-priced row is re-priced on ticks)."""
+    try:
+        import scout_willy_timecap as WT
+        a = pd.Timestamp(int(te), unit="ms").normalize()
+        b = pd.Timestamp(int(exit_ms if exit_ms is not None else te), unit="ms").normalize()
+        return all(WT._tick_file(pair, f"{d:%Y-%m-%d}") is not None for d in pd.date_range(a, b, freq="D"))
+    except Exception:
+        return False
+
+
+TOPUP_MAX_CALLS, TOPUP_WEIGHT_STOP, TOPUP_BUDGET_S, TOPUP_EMPTY_MAX = 20, 800, 60.0, 3
+TOPUP_STATE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "reports", ".blocked_topup_attempts.json")
+_FETCH_NOTES = []
+
+
+def _topup_state(path=TOPUP_STATE):
+    try:
+        st = json.load(open(path)) if (path and os.path.exists(path)) else {}
+        return st if isinstance(st, dict) else {}
+    except Exception:
+        return {}
+
+
+def _topup_save(st, path=TOPUP_STATE):
+    if not path:
+        return
+    tmp = f"{path}.{os.getpid()}.tmp"
+    with open(tmp, "w") as fh:
+        json.dump(st, fh)
+    os.replace(tmp, path)
+
+
+def _topup_1m(fz, t, now_ms, state_path=TOPUP_STATE):
+    """🧱 (DECISION_LOG 538, operator 11-12: blocked trades sat PENDING ~20 h) the shared WT.ensure_data fetches a 1m page only once the WHOLE
+    hold window has closed (span = the longest cap of the batch — the fade's 1,200 min), so a blocked fill that would have hit its TP in
+    minutes waited a day. Here: every unpriced FRENZY / fade row gets its missing CLOSED 1m bars from its entry minute up to NOW (or its cap)
+    into the shared cache the walkers read (WT._append_1m → WT.MY_CACHE/1m) — public klines, ≤ TOPUP_MAX_CALLS calls and ≤ TOPUP_BUDGET_S
+    seconds per run, stop at weight ≥ TOPUP_WEIGHT_STOP or on a rate limit (WT._fetch_1m arms the shared cooldown and raises NF.RateLimited).
+    Review 538: a pair Binance answers 4xx for (delisted / not a futures symbol) is final; a window answered EMPTY TOPUP_EMPTY_MAX times is
+    given up (reports/.blocked_topup_attempts.json) — neither ever starves the newer rows. → notes. A path still short of an exit stays
+    PENDING (the walkers price only an exit seen in the data)."""
+    import time as _time
+    import urllib.error as _ue
+    import scout_willy_timecap as WT
+    import scout_b1h_negflank as NF
+    if NF._cooldown_until() > now_ms:
+        return ["1m top-up skipped: shared Binance cooldown active"]
+    st = _topup_state(state_path)
+    n, used, out, dirty = 0, 0, [], False
+    deadline = _time.monotonic() + TOPUP_BUDGET_S
+    for r in fz.sort_values("te").to_dict("records"):
+        te = int(r["te"]); first = (te // MIN) * MIN                     # the entry minute (the walkers never read earlier bars)
+        end = min(now_ms, te + (exit_of(r["sleeve"], t)["cap"] + 1) * MIN)
+        need_last = ((end // MIN) * MIN) - MIN                          # the last CLOSED bar we want
+        key = f"{r['pair']}|{te}"
+        rec = st.get(key, {})
+        if need_last < first or rec.get("final") or int(rec.get("empty", 0)) >= TOPUP_EMPTY_MAX:
+            continue
+        k = WT.load_1m(r["pair"])
+        have = set(k.open_time.astype("int64")) if len(k) else set()
+        miss = [x for x in range(first, need_last + 1, MIN) if x not in have]
+        if not miss:
+            continue
+        if n >= TOPUP_MAX_CALLS:
+            out.append(f"1m top-up cap {TOPUP_MAX_CALLS}/run reached — the rest next run"); break
+        if used >= TOPUP_WEIGHT_STOP:
+            out.append(f"1m top-up stopped: used weight {used} ≥ {TOPUP_WEIGHT_STOP}"); break
+        if _time.monotonic() > deadline:
+            out.append(f"1m top-up time budget {TOPUP_BUDGET_S:.0f} s used — the rest next run"); break
+        try:
+            new, used = WT._fetch_1m(r["pair"], miss[0], min(1500, (need_last - miss[0]) // MIN + 1), now_ms)
+            n += 1
+        except NF.RateLimited as e:
+            out.append(f"1m top-up stopped: {str(e)[:80]}"); break
+        except _ue.HTTPError as e:
+            n += 1
+            if e.code == 403:                                    # (538 review) Binance's temporary WAF block — stop, never "final"
+                out.append("1m top-up stopped: HTTP 403 (temporary block)"); break
+            if 400 <= e.code < 500:
+                st[key] = dict(rec, final=f"HTTP {e.code}"); dirty = True
+            out.append(f"1m top-up {r['pair']}: HTTP {e.code}")
+            continue
+        except TimeoutError as e:
+            out.append(f"1m top-up stopped: {str(e)[:60]}"); break
+        except Exception as e:
+            out.append(f"1m top-up {r['pair']}: {str(e)[:60]}")
+            continue
+        if new is None or not len(new) or not set(new.open_time.astype("int64")) & set(miss):
+            st[key] = dict(rec, empty=int(rec.get("empty", 0)) + 1); dirty = True
+            continue
+        WT._append_1m(r["pair"], new)
+    if dirty:
+        try:
+            _topup_save(st, state_path)
+        except Exception:
+            out.append("1m top-up attempt state not saved")
+    if n:
+        out.append(f"1m top-up: {n} public kline call(s)")
+    return out
+
+
 def price_all(B, now_ms, fetch=True, store_path=STORE):
     """→ B + pct / why / status / exit_ms. Final prices are cached with their exit era; pending ones (and another era's) re-priced."""
     t = th()
     store = load_store(store_path) if store_path else {}
     B = B.copy()
     eras = {sl: era_of(sl, t) for sl in set(B.sleeve)} if len(B) else {}
-    fresh = [k in store and store[k][3] == eras.get(sl) for k, sl in zip(B.key, B.sleeve)]
+    _SRC.clear()
+
+    def _fresh(k, sl, pair, te):
+        if k not in store:
+            return False
+        era = store[k][3]
+        if era == eras.get(sl):
+            return True
+        if era == eras.get(sl, "") + ERA_1M:                  # (538 review) a 1m price stays until the tick archive covers its window
+            return not _ticks_cover(pair, te, store[k][2])
+        return False
+    fresh = [_fresh(k, sl, pr, te) for k, sl, pr, te in zip(B.key, B.sleeve, B.pair, B.te)]
     res = {}
     todo = B[[not f for f in fresh]]
     fz = todo[todo.sleeve.isin(FRENZY + SHORTS)]
@@ -448,10 +566,14 @@ def price_all(B, now_ms, fetch=True, store_path=STORE):
         try:
             import scout_willy_timecap as WT
             span = max(exit_of(sl, t)["cap"] for sl in set(fz.sleeve))       # the fade cap (1,200 min) is longer than FRENZY's
-            WT.ensure_data(pd.DataFrame(dict(ts=pd.to_datetime(fz.te, unit="ms"), pair=fz.pair.values, te=fz.te.values, src=None)),
-                           span, now_ms, fetch=True, max_req=40)
-        except Exception:
-            pass
+            _FETCH_NOTES.extend(WT.ensure_data(pd.DataFrame(dict(ts=pd.to_datetime(fz.te, unit="ms"), pair=fz.pair.values, te=fz.te.values, src=None)),
+                                               span, now_ms, fetch=True, max_req=40) or [])
+        except Exception as _ed:
+            _FETCH_NOTES.append(f"shared path fetch failed: {str(_ed)[:80]}")   # review 538: never silent
+        try:
+            _FETCH_NOTES.extend(_topup_1m(fz, t, now_ms))
+        except Exception as _te:
+            _FETCH_NOTES.append(f"1m top-up failed: {str(_te)[:80]}")
     path_cache, tcache = {}, {}
     try:
         import scout_frenzy_v2b_shadow as VB
@@ -479,7 +601,7 @@ def price_all(B, now_ms, fetch=True, store_path=STORE):
         else:
             p, w, s, e = res.get(k, (None, "UNKNOWN_SLEEVE", "NOT_EVALUABLE", None))
             if s == "PRICED" and p is not None:
-                store[k] = (p, w, e, eras.get(sl, ""))
+                store[k] = (p, w, e, eras.get(sl, "") + (ERA_1M if _SRC.get(k) == "1m" else ""))
         pct.append(p); why.append(w); stt.append(s); exm.append(e)
     B["pct"], B["why"], B["status"], B["exit_ms"] = pct, why, stt, exm
     if store_path:
@@ -581,6 +703,7 @@ def run(now_ms=None, dec_paths=None, ord_paths=None, state_path=STATE, store_pat
     K0 = K0[K0.sleeve.isin(list(LINES))] if len(K0) else K0
     KR = kept_as_rows(K0) if len(K0) else kept_as_rows(pd.DataFrame())
     ALL = pd.concat([B0.assign(booked=np.nan), KR], ignore_index=True) if (len(B0) or len(KR)) else B0.assign(booked=[])
+    _FETCH_NOTES.clear()
     ALL = price_all(ALL, now_ms, fetch=fetch, store_path=store_path) if len(ALL) else ALL.assign(pct=[], why=[], status=[], exit_ms=[])
     isk = ALL.key.astype(str).str.startswith("K|")
     B = shadow_episodes(ALL[~isk].reset_index(drop=True))
@@ -592,7 +715,7 @@ def run(now_ms=None, dec_paths=None, ord_paths=None, state_path=STATE, store_pat
     L += [f"Cohort: BLOCKED rows refused ≥ {pd.Timestamp(since_ms, unit='ms'):%Y-%m-%d %H:%M} UTC · priced {int((B.status == 'PRICED').sum())} · "
           f"pending {int((B.status == 'PENDING').sum())} · not evaluable {int((B.status == 'NOT_EVALUABLE').sum())} · shadowed (inside an earlier "
           f"blocked shadow of the same pair) {n_sh} · kept fills {len(K)} (both sides 0.10 % slip against the trade, taker; blocked entry +8 s; "
-          f"each sleeve's live exit).", "",
+          f"each sleeve's live exit)." + (f" Data: {' · '.join(_FETCH_NOTES)}." if _FETCH_NOTES else ""), "",
           "| Sleeve · line | Blocked N | days | WR | avg % | Σ % | sole: N · avg | kept (same pricer): N · avg · booked avg | 🔒 revert gate |",
           "|---|---|---|---|---|---|---|---|---|"]
     changed = False

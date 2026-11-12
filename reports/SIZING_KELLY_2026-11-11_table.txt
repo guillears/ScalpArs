@@ -1,0 +1,29 @@
+# SIZING — before → after per sleeve (2026-11-11)
+Per-sleeve BEFORE → AFTER table for the sizing study (operator 11-11: "by sleeve WR, net $, avg %, daily compound, per sleeve and total",
+master and B25). Account $10,000 (C5 was engine-verified at $10k). BEFORE = today's C5 X. AFTER-a = cautious ¼-Kelly fitted on the WHOLE
+master (in-sample, includes B25 — the optimistic version) · AFTER-b = walk-forward: sizes from fills closed BEFORE B25 only (what the rule
+would really have set going into B25). WR and avg % do not depend on size (same trades) — only $ and the daily compound move.
+
+## MASTER (all batches, today's stack) — 145 calendar days · account $10,000
+| Sleeve | N | WR | Avg % | Loss/stop now → in-sample → walk-fwd | Net $ now | in-sample | walk-fwd | %/day now | in-sample | walk-fwd |
+|---|---|---|---|---|---|---|---|---|---|---|
+| ML | 123 | 76% | +0.24 | 2.9 → 5.9 → 5.3 % | +7,247 | +14,558 | +13,242 | +0.51 | +0.96 | +0.89 |
+| LITE | 50 | 62% | +0.74 | 4.9 → 2.0 → 0.0 % | +6,074 | +2,462 | +0 | +0.36 | +0.15 | +0.00 |
+| RETRY | 20 | 80% | +1.65 | 4.9 → 7.9 → 1.0 % | +5,383 | +8,655 | +1,099 | +0.35 | +0.54 | +0.07 |
+| WILLY | 17 | 100% | +1.93 | 4.9 → 8.0 → 1.0 % | +4,024 | +6,570 | +821 | +0.38 | +0.61 | +0.08 |
+| HT | 8 | 88% | +2.55 | 4.9 → 1.0 → 1.0 % | +2,502 | +511 | +511 | +0.17 | +0.03 | +0.03 |
+| FLAT | 23 | 96% | +4.29 | 4.9 → 8.0 → 1.0 % | +4,835 | +7,894 | +987 | +0.36 | +0.57 | +0.07 |
+| **TOTAL** | 241 | 78% | +1.05 | — | **+30,065** | **+40,650** | **+16,659** | **+2.09** | **+2.84** | **+1.15** |
+Worst day (% of account): now -8.5 · in-sample -17.0 · walk-forward -15.5. Net $ = simple sum at a flat $10k (no compounding); %/day = compounded over every calendar day.
+
+## B25 — 20 calendar days · account $10,000
+| Sleeve | N | WR | Avg % | Loss/stop now → in-sample → walk-fwd | Net $ now | in-sample | walk-fwd | %/day now | in-sample | walk-fwd |
+|---|---|---|---|---|---|---|---|---|---|---|
+| ML | 29 | 79% | +0.33 | 2.9 → 5.9 → 5.3 % | +2,297 | +4,614 | +4,197 | +1.07 | +2.03 | +1.87 |
+| LITE | 27 | 67% | +0.95 | 4.9 → 2.0 → 0.0 % | +4,171 | +1,690 | +0 | +1.98 | +0.83 | +0.00 |
+| RETRY | 19 | 79% | +1.73 | 4.9 → 7.9 → 1.0 % | +5,379 | +8,648 | +1,098 | +2.55 | +3.98 | +0.54 |
+| WILLY | 6 | 100% | +1.08 | 4.9 → 8.0 → 1.0 % | +796 | +1,300 | +162 | +0.40 | +0.64 | +0.08 |
+| HT | 8 | 88% | +2.55 | 4.9 → 1.0 → 1.0 % | +2,502 | +511 | +511 | +1.20 | +0.25 | +0.25 |
+| FLAT | 22 | 95% | +4.26 | 4.9 → 8.0 → 1.0 % | +4,593 | +7,499 | +937 | +2.26 | +3.65 | +0.47 |
+| **TOTAL** | 111 | 81% | +1.70 | — | **+19,738** | **+24,262** | **+6,905** | **+9.34** | **+11.35** | **+3.21** |
+Worst day (% of account): now -7.6 · in-sample -7.9 · walk-forward -5.7. Net $ = simple sum at a flat $10k (no compounding); %/day = compounded over every calendar day.

@@ -693,6 +693,10 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN sc_base_reason VARCHAR(24)"))
                 if 'sc_high_pct' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN sc_high_pct FLOAT"))
+                if 'entry_ml_risk_open_pct' not in columns:   # 📈 (DECISION_LOG 533)
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_ml_risk_open_pct FLOAT"))
+                if 'entry_ml_risk_shrunk_from' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_ml_risk_shrunk_from FLOAT"))
                 if 'exit_pair_ema20_ema50_gap_pct' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN exit_pair_ema20_ema50_gap_pct FLOAT"))
                 if 'exit_btc_trend_gap_pct' not in columns:

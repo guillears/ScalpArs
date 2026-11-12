@@ -497,6 +497,10 @@ class Order(Base):
     sc_base_pnl = Column(Float, nullable=True)
     sc_base_reason = Column(String(24), nullable=True)
     sc_high_pct = Column(Float, nullable=True)
+    # 📈 Nov-11 ML RISK CAP (DECISION_LOG 533): Σ open momentum-long risk at entry (% of the account, each open trade at its CURRENT exit line)
+    # — momentum longs only (NULL elsewhere by design); the cap's shrink / skip is judged on it + this trade's worst stop.
+    entry_ml_risk_open_pct = Column(Float, nullable=True)
+    entry_ml_risk_shrunk_from = Column(Float, nullable=True)   # the notional before the cap shrank it (NULL = not shrunk)
 
     # Liquidity-aware sizing observability (Jun 2, 2026 — see CLAUDE.md).
     # entry_desired_notional       = notional the order WOULD have opened at pre-cap (investment×leverage).

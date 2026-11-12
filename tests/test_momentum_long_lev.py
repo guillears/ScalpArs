@@ -92,7 +92,7 @@ def test_config_d11():
     import config as C
     assert C.SignalThresholds.model_fields["momentum_long_lev_mult"].default == 1.0          # code default = no change
     cfg = json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
-    assert cfg["momentum_long_lev_mult"] == 0.5 and cfg["momentum_long_invest_mult"] == 1.0   # live: 10× at 1.0 margin = ×10 the DL 298 notional (DL 528 C5; was 0.25 × 0.2)
+    assert cfg["momentum_long_lev_mult"] == 0.75 and cfg["momentum_long_invest_mult"] == 1.0   # live: 15× (DL 533; was 10×, DL 528) at 1.0 margin = ×10 the DL 298 notional (DL 528 C5; was 0.25 × 0.2)
     src = open(os.path.join(ROOT, "config.py"), encoding="utf-8").read()
     assert "DECISION_LOG 283" in src and "momentum_long_lev_mult: float = 1.0" in src and "No revert gate (de-risking)" in src and "DECISION_LOG 289" in src
 

@@ -1460,6 +1460,14 @@ def run():
     except Exception as _mla_e:
         log(f"ML_LEAD_A line failed: {_mla_e}")
         _rg_sec += ["## 👁 ML_LEAD_A", "", f"Unavailable this run ({str(_mla_e)[:120]}).", ""]
+    try:                                               # 📈 Nov-11 B26 LEVERAGE STEP — per-sleeve revert gates + the ML risk cap (DECISION_LOG 533; orders exports only)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_lev_step as _lvs
+        _rg_sec += _lvs.run(now_ms)
+    except Exception as _lvs_e:
+        log(f"LEV_STEP line failed: {_lvs_e}")
+        _rg_sec += ["## 📈 B26 LEVERAGE STEP", "", f"Unavailable this run ({str(_lvs_e)[:120]}).", ""]
     try:                                               # 🔂 Nov-11 ML SECOND CHANCE — the armed momentum-long exit's revert gate, booked vs today's-exit shadow (DECISION_LOG 532; stamped columns only)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

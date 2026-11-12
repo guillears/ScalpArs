@@ -31,7 +31,7 @@ def _write(tmp_path, df, stamp="2026-12-20_00-00-00"):
 def test_the_setting_is_5x_everywhere():
     with open(os.path.join(ROOT, "trading_config.json")) as f:
         c = json.load(f)
-    assert c.get("thresholds", c)["frenzy_willy_lev_mult"] == 0.25
+    assert c.get("thresholds", c)["frenzy_willy_lev_mult"] == 0.4   # 📈 DL 533: live 8× (the 5× line is retired, DL 530); code default + UI default stay 0.25
     from config import SignalThresholds
     assert SignalThresholds.model_fields["frenzy_willy_lev_mult"].default == 0.25
     html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()

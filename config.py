@@ -1620,7 +1620,7 @@ class SignalThresholds(BaseModel):
     # (scripts/scout_flatbase_confirm_watch.py): first 8 confirmed fills avg < 0 OR ≥ 3 of them stopped → revert to 0. 0 = enter at the S4 bar.
     flatbase_confirm_hours: float = 24.0
     flatbase_invest_mult: float = 0.4             # DL 528 C5 (5 % cap: one −10 stop ≈ 4.8 % of the account) · was 0.2 = momentum_long_invest_mult (DL 298): the margin share
-    flatbase_lev_mult: float = 0.25               # × the STRONG_BUY leverage (20 × 0.25 = 5×) — its own field (momentum_long_lev_mult is 0.5 since DL 528)
+    flatbase_lev_mult: float = 0.4                # × the STRONG_BUY leverage (20 × 0.4 = 8×, DL 533 B26 leverage step; was 0.25 = 5×) — its own field; 8× is its MAX (−10 stop, backstop 10.5 % ≤ the 11.04 % liquidation-share cap; liquidation ≈ 12.0 %)
     # its OWN optional open cap ON TOP of the shared bot slots (DL 515), 0 = no cap. Operator decided 10 on 2026-10-22 (the DL 348 no-slot lane): the study's bursts reached 24 open
     # (≈ $1.5k margin ≈ 46 % of the account at today's size) — a refusal at the cap ends that episode (FLATBASE_MAX_OPEN).
     flatbase_max_open: int = 0                  # operator 2026-10-22: cap 10 open; DL 515 (operator 11-09): 0 = no cap of its own — FLATBASE shares the bot slots below
@@ -1793,6 +1793,12 @@ class SignalThresholds(BaseModel):
     ml_second_chance_floor_pct: float = 0.30      # SC_FLOOR = L − this (the most it can cost vs today's exit, gaps aside)
     ml_second_chance_trail_atr_mult: float = 1.0  # SC_TRAIL giveback = this × entry ATR % from the post-trigger high (½ and 1.5× were worse)
     ml_second_chance_clock_min: float = 180.0     # SC_CLOCK: trade age (min from entry) — the study's clock (today's no-expansion window)
+    # 📈 Nov-11 MOMENTUM LONG RISK CAP (DECISION_LOG 533, services/ml_risk_cap.py) — shipped WITH the B26 leverage step (ML 10× → 15×): at a new
+    # MOMENTUM LONG entry, Σ open momentum longs' risk at their CURRENT exit line (0 once the trail is armed / in the second chance; the
+    # recovery-hold hard stop while held; else the widest pre-BE stop: max(conf stop, signal-active stop, 1.5 × ATR) clamped at −1.2) + this
+    # trade at its own worst stop > this % of the account (the slot-sizing total) → shrink to fit; below the min margin → skip (ML_RISK_CAP,
+    # blocked-signal record). Master: ≥ 3 open at entry = 3 of 123 fills (33 % · −0.45). 0 = off (the JSON arms it).
+    ml_risk_cap_pct: float = 0.0
     # May 23: ATR-SL widening floor cap. The sl_atr_multiplier formula
     # produces effective_sl = -(atr × mult). On extreme-ATR pairs (e.g.,
     # ATR 2.3%) this gives -3.47% — effectively no SL. Today's COSUSDT

@@ -28,6 +28,7 @@ from services.binance_service import binance_service, is_leverage_blocked
 from services.indicators import closed_ema_gap_pct, last_closed_bar_ret_pct, closed_wilder_ndi, fade_laggard_block, calculate_indicators, get_signal, check_exit_conditions, calculate_pnl, determine_macro_regime, is_signal_direction_active, gap_expand_marginal, gap_expand_flat, gap_min_band, _rsi_adx_block_rule, rsiceil_band, adxmax_band, adxmax2_band, gminflat_band
 from services.regime import classify_btc_regime
 from services.ml_second_chance import sc_params, sc_in_zone, sc_base_reason, sc_phase2_exit, net_pnl_pct as _sc_net_pnl_pct, SC_URGENT
+from services.ml_risk_cap import worst_stop_pct as _mlrc_worst_stop, open_trade_risk_pct as _mlrc_trade_risk, open_risk_pct_of_account as _mlrc_open_pct, fit_notional as _mlrc_fit
 from services.surge import surge_trigger, surge_entry_open, surge_pair_pick, surge_tripwire, surge_live_readings, wilder_atr_pct, surge_gvol_gate, surge_long_ema_gap_block, SURGE_LONG_EMA_GAP, SURGE_LONG_EMA_GAP_FAILOPEN
 from services.orderbook_stats import orderbook_metrics, OB_FIELDS
 from services.frenzy import frenzy_catchup_check, frenzy_catchup_moved, frenzy_vol24_at, FRENZY_CATCHUP_STALE, frenzy_tp_for
@@ -4379,7 +4380,7 @@ class TradingEngine:
         'entry_bracket_max_leverage', 'entry_bracket_cap_notional')
     STAMP_SLEEVE_PREFIXES = ('entry_frenzy_', 'entry_flatbase_', 'entry_surge_', 'entry_br_', 'entry_bear_', 'entry_willy_', 'entry_book_')
     STAMP_SLEEVE_ONLY = ('entry_order_lag_s', 'entry_fill_vs_book_pct', 'entry_chop_burst_prior_fill_s', 'entry_long_heat_flags',
-                         'entry_pair_rank', 'entry_macro_trend')   # sleeve / path specific — NULL elsewhere is by design
+                         'entry_pair_rank', 'entry_macro_trend', 'entry_ml_risk_open_pct', 'entry_ml_risk_shrunk_from')   # sleeve / path specific — NULL elsewhere is by design
     STAMP_BOOKING = ('entry_price', 'entry_fee', 'entry_strategy', 'entry_order_type')
     STAMP_LEGACY = ('entry_btc_regime_started_at',)   # no code path writes it (0 % on every sleeve) — kept for old CSVs, never required
     STAMP_BEST_EFFORT = ('entry_mcap_usd', 'entry_cmc_rank', 'entry_vol_mcap_ratio', 'entry_pair_1d_ndi', 'entry_funding_rate',
@@ -14768,6 +14769,69 @@ class TradingEngine:
                                 f"{_lev_eff:g}× (pair max {_brk_max_lev:g}×, cap at {leverage:g}× ${_brk_cap:,.0f}; margin ${investment:.2f} → ${_new_inv:.2f})")
                     investment, leverage, _brk_capped = _new_inv, (int(_lev_eff) if float(_lev_eff).is_integer() else _lev_eff), True
 
+        # 📈 (DECISION_LOG 533) MOMENTUM LONG RISK CAP: Σ open momentum longs' risk at their CURRENT exit line + this trade at its worst stop
+        # ≤ ml_risk_cap_pct of the account (the slot-sizing total) → shrink to fit; below the minimum margin → skip (counted + recorded as a
+        # blocked signal for the pricer). services/ml_risk_cap.py. 0 = off. Fail-open (an error never blocks a trade). Stamp entry_ml_risk_open_pct.
+        _mlrc_open = None
+        _mlrc_from = None
+        _mlrc_probe = bool(gap_probe or gapmin_probe or slopegate_probe or rsiadx_probe or deadband_probe or rsiceil_probe or gminflat_probe
+                           or adxmax_probe or dbdown_probe or adxmax2_probe or deepgap_probe or majors_probe)   # review: probes are never capped (full size only)
+        if _wh_es == "MOMENTUM" and direction == "LONG" and investment > 0 and leverage > 0 and not _mlrc_probe:
+            try:
+                _mlrc_th = config.trading_config.thresholds
+                _mlrc_cap = float(getattr(_mlrc_th, 'ml_risk_cap_pct', 0.0) or 0.0)
+                _mlrc_acct = float(total_portfolio or available or 0.0)
+                _mlrc_mult = getattr(_mlrc_th, 'sl_atr_multiplier', 0.0); _mlrc_floor = getattr(_mlrc_th, 'sl_atr_widen_floor_pct', 0.0)
+                # an armed runner counts 0 only while its +lock floor is really live (trail on, BE ratchet on with a lock ≥ 0, no ATR minimum);
+                # otherwise the arm level is set out of reach and the trade counts at its worst stop (review)
+                _mlrc_lock_live = (bool(getattr(_mlrc_th, 'runner_trail_enabled', False)) and bool(getattr(_mlrc_th, 'runner_trail_be_ratchet_enabled', False))
+                                   and float(getattr(_mlrc_th, 'runner_trail_be_lock_pct', 0.0) or 0.0) >= 0
+                                   and float(getattr(_mlrc_th, 'runner_trail_atr_min', 0.0) or 0.0) <= 0)
+                _mlrc_arm = float(getattr(_mlrc_th, 'runner_trail_arm_peak', 0.40) or 0.40) if _mlrc_lock_live else float('inf')
+                _mlrc_scf = sc_params(_mlrc_th)['floor']
+
+                def _mlrc_ws(_conf, _atr):
+                    _cc = config.trading_config.confidence_levels.get(_conf)
+                    return _mlrc_worst_stop(getattr(_cc, 'stop_loss', -0.70), getattr(_cc, 'signal_active_sl', None), _atr, _mlrc_mult, _mlrc_floor,
+                                            _quiet_sl_for('LONG', 'MOMENTUM', _atr))
+                async with _cache_lock:
+                    _mlrc_snap = [dict(o) for _l in _open_orders_cache.values() for o in _l]
+                _mlrc_rows = []
+                for _o in _mlrc_snap:
+                    if (_o.get('entry_strategy') or '') != 'MOMENTUM' or _o.get('direction') != 'LONG':
+                        continue
+                    _st = _SC_STATE.get(_o.get('id'))
+                    if _st is None and _o.get('sc_armed_at') is not None and _o.get('sc_base_pnl') is not None:   # after a restart, from the cache stamps
+                        _st = {'L': float(_o['sc_base_pnl'])}
+                    _rh_at = _o.get('rh_triggered_at')
+                    _rh_line = (_o.get('rh_hard_stop_pct') if (_rh_at is not None and rh_in_hold(_mlrc_th, _rh_at, _o.get('peak_pnl') or 0.0)) else None)
+                    _r = _mlrc_trade_risk(sc_line=(_st['L'] - _mlrc_scf) if _st else None, rh_hard_stop=_rh_line,
+                                          peak=_o.get('peak_pnl'), arm=_mlrc_arm, worst_stop=_mlrc_ws(_o.get('confidence'), _o.get('entry_atr_pct')))
+                    _mlrc_rows.append(((_o.get('entry_price') or 0.0) * (_o.get('quantity') or 0.0), _r))
+                _mlrc_open = round(_mlrc_open_pct(_mlrc_rows, _mlrc_acct), 4)
+                _mlrc_new_ws = _mlrc_ws(confidence, entry_atr_pct)
+                _mlrc_ok = _mlrc_fit(investment * leverage, _mlrc_new_ws, _mlrc_open, _mlrc_acct, _mlrc_cap)
+                if _mlrc_ok is not None and _mlrc_ok < investment * leverage - 0.01:
+                    _mlrc_inv = _mlrc_ok / leverage
+                    if _mlrc_inv < config.trading_config.investment.min_investment_size * _ml_min_scale:
+                        logger.warning(f"[ML_RISK_CAP] {pair} LONG: open momentum-long risk {_mlrc_open:.2f} % + this trade "
+                                       f"{investment * leverage * _mlrc_new_ws / 100 / _mlrc_acct * 100:.2f} % > cap {_mlrc_cap:g} % and no room "
+                                       f"above the minimum → skip")
+                        self._record_filter_block("ML_RISK_CAP", direction)
+                        try:
+                            _rc_ef = {k: v for k, v in locals().items() if k.startswith('entry_') and not callable(v)}
+                            _rc_ef.update(mkt_up4h_stamp())
+                            self._blocked_record("MOMENTUM_LONG", direction, pair, current_price, ["ML_RISK_CAP"], _rc_ef)
+                        except Exception:
+                            pass
+                        return None
+                    logger.info(f"[ML_RISK_CAP] {pair} LONG: open momentum-long risk {_mlrc_open:.2f} % of ${_mlrc_acct:,.0f} → notional "
+                                f"${investment * leverage:,.0f} → ${_mlrc_ok:,.0f} (worst stop {_mlrc_new_ws:.2f} %, cap {_mlrc_cap:g} %)")
+                    _mlrc_from = round(investment * leverage, 2)   # stamped (entry_ml_risk_shrunk_from) — a shrink is not a block
+                    investment = _mlrc_inv
+            except Exception as _mlrc_err:
+                logger.error(f"[ML_RISK_CAP] {pair}: {_mlrc_err} — no cap applied (fail-open)")
+
         logger.info(f"[TRADE] {pair}: {direction} {confidence} - Investment: ${investment:.2f}, Leverage: {leverage}x"
                     + (f" · momentum-long margin ×{_ml_min_scale:.3g} (paired {_ml_ref_lev:g}x at the full margin, DECISION_LOG 298)" if _ml_ref_lev else ""))
         
@@ -15310,6 +15374,8 @@ class TradingEngine:
             entry_liquidity_cap_notional=_liq_cap,
             liquidity_capped=_liq_capped,
             entry_bracket_max_leverage=_brk_max_lev, entry_bracket_cap_notional=_brk_cap, bracket_capped=_brk_capped,   # 🪜 Oct-1
+            entry_ml_risk_open_pct=_mlrc_open,   # 📈 (DECISION_LOG 533) open momentum-long risk at entry (% of account; momentum longs only)
+            entry_ml_risk_shrunk_from=_mlrc_from,   # 📈 (533) the notional before the ML risk cap shrank it (NULL = not shrunk)
             entry_btc_rsi_closed=(_current_btc_rsi_closed if _rh_rsi_fresh(_current_btc_rsi_closed_bar_ts, _leash_time.time() * 1000.0) else None),   # 🩹 Oct-2
             entry_slippage_pct=_entry_slippage_pct,
             momentum_long_ref_leverage=_ml_ref_lev,   # ⚖️ (DECISION_LOG 298) the paired leverage at the full margin — the master / screen size rule reads it

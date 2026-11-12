@@ -118,7 +118,7 @@ def exit_of(sleeve, t):
                     late=float(t.get("frenzy_willy_late_tp_minutes", 30) or 30), ltp=float(t.get("frenzy_willy_late_tp_pct", 0.25) or 0.25))
     if sleeve == "SPIKE_FADE":
         return dict(sl=float(t.get("spike_fade_sl_pct", -1.5) or -1.5), cap=int(t.get("max_holding_time_minutes", 1200) or 1200))
-    if sleeve == "MOMENTUM_LONG":
+    if sleeve in ML_SLEEVES:
         try:
             import scout_ml_matched_refusals as MM
             return dict(cap=int(MM._rp().HORIZON_MS // MIN))           # the replica's own horizon
@@ -161,10 +161,12 @@ def load_blocked(paths=None, since_ms=None):
         except Exception:
             snap = {}
         te = int(r.t_ms) + LAT_MS
-        out.append(dict(pair=str(r.pair), sleeve=str(r.bl_sleeve), direction="SHORT" if short else "LONG", t_ms=int(r.t_ms), te=te, price=px,
+        _lines = str(r.bl_lines if pd.notna(r.bl_lines) and str(r.bl_lines) else (r.gate if pd.notna(r.gate) else ""))
+        _sl = ML_RISKCAP if (str(r.bl_sleeve) == "MOMENTUM_LONG" and "ML_RISK_CAP" in _lines) else str(r.bl_sleeve)   # 📈 (533) own label
+        out.append(dict(pair=str(r.pair), sleeve=_sl, direction="SHORT" if short else "LONG", t_ms=int(r.t_ms), te=te, price=px,
                         E=px * (1 - SLIP / 100 if short else 1 + SLIP / 100), lines=str(r.bl_lines if pd.notna(r.bl_lines) and str(r.bl_lines) else (r.gate if pd.notna(r.gate) else "")),
                         sole=str(r.bl_sole).lower() in ("true", "1", "1.0"), snap=snap, bar=r.bar,
-                        day=pd.Timestamp(te, unit="ms").strftime("%Y-%m-%d"), key=f"{r.pair}|{r.bl_sleeve}|{r.bar}"))
+                        day=pd.Timestamp(te, unit="ms").strftime("%Y-%m-%d"), key=f"{r.pair}|{_sl}|{r.bar}"))
     return pd.DataFrame(out, columns=cols)
 
 
@@ -368,7 +370,7 @@ def price_ml(rows, now_ms, fetch=True):
 
 def era_of(sleeve, t):
     """the exit a stored price was made on — a different era = re-price (never mix two exits in one gate)."""
-    if sleeve == "MOMENTUM_LONG":
+    if sleeve in ML_SLEEVES:
         try:
             import scout_ml_matched_refusals as MM
             import hashlib
@@ -446,7 +448,7 @@ def price_all(B, now_ms, fetch=True, store_path=STORE):
                 res[r["key"]] = price_fade(r, t, now_ms)
         except Exception as e:
             res[r["key"]] = (None, f"ERR:{str(e)[:60]}", _late_over(now_ms, int(r["te"]) + (exit_of(r["sleeve"], t)["cap"] + 1) * MIN), None)
-    ml = todo[todo.sleeve == "MOMENTUM_LONG"]
+    ml = todo[todo.sleeve.isin(ML_SLEEVES)]
     try:
         res.update(price_ml(ml.to_dict("records"), now_ms, fetch=fetch))
     except Exception as e:
@@ -509,7 +511,7 @@ def gate_read(B, K, line):
     pend = B[(B.status == "PENDING") & (B.te <= end)]  # ANY pending refusal of the sleeve (review: a pending row of another line can
     if len(pend):                                    # shadow this line's refusals on its pair) → the first 15 REFUSALS are not decidable yet
         return "COLLECTING", f"{N_MIN} priced, but {len(pend)} earlier refusal(s) still pending", g
-    sleeves = set(pre.sleeve)
+    sleeves = {KEPT_AS.get(x, x) for x in set(pre.sleeve)}   # 📈 (533) the risk-cap label compares against the momentum longs kept
     kw = K[K.sleeve.isin(sleeves) & (K.te <= end)] if len(K) and "status" in K else K.iloc[0:0]
     k = kw[kw.status == "PRICED"] if len(kw) else kw
     if len(kw[kw.status == "PENDING"]) if len(kw) else 0:
@@ -524,9 +526,16 @@ def gate_read(B, K, line):
     return "KEEP", det, pre
 
 
+# 📈 (DECISION_LOG 533) the ML risk cap's skips get their OWN label (load_blocked): priced exactly as a momentum long, judged against the kept
+# momentum longs, but never in the MOMENTUM_LONG shadow / pending set (a risk-cap skip must not shadow or hold the ML_MKT_HOT / ML_BULL90 gates)
+ML_RISKCAP = "MOMENTUM_LONG_RISKCAP"
+ML_SLEEVES = ("MOMENTUM_LONG", ML_RISKCAP)
+KEPT_AS = {ML_RISKCAP: "MOMENTUM_LONG"}
 LINES = {"FRENZY_WILLY": ("WILLY_GAP", "WILLY_FAILED_SPIKE"), "FRENZY_WILLY_HT": ("WILLY_FAILED_SPIKE",), "FRENZY_LITE_RETRY": ("RETRY_BTC1H",),
          "FRENZY_LITE": ("LITE_BTC_EMA20_DOWN",), "FRENZY_LONG": ("LONG_WEAK_FRENZY",), "SPIKE_FADE": ("FADE_LATE_WEAK",),
-         "MOMENTUM_LONG": ("ML_MKT_HOT", "ML_BULL90")}
+         "MOMENTUM_LONG": ("ML_MKT_HOT", "ML_BULL90"),
+         ML_RISKCAP: ("ML_RISK_CAP",)}   # 📈 (533) a RISK limiter, not an edge filter: its "REVERT CANDIDATE" reads as what the cap COST
+# (skipped trades still profitable) — weigh it against the drawdown it avoided; never an automatic revert
 
 
 def _load_state(path):
@@ -571,7 +580,7 @@ def run(now_ms=None, dec_paths=None, ord_paths=None, state_path=STATE, store_pat
     changed = False
     for sl, lines in LINES.items():
         Bs = B[B.sleeve == sl] if len(B) else B
-        Ks = K[K.sleeve == sl] if len(K) else K
+        Ks = K[K.sleeve == KEPT_AS.get(sl, sl)] if len(K) else K
         Kk = Ks[Ks.status == "PRICED"] if len(Ks) else Ks
         kept = f"{len(Kk)} · {Kk.pct.mean():+.3f} · {pd.to_numeric(Kk.booked, errors='coerce').mean():+.3f}" if len(Kk) else "0"
         for ln in lines:

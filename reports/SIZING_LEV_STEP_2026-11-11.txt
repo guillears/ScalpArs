@@ -1,0 +1,38 @@
+# LEVERAGE STEP — Momentum Long 15× · WILLY 8× · RETRY 10× · Flatbase 8× (2026-11-11)
+Leverage step proposal (operator 11-11): Momentum Long 10× → 15× · WILLY 5× → 8× · RETRY 7× → 10× · Flatbase 5× → 8× (HT, LITE unchanged) —
+per sleeve before → after on B25 and master (today's stack, $10,000 account, money in unchanged → exposure × new/old leverage).
+WR and avg % are the same trades; $, loss per stop, daily compound and worst day move. One row per step + all together.
+
+## B25 — 20 days · $10,000 account
+| Sleeve | N | WR | Avg % | Loss per stop now → new | Net $ now → new | %/day now → new |
+|---|---|---|---|---|---|---|
+| Momentum Long 10→15× | 29 | 79% | +0.33 | 2.9 → 4.4 % | +2,297 → +3,445 | +1.07 → +1.56 |
+| LITE (8×, unchanged) | 27 | 67% | +0.95 | 4.9 → 4.9 % | +4,171 → +4,171 | +1.98 → +1.98 |
+| LITE RETRY 7→10× | 19 | 79% | +1.73 | 4.9 → 7.0 % | +5,379 → +7,684 | +2.55 → +3.56 |
+| WILLY 5→8× | 6 | 100% | +1.08 | 4.9 → 7.8 % | +796 → +1,274 | +0.40 → +0.63 |
+| WILLY HT (5×, unchanged) | 8 | 88% | +2.55 | 4.9 → 4.9 % | +2,502 → +2,502 | +1.20 → +1.20 |
+| Flatbase 5→8× | 22 | 95% | +4.26 | 4.9 → 7.8 % | +4,593 → +7,349 | +2.26 → +3.58 |
+| **TOTAL** | 111 | 81% | +1.70 | — | **+19,738 → +26,425** | **+9.34 → +12.36** |
+Worst day -7.6 % → -8.2 % · max drawdown -7.9 % → -9.4 % · days below −5 %: 1 → 3
+One step at a time (total %/day, the others at today's size):
+  Momentum Long 10→15×: +9.34 → +9.80 %/day · worst day -7.6 %
+  WILLY 5→8×: +9.34 → +9.57 %/day · worst day -7.6 %
+  LITE RETRY 7→10×: +9.34 → +10.36 %/day · worst day -9.7 %
+  Flatbase 5→8×: +9.34 → +10.64 %/day · worst day -7.9 %
+
+## MASTER (all batches) — 145 days · $10,000 account
+| Sleeve | N | WR | Avg % | Loss per stop now → new | Net $ now → new | %/day now → new |
+|---|---|---|---|---|---|---|
+| Momentum Long 10→15× | 123 | 76% | +0.24 | 2.9 → 4.4 % | +7,247 → +10,870 | +0.51 → +0.74 |
+| LITE (8×, unchanged) | 50 | 62% | +0.74 | 4.9 → 4.9 % | +6,074 → +6,074 | +0.36 → +0.36 |
+| LITE RETRY 7→10× | 20 | 80% | +1.65 | 4.9 → 7.0 % | +5,383 → +7,690 | +0.35 → +0.48 |
+| WILLY 5→8× | 17 | 100% | +1.93 | 4.9 → 7.8 % | +4,024 → +6,439 | +0.38 → +0.60 |
+| WILLY HT (5×, unchanged) | 8 | 88% | +2.55 | 4.9 → 4.9 % | +2,502 → +2,502 | +0.17 → +0.17 |
+| Flatbase 5→8× | 23 | 96% | +4.29 | 4.9 → 7.8 % | +4,835 → +7,736 | +0.36 → +0.56 |
+| **TOTAL** | 241 | 78% | +1.05 | — | **+30,065 → +41,311** | **+2.09 → +2.86** |
+Worst day -8.5 % → -12.7 % · max drawdown -16.2 % → -23.8 % · days below −5 %: 3 → 8
+One step at a time (total %/day, the others at today's size):
+  Momentum Long 10→15×: +2.09 → +2.32 %/day · worst day -12.7 %
+  WILLY 5→8×: +2.09 → +2.31 %/day · worst day -8.5 %
+  LITE RETRY 7→10×: +2.09 → +2.22 %/day · worst day -9.7 %
+  Flatbase 5→8×: +2.09 → +2.28 %/day · worst day -8.5 %

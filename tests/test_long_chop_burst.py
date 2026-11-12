@@ -175,7 +175,9 @@ def test_master_sleeve_sizes_frozen_match_live_json():
                           # DL 528 C5 re-size (live LITE 0.85 · RETRY 0.95 × 0.35 · Flatbase 0.4 · WILLY 1.0): declared NOT re-priced in the
                           # master — its % are size-free; the $ re-freeze (momentum-long margin rule included) is its own reviewed step
                           "frenzy_lite_invest_mult", "frenzy_lite_retry_invest_mult", "frenzy_lite_retry_lev_mult", "flatbase_invest_mult",
-                          "frenzy_willy_invest_mult"}
+                          "frenzy_willy_invest_mult",
+                          # DL 533 B26 leverage step (live WILLY 8× · Flatbase 8× · RETRY 10× · ML 15×): same declaration — not re-priced in the master
+                          "frenzy_willy_lev_mult", "flatbase_lev_mult"}
     for k, v in frozen.items():
         if k in KNOWN_NOT_REPRICED:
             continue

@@ -117,6 +117,10 @@ BOOKED = {   # booked P&L — `era` = drops fills by WILLY exit era (registered 
     # (418) LONG_ADX35 judges booked WR against the frozen +1.5 / −4 breakeven (72.7 %) → pinned to that exit
     # (525) LONG_WEAK_FRENZY judges booked WR against the frozen +1.5 / −3 breakeven (66.7 %) → pinned to the reverted LONG exit (DL 524: frenzy_long_stop_pct 3)
     # (427) SURGE_WL judges booked WR against SURGE_LONG's frozen breakeven (31.5 %) → pinned to its exit keys
+    # (533) the B26 leverage step: booked WR judged against FROZEN breakevens of today's exits (ML 61.1 % pre-second-chance — stricter ·
+    # RETRY +3 / −3 · WILLY V2b · Flatbase +5 / −10) → pinned to those exit keys
+    "scout_lev_step.py": {"frenzy_stop_pct": 3.0, "frenzy_lite_tp_pct": 3.0, "frenzy_lite_c_enabled": False, "frenzy_willy_high_target_enabled": True,
+                          "frenzy_willy_stop_pct": 4.0, "flatbase_tp_pct": 5.0, "flatbase_stop_pct": 10.0},
     "scout_surge_wl_watch.py": {"surge_long_exit_no_lock": True, "surge_max_hold_minutes": 240, "sl_atr_multiplier": 1.5, "sl_atr_widen_floor_pct": -1.2, "bullrun_base_sl_pct": -0.7, "bullrun_be_arm_pct": 1.0, "surge_long_trail_atr_mult": 1.0},
     # (509) WILLY_FAILED_SPIKE + the WILLY OFF trigger judge booked WR against the same frozen V2b breakeven (69.0 %) → the same pins
     "scout_willy_failed_spike_watch.py": {"frenzy_willy_high_target_enabled": True, "frenzy_willy_stop_pct": 4.0, "frenzy_willy_high_k_pct": 1.0,

@@ -76,7 +76,8 @@ def test_momentum_long_lev_frozen_matches_live_json():
     th = th.get("thresholds", th)
     # DECISION_LOG 298: the master prices the NOTIONAL — the live notional factor = lev mult × invest mult (0.25 × 0.2 = DL 289's 0.05)
     # DL 528 (C5): live momentum longs at 1 × 0.5 = ×10 that notional — declared NOT re-priced in the master (frozen 0.05 stays until the $ re-freeze)
-    assert th["momentum_long_lev_mult"] * th.get("momentum_long_invest_mult", 1.0) == pytest.approx(10 * B.MOMENTUM_LONG_LEV_FROZEN) and B.MOMENTUM_LONG_LEV_FROZEN == 0.05
+    # DL 533 (B26 leverage step): live 0.75 × 1.0 = ×15 — the same declaration (master not re-priced, % size-free)
+    assert th["momentum_long_lev_mult"] * th.get("momentum_long_invest_mult", 1.0) == pytest.approx(15 * B.MOMENTUM_LONG_LEV_FROZEN) and B.MOMENTUM_LONG_LEV_FROZEN == 0.05
     assert B.momentum_long_lev_scale(1.0, 1.0, 20) == pytest.approx(0.05) and B.momentum_long_lev_scale(1.0, 1.0, 20, mll=1.0) == 1.0
     assert B.momentum_long_lev_scale(2.0, 2.0, 40) == pytest.approx(2 / 40)          # a 2.0-lev cell → 2× (round(20 × 2 × 0.05))
     assert B.momentum_long_lev_scale(0.05, 0.05, 1) == 1.0                           # a 1× probe stays 1×

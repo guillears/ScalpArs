@@ -121,3 +121,4 @@ exports_archive/
 # 📊 best-case view (DL 440): intermediate outputs, rebuilt each run — only BEST_CASE_<stamp>.md is kept
 reports/best_case/*.csv
 reports/best_case/*_out.txt
+reports/SCOUT_LEV_STEP.json

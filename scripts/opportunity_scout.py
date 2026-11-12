@@ -1460,6 +1460,14 @@ def run():
     except Exception as _mla_e:
         log(f"ML_LEAD_A line failed: {_mla_e}")
         _rg_sec += ["## 👁 ML_LEAD_A", "", f"Unavailable this run ({str(_mla_e)[:120]}).", ""]
+    try:                                               # 🔂 Nov-11 ML SECOND CHANCE — the armed momentum-long exit's revert gate, booked vs today's-exit shadow (DECISION_LOG 532; stamped columns only)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_ml_second_chance as _msc
+        _rg_sec += _msc.run(now_ms)
+    except Exception as _msc_e:
+        log(f"ML_SECOND_CHANCE line failed: {_msc_e}")
+        _rg_sec += ["## 🔂 ML SECOND CHANCE", "", f"Unavailable this run ({str(_msc_e)[:120]}).", ""]
     # ⛔ scout_retry_btc1h_watch RETIRED 2026-11-11 (DECISION_LOG 530): RETRY_BTC1H — ARMED (DL 527): read by scout_blocked_filters
     try:                                               # 👁🅰️ Nov-4 ALPHA_SLEEVES — every sleeve on Binance "Alpha" coins (tag at entry), per-sleeve frozen re-block gate (DECISION_LOG 464; orders exports + the cached ML_MKT_HOT breadth read for the 471 confound note; never breaks the run)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:

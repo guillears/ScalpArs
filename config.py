@@ -1780,6 +1780,19 @@ class SignalThresholds(BaseModel):
     recovery_hold_max_min: float = 240.0         # absolute cap on a hold that never released
     recovery_hold_release_pct: float = 0.40      # peak P&L ≥ this → the hold ends, the normal runner logic takes over
     recovery_hold_kill_verdict: str = ""         # written by the engine (PASS … / KILLED …); empty = not judged yet
+    # 🔂 Nov-11 MOMENTUM LONG SECOND CHANCE (operator-directed ARMED ship in PAPER, DECISION_LOG 532; services/ml_second_chance.py).
+    # Zone: MOMENTUM LONG with pair ADX falling at entry (entry_adx_delta ≤ adx_delta_max). When today's RUNNER_TRAIL / HARD_TP_LADDER
+    # would close at L, the trade is held: SC_FLOOR at L − floor_pct · SC_TRAIL at (highest P&L since the trigger) − trail_atr_mult ×
+    # entry ATR % · SC_CLOCK at clock_min from entry. Evidence (in-sample, reports/ML_SC_REFINE_2026-11-11*): master 123 kept ML fills
+    # +33.1 → +44.9 pts (one-size DCR 0.57 → 0.77 %/day; +11.0 from winners), B25 +10.7 → +17.8, 2-year backtest +12.1 pts
+    # (+0.022/fill, CI [−0.003, +0.049]). Settings sit on a plateau (floor 0.3 / 0.4 / 1×ATR ≈ equal; tighter or wider trail worse).
+    # 🔒 REVERT GATE (pre-committed): after 15 changed exits Σ(pnl_percentage − sc_base_pnl) ≤ 0 → off; early stop: the first 8
+    # changed exits Σ < −1.5 pts → off (scripts/scout_ml_second_chance.py). Paper only until the gate passes.
+    ml_second_chance_enabled: bool = False        # master switch (the JSON arms it)
+    ml_second_chance_adx_delta_max: float = 0.0   # zone: entry_adx_delta ≤ this (ADX falling at entry)
+    ml_second_chance_floor_pct: float = 0.30      # SC_FLOOR = L − this (the most it can cost vs today's exit, gaps aside)
+    ml_second_chance_trail_atr_mult: float = 1.0  # SC_TRAIL giveback = this × entry ATR % from the post-trigger high (½ and 1.5× were worse)
+    ml_second_chance_clock_min: float = 180.0     # SC_CLOCK: trade age (min from entry) — the study's clock (today's no-expansion window)
     # May 23: ATR-SL widening floor cap. The sl_atr_multiplier formula
     # produces effective_sl = -(atr × mult). On extreme-ATR pairs (e.g.,
     # ATR 2.3%) this gives -3.47% — effectively no SL. Today's COSUSDT

@@ -425,10 +425,60 @@ def replica_with_topup():
         clear()
 
 
+def _live_sc_params():
+    """🔂 (DL 532) the live second-chance knobs from trading_config.json (None = off / unreadable → the plain RP.BASE price)."""
+    try:
+        import json
+        from types import SimpleNamespace
+        _r = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if _r not in sys.path:
+            sys.path.insert(0, _r)
+        from services.ml_second_chance import sc_params
+        with open(os.path.join(_r, "trading_config.json")) as fh:
+            th = json.load(fh).get("thresholds", {})
+        p = sc_params(SimpleNamespace(**th))
+        return p if p["enabled"] else None
+    except Exception:
+        return None
+
+
+SC_RUNNERS = ("RUNNER_TRAIL", "HARD_TP_LADDER", "RH_RUNNER_TRAIL", "RH_HARD_TP_LADDER")
+
+
+def apply_second_chance(RP, fx, base, adx, prm):
+    """🔂 (DL 532) today's live ML exit = RP.BASE + the second chance: a fill with entry_adx_delta ≤ bound whose BASE exit is a runner trail /
+    TP ladder is held — the engine's own phase-2 rule (services.ml_second_chance.sc_phase2_exit) walked on the replica path from that exit.
+    base = (k, why, pct, exit_ms, src) → the same tuple, unchanged out of zone / without the knobs / without an ADX stamp (fail closed)."""
+    from services.ml_second_chance import sc_phase2_exit
+    k, why, pct, tex, src = base
+    try:
+        a = float(adx)
+    except (TypeError, ValueError):
+        return base
+    if prm is None or a != a or a > prm["adx_delta_max"] or why not in SC_RUNNERS or tex is None:
+        return base
+    P = RP.prep_path(fx, RP.HORIZON_MS)
+    if P is None:
+        return base
+    t, net = P["t"], P["net"]
+    i0 = int(np.searchsorted(t, int(tex), side="right")) - 1   # the sample BASE booked at (≤ its exit time)
+    if i0 < 0 or i0 >= len(t) or pct is None or pct != pct:
+        return base
+    off = float(pct) - float(net[i0])   # review: L = BASE's booked % and the SC exit carries the same slip / latency / fee offset
+    L = float(pct); high = L
+    for i in range(i0 + 1, len(t)):
+        v = float(net[i]) + off; high = max(high, v)
+        w = sc_phase2_exit(v, L, high, fx.get("atr"), (t[i] - fx["o_ms"]) / 60_000, prm)
+        if w is not None:
+            return (i, w, v, int(t[i]), src)
+    return (len(t) - 1, "END_OF_DATA", float(net[-1]) + off, int(t[-1]), src)
+
+
 def price_replica(fills, now_ms):
     """→ {key: dict(pct, reason, exit_ms, src, status)} at RP.BASE, taker fee. status PRICED / PENDING (path not complete yet) /
     NOT_EVALUABLE (no path ≥ 1 day after the horizon). One fill at a time, in-process (no worker pool)."""
     out = {}
+    _sc_prm = _live_sc_params()
     with replica_with_topup() as RP:
         for f in fills:
             try:
@@ -436,6 +486,8 @@ def price_replica(fills, now_ms):
                 fx = dict(key=f["key"], pair=f["pair"], o_ms=int(f["o_ms"]), E=float(f["E"]), fee_in=RP.TAKER,
                           atr=(float(f["atr"]) if f.get("atr") and f["atr"] > 0 else None), rsi_entry=(None if rsi is None else float(rsi)))
                 k, why, pct, tex, src, _pk = RP.run_fill(fx, {"BASE": RP.BASE})["BASE"]
+                if "adx" in f:   # 🔂 (DL 532) callers that carry the entry ADX change get today's live exit incl. the second chance
+                    k, why, pct, tex, src = apply_second_chance(RP, fx, (k, why, pct, tex, src), f.get("adx"), _sc_prm)
             except Exception as e:
                 k, why, pct, tex, src = None, f"ERR:{str(e)[:60]}", float("nan"), None, "err"
             done_by = int(f["o_ms"]) + RP.HORIZON_MS

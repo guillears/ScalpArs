@@ -27,6 +27,7 @@ from config import save_trading_config, TradingConfig
 from services.binance_service import binance_service, is_leverage_blocked
 from services.indicators import closed_ema_gap_pct, last_closed_bar_ret_pct, closed_wilder_ndi, fade_laggard_block, calculate_indicators, get_signal, check_exit_conditions, calculate_pnl, determine_macro_regime, is_signal_direction_active, gap_expand_marginal, gap_expand_flat, gap_min_band, _rsi_adx_block_rule, rsiceil_band, adxmax_band, adxmax2_band, gminflat_band
 from services.regime import classify_btc_regime
+from services.ml_second_chance import sc_params, sc_in_zone, sc_base_reason, sc_phase2_exit, net_pnl_pct as _sc_net_pnl_pct, SC_URGENT
 from services.surge import surge_trigger, surge_entry_open, surge_pair_pick, surge_tripwire, surge_live_readings, wilder_atr_pct, surge_gvol_gate, surge_long_ema_gap_block, SURGE_LONG_EMA_GAP, SURGE_LONG_EMA_GAP_FAILOPEN
 from services.orderbook_stats import orderbook_metrics, OB_FIELDS
 from services.frenzy import frenzy_catchup_check, frenzy_catchup_moved, frenzy_vol24_at, FRENZY_CATCHUP_STALE, frenzy_tp_for
@@ -1378,6 +1379,9 @@ def _check_tick_momentum_fade(tick_buf, now, windows, per_window_deltas, directi
 # in templates/index.html. See CLAUDE.md May 30 / May 31 entries.
 import time as _leash_time
 _LEASH_STATE = {}  # order_id -> {'rmax', 'ts', 'exits': {name: (pnl, reason)}}
+# 🔂 Nov-11 Momentum Long second chance (DECISION_LOG 532): order_id -> {'L', 'high', 'armed_at', 'base', 'hp'} — survives the ~1 Hz cache
+# rebuild; a restart re-seeds it from the sc_* columns (sc_high_pct persisted in +0.02 steps → a restart resumes the same or a lower high).
+_SC_STATE = {}
 # spec: (name, kind, tight_width, wide_width, switch_threshold)
 # Jul 23 SHADOW-SLOT REVIEW (operator: "simplify what we track"): wide/tierA/tierB price-leash
 # variants RETIRED — same slot principle as phantoms: a shadow earns per-tick compute only
@@ -17773,6 +17777,20 @@ class TradingEngine:
         reason: str = "MANUAL"
     ) -> Optional[Order]:
         """Close an existing position"""
+        # 🔂 Nov-11 Momentum Long second chance (DECISION_LOG 532): in the zone, today's RUNNER_TRAIL / HARD_TP_LADDER close becomes phase 2
+        # (held — the realtime path then owns its SC_FLOOR / SC_TRAIL / SC_CLOCK exit). The single close funnel, so every caller is covered.
+        if await self._sc_intercept(order, current_price, reason):
+            return None
+        _sc_close_st = _SC_STATE.get(order.id)
+        if _sc_close_st is not None:   # any close of a held trade (SC_*, MAX_HOLD, manual, backstop) books its stamps with the close
+            try:
+                order.sc_armed_at = order.sc_armed_at or _sc_close_st['armed_at']
+                if order.sc_base_pnl is None:
+                    order.sc_base_pnl = round(float(_sc_close_st['L']), 4)
+                order.sc_base_reason = order.sc_base_reason or _sc_close_st.get('base')
+                order.sc_high_pct = round(float(_sc_close_st['high']), 4)
+            except Exception:
+                pass
         # Jun 14: Flip Entry sleeve — flips use the SAME exit stack as normal trades
         # (only EMA13-cross is disabled for them), but every exit reason is FLIP_-prefixed
         # here (the single close funnel) so flip exits are distinguishable everywhere:
@@ -17818,7 +17836,91 @@ class TradingEngine:
             await self._surge_kill_bar_check(db, _closed.entry_strategy[6:])
         if _closed is not None and getattr(_closed, 'rh_triggered_at', None) is not None:
             await self._rh_kill_bar_check(db)
+        if _closed is not None:
+            _SC_STATE.pop(order.id, None)
         return _closed
+
+    def _sc_state_for(self, order_id, row=None):
+        """Phase-2 state of an order (module dict; re-seeded from the row's / cache entry's sc_* stamps after a restart). None = not held."""
+        _get = (row.get if isinstance(row, dict) else (lambda k, d=None: getattr(row, k, d))) if row is not None else (lambda k, d=None: d)
+        st = _SC_STATE.get(order_id)
+        # review (caveman 🔴 / deep #1): ids are reused after a paper reset — a state is only valid for the SAME trade (its open time)
+        if st is not None and row is not None and _get('opened_at') is not None and st.get('opened_at') is not None \
+                and st['opened_at'] != _get('opened_at'):
+            _SC_STATE.pop(order_id, None)
+            st = None
+        if st is None and row is not None:
+            if _get('sc_armed_at') is not None and _get('sc_base_pnl') is not None:
+                L = float(_get('sc_base_pnl'))
+                h = _get('sc_high_pct')
+                st = {'L': L, 'high': max(L, float(h)) if h is not None else L, 'armed_at': _get('sc_armed_at'),
+                      'base': _get('sc_base_reason'), 'hp': float(h) if h is not None else L, 'opened_at': _get('opened_at')}
+                _SC_STATE[order_id] = st
+        return st
+
+    async def _sc_intercept(self, order, current_price, reason) -> bool:
+        """True = do NOT close (the trade enters, or is already in, its second chance). Never raises (fail-open: today's exit)."""
+        try:
+            base = sc_base_reason(reason)
+            if base is None or (order.direction or "") != "LONG" or (order.entry_strategy or "") != "MOMENTUM":
+                return False
+            st = self._sc_state_for(order.id, order)
+            if st is None:
+                prm = sc_params(config.trading_config.thresholds)
+                if not sc_in_zone(prm, order.entry_strategy, order.direction, getattr(order, 'entry_adx_delta', None)):
+                    return False
+                if getattr(order, 'rh_triggered_at', None) is not None:   # a recovery-hold trade keeps today's exit (the RH kill bar judges RH alone)
+                    return False
+                # review (deep #1): a stale monitor row of a trade the realtime path already closed must never re-arm → it has to be in the open cache
+                if not any(_ci.get('id') == order.id for _ci in _open_orders_cache.get(order.pair, [])):
+                    return False
+                L = _sc_net_pnl_pct(order.direction, order.entry_price, current_price, order.quantity, order.entry_fee,
+                                    getattr(config.trading_config, 'taker_fee', config.trading_config.trading_fee))
+                if L is None or L < 0:   # review: a gapped trigger below zero → today's exit (the floor would sit near the stop)
+                    return False
+                now = datetime.utcnow()
+                st = {'L': L, 'high': L, 'armed_at': now, 'base': (reason or base)[:24], 'hp': L, 'opened_at': getattr(order, 'opened_at', None)}
+                _SC_STATE[order.id] = st
+                # persisted fire-and-forget in its own session: the caller (monitor loop) may hold the SQLite write lock on its own
+                # session right now — an awaited write here would wait on it. Memory holds the state meanwhile.
+                try:
+                    _sct = asyncio.create_task(self._persist_sc_async(order.id, now, L, st['base']))
+                    self._bg_tasks.add(_sct)
+                    _sct.add_done_callback(self._bg_tasks.discard)
+                except Exception as _sc_pe:
+                    logger.warning(f"[ML_SECOND_CHANCE] {order.pair} #{order.id}: persist spawn failed ({_sc_pe}) — held from memory")
+                logger.warning(f"[ML_SECOND_CHANCE] {order.pair} #{order.id}: {reason} at {L:.4f}% → second chance "
+                               f"(floor {L - prm['floor']:.4f}%, trail {prm['trail_mult']}×ATR {getattr(order, 'entry_atr_pct', None)}, "
+                               f"ADX Δ at entry {getattr(order, 'entry_adx_delta', None)})")
+                # just armed: release the caller's in-progress flag so the realtime phase-2 check runs (an already-held trade's flag is
+                # left alone — a realtime SC close may be in flight; review caveman 🟡)
+                for _ci in _open_orders_cache.get(order.pair, []):
+                    if _ci.get('id') == order.id:
+                        _ci['_closing_in_progress'] = False
+                        _ci['sc_armed_at'] = st['armed_at']; _ci['sc_base_pnl'] = st['L']
+            return True
+        except Exception as _sc_err:
+            logger.error(f"[ML_SECOND_CHANCE] {getattr(order, 'pair', '?')}: intercept error {_sc_err} — today's exit stands")
+            return False
+
+    async def _persist_sc_async(self, order_id: int, armed_at, level, base_reason) -> None:
+        """Fire-and-forget: the phase-2 trigger stamps (the shadow of today's exit), own session."""
+        try:
+            async with AsyncSessionLocal() as _sca_db:
+                await locked_execute_commit(_sca_db, update(Order).where(Order.id == order_id, Order.status == "OPEN").values(
+                    sc_armed_at=armed_at, sc_base_pnl=round(float(level), 4), sc_base_reason=base_reason))
+        except Exception as e:
+            logger.warning(f"[ML_SECOND_CHANCE] order {order_id}: trigger persist failed ({e}) — memory still carries it")
+
+    async def _persist_sc_high_async(self, order_id: int, high) -> None:
+        """Fire-and-forget: the running post-trigger high (+0.02 steps), own session, never on the tick loop."""
+        try:
+            async with AsyncSessionLocal() as _sch_db:
+                await locked_execute_commit(_sch_db, update(Order).where(
+                    Order.id == order_id, Order.status == "OPEN", or_(Order.sc_high_pct.is_(None), Order.sc_high_pct < round(float(high), 4))).values(
+                    sc_high_pct=round(float(high), 4)))   # only ever raises it (a late task never undoes the final value written at close)
+        except Exception as e:
+            logger.debug(f"[ML_SECOND_CHANCE] order {order_id}: high persist failed ({e}) — memory still carries it")
 
     async def _rh_kill_bar_check(self, db) -> None:
         """🩹 RECOVERY HOLD automatic KILL BAR (pre-registered, DECISION_LOG 172; services.recovery_hold.rh_tripwire): 3 RH_HARD_STOP
@@ -18148,7 +18250,7 @@ class TradingEngine:
             exit_result = None
 
             _urgent_exit = (order.entry_strategy or "") in FRENZY_STRATEGIES + FLATBASE_CLASS or reason.startswith(RH_STOP_CLASS) or any(_rh_strip(reason).startswith(p) for p in (   # 🩹 RH: the hold's own closes are stop-class; a released trade's close follows its base reason
-                "STOP_LOSS", "BREAKEVEN_EXIT", "FL_SIGNAL_LOST", "FL_REGIME_CHANGE", "FL_TICK_MOMENTUM", "FL_EMERGENCY_SL", "FL_DEEP_STOP", "FL_RECOVERED", "BR_", "MANUAL_", "OVERRIDE_",  # Aug 21 gate 57: all bull-run sleeve exits are stop-class/urgent; Sep-29 MANUAL_SL/TP too
+                "STOP_LOSS", "BREAKEVEN_EXIT", *SC_URGENT, "FL_SIGNAL_LOST", "FL_REGIME_CHANGE", "FL_TICK_MOMENTUM", "FL_EMERGENCY_SL", "FL_DEEP_STOP", "FL_RECOVERED", "BR_", "MANUAL_", "OVERRIDE_",  # Aug 21 gate 57: all bull-run sleeve exits are stop-class/urgent; Sep-29 MANUAL_SL/TP too
             ))
 
             # 🎯 (DECISION_LOG 296) the resting TP took part (or all) of the position: the market order closes ONLY the remainder; a fully
@@ -18504,7 +18606,7 @@ class TradingEngine:
             # --- Paper mode: no retry needed, no slippage ---
             _slippage_pct = None
             _urgent_exit_paper = (order.entry_strategy or "") in FRENZY_STRATEGIES + FLATBASE_CLASS or reason.startswith(RH_STOP_CLASS) or any(_rh_strip(reason).startswith(p) for p in (
-                "STOP_LOSS", "BREAKEVEN_EXIT", "FL_SIGNAL_LOST", "FL_REGIME_CHANGE", "FL_TICK_MOMENTUM", "FL_EMERGENCY_SL", "FL_DEEP_STOP", "FL_RECOVERED", "BR_", "MANUAL_", "OVERRIDE_",  # Aug 21 gate 57: all bull-run sleeve exits are stop-class/urgent
+                "STOP_LOSS", "BREAKEVEN_EXIT", *SC_URGENT, "FL_SIGNAL_LOST", "FL_REGIME_CHANGE", "FL_TICK_MOMENTUM", "FL_EMERGENCY_SL", "FL_DEEP_STOP", "FL_RECOVERED", "BR_", "MANUAL_", "OVERRIDE_",  # Aug 21 gate 57: all bull-run sleeve exits are stop-class/urgent
             ))
             # 🎯 (DECISION_LOG 296) paper = live: a recorded paper resting TP books at ITS limit with the maker fee when the tracked price
             # trades ≥ 1 tick THROUGH it (a touch is not a fill) — whatever exit got here first (live: the cancel would read it FILLED).
@@ -21042,6 +21144,7 @@ class TradingEngine:
                 if closed and getattr(closed, 'rh_triggered_at', None) is not None:
                     await self._rh_kill_bar_check(db)   # 🩹 same for a held trade
                 if closed:
+                    _SC_STATE.pop(order_id, None)   # 🔂 the retry path skips close_position
                     _exit_retry_queue.pop(order_id, None)
                     logger.info(f"[EXIT_RETRY_QUEUE] {retry_order.pair}: Successfully closed on retry {attempt}")
 
@@ -23924,6 +24027,54 @@ class TradingEngine:
                         logger.error(f"[REALTIME_RH_EXIT] Error closing {pair}: {e}")
                 continue   # held — no other exit may close it
 
+            # ─── 🔂 Nov-11 MOMENTUM LONG SECOND CHANCE, phase 2 (DECISION_LOG 532, services/ml_second_chance.py): a trade whose runner
+            # trail / TP ladder close was turned into a second chance closes ONLY on SC_FLOOR (L − floor) · SC_TRAIL (post-trigger high −
+            # N×entry ATR) · SC_CLOCK (age). Sits before every other realtime exit, like the recovery hold. The floor (≥ L − 0.30, L ≥ the
+            # +0.10 lock) sits far above every stop, so no stop can be skipped; MAX_HOLD + manual + the exchange backstop still apply. ───
+            if (direction == "LONG" and (order_info.get('entry_strategy') or "") == "MOMENTUM"
+                    and order_info.get('exit_override_at') is None):   # review (deep #2): the operator's own stop / target owns an overridden trade
+                _sc_st = self._sc_state_for(order_id, order_info)
+                if _sc_st is not None:
+                    try:
+                        if pnl_pct > _sc_st['high']:
+                            _sc_st['high'] = pnl_pct
+                        if pnl_pct > (order_info.get('peak_pnl', 0) or 0):
+                            order_info['peak_pnl'] = pnl_pct; order_info['peak_reached_at'] = datetime.utcnow()
+                        if pnl_pct < (order_info.get('trough_pnl', 0) or 0):
+                            order_info['trough_pnl'] = pnl_pct; order_info['trough_reached_at'] = datetime.utcnow()
+                        if _sc_st['high'] >= (_sc_st.get('hp') or _sc_st['L']) + 0.02:
+                            _sc_st['hp'] = _sc_st['high']
+                            _sch = asyncio.create_task(self._persist_sc_high_async(order_id, _sc_st['high']))
+                            self._bg_tasks.add(_sch)
+                            _sch.add_done_callback(self._bg_tasks.discard)
+                        _sc_open = order_info.get('opened_at')
+                        _sc_age = None
+                        if _sc_open is not None:
+                            _sc_open = _sc_open.replace(tzinfo=None) if _sc_open.tzinfo is not None else _sc_open
+                            _sc_age = (datetime.utcnow() - _sc_open).total_seconds() / 60.0
+                        _sc_why = sc_phase2_exit(pnl_pct, _sc_st['L'], _sc_st['high'], order_info.get('entry_atr_pct'), _sc_age,
+                                                 sc_params(config.trading_config.thresholds))
+                        if _sc_why is not None and not order_info.get('_closing_in_progress'):
+                            order_info['_closing_in_progress'] = True
+                            logger.warning(f"[REALTIME_{_sc_why}] {pair} LONG: pnl={pnl_pct:.4f}% L={_sc_st['L']:.4f}% high={_sc_st['high']:.4f}% "
+                                           f"(today's exit would have booked {_sc_st['L']:.4f}%) — second chance ends")
+                            async with AsyncSessionLocal() as db:
+                                order = (await db.execute(select(Order).where(and_(Order.id == order_id, Order.status == "OPEN")))).scalar_one_or_none()
+                                if order:
+                                    closed = await self.close_position(db, order, current_price, _sc_why)
+                                    if closed:
+                                        async with _cache_lock:
+                                            _open_orders_cache[pair] = [o for o in _open_orders_cache.get(pair, []) if o['id'] != order_id]
+                                    else:
+                                        order_info['_closing_in_progress'] = False
+                                        logger.warning(f"[REALTIME_{_sc_why}] {pair}: close_position returned None — will retry next tick")
+                                else:
+                                    order_info['_closing_in_progress'] = False
+                    except Exception as _sc_rt_err:
+                        logger.error(f"[ML_SECOND_CHANCE] {pair}: phase-2 check error {_sc_rt_err}")
+                        order_info['_closing_in_progress'] = False
+                    continue   # in its second chance — no other realtime exit may close it
+
             # 🖐 Sep-29 MANUAL sleeve, FIXED / FLOOR exit modes: ONLY the operator's SL/TP (pattern_fixed_* on the row) — no
             # alt mechanism may touch it. Mirrors the BULLRUN intercept (continue outside the try). MOMENTUM mode falls through.
             _ovr_rt = order_info.get('exit_override_at') is not None   # ✎ the operator's own stop / target replaced this trade's exit
@@ -25935,6 +26086,11 @@ class TradingEngine:
                 # RUNNING post-X peak (persisted in +0.01 steps once armed), so the floor resumes where it was.
                 'fade_late_armed_at': getattr(order, 'fade_late_armed_at', None),
                 'fade_late_peak': getattr(order, 'fade_late_arm_peak', None),
+                # 🔂 Nov-11 second chance: the phase-2 stamps (the module state re-seeds from these after a restart)
+                'sc_armed_at': getattr(order, 'sc_armed_at', None),
+                'sc_base_pnl': getattr(order, 'sc_base_pnl', None),
+                'sc_base_reason': getattr(order, 'sc_base_reason', None),
+                'sc_high_pct': getattr(order, 'sc_high_pct', None),
                 # May 17: post-arm-min tracking (resumed if already populated)
                 'be_armed': order.post_arm_min_pnl_pct is not None,
                 'post_arm_min_pnl': order.post_arm_min_pnl_pct,

@@ -1,0 +1,4 @@
+BACKTEST 559 replay ML fills · BASE avg -0.069 · SC everywhere Δ +0.012/fill (changed 334)
+SC only if EMA13≤EMA50: zone 112 (changed 61, scored 559) · sleeve Δ -0.001/fill [-0.013, +0.012] · Δ per changed fill: zone -0.010 vs outside +0.027 · 26-H1 zone -0.049 (N 47) / out +0.005 · 26-H2 zone +0.121 (N 14) / out +0.066
+SC only if ADX falling: zone 217 (changed 122, scored 559) · sleeve Δ +0.022/fill [-0.003, +0.049] · Δ per changed fill: zone +0.099 vs outside -0.025 · 26-H1 zone +0.020 (N 85) / out -0.023 · 26-H2 zone +0.280 (N 37) / out -0.029
+SC only if EMA50 slope≤0: zone 105 (changed 56, scored 559) · sleeve Δ +0.001/fill [-0.010, +0.014] · Δ per changed fill: zone +0.011 vs outside +0.022 · 26-H1 zone -0.033 (N 43) / out -0.000 · 26-H2 zone +0.154 (N 13) / out +0.063

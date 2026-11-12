@@ -182,7 +182,9 @@ def test_run_freezes_once_and_hook_registry(tmp_path, monkeypatch):
     assert "_sbf.run(now_ms)" in src[j:j + 200] and "except Exception as _sbf_e" in src[j:j + 400]
     import observe_registry as OR
     w = OR.EXIT["scout_blocked_filters.py"]["walks"]
-    assert OR.EXIT["scout_ml_fixed_tp_watch.py"]["walks"].items() <= w.items()                      # the pinned ML replica (M2)
+    _ml = {k: v for k, v in OR.EXIT["scout_ml_fixed_tp_watch.py"]["walks"].items() if k != "ml_second_chance_enabled"}
+    assert _ml.items() <= w.items()                                                                   # the pinned ML replica (M2)
+    assert w["ml_second_chance_enabled"] is True                                                      # 🔂 (532) re-based on the second chance
     import scout_frenzy_v2b_shadow as VB
     assert all(w[k] == getattr(VB.V2B_TH, k) for k in ("frenzy_willy_tp_pct", "frenzy_willy_high_k_pct", "frenzy_willy_high_tp_max_pct"))
     assert {r[0]: r[4] for r in OR.status()}["scout_blocked_filters.py"] == "OK"

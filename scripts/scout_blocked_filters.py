@@ -350,7 +350,8 @@ def price_ml(rows, now_ms, fetch=True):
     """momentum long on the RP.BASE replica; with fetch, tops up the 1m / 5m / BTC paths first (scout_ml_matched_refusals.ensure_paths,
     budgeted, the folder the replica reads — review H1: nothing else fetches a blocked ML row). → {key: (pct, why, status, exit_ms)}."""
     import scout_ml_matched_refusals as MM
-    fills = [dict(key=r["key"], pair=r["pair"], o_ms=int(r["te"]), E=float(r["E"]), atr=_f(r["snap"].get("entry_atr_pct"))) for r in rows]
+    fills = [dict(key=r["key"], pair=r["pair"], o_ms=int(r["te"]), E=float(r["E"]), atr=_f(r["snap"].get("entry_atr_pct")),
+                  adx=_f(r["snap"].get("entry_adx_delta"))) for r in rows]   # 🔂 (DL 532) adx → the second chance applies (both sides of the gate)
     if not fills:
         return {}
     if fetch:
@@ -371,7 +372,8 @@ def era_of(sleeve, t):
         try:
             import scout_ml_matched_refusals as MM
             import hashlib
-            return "ML:" + hashlib.sha1(json.dumps(MM._rp().BASE, sort_keys=True, default=str).encode()).hexdigest() + f"|{SLIP}|{LAT_MS}|{TAKER}"
+            return ("ML:" + hashlib.sha1(json.dumps(MM._rp().BASE, sort_keys=True, default=str).encode()).hexdigest() + f"|{SLIP}|{LAT_MS}|{TAKER}"
+                    + "|SC:" + json.dumps(MM._live_sc_params(), sort_keys=True))   # 🔂 (DL 532) a second-chance change re-prices every stored ML price
         except Exception:
             return "ML:?"
     x = exit_of(sleeve, t)

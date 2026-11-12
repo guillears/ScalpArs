@@ -64,21 +64,32 @@ EXIT = {
     "scout_revert_gates.py": dict(dl="110 … 252 (TP3_VS_LOCK · BEARISH_BLOCKED stale; ML / flip / MS replicas live)",
                                   sleeves="FRENZY family · ML · flips · MS", walks={**_FZ_STOP3, **_NO_LITE_C}),
     "scout_stop_slip.py": dict(dl="244", sleeves="every stopped sleeve", walks=_FZ_STOP3),
-    "scout_ml_matched_refusals.py": dict(dl="380 · 383", sleeves="MOMENTUM", walks={"ema13_cross_exit_long_enabled": False}),
+    "scout_ml_matched_refusals.py": dict(dl="380 · 383", sleeves="MOMENTUM", walks={"ema13_cross_exit_long_enabled": False,
+                                         "ml_second_chance_enabled": False}),   # 🔂 (532) its replica RP.BASE has no second chance → STALE until re-based
     # 🎯 (479) ML_FIXED_TP: "before" = today's booked momentum-long exit (runner trail + ladder + recovery hold); the TP walk continues profit exits on
     # the 45-min post-exit record against the −0.70 stop → a change to the long runner / ladder / hard-TP keys makes the line STALE
     "scout_ml_fixed_tp_watch.py": dict(dl="479", sleeves="MOMENTUM LONG", walks={
                                        "runner_trail_enabled": True, "runner_trail_arm_peak": 0.4, "runner_trail_k": 0.5, "runner_trail_use_atr": True,
                                        "runner_trail_atr_mult": 1.0, "runner_trail_be_ratchet_enabled": True, "runner_trail_be_lock_pct": 0.1,
                                        "runner_trail_giveback_frac": 0.0, "hard_tp_enabled": True,
-                                       "hard_tp_ladder_long": "1.25:0.25,1.5:0.30,2.0:0.40,3.0:0.60,4.0:0.80", "recovery_hold_enabled": True}),
+                                       "hard_tp_ladder_long": "1.25:0.25,1.5:0.30,2.0:0.40,3.0:0.60,4.0:0.80", "recovery_hold_enabled": True,
+                                       # 🔂 (532) priced on the pre-second-chance momentum-long exit → ⚠ STALE from the DL 532 ship until re-based
+                                       "ml_second_chance_enabled": False}),
     "study_surge_exit_grid.py": dict(dl="397", sleeves="SURGE_LONG", walks={"surge_long_exit_no_lock": True}),
 }
+# 🔂 (532) the second-chance revert gate: today's-exit shadow (sc_base_pnl) is the runner trail / ladder level at the trigger; the
+# booked side is the second chance at the shipped knobs → a change to either makes the line STALE
+EXIT["scout_ml_second_chance.py"] = dict(dl="532", sleeves="MOMENTUM LONG (ADX falling at entry)", walks={
+    **{k: v for k, v in EXIT["scout_ml_fixed_tp_watch.py"]["walks"].items() if k != "ml_second_chance_enabled"},
+    "ml_second_chance_enabled": True, "ml_second_chance_adx_delta_max": 0.0, "ml_second_chance_floor_pct": 0.3,
+    "ml_second_chance_trail_atr_mult": 1.0, "ml_second_chance_clock_min": 180.0})
 # 🧱💲 (DECISION_LOG 529) the blocked-trade pricer reads every sleeve's exit from trading_config.json AT RUN TIME (never a pinned era) → no walks to
 # go stale; its frozen gate verdicts carry their run date
 # FRENZY / fade exits are read live and every stored price carries its exit era (re-priced on a change); the momentum-long replica
 # (RP.BASE) is PINNED — registered here so an ML exit change shows ⚠ STALE (review M2)
-EXIT["scout_blocked_filters.py"] = dict(dl="527 · 529", sleeves="the 7 armed-filter sleeves", walks={**EXIT["scout_ml_fixed_tp_watch.py"]["walks"],
+EXIT["scout_blocked_filters.py"] = dict(dl="527 · 529 · 532", sleeves="the 7 armed-filter sleeves", walks={**EXIT["scout_ml_fixed_tp_watch.py"]["walks"],
+    # 🔂 (532) re-based the day of the ship: its ML legs price RP.BASE + the live second chance (MM.apply_second_chance, era-keyed on the knobs)
+    "ml_second_chance_enabled": True,
     # the WILLY V2b target is built by the pinned scout_frenzy_v2b_shadow.V2B_TH (review LOW-2) — a live change shows ⚠ STALE
     "frenzy_willy_high_target_enabled": True, "frenzy_willy_tp_pct": 1.25, "frenzy_willy_high_k_pct": 1.0, "frenzy_willy_high_tp_max_pct": 8.0})
 PROXY = {"scout_bearrun_v2.py": "359", "scout_bearrun_r24.py": "369",

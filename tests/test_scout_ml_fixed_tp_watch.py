@@ -64,7 +64,9 @@ def test_hook_and_registry():
     import observe_registry as OR
     assert OR.EXIT["scout_ml_fixed_tp_watch.py"]["dl"] == "479"
     row = [r for r in OR.status() if r[0] == "scout_ml_fixed_tp_watch.py"][0]
-    assert row[4] == "OK", row[5]
+    # 🔂 (DL 532) the momentum-long exit gained the second chance → this line is ⚠ STALE on exactly that key until the operator
+    # re-bases or retires it; any OTHER drift still fails here
+    assert row[4] == "STALE" and [d[0] for d in row[5]] == ["ml_second_chance_enabled"], row[5]
 
 
 def test_master_keys_are_raw_so_a_rebuilt_master_never_double_counts():

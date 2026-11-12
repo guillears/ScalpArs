@@ -5712,6 +5712,19 @@
                         <div class="mt-2" title="🛑 Oct-5 (operator): OFF = the SURGE and RECOVERY HOLD kill bars judge once and RECORD their verdict (FAILED / PASS) for review, but never switch a sleeve off by themselves. ON = a failed bar switches its sleeve OFF automatically."><label class="flex items-center cursor-pointer"><input type="checkbox" id="config-auto-kill-enabled" class="sr-only peer"><div class="w-9 h-5 bg-white/10 peer-checked:bg-red-500/50 rounded-full relative transition-colors"><div class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-4"></div></div><span class="ml-2 text-xs text-gray-400">🛑 Automatic kill bars (SURGE + recovery hold) switch sleeves OFF</span></label></div>
                     </div>
                     <!-- ===== RECOVERY HOLD BOX END ===== -->
+                    <!-- ===== 🔂 ML SECOND CHANCE BOX (Nov 11 · DECISION_LOG 532) ===== -->
+                    <div class="border border-sky-500/25 rounded-xl p-4 bg-sky-500/[0.03] mt-4">
+                        <label class="text-sm font-semibold text-sky-300">🔂 Momentum Long second chance — fresh-trend winners get one more leg</label>
+                        <p class="text-xs text-gray-500 mt-1 mb-3">Only MOMENTUM LONGs whose ADX was falling at entry. When the runner trail or the TP ladder would close at L, the trade is held instead: it closes at L − floor (SC_FLOOR), at the highest P&amp;L since then − N × entry ATR (SC_TRAIL), or at the clock (SC_CLOCK). Every trade records what today's exit would have booked (sc_base_pnl). Revert gate: after 15 changed exits, off if not ahead of today's exit (early stop: first 8 behind by more than 1.5 pts).</p>
+                        <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+                            <div title="Master switch. Trades already in their second chance keep running to their own exits."><label class="block text-xs text-gray-400 mb-1">🔂 Second chance enabled</label><label class="flex items-center cursor-pointer mt-1"><input type="checkbox" id="config-sc-enabled" class="sr-only peer"><div class="w-9 h-5 bg-white/10 peer-checked:bg-sky-500/50 rounded-full relative transition-colors"><div class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-4"></div></div><span class="ml-2 text-xs text-gray-500 peer-checked:hidden">off</span><span class="ml-2 text-xs text-gray-300 hidden peer-checked:inline">on</span></label></div>
+                            <div title="Zone: the pair's ADX change at entry must be at or below this (0 = falling or flat)."><label class="block text-xs text-gray-400 mb-1">ADX change at entry ≤</label><input type="number" step="0.1" id="config-sc-adx-max" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0"></div>
+                            <div title="Safety net below the level today's exit would have sold at. The most the second chance can cost vs today's exit (price gaps aside)."><label class="block text-xs text-gray-400 mb-1">Floor below L (%)</label><input type="number" step="0.05" min="0" id="config-sc-floor" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.3"></div>
+                            <div title="Fresh trail: give back this many entry ATRs from the highest P&amp;L reached after the trigger."><label class="block text-xs text-gray-400 mb-1">Trail (× ATR)</label><input type="number" step="0.1" min="0" id="config-sc-trail" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="1"></div>
+                            <div title="Close the held trade once it is this many minutes old (from entry)."><label class="block text-xs text-gray-400 mb-1">Clock (min from entry)</label><input type="number" step="15" min="0" id="config-sc-clock" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="180"></div>
+                        </div>
+                    </div>
+                    <!-- ===== ML SECOND CHANCE BOX END ===== -->
                     <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
                         <div class="md:col-span-2">
                             <label class="block text-sm text-gray-400 mb-2">Regime Change Exit</label>
@@ -23782,6 +23795,12 @@
                 // 🩹 Oct 2: Recovery Hold box
                 { const _e = document.getElementById('config-rh-enabled'); if (_e) _e.checked = config.thresholds.recovery_hold_enabled === true; }
                 window._rhLoadedEnabled = config.thresholds.recovery_hold_enabled === true;
+                // 🔂 Nov 11: Momentum Long second chance box (DECISION_LOG 532)
+                { const _e = document.getElementById('config-sc-enabled'); if (_e) _e.checked = config.thresholds.ml_second_chance_enabled === true; }
+                window._scLoadedEnabled = config.thresholds.ml_second_chance_enabled === true;
+                for (const [_id, _key, _def] of [['config-sc-adx-max', 'ml_second_chance_adx_delta_max', 0], ['config-sc-floor', 'ml_second_chance_floor_pct', 0.3],
+                    ['config-sc-trail', 'ml_second_chance_trail_atr_mult', 1.0], ['config-sc-clock', 'ml_second_chance_clock_min', 180]
+                ]) { const _e = document.getElementById(_id); if (_e) _e.value = (config.thresholds[_key] !== undefined && config.thresholds[_key] !== null) ? config.thresholds[_key] : _def; }
                 { const _v = String(config.thresholds.recovery_hold_kill_verdict ?? '').trim(); const _e = document.getElementById('rh-verdict');
                   if (_e) { _e.textContent = _v || 'not judged yet'; _e.className = _v.startsWith('KILLED') ? 'text-red-400 font-semibold' : (_v.startsWith('PASS') ? 'text-emerald-400' : 'text-gray-300'); } }
                 for (const [_id, _key, _def] of [
@@ -25372,6 +25391,11 @@
                     ...Object.fromEntries(FRENZY_NUM_FIELDS.map(([_id, _key, _def]) => { const v = String(document.getElementById(_id)?.value ?? '').trim(); const x = v === '' ? _def : safeFloat(v); return [_key, (_key === 'frenzy_willy_a_cold_max_bars' && x > 12) ? 12 : (x === null || x === undefined || Number.isNaN(x) || (x < 0 && _key !== 'frenzy_lite_c_btc_slope_min')) ? _def : ((_key === 'frenzy_willy_ht_max_slots' || _key === 'frenzy_max_slots' || _key === 'frenzy_wide_max_slots' || _key === 'frenzy_max_hold_minutes' || _key === 'frenzy_max_entries_per_pair_day' || _key === 'frenzy_catchup_max_bars' || _key === 'frenzy_wide_hold_green_streak' || _key === 'frenzy_lite_max_slots' || _key === 'frenzy_lite_min_above_closes' || _key === 'frenzy_willy_max_slots' || _key === 'frenzy_willy_max_hold_minutes' || _key === 'frenzy_willy_red_max_wait_minutes' || _key === 'frenzy_willy_a_cold_max_bars') ? Math.round(x) : x)]; })),
                     // 🩹 Oct 2 Recovery Hold — the enabled flag is sent ONLY when toggled on this page (a page loaded before an auto-kill must not re-arm it)
                     ...((document.getElementById('config-rh-enabled')?.checked ?? false) !== (window._rhLoadedEnabled ?? false) ? { recovery_hold_enabled: document.getElementById('config-rh-enabled')?.checked ?? false } : {}),
+                    // 🔂 Nov 11 Momentum Long second chance (DECISION_LOG 532) — the zone bound may be negative; the others fall back to their default when blank / invalid / negative
+                    ...((document.getElementById('config-sc-enabled')?.checked ?? false) !== (window._scLoadedEnabled ?? false) ? { ml_second_chance_enabled: document.getElementById('config-sc-enabled')?.checked ?? false } : {}),   // sent only when toggled on this page (a stale tab must not re-arm a revert)
+                    ...Object.fromEntries([['config-sc-adx-max', 'ml_second_chance_adx_delta_max', 0], ['config-sc-floor', 'ml_second_chance_floor_pct', 0.3],
+                        ['config-sc-trail', 'ml_second_chance_trail_atr_mult', 1.0], ['config-sc-clock', 'ml_second_chance_clock_min', 180]
+                    ].map(([_id, _key, _def]) => { const v = String(document.getElementById(_id)?.value ?? '').trim(); const x = v === '' ? _def : safeFloat(v); return [_key, (x === null || x === undefined || Number.isNaN(x) || (x < 0 && _key !== 'ml_second_chance_adx_delta_max')) ? _def : x]; })),
                     ...Object.fromEntries([['config-rh-rsi-min', 'recovery_hold_rsi_min', 60], ['config-rh-rsi-max', 'recovery_hold_rsi_max', 66], ['config-rh-room', 'recovery_hold_room_pct', 0.5],
                         ['config-rh-time', 'recovery_hold_time_min', 30], ['config-rh-max', 'recovery_hold_max_min', 240], ['config-rh-release', 'recovery_hold_release_pct', 0.40]
                     ].map(([_id, _key, _def]) => { const v = String(document.getElementById(_id)?.value ?? '').trim(); const x = v === '' ? _def : safeFloat(v); return [_key, (x === null || x === undefined || Number.isNaN(x)) ? _def : x]; })),
@@ -25461,6 +25485,7 @@
                     // the "send only when toggled" guards compare against what the SERVER now holds — else every later save from this
                     // page would re-send the toggle and could re-arm a side / the recovery hold after an automatic kill
                     window._rhLoadedEnabled = document.getElementById('config-rh-enabled')?.checked ?? false;
+                    window._scLoadedEnabled = document.getElementById('config-sc-enabled')?.checked ?? false;
                     window._sgLoadedEnabled = { long: document.getElementById('config-sg-long-enabled')?.checked ?? true, short: document.getElementById('config-sg-short-enabled')?.checked ?? true };
                     showToast('Configuration saved successfully');
                     // 📖 (338 review I1) the 🖐 pop-up's exit line + risk line read window._cachedConfig — refresh it with what the server now holds

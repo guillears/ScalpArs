@@ -488,6 +488,16 @@ class Order(Base):
     fade_late_base_reason = Column(String(24), nullable=True)
     fade_late_base_min = Column(Float, nullable=True)
 
+    # 🔂 Nov-11 MOMENTUM LONG SECOND CHANCE (DECISION_LOG 532, services/ml_second_chance.py). On a MOMENTUM LONG with ADX falling at
+    # entry, today's RUNNER_TRAIL / HARD_TP_LADDER close is replaced by phase 2 (floor L − 0.30 · fresh 1×ATR trail from the
+    # post-trigger high · 180-min clock). sc_armed_at = when today's exit fired; sc_base_pnl = the net P&L % today's exit would have
+    # booked there (L — the SHADOW of today's exit); sc_base_reason = which exit it was; sc_high_pct = the highest P&L % after the
+    # trigger (persisted in +0.02 steps, final at close). Revert gate reads pnl_percentage vs sc_base_pnl. Ride the CSV free.
+    sc_armed_at = Column(DateTime, nullable=True)
+    sc_base_pnl = Column(Float, nullable=True)
+    sc_base_reason = Column(String(24), nullable=True)
+    sc_high_pct = Column(Float, nullable=True)
+
     # Liquidity-aware sizing observability (Jun 2, 2026 — see CLAUDE.md).
     # entry_desired_notional       = notional the order WOULD have opened at pre-cap (investment×leverage).
     # entry_liquidity_cap_notional = the ① per-pair liquidity cap value (_liq_cap); NULL if ① not configured.

@@ -42,10 +42,22 @@
     const t1 = Math.ceil((closeS + Math.max(AFTER_MIN * 60, 20 * step)) / step) * step;
     return [t0, t1];
   }
-  function priceAtPct(o, pct) {                    // net P&L % → approximate price (ignores fees: a reference line, not a fill)
+  function takerPct() {                            // the engine estimates the exit fee at the TAKER rate (review 536 fix): the dashboard's own fee field, else 0.045
+    try {
+      const v = parseFloat(String(document.getElementById('config-taker-fee')?.value ?? '').replace(',', '.'));
+      return Number.isFinite(v) && v > 0 && v < 1 ? v : 0.045;
+    } catch (_) { return 0.045; }
+  }
+  function feePct(o) {                             // the fee % the net P&L carries: this trade's ACTUAL entry fee % + the exit estimated at the taker rate
+    const n = Number(o.notional_value) > 0 ? Number(o.notional_value) : Number(o.investment) * Number(o.leverage);
+    const f = Number(o.entry_fee), t = takerPct();
+    return (n > 0 && o.entry_fee != null && Number.isFinite(f) && f > 0) ? f / n * 100 + t : 2 * t;   // missing / 0 entry fee → taker both legs
+  }
+  function priceAtPct(o, pct) {                    // NET P&L % (best / worst in trade) → the PRICE it was reached at: the fees added back
     const e = Number(o.entry_price);
     if (!(e > 0) || pct == null || !Number.isFinite(Number(pct))) return null;
-    return o.direction === 'SHORT' ? e * (1 - Number(pct) / 100) : e * (1 + Number(pct) / 100);
+    const g = Number(pct) + feePct(o);             // gross move from the entry (operator 11-12: the worst line sat 0.09 % below the real low)
+    return o.direction === 'SHORT' ? e * (1 - g / 100) : e * (1 + g / 100);
   }
 
   function barsFor(t0, t1, iv) { return Math.floor((t1 - t0) / IV[iv]) + 1; }
@@ -151,7 +163,7 @@
         <span><span class="tc-sw" style="background:#f87171"></span>Worst in trade</span>
         <span><span class="tc-sw" style="background:rgba(96,165,250,.35)"></span>45 min after the exit</span>
         <span><span class="tc-sw" style="background:#9ca3af"></span>BTC, % from the entry</span>
-        <span>Best / worst lines are approximate (net % → price, fees ignored).</span>
+        <span>Best / worst lines = the recorded net % with this trade's fees added back (its entry fee + the exit at the taker rate, as the engine estimates it).</span>
       </div>`;
     box.querySelector('.tc-x').onclick = close;
     box.querySelectorAll('.tc-iv').forEach(b => b.onclick = () => { if (b.disabled || !state) return; state.iv = b.dataset.iv; load(); });
@@ -196,7 +208,10 @@
     const g = cv.getContext('2d'); g.scale(dpr, dpr);
     const W = r.width, H = r.height, L = 6, R = 78, T = 10, BH = 70, ph = H - T - BH - 34;
     const entry = Number(o.entry_price), exit = Number(o.exit_price);
-    const best = priceAtPct(o, o.peak_pnl), worst = priceAtPct(o, o.trough_pnl);
+    let best = priceAtPct(o, o.peak_pnl);
+    const worst = priceAtPct(o, o.trough_pnl);
+    if (String(o.exit_order_type || '').toUpperCase() === 'MAKER' && Number(o.exit_price) > 0 && o.peak_pnl != null
+        && Math.abs(Number(o.peak_pnl) - Number(o.pnl_percentage)) < 1e-6) best = Number(o.exit_price);   // review 536: best = the resting-TP fill itself
     const lv = [entry, exit, best, worst].filter(v => v != null && Number.isFinite(v) && v > 0);
     let lo = Math.min(...K.map(k => k[3]), ...lv), hi = Math.max(...K.map(k => k[2]), ...lv);
     const pad = (hi - lo) * 0.06 || hi * 0.001; lo -= pad; hi += pad;
@@ -269,5 +284,5 @@
   });
   let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(redraw, 200); });
 
-  window.TradeChart = { open, close, parseUtc, pickInterval, windowFor, priceAtPct, barsFor };
+  window.TradeChart = { open, close, parseUtc, pickInterval, windowFor, priceAtPct, feePct, barsFor };
 })();

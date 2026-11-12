@@ -20400,6 +20400,7 @@
                     return true;
                 }
                 
+                window._closedOrdersById = Object.fromEntries(data.map(o => [String(o.id), o]));   // 📈 (536) trade chart
                 const _renderData = _closedShowAll ? data : data.slice(0, 200);
                 const _hiddenN = data.length - _renderData.length;
                 let _rowsHtml = _renderData.map(o => {
@@ -20434,7 +20435,7 @@
                         : _stratRaw === 'FLATBASE_SHORT' ? 'bg-rose-500/20 text-rose-300'   // 🩳 (348)
                         : 'bg-gray-500/20 text-gray-400';
                     return `
-                        <tr class="hover:bg-white/5 transition">
+                        <tr class="hover:bg-white/5 transition cursor-pointer" data-order-id="${o.id}"><!-- 📈 (536) trade chart: click → candles -->
                             <td class="px-4 py-3 text-sm">${formatTime(o.opened_at)}</td>
                             <td class="px-4 py-3 text-sm">${formatTime(o.closed_at)}</td>
                             <td class="px-4 py-3 font-medium">${o.pair}${alphaMark(o.entry_pair_alpha, true)}</td>
@@ -25539,6 +25540,7 @@
 
     <!-- Live Terminal — UI-only observability layer (additive, no trading impact) -->
     <script src="/static/live_terminal.js?v=13"></script>
+    <script src="/static/trade_chart.js?v=1" defer></script><!-- 📈 (536) trade chart -->
 <!-- ============================================================
      JARVIS WELCOME — plays once on dashboard load after login.
      Triggered by sessionStorage flag set in login.html form submit.

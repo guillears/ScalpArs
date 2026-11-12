@@ -47,6 +47,7 @@ from services.frenzy import (FRENZY_LITE_RETRY, FRENZY_LITE_FAMILY, frenzy_lite_
                              frenzy_lite_retry_pending_clean, frenzy_lite_retry_step, LITE_RETRY_OPEN, LITE_RETRY_DROP)
 from services.frenzy import frenzy_walk, frenzy_flagged, frenzy_long_status, frenzy_exit_for, frenzy_breaks, normal_hour_usd, frenzy_di_spread, frenzy_adx_delta, frenzy_vol_trend, frenzy_wide_ready, frenzy_wide_shadow, FRENZY_WIDE_CODES, global_volume_ratio, merge_klines, frenzy_wide_choppy, frenzy_wide_hold_green_block, frenzy_gvol_block, frenzy_bearish_block, frenzy_lite_status, frenzy_lite_stretch_id, FRENZY_LITE_READY, FRENZY_LITE_COUNTED, FRENZY_LITE_SHOWN, FRENZY_LITE_JUDGES, frenzy_lite_need, frenzy_willy_exit_for, frenzy_willy_levels, frenzy_willy_new_flag, frenzy_willy_a_cold_bars, frenzy_willy_late_bars, frenzy_willy_pending_clean, frenzy_willy_red, frenzy_willy_wait_ms, vol_mcap_ratio, frenzy_willy_a_nomiss_on, frenzy_willy_no_red_missed
 from services.frenzy import frenzy_willy_high_target, frenzy_willy_row_tp   # 🎲² (DECISION_LOG 356) WILLY exit V2 · 🎲²ᵇ (358) floor removed
+from services.frenzy import frenzy_willy_ht_tp, frenzy_willy_ht_target   # 🎯 (DECISION_LOG 537) HT's own base take profit
 from services.hard_tp_ladder import parse_hard_tp_ladder, hard_tp_ladder_floor, DEFAULT_LADDER_RUNGS
 from services.golive_guards import (backstop_heal_skip_inflight, backstop_trigger_price, backstop_needs_replace, algo_status_resting, find_untracked_positions,  # 🛡 (DECISION_LOG 292)
                                    untracked_action, preflight_failures, BACKSTOP_REPLACE_RETRY_S, BACKSTOP_REPRICE_INTERVAL_S, UNTRACKED_CONFIRM_PASSES,
@@ -15206,9 +15207,18 @@ class TradingEngine:
             except Exception as _wv2_err:   # never blocks the open: today's exit
                 _wv2_tp, _wv2_traw = frenzy_willy_levels(_wv2_th)[0], None
                 logger.error(f"[WILLY_V2] {pair}: exit decision failed ({_wv2_err}) — today's exit")
+            # 🎯 (DECISION_LOG 537, operator declared override in paper) FRENZY_WILLY_HT's OWN base take profit: T_used = max(HT TP, the
+            # spike-high target) — a spike target above it is kept; WILLY unchanged. Stored on the row like every WILLY target (restart-proof).
+            _ht_tp = frenzy_willy_ht_tp(_wv2_th) if _fz_es == FRENZY_WILLY_HT else None
+            _ht_applied = False
+            if _ht_tp is not None:
+                _ht_new = frenzy_willy_ht_target(_wv2_tp, _ht_tp)
+                if _ht_new != _wv2_tp:
+                    logger.info(f"[WILLY_HT_TP] {pair}: base TP +{_wv2_tp}% → HT take profit +{_ht_new}% (frenzy_willy_ht_tp_pct, DECISION_LOG 537)")
+                    _wv2_tp, _ht_applied = _ht_new, True
             logger.info(f"[WILLY_V2] {pair} {_fz_es}: entry {actual_price} · spike high H {entry_frenzy_willy_spike_high} → net at H×(1−k) "
                         f"{_wv2_traw if _wv2_traw is not None else 'n/a'}% → TP +{_wv2_tp}% "
-                        f"{'(runner)' if (_wv2_tp or 0) > frenzy_willy_levels(_wv2_th)[0] + 1e-9 else '(base TP)'} · "
+                        f"{'(HT TP)' if _ht_applied else '(runner)' if (_wv2_tp or 0) > frenzy_willy_levels(_wv2_th)[0] + 1e-9 else '(base TP)'} · "
                         f"stop −{self._frenzy_entry_stop_pct(_fz_es)}% · late TP + time cap as before (V2b, DECISION_LOG 358) · BTC 1h slope {entry_btc_1h_slope}")
 
         # Create order record

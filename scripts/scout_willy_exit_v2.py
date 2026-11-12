@@ -295,9 +295,33 @@ def _f(v):
     return x if math.isfinite(x) else None
 
 
+_HT537 = {}
+
+
+def _ht537_floor():
+    """the DECISION_LOG 537 commit + 10 min (HT's own +2 take profit) in ms, or None (not in git). Cached per process."""
+    if "v" not in _HT537:
+        try:
+            _HT537["v"] = _GK.dl_deploy_ms(537, LAG_MIN, label="HT own take profit (DL 537)")
+        except Exception:
+            _HT537["v"] = None
+    return _HT537["v"]
+
+
 def is_runner(r):
-    """a RUNNER fill: its stored target is above the old +1.25 TP (the only fills whose V2b exit can differ from the old exit)."""
+    """a RUNNER fill: its stored target is above the old +1.25 TP (the only fills whose V2b exit can differ from the old exit).
+    🎯 (DECISION_LOG 537, deep review) an HT fill opened ≥ the 537 commit + 10 min is NEVER a runner here: it stores max(+2, the V2b target),
+    so "above +1.25" is HT's own take profit, not the spike target — its Δ belongs to the 537 gate (scout_willy_ht_exit_lines), and counting
+    it here would let an HT +2 run fire the V2b revert for WILLY."""
     tp = _f(r.get(WEra.TP_COL))
+    if str(r.get("entry_strategy") or "") == "FRENZY_WILLY_HT":
+        fl = _ht537_floor()
+        try:
+            o = pd.Timestamp(str(r.get("opened_at")).replace(" ", "T")[:19]).value // 1_000_000
+        except Exception:
+            o = None
+        if fl is not None and (o is None or o >= fl):
+            return False
     return tp is not None and tp > OLD_TP + WEra.EPS
 
 

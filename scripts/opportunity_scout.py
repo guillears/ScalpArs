@@ -1468,6 +1468,14 @@ def run():
     except Exception as _lvs_e:
         log(f"LEV_STEP line failed: {_lvs_e}")
         _rg_sec += ["## 📈 B26 LEVERAGE STEP", "", f"Unavailable this run ({str(_lvs_e)[:120]}).", ""]
+    try:                                               # 👁 Nov-12 WILLY HT EXIT watch lines TP2 · RUN15 (DECISION_LOG 537; observe only, budgeted public 1m)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_willy_ht_exit_lines as _whx
+        _rg_sec += _whx.run(now_ms)
+    except Exception as _whx_e:
+        log(f"WILLY_HT_EXIT line failed: {_whx_e}")
+        _rg_sec += ["## 👁 WILLY HT EXIT — watch lines", "", f"Unavailable this run ({str(_whx_e)[:120]}).", ""]
     try:                                               # 🪜📈 Nov-12 KEEP THE PLANNED POSITION ON CAPPED COINS — revert gate (DECISION_LOG 535; stamped columns only)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

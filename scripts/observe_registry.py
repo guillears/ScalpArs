@@ -79,6 +79,11 @@ EXIT = {
                                        # frozen replica delta at the shipped knobs) → a change to any second-chance knob makes it STALE
                                        "ml_second_chance_enabled": True, "ml_second_chance_adx_delta_max": 0.0, "ml_second_chance_floor_pct": 0.3,
                                        "ml_second_chance_trail_atr_mult": 1.0, "ml_second_chance_clock_min": 180.0}),
+    # 👁 (537) WILLY HT exit lines: TP2 / RUN15 vs today's V2b exit, walked on each fill's path → pinned to the V2b exit keys
+    "scout_willy_ht_exit_lines.py": dict(dl="537", sleeves="FRENZY_WILLY_HT", walks={
+                                         "frenzy_willy_tp_pct": 1.25, "frenzy_willy_ht_tp_pct": 2.0, "frenzy_willy_max_hold_minutes": 90,
+                                         "frenzy_willy_high_target_enabled": True, "frenzy_willy_stop_pct": 4.0, "frenzy_willy_high_k_pct": 1.0,
+                                         "frenzy_willy_high_tp_max_pct": 8.0, "frenzy_willy_late_tp_minutes": 30.0, "frenzy_willy_late_tp_pct": 0.25}),
     "study_surge_exit_grid.py": dict(dl="397", sleeves="SURGE_LONG", walks={"surge_long_exit_no_lock": True}),
 }
 # 🔂 (532) the second-chance revert gate: today's-exit shadow (sc_base_pnl) is the runner trail / ladder level at the trigger; the

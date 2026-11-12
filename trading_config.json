@@ -808,6 +808,7 @@
     "frenzy_willy_global_hold": false,
     "frenzy_willy_ht_enabled": true,
     "frenzy_willy_ht_size_frac": 1.0,
+    "frenzy_willy_ht_tp_pct": 2.0,
     "frenzy_willy_ht_max_slots": 1,
     "flatbase_short_enabled": true,
     "flatbase_flat_max": 0.444,

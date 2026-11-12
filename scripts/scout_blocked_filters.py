@@ -255,6 +255,22 @@ def _frenzy_exit_ms(P, x, T=None):
     return te + x["cap"] * MIN
 
 
+def _ht_target(T):
+    """🎯 (537) the live frenzy_willy_ht_tp_pct applied to an HT target (services.frenzy.frenzy_willy_ht_target); unreadable → T."""
+    try:
+        import json
+        from types import SimpleNamespace
+        _r = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        _r in sys.path or sys.path.insert(0, _r)
+        from services.frenzy import frenzy_willy_ht_tp, frenzy_willy_ht_target
+        with open(os.path.join(_r, "trading_config.json")) as fh:
+            th = SimpleNamespace(**json.load(fh).get("thresholds", {}))
+        v = frenzy_willy_ht_target(T, frenzy_willy_ht_tp(th))
+        return T if v is None else v
+    except Exception:
+        return T
+
+
 def price_frenzy(r, t, now_ms, path_cache, tcache, bud):
     """FRENZY family on the validated net-path walker. → (pct, why, status, exit_ms)."""
     import scout_frenzy_willy_exit as FX
@@ -275,6 +291,8 @@ def price_frenzy(r, t, now_ms, path_cache, tcache, bud):
         T = VB.v2b_target(rr, H)[0] if H else None
         if T is None:
             return None, "NO_TARGET", _late_over(now_ms, end), None
+        if r["sleeve"] == "FRENZY_WILLY_HT":   # 🎯 (DECISION_LOG 537, review) HT's own take profit: max(HT TP, the V2b target) — read live
+            T = _ht_target(T)
         w = SV.walk_v2(P, T, sl=x["sl"], cap=x["cap"], late=x["late"], ztp=x["ltp"])
     else:
         w = SV.walk_v2(P, x["tp"], sl=x["sl"], cap=x["cap"], late=None, ztp=None)

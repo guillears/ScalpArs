@@ -1586,6 +1586,11 @@ class SignalThresholds(BaseModel):
     # HT off · else re-read at 60. Code default ON (operator).
     frenzy_willy_ht_enabled: bool = True
     frenzy_willy_ht_size_frac: float = 0.5        # × WILLY's margin at WILLY's leverage (0 < f ≤ 1; else 0.25 used). DL 487: 0.25 → 0.5 with WILLY's margin halved — HT's $ size UNCHANGED (operator: HT left alone); on the DL 365 ladder this reads as rung 0.5 of a half-size WILLY = the same notional as rung 0.25 before
+    # 🎯 Nov-12 HT OWN TAKE PROFIT (DECISION_LOG 537, operator declared override in PAPER, below the study bar): T_used = max(this, the spike-high
+    # target). Study reports/WILLY_HT_EXIT_STUDY_2026-11-12.md: kept master HT 8 fills +3.0 pts (4 better / 0 worse) + B26 3 fills +2.25, but luck
+    # p 0.64 and the WILLY backtest −15.7 (19 of 609 reach +1.25 then stop, mostly Jul–Sep 2026). 🔒 revert (scripts/scout_willy_ht_exit_lines.py):
+    # first 8 HT fills Σ (live − the +1.25 exit) < 0 → 0; at 15 Σ ≤ 0 → 0. 0 = HT follows WILLY's base TP (the code default; the JSON arms 2.0).
+    frenzy_willy_ht_tp_pct: float = 0.0
     frenzy_willy_ht_max_slots: int = 1            # FRENZY_WILLY_HT open at once (its OWN slot; WILLY's slot never counts HT)
     # 🩳 2026-10-22 FLATBASE_SHORT (DECISION_LOG 348 — operator DISCIPLINE OVERRIDE: the study FAILED its ship bars; alert-only gates, no
     # auto-off). Short a FRENZY episode whose coin was FLAT for the 14 days before the spike (14-d close range ≤ flatbase_flat_max at the base

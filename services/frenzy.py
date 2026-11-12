@@ -861,6 +861,25 @@ def frenzy_willy_ht_frac(th) -> float:
         return WILLY_HT_FRAC_DEF
 
 
+def frenzy_willy_ht_tp(th) -> Optional[float]:
+    """🎯 (DECISION_LOG 537) FRENZY_WILLY_HT's OWN base take profit, net %: frenzy_willy_ht_tp_pct > 0 → that (HT's T_used = max(it, the
+    spike-high target)); blank / 0 / ≤ 0 / unreadable → None = HT follows WILLY's base TP (as before 537). Never raises."""
+    try:
+        v = float(getattr(th, 'frenzy_willy_ht_tp_pct', 0.0) or 0.0)
+        return v if (math.isfinite(v) and 0 < v <= 50) else None
+    except Exception:
+        return None
+
+
+def frenzy_willy_ht_target(t_used, ht_tp) -> Optional[float]:
+    """🎯 (DECISION_LOG 537) an HT row's stored target: max(HT TP, the V2b target) — a spike target above the HT TP is kept; ht_tp None →
+    the V2b target unchanged. Pure."""
+    t = _fin(t_used)
+    if ht_tp is None:
+        return t
+    return float(ht_tp) if (t is None or t < ht_tp) else t
+
+
 def frenzy_willy_ht_config_errors(th) -> list:
     """🎲¼ PUT /api/config refusals for the FRENZY_WILLY_HT fields (DECISION_LOG 341). The UI clamps the size fraction to the default
     0.25 (with a note) before it sends; anything else that reaches the server out of range is refused."""
@@ -873,6 +892,9 @@ def frenzy_willy_ht_config_errors(th) -> list:
     s_ = _fin(getattr(th, 'frenzy_willy_ht_max_slots', 1))
     if s_ is None or s_ < 1:
         errs.append("frenzy_willy_ht_max_slots must be ≥ 1")
+    tp_ = _fin(getattr(th, 'frenzy_willy_ht_tp_pct', 0.0) or 0.0)   # 🎯 (537 review) 0 = off, else above WILLY's TP and ≤ 50
+    if tp_ is None or tp_ < 0 or tp_ > 50 or (0 < tp_ <= frenzy_willy_levels(th)[0]):
+        errs.append(f"frenzy_willy_ht_tp_pct must be 0 (HT follows WILLY's TP) or above WILLY's take profit (+{frenzy_willy_levels(th)[0]}) and ≤ 50")
     return errs
 
 

@@ -28,7 +28,7 @@ def test_history_and_forward_split_probes_out(tmp_path):
             dict(opened_at="2026-11-10T10:00:00", closed_at="2026-11-10T10:30:00", pair="BBBUSDT", pnl_percentage=0.4),
             dict(opened_at="2026-11-10T11:00:00", closed_at="2026-11-10T11:30:00", pair="CCCUSDT", pnl_percentage=0.4, cell_multiplier_source="MOM_PROBE")]
     M = pd.DataFrame(columns=["opened_at", "pair", "pct", "entry_ema20_slope", "entry_rsi_prev"])
-    F, _, _ = W.cohort([_export(tmp_path, rows)], since=pd.Timestamp("2026-11-06"), master=M)
+    F, _, _ = W.cohort([_export(tmp_path, rows)], since=pd.Timestamp("2026-11-06"), master=M, sc_ship_ms=None, sc_delta={})
     assert dict(F.block.value_counts()) == {"B25": 1, "FORWARD": 1} and (F.cell == True).all()   # noqa: E712
 
 
@@ -55,7 +55,7 @@ def test_run_end_to_end_with_unscored_breadth(tmp_path):
     rows = [dict(opened_at="2027-01-10T10:00:00", closed_at="2027-01-10T10:30:00", pair="ZZZUSDT", pnl_percentage=0.4)]
     M = pd.DataFrame(columns=["opened_at", "pair", "pct", "entry_ema20_slope", "entry_rsi_prev"])
     out = "\n".join(W.run(now_ms=1_800_000_000_000, paths=[_export(tmp_path, rows)], since_ms=1_790_000_000_000,
-                          breadth_fn=lambda t, n: (pd.Series(dtype=float), False), master=M))
+                          breadth_fn=lambda t, n: (pd.Series(dtype=float), False), master=M, sc_ship_ms=None, sc_delta={}))
     assert "Market-hot read incomplete" in out and "| _unscored (Market-hot or a cell leg missing) — never counted_ | 1 |" in out
 
 
@@ -66,6 +66,5 @@ def test_hook_and_registry():
     import observe_registry as OR
     assert OR.BOOKED["scout_ml_lead_a_watch.py"] == OR.EXIT["scout_ml_fixed_tp_watch.py"]["walks"]
     row = [r for r in OR.status() if r[0] == "scout_ml_lead_a_watch.py"][0]
-    # 🔂 (DL 532) the momentum-long exit gained the second chance → this line is ⚠ STALE on exactly that key until the operator
-    # re-bases or retires it; any OTHER drift still fails here
-    assert row[4] == "STALE" and [d[0] for d in row[5]] == ["ml_second_chance_enabled"], row[5]
+    # 🔁 (DL 534) re-based on the second-chance exit (DL 532) → matches today's config again; any drift fails here
+    assert row[4] == "OK", row[5]

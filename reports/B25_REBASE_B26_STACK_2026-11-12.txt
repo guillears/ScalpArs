@@ -1,0 +1,33 @@
+# B25 RE-BASE on the B26 stack (2026-11-12)
+B25 RE-BASE on everything live in B26 (operator 11-12): today's filters (master stack_keep / stack_pct, STACK 2026-11-11a) · C5 sizes (DL 528)
+· ML SECOND CHANCE (DL 532; DL 534 rule — scripts/ml_sc_history.py: booked + the frozen replica delta where the replica reproduced the exit) · leverage step (DL 533) · ML risk cap 10 %
+(replayed on open/close times; an open ML counts at its worst stop unless it closed — CONSERVATIVE: arming / BE lock not on the path, so the cap
+shrinks at least as much as live would). $10,000 account, one size per sleeve (DL 503), daily compound over every calendar day of the batch.
+Columns: ① C5 today before DL 532/533 · ② + second chance · ③ + leverage step + ML cap (= what B26 runs).
+(ML second chance: 0 unpriced (kept at today's exit) · 29 credited · 9 replica-disagrees (no credit))
+
+## B25 — 20 calendar days · $10,000 account (one size)
+| Sleeve | N | WR | Avg % | Net $ | %/day | → second chance: WR · Avg % · Net $ · %/day | → B26 (lev step + ML cap): N · Net $ · %/day |
+|---|---|---|---|---|---|---|---|
+| Momentum Long | 29 | 79% | +0.33 | +2,297 | +1.07 | 76% · +0.55 · +3,860 · +1.80 | 29 · +5,754 · **+2.61** |
+| LITE | 27 | 67% | +0.95 | +4,171 | +1.98 | 67% · +0.95 · +4,171 · +1.98 | 27 · +4,171 · **+1.98** |
+| LITE RETRY | 19 | 79% | +1.73 | +5,379 | +2.55 | 79% · +1.73 · +5,379 · +2.55 | 19 · +7,684 · **+3.56** |
+| WILLY | 6 | 100% | +1.08 | +796 | +0.40 | 100% · +1.08 · +796 · +0.40 | 6 · +1,274 · **+0.63** |
+| WILLY HT | 8 | 88% | +2.55 | +2,502 | +1.20 | 88% · +2.55 · +2,502 · +1.20 | 8 · +4,003 · **+1.89** |
+| Flatbase | 22 | 95% | +4.26 | +4,593 | +2.26 | 95% · +4.26 · +4,593 · +2.26 | 22 · +7,349 · **+3.58** |
+| **TOTAL** | 111 | 81% | +1.70 | +19,738 | +9.34 | 80% · +1.76 · +21,302 · +10.05 | 111 · +30,236 · **+14.03** |
+Worst day -7.6 → -7.6 → -8.2 % · max drawdown -7.9 → -7.6 → -8.2 %
+ML risk cap (conservative replay): 1 of 29 momentum longs touched — 1 shrunk (avg to 92%), 0 skipped; their booked % 1000SHIBUSDT +1.22→×0.92
+
+## MASTER (all batches) — 145 calendar days · $10,000 account (one size)
+| Sleeve | N | WR | Avg % | Net $ | %/day | → second chance: WR · Avg % · Net $ · %/day | → B26 (lev step + ML cap): N · Net $ · %/day |
+|---|---|---|---|---|---|---|---|
+| Momentum Long | 123 | 76% | +0.24 | +7,247 | +0.51 | 73% · +0.32 · +9,457 · +0.72 | 122 · +14,525 · **+1.09** |
+| LITE | 50 | 62% | +0.74 | +6,074 | +0.36 | 62% · +0.74 · +6,074 · +0.36 | 50 · +6,074 · **+0.36** |
+| LITE RETRY | 20 | 80% | +1.65 | +5,383 | +0.35 | 80% · +1.65 · +5,383 · +0.35 | 20 · +7,690 · **+0.48** |
+| WILLY | 17 | 100% | +1.93 | +4,024 | +0.38 | 100% · +1.93 · +4,024 · +0.38 | 17 · +6,439 · **+0.60** |
+| WILLY HT | 8 | 88% | +2.55 | +2,502 | +0.17 | 88% · +2.55 · +2,502 · +0.17 | 8 · +4,003 · **+0.26** |
+| Flatbase | 23 | 96% | +4.29 | +4,835 | +0.36 | 96% · +4.29 · +4,835 · +0.36 | 23 · +7,736 · **+0.56** |
+| **TOTAL** | 241 | 78% | +1.05 | +30,065 | +2.09 | 76% · +1.08 · +32,276 · +2.29 | 240 · +46,468 · **+3.28** |
+Worst day -8.5 → -7.6 → -8.2 % · max drawdown -16.2 → -12.6 → -11.6 %
+ML risk cap (conservative replay): 3 of 123 momentum longs touched — 2 shrunk (avg to 74%), 1 skipped; their booked % FETUSDT -0.49→×0.00, APTUSDT -1.21→×0.55, 1000SHIBUSDT +1.22→×0.92

@@ -60,7 +60,8 @@ def _ml(d):
 
 COLS = ["block", "era", "opened_at", "closed_at", "pair", "close_reason", "peak_reached_at", "trough_reached_at", "before", "peak_pnl",
         "trough_pnl", "post_exit_peak_pnl", "post_exit_trough_pnl", "post_exit_peak_minutes", "post_exit_trough_minutes", "post_exit_final_pnl",
-        "notional_value", "entry_mkt_up4h_pct"]   # 🌡 (DL 489) the engine's V2 Market-hot stamp (NULL before the deploy → rebuilt)
+        "notional_value", "entry_mkt_up4h_pct",   # 🌡 (DL 489) the engine's V2 Market-hot stamp (NULL before the deploy → rebuilt)
+        "entry_adx_delta"]   # 🔂 (DL 534) the second-chance zone — the watch lines re-base pre-ship fills on today's exit (scripts/ml_sc_history.py)
 
 
 def load_master():

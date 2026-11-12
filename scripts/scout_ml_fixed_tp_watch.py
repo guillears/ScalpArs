@@ -5,11 +5,15 @@ ML_MKT_HOT Market-hot (% of the rolling top-100 up over 4 h) — 🌡 V2, DECISI
 QUESTION   Would a plain fixed take-profit (+0.5 / +1 / +2 / +3 %) beat today's momentum-long exit (runner trail + ladder), on every full-size fill and on the
            fills the ML_MKT_HOT candidate filter keeps? Operator 11-05: "i find it very important … make sure in scout we are tracking this for momentum longs".
 COHORT     (operator 11-05: "we have a huge history, the decision will be based on forward + history") — HISTORY + FORWARD, re-read in full every run:
-           MASTER = reports/MASTER_POOL_stacked.csv full-size momentum longs kept on today's stack (before = stack_pct) · B25 = every export fill opened between
+           MASTER = reports/MASTER_POOL_stacked.csv full-size momentum longs kept on today's stack (before = stack_pct + the second chance, below) · B25 = every export fill opened between
            the B25 start (2026-10-23 18:00) and this line's registration (DL 479 commit + 10 min) · FORWARD = every fill opened after it. Exports = Downloads +
            exports_archive/, dedup (opened_at[:19], pair, direction, entry_strategy) — CLOSED beats OPEN, newest export wins; probes out
            (sweep_separators._is_probe, both flags); operator-closed out; not already in the master (a rebuilt master absorbs batches without double counting);
            a fill closed < 60 min before the newest export waits for its 45-min post-exit record.
+🔂 RE-BASE  (DECISION_LOG 534, 2026-11-12 — the momentum-long exit changed with the second chance, DL 532): "today's exit" = the runner trail /
+           ladder / recovery hold + the SECOND CHANCE. Fills opened before the DL 532 commit + 10 min read their booked % + the frozen per-fill
+           second-chance delta (scripts/ml_sc_history.py; master 123 fills, 38 changed, Σ +11.77); a pre-ship fill the second chance could have
+           changed but has no delta row is UNPRICED (shown); later fills are booked with it. The TP side is unchanged (it reads the path from entry).
 RULE       per fill from its recorded columns — scripts/study_ml_fixed_tp_recorded.tp_outcome, the registration read, reused unchanged.
 VERDICT    re-read every run on HISTORY + FORWARD together (never forward-only): per line (A all fills · B kept by ML_MKT_HOT) and level, Σ Δ ≤ 0 → NO EDGE ·
            EXIT CANDIDATE (operator decides at a batch review; never automatic) iff mean Δ > 0 ∧ day sign-flip luck p against the BEST of the 4 levels ≤ 0.10
@@ -32,6 +36,7 @@ import scout_gatekit as _GK                # noqa: E402  (operator-closed fills 
 import scout_ml_mkt_hot_watch as MH        # noqa: E402  (the Market-hot measure — % of the rolling top-100 up over 4 h, DL 489 — budgeted + cached)
 import study_ml_fixed_tp_recorded as RT    # noqa: E402  (cohort + rule of the registration read, reused unchanged)
 import review_math as RM                   # noqa: E402
+import ml_sc_history as SCH                # noqa: E402  (🔂 DL 534: "today's exit" includes the second chance on pre-ship fills)
 
 DL = 479
 TPS = RT.TPS
@@ -72,7 +77,7 @@ def load_exports(paths=None):
     return d.reset_index(drop=True), newest
 
 
-def cohort(paths=None, since=None, master=None):
+def cohort(paths=None, since=None, master=None, sc_ship_ms="auto", sc_delta=None):
     """→ (fills MASTER + B25 + FORWARD priced under every TP, the newest export time, N waiting for their record, operator-closed fills).
     master given (tests) → its own keys; else the RAW master keys (every master momentum long, kept or not)."""
     M = master if master is not None else RT.load_master()[0]
@@ -89,8 +94,35 @@ def cohort(paths=None, since=None, master=None):
         E = E[ok].copy()
         if since is not None:
             E.loc[pd.to_datetime(E.opened_at, format="mixed") >= since, ["block", "era"]] = "FORWARD"
-    F = RT.finish(pd.concat([M, E.reindex(columns=RT.COLS)], ignore_index=True))
+    F = RT.finish(pd.concat([M.reindex(columns=RT.COLS), E.reindex(columns=RT.COLS)], ignore_index=True))
+    F = sc_rebase(F, "before", sc_ship_ms, sc_delta)
     return RT.price(F), newest, waiting, ox
+
+
+def sc_rebase(F, col, sc_ship_ms="auto", sc_delta=None):
+    """🔂 (DL 534) F[col] → today's exit incl. the second chance (ml_sc_history.rebase); counts in F.attrs["sc"] = (changed, unpriced,
+    replica-disagrees, evaluable). Unpriced rows are dropped from the read and counted (a read needs a 'before')."""
+    ship = SCH.ship_ms() if sc_ship_ms == "auto" else sc_ship_ms
+    F = F.copy()
+    if not len(F) or ship is None:
+        F.attrs["sc"] = (0, 0, 0, ship is not None)
+        return F
+    p, n_ch, n_un, n_dis = SCH.rebase(F[col], F.opened_at, F.pair, F.get("entry_adx_delta"), F.close_reason, ship, sc_delta)
+    F[col] = p
+    F = F[F[col].notna()].reset_index(drop=True)
+    F.attrs["sc"] = (n_ch, n_un, n_dis, True)
+    return F
+
+
+def sc_line(sc, what="Today's exit includes"):
+    """the one-line 🔂 re-base status for a scout report. PURE."""
+    n_ch, n_un, n_dis, ok = (tuple(sc) + (0, 0, 0, True))[:4] if len(sc) < 4 else sc
+    if not ok:
+        return ("⚠ 🔂 Second-chance re-base NOT EVALUABLE this run (the DECISION_LOG 532 commit is not in git) — pre-ship fills read at the OLD exit; "
+                "do not read this line's verdict.")
+    return (f"🔂 {what} the second chance (re-based DL 534): {n_ch} pre-ship fills re-priced from the frozen replica delta"
+            + (f" · {n_dis} kept at their booked exit (the replica did not reproduce it — no second-chance credit)" if n_dis else "")
+            + (f" · ⚠ {n_un} pre-ship fill(s) the second chance could have changed have no delta — UNPRICED, out of the read" if n_un else "") + ".")
 
 
 def score_missing(F, now_ms, breadth_fn=None):
@@ -166,20 +198,24 @@ def _row(label, g, col):
     return f"| {label} | {len(g)} | {(g[col] > 0).mean():.0%} | {g[col].mean():+.2f} | {g[col].sum():+.2f} | {extra} |"
 
 
-def run(now_ms=None, paths=None, since_ms=None, breadth_fn=None, master=None):
+def run(now_ms=None, paths=None, since_ms=None, breadth_fn=None, master=None, sc_ship_ms="auto", sc_delta=None):
     """→ markdown lines. since_ms None → the DECISION_LOG 479 commit + 10 min splits B25 from FORWARD (not in git → no FORWARD split yet)."""
     now_ms = int(time.time() * 1000) if now_ms is None else int(now_ms)
     L = [f"## 👁 ML_FIXED_TP — momentum longs: fixed take-profit vs today's exit, HISTORY + FORWARD, all fills and kept by ML_MKT_HOT "
-         f"(registered 2026-11-05, DECISION_LOG {DL}, OBSERVE only)", ""]
+         f"(registered 2026-11-05, DECISION_LOG {DL}, OBSERVE only; re-based on the second-chance exit DL 534)", ""]
     if since_ms is None:
         since_ms = _GK.dl_deploy_ms(DL, lag_min=10, label="ML_FIXED_TP watch line")
     since = pd.Timestamp(int(since_ms), unit="ms") if since_ms is not None else None
-    F, newest, waiting, ox = cohort(paths, since, master)
+    F, newest, waiting, ox = cohort(paths, since, master, sc_ship_ms, sc_delta)
+    _sc = F.attrs.get("sc", (0, 0, 0, True))
     F, complete = score_missing(F, now_ms, breadth_fn)
+    F.attrs["sc"] = _sc
     n = {b: int((F.block == b).sum()) for b in BLOCKS}
     head = (f"Cohort: MASTER {n['MASTER']} · B25 {n['B25']} · FORWARD {n['FORWARD']} full-size momentum longs (FORWARD = opened ≥ {since:%Y-%m-%d %H:%M} UTC)"
             if since is not None else f"Cohort: MASTER {n['MASTER']} · B25 {n['B25']} full-size momentum longs (DL {DL} commit not in git: no FORWARD split yet)")
-    L += [head + f" · {waiting} wait for their 45-min post-exit record · {_GK.operator_closed_line(ox)}.", ""]
+    L += [head + f" · {waiting} wait for their 45-min post-exit record · {_GK.operator_closed_line(ox)}.",
+          sc_line(F.attrs.get("sc", (0, 0, 0, True))) + " Caveat: the TP side still reads the 45 min after the OLD exit, while a second-chance "
+          "exit can run to 180 min from entry.", ""]
     if not complete:
         L += [f"⚠ Market-hot read incomplete this run: {int(F.mkt_hot.isna().sum())} fills are unscored for line B (never counted on either side).", ""]
     priced = F[F[[f"TP{x:g}" for x in TPS]].notna().all(axis=1) & F.before.notna()]

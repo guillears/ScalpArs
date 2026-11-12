@@ -10,6 +10,9 @@ SOURCE    e=ML_MATCHED rows of the Decisions CSV exports (~/Downloads/scalpars_d
           mega-cap would ALSO have refused it), the entry_* snapshot (JSON). Merged across downloads, dedup (pair, t).
 COHORT    refusals at ≥ scout_gatekit.dl_deploy_ms(383) (commit + 10 min); post_gate rows and probe rows are OUT (they could never have
           opened); LONG_CHOP_BURST is not applied (needs the fill book — listed as a blind spot, as in the study).
+🔂 RE-BASE (DECISION_LOG 534, 2026-11-12): today's ML exit gained the SECOND CHANCE (DL 532) → every refusal and control fill is priced at
+          RP.BASE + apply_second_chance (entry_adx_delta from the refusal snapshot / the fill), in a FRESH write-once store
+          (SCOUT_ML_MATCHED_REFUSALS_SC.csv); the cohort floor (DL 383) and the frozen cells / gate are unchanged (no cell was decided).
 PRICING   the VALIDATED ML exit replica scripts/ml_exit_optimize_yr5.py at RP.BASE (today's live ML exit; DL 380 parity), TAKER entry fee,
           entry = the recorded decision price, ATR = the recorded entry_atr_pct, BTC closed-RSI ruler rebuilt from 5m — exactly as
           scripts/study_ml_matched_build.py priced its shadows. Paths: caches first (RP readers), then this scout's own budgeted public 1m / 5m
@@ -57,7 +60,8 @@ DEC_GLOB = os.path.expanduser("~/Downloads/scalpars_decisions_paper_*.csv")
 ORD_GLOB = os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")
 REPORTS = os.path.join(_ROOT, "reports")
 FETCH = os.path.join(REPORTS, "SCOUT_ML_MATCHED_REFUSALS_fetch")
-STORE = os.path.join(REPORTS, "SCOUT_ML_MATCHED_REFUSALS.csv")
+STORE = os.path.join(REPORTS, "SCOUT_ML_MATCHED_REFUSALS_SC.csv")   # 🔂 (DL 534) re-based: a fresh write-once store priced WITH the second chance
+                                                                    # (the old RP.BASE-only store SCOUT_ML_MATCHED_REFUSALS.csv is no longer read)
 STATE = os.path.join(REPORTS, ".scout_ml_matched_refusals_gate.json")
 # ── frozen gate (study §4) ──
 GATE_N, GATE_DAYS, BE_WR, MIN_AVG, ALPHA, M_CELLS, CONC = 30, 10, 61.5, 0.10, 0.05, 2, 0.50
@@ -71,7 +75,8 @@ PRE_5M_BARS = 110
 DEC_COLS = ["t", "e", "pair", "price", "conf", "mr_bar_at", "mr_labels", "mr_family", "mr_btc_regime", "mr_post_gate", "mr_room",
             "mr_open_count", "mr_max_positions", "mr_alt_corr24", "mr_alt_beta24", "mr_is_paper", "mr_entry_fields"]
 ORD_COLS = ["opened_at", "closed_at", "pair", "direction", "status", "entry_strategy", "entry_price", "entry_atr_pct", "pnl_percentage",
-            "close_reason", "cell_multiplier_source", "pattern_cell_source", "entry_pattern_c_any_match", "entry_pattern_w_any_match", "is_paper"]
+            "close_reason", "cell_multiplier_source", "pattern_cell_source", "entry_pattern_c_any_match", "entry_pattern_w_any_match", "is_paper",
+            "entry_adx_delta"]   # 🔂 (DL 534) the second-chance zone of the control fills
 STORE_COLS = ["kind", "key", "pair", "o_ms", "E", "atr", "pct", "reason", "exit_ms", "src", "status", "priced_at"]
 TERMINAL = ("PRICED", "NOT_EVALUABLE")   # stored write-once; NOT_EVALUABLE is never re-fetched (383 review)
 
@@ -167,7 +172,7 @@ def read_orders(paths=None):
 def shadow_cohort(R, floor_ms):
     """→ (kept shadows, excluded counts). Adds ef (dict), atr, cells."""
     if not len(R):
-        return R.assign(atr=[], W2_CFREE=[], W2_CFREE_SBULL=[]), {}
+        return R.assign(atr=[], adx=[], W2_CFREE=[], W2_CFREE_SBULL=[]), {}
     R = R[R.o_ms >= int(floor_ms)].copy()
     ef = []
     for s in R.mr_entry_fields:
@@ -178,6 +183,7 @@ def shadow_cohort(R, floor_ms):
         ef.append(d if isinstance(d, dict) else {})
     R["ef"] = ef
     R["atr"] = [_f(d.get("entry_atr_pct")) for d in ef]
+    R["adx"] = [_f(d.get("entry_adx_delta")) for d in ef]          # 🔂 (DL 534) the second-chance zone, from the refusal's entry snapshot
     R["probe"] = [bool(d.get("probe")) for d in ef]
     R["E"] = [_f(p) for p in R.price]
     pg = R.mr_post_gate.fillna("").astype(str).replace({"nan": ""})
@@ -191,7 +197,7 @@ def shadow_cohort(R, floor_ms):
 def control_cohort(O, floor_ms):
     """closed unmatched non-probe momentum LONG bot fills opened ≥ floor (operator-closed out)."""
     if not len(O):
-        return O.assign(o_ms=[], E=[], atr=[]), 0
+        return O.assign(o_ms=[], E=[], atr=[], adx=[]), 0
     O = O[(O.direction.astype(str) == "LONG") & (O.status.astype(str) == "CLOSED")].copy()
     es = O.entry_strategy.fillna("").astype(str).replace({"nan": ""})
     O = O[es.isin(["", "MOMENTUM"])]
@@ -206,6 +212,7 @@ def control_cohort(O, floor_ms):
     O = O[O.o_ms >= int(floor_ms)].copy()
     O["E"] = [_f(x) for x in O.entry_price]
     O["atr"] = [_f(x) for x in O.entry_atr_pct]
+    O["adx"] = [_f(x) for x in O.entry_adx_delta] if "entry_adx_delta" in O else [None] * len(O)
     return O[O.E.notna() & (O.E > 0)].reset_index(drop=True), len(ox)
 
 
@@ -442,7 +449,7 @@ def _live_sc_params():
         return None
 
 
-SC_RUNNERS = ("RUNNER_TRAIL", "HARD_TP_LADDER", "RH_RUNNER_TRAIL", "RH_HARD_TP_LADDER")
+SC_RUNNERS = ("RUNNER_TRAIL", "HARD_TP_LADDER", "RH_RUNNER_TRAIL", "RH_HARD_TP_LADDER")   # kept for importers; the match itself is services.ml_second_chance.sc_base_reason (review 534)
 
 
 def apply_second_chance(RP, fx, base, adx, prm):
@@ -455,7 +462,8 @@ def apply_second_chance(RP, fx, base, adx, prm):
         a = float(adx)
     except (TypeError, ValueError):
         return base
-    if prm is None or a != a or a > prm["adx_delta_max"] or why not in SC_RUNNERS or tex is None:
+    from services.ml_second_chance import sc_base_reason
+    if prm is None or a != a or a > prm["adx_delta_max"] or sc_base_reason(why) is None or tex is None:   # review 534: the engine's own matcher
         return base
     P = RP.prep_path(fx, RP.HORIZON_MS)
     if P is None:
@@ -658,7 +666,8 @@ def frozen(state_path, name, v, txt, decided):
 # ─────────────────────────── run ───────────────────────────
 def run(now_ms=None, refusals=None, orders=None, floor_ms="auto", price_fn=None, fetch=True, state_path=STATE, store_path=STORE):
     """→ report lines. Never raises."""
-    H = "## 🧷 ML_MATCHED_REFUSALS — refused C/W-matched momentum longs, priced at today's ML exit (DECISION_LOG 383, observe-only; frozen cells, OPERATOR CALL)"
+    H = ("## 🧷 ML_MATCHED_REFUSALS — refused C/W-matched momentum longs, priced at today's ML exit incl. the second chance "
+         "(DECISION_LOG 383, re-based 534, observe-only; frozen cells, OPERATOR CALL)")
     try:
         return _run(now_ms, refusals, orders, floor_ms, price_fn, fetch, state_path, store_path, H)
     except Exception as e:
@@ -670,7 +679,8 @@ def _run(now_ms, refusals, orders, floor_ms, price_fn, fetch, state_path, store_
     L = [H, "", "Cells (frozen 2026-10-26, study §4): ① W2_CFREE = W2 and no C pattern · ② W2_CFREE_SBULL = ① ∧ BTC regime STRONG_BULL. "
          f"Gate per cell at the first {GATE_N} priced episodes on ≥ {GATE_DAYS} days: WR ≥ {BE_WR} % ∧ avg ≥ +{MIN_AVG} ∧ day-boot LB > 0 at "
          f"α {ALPHA}/{M_CELLS} ∧ ≥ same-days unmatched control ∧ no day / pair ≥ {CONC:.0%} of net → OPERATOR CALL; else DECIDED no. "
-         "Replica = RP.BASE (today's ML exit), taker fee, one shadow per pair at a time; post-gate (heat / mega-cap) and probe refusals out."]
+         "Replica = RP.BASE + the SECOND CHANCE (today's ML exit — re-based DL 534: every refusal / control re-priced, fresh store), taker fee, "
+         "one shadow per pair at a time; post-gate (heat / mega-cap) and probe refusals out."]
     if floor_ms == "auto":
         floor_ms = _GK.dl_deploy_ms(DL, lag_min=LAG_MIN, label="ML_MATCHED_REFUSALS")
     if floor_ms is None:
@@ -686,12 +696,19 @@ def _run(now_ms, refusals, orders, floor_ms, price_fn, fetch, state_path, store_
         return L + ["  nothing to price yet.", ""]
     rows = {}
     for i, r in S.iterrows():
-        rows[("S", f"{r.pair}|{int(r.o_ms)}")] = dict(key=f"{r.pair}|{int(r.o_ms)}", pair=r.pair, o_ms=int(r.o_ms), E=float(r.E), atr=r.atr)
+        rows[("S", f"{r.pair}|{int(r.o_ms)}")] = dict(key=f"{r.pair}|{int(r.o_ms)}", pair=r.pair, o_ms=int(r.o_ms), E=float(r.E), atr=r.atr,
+                                                       adx=getattr(r, "adx", None))
     for i, r in C.iterrows():
-        rows[("C", f"{r.pair}|{int(r.o_ms)}")] = dict(key=f"{r.pair}|{int(r.o_ms)}", pair=r.pair, o_ms=int(r.o_ms), E=float(r.E), atr=r.atr)
+        rows[("C", f"{r.pair}|{int(r.o_ms)}")] = dict(key=f"{r.pair}|{int(r.o_ms)}", pair=r.pair, o_ms=int(r.o_ms), E=float(r.E), atr=r.atr,
+                                                       adx=getattr(r, "adx", None))
     cache = load_store(store_path) if store_path else {}
     todo = [k for k in rows if k not in cache]
     notes = []
+    if todo and price_fn is None and _live_sc_params() is None:
+        # 🔂 (review 534) the store is write-once and priced WITH the second chance — knobs unreadable / second chance switched off → price
+        # nothing new (a BASE-only price would sit in this store as "today's exit" forever); the registry flags the line STALE meanwhile
+        notes.append(f"⚠ second-chance knobs unreadable or off — {len(todo)} new row(s) NOT priced this run (re-base or retire the line)")
+        todo = []
     if todo:
         fills = [dict(rows[k], key=f"{k[0]}:{k[1]}") for k in todo]
         if price_fn is None:

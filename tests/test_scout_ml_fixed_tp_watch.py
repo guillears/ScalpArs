@@ -32,7 +32,7 @@ def test_history_and_forward_split_probes_out_and_settling(tmp_path):
                  cell_multiplier_source="MOM_PROBE"),                                                                           # probe → out
             dict(opened_at="2026-11-20T09:30:00", closed_at="2026-11-20T09:40:00", pair="DDDUSDT", pnl_percentage=0.4)]        # < 60 min → waits
     p = _export(tmp_path, rows)
-    F, newest, waiting, _ = W.cohort([p], since=pd.Timestamp("2026-11-06"), master=_master())
+    F, newest, waiting, _ = W.cohort([p], since=pd.Timestamp("2026-11-06"), master=_master(), sc_ship_ms=None, sc_delta={})
     assert dict(F.block.value_counts()) == {"B25": 1, "FORWARD": 1} and waiting == 1
     assert (F["TP1"] == 1.0).all() and (F["TP1_how"] == "TP after exit").all()
 
@@ -62,11 +62,10 @@ def test_hook_and_registry():
     j = src.index("import scout_ml_fixed_tp_watch as _mft")
     assert "_mft.run(now_ms)" in src[j:j + 200] and "except Exception as _mft_e" in src[j:j + 400]
     import observe_registry as OR
-    assert OR.EXIT["scout_ml_fixed_tp_watch.py"]["dl"] == "479"
+    assert OR.EXIT["scout_ml_fixed_tp_watch.py"]["dl"] == "479 · 534"
     row = [r for r in OR.status() if r[0] == "scout_ml_fixed_tp_watch.py"][0]
-    # 🔂 (DL 532) the momentum-long exit gained the second chance → this line is ⚠ STALE on exactly that key until the operator
-    # re-bases or retires it; any OTHER drift still fails here
-    assert row[4] == "STALE" and [d[0] for d in row[5]] == ["ml_second_chance_enabled"], row[5]
+    # 🔁 (DL 534) re-based on the second-chance exit (DL 532) → matches today's config again; any drift fails here
+    assert row[4] == "OK", row[5]
 
 
 def test_master_keys_are_raw_so_a_rebuilt_master_never_double_counts():

@@ -11,6 +11,9 @@ COHORT     full-size momentum longs, HISTORY + FORWARD re-read every run (operat
            registration (DL 481 commit + 10 min) · FORWARD = after it. Exports = Downloads + exports_archive/, dedup (opened_at[:19], pair, direction,
            entry_strategy), CLOSED beats OPEN, newest export by its download stamp; probes out (both flags); operator-closed out; not already in the master
            (raw master keys). MASTER + B25 are IN-SAMPLE (the cell was found on them) — shown, never enough alone.
+🔂 RE-BASE  (DECISION_LOG 534, 2026-11-12): the booked % is today's momentum-long exit INCLUDING the second chance (DL 532) — pre-ship fills
+           read booked + the frozen per-fill replica delta (scripts/ml_sc_history.py, as ML_FIXED_TP); a pre-ship fill it could have changed with
+           no delta row is UNPRICED (counted, out of the read).
 VERDICT    (operator 11-06: "i dont think is correct not to consider all the trades of the batch and to do it forward looking") — HISTORY + B25 +
            FORWARD pooled, re-read every run, never forward-only: RETIRE iff the pooled cell avg ≤ the pooled rest-of-not-hot avg · MULTIPLIER CANDIDATE
            (operator decides; never automatic) iff the pooled cell meets Pattern W (N ≥ 30, WR ≥ 70 %, avg ≥ +0.10 %, Σ > 0) ∧ day-clustered bootstrap
@@ -52,7 +55,7 @@ def cell(d):
     return v.astype(object).where(s.notna() & r.notna(), np.nan)
 
 
-def cohort(paths=None, since=None, master=None):
+def cohort(paths=None, since=None, master=None, sc_ship_ms="auto", sc_delta=None):
     """→ (fills MASTER + B25 + FORWARD with pct / block / day / pair / mkt_hot / cell, newest export time, operator-closed fills)."""
     if master is None:
         M = pd.read_csv(RT.MASTER, low_memory=False)
@@ -74,9 +77,11 @@ def cohort(paths=None, since=None, master=None):
         E["block"] = "B25"
         if since is not None:
             E.loc[pd.to_datetime(E.opened_at, format="mixed") >= since, "block"] = "FORWARD"
-    cols = ["block", "opened_at", "pair", "pct", "entry_ema20_slope", "entry_rsi_prev", "entry_mkt_up4h_pct"]   # 🌡 (489) the V2 stamp
+    cols = ["block", "opened_at", "pair", "pct", "entry_ema20_slope", "entry_rsi_prev", "entry_mkt_up4h_pct",   # 🌡 (489) the V2 stamp
+            "close_reason", "entry_adx_delta"]                                                                   # 🔂 (534) the second-chance zone
     F = pd.concat([M.reindex(columns=cols), E.reindex(columns=cols)], ignore_index=True)
     F = F[F.pct.notna()].reset_index(drop=True)
+    F = FT.sc_rebase(F, "pct", sc_ship_ms, sc_delta)      # 🔂 (DL 534) booked % → today's exit incl. the second chance; unpriced out (counted)
     F["day"] = pd.to_datetime(F.opened_at, format="mixed").dt.strftime("%Y-%m-%d")
     F["mkt_hot"] = RT.attach_mkt_hot(F)
     F["cell"] = cell(F)
@@ -138,20 +143,22 @@ def _row(label, g):
     return f"| {label} | {len(g)} | {g.day.nunique()} | {(g.pct > 0).mean():.0%} | {g.pct.mean():+.2f} | {g.pct.sum():+.2f} |"
 
 
-def run(now_ms=None, paths=None, since_ms=None, breadth_fn=None, master=None):
+def run(now_ms=None, paths=None, since_ms=None, breadth_fn=None, master=None, sc_ship_ms="auto", sc_delta=None):
     """→ markdown lines. since_ms None → the DECISION_LOG 481 commit + 10 min splits B25 from FORWARD (not in git → no FORWARD split yet)."""
     now_ms = int(time.time() * 1000) if now_ms is None else int(now_ms)
     L = [f"## 👁 ML_LEAD_A — momentum longs, not-hot winner cell (coin EMA20 slope > {SLOPE_MIN} ∧ RSI prev ≤ {RSI_PREV_MAX}), multiplier watch, "
-         f"HISTORY + FORWARD (registered 2026-11-06, DECISION_LOG {DL}, OBSERVE only)", ""]
+         f"HISTORY + FORWARD (registered 2026-11-06, DECISION_LOG {DL}, OBSERVE only; re-based on the second-chance exit DL 534)", ""]
     if since_ms is None:
         since_ms = _GK.dl_deploy_ms(DL, lag_min=10, label="ML_LEAD_A watch line")
     since = pd.Timestamp(int(since_ms), unit="ms") if since_ms is not None else None
-    F, newest, ox = cohort(paths, since, master)
+    F, newest, ox = cohort(paths, since, master, sc_ship_ms, sc_delta)
+    sc = F.attrs.get("sc", (0, 0, 0, True))
     F, complete = FT.score_missing(F, now_ms, breadth_fn)
     n = {b: int((F.block == b).sum()) for b in BLOCKS}
     L += [f"Cohort: MASTER {n['MASTER']} · B25 {n['B25']} · FORWARD {n['FORWARD']} full-size momentum longs"
           + (f" (FORWARD = opened ≥ {since:%Y-%m-%d %H:%M} UTC)" if since is not None else f" (DL {DL} commit not in git: no FORWARD split yet)")
-          + f" · {_GK.operator_closed_line(ox)}. MASTER + B25 are in-sample (the cell was found on them).", ""]
+          + f" · {_GK.operator_closed_line(ox)}. MASTER + B25 are in-sample (the cell was found on them).",
+          FT.sc_line(sc, "Booked % includes"), ""]
     hot = F.mkt_hot
     unscored = hot.isna() | F.cell.isna()
     if not complete:

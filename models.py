@@ -516,6 +516,10 @@ class Order(Base):
     entry_bracket_max_leverage = Column(Float, nullable=True)
     entry_bracket_cap_notional = Column(Float, nullable=True)
     bracket_capped = Column(Boolean, default=False)
+    # 🪜📈 (DECISION_LOG 535) keep the planned position on a capped coin: the margin / position the plain bracket resize would have opened
+    # (NULL = the rule did not act — not capped, not a listed sleeve, switched off, or no room). The booked row carries the kept position.
+    bracket_keep_margin_from = Column(Float, nullable=True)
+    bracket_keep_notional_from = Column(Float, nullable=True)
     # 🩹 Oct-2 RECOVERY HOLD (DECISION_LOG 172): BTC RSI(14) on CLOSED 5m bars at entry (the hold's ruler — entry_btc_rsi is the
     # live in-progress RSI(12)), and the flag record: when the stop was converted into a hold, the P&L % and closed-bar RSI at
     # that moment, the stop level that was hit and the hard stop the hold runs to. rh_triggered_at is never cleared (a released

@@ -1067,6 +1067,34 @@ def leverage_bracket_limit(tiers, leverage, margin):
     return best[0], best[1], pair_max, cap_at
 
 
+def bracket_keep_position(tiers, leverage, target_notional, max_margin):
+    """🪜📈 (DECISION_LOG 535) the exchange brackets lowered a position → the LARGEST position ≤ target_notional the tiers allow with margin
+    ≤ max_margin, at a whole leverage ≤ the requested one; ties keep the HIGHER leverage (same position, less margin). → (leverage, notional,
+    margin) or None (no usable table / inputs). Pure."""
+    try:
+        rows = sorted((float(c), float(l)) for c, l in (tiers or []) if float(c) > 0 and float(l) >= 1)
+        lev, tgt, mm = float(leverage), float(target_notional), float(max_margin)
+    except (TypeError, ValueError):
+        return None
+    if not rows or not (lev >= 1) or not (tgt > 0) or not (mm > 0) or not all(math.isfinite(x) for x in (lev, tgt, mm)):
+        return None
+    best = None
+    for cap, tl in rows:
+        le = float(int(min(lev, tl)))
+        if le < 1:
+            continue
+        n = min(tgt, cap, mm * le)
+        if best is None or n > best[1] + 1e-9 or (abs(n - best[1]) <= 1e-9 and le > best[0]):
+            best = (le, n)
+    return None if best is None else (best[0], best[1], best[1] / best[0])
+
+
+def bracket_keep_sleeves(inv_cfg) -> frozenset:
+    """(535) the entry_strategy labels the keep-position rule applies to (bracket_keep_position_sleeves, comma list). Pure."""
+    raw = str(getattr(inv_cfg, 'bracket_keep_position_sleeves', '') or '')
+    return frozenset(x.strip().upper() for x in raw.split(',') if x.strip())
+
+
 def momentum_long_bracket_keep(tiers, leverage, investment, scale, new_inv, lev_eff):
     """⚖️ (DECISION_LOG 298) a bracket-capped RESIZED momentum long (scale < 1 = margin × scale of the full margin): when the brackets allow the
     reference notional (investment × leverage = the DL 289 notional) at a lower leverage with the FULL margin (investment / scale), take it —
@@ -6811,6 +6839,7 @@ class TradingEngine:
             where capped_by_balance=True if the cell multiplier wanted more
             than tradeable allowed (logged via [CELL_MULT_CAPPED] in caller).
         """
+        self._last_sizing_tradeable = None   # 🪜📈 (535 review) never a stale value from an earlier sizing (early returns leave it None)
         tc = config.trading_config
         conf_level = tc.confidence_levels.get(confidence)
 
@@ -6879,6 +6908,7 @@ class TradingEngine:
 
         # Available after reserve
         tradeable = max(0, available_balance - reserve)
+        self._last_sizing_tradeable = tradeable   # 🪜📈 (535 review) the bracket keep-position step caps its extra margin at this (bot open lane = one sizing at a time)
 
         # Calculate base investment
         if tc.investment.mode == "percentage":
@@ -14575,6 +14605,7 @@ class TradingEngine:
             cell_multiplier=cell_mult, cell_lev_multiplier=cell_lev_mult,
             multiplier_target=_mult_target, base_lev_multiplier=_ml_lev,
         )
+        _bk_tradeable = getattr(self, '_last_sizing_tradeable', None)   # 🪜📈 (535 review) read right after THIS sizing, passed explicitly below
         if _ml_lev != 1.0 and investment > 0:
             logger.info(f"[MOMENTUM_LONG_LEV] {pair} LONG: momentum_long_lev_mult {_ml_lev:g} × cell lev {cell_lev_mult:g} ({cell_src}) → {leverage}x")
         # ⚖️ 2026-10-15 (DECISION_LOG 298): momentum_long_invest_mult — the SAME notional with less margin locked (momentum_long_resize).
@@ -14737,6 +14768,8 @@ class TradingEngine:
         # liquidity / gross caps left (conservative: when it lowers the leverage the position can end below those caps too).
         # cell_lev_multiplier keeps the INTENDED multiplier — read `leverage` / `bracket_capped` on these rows.
         _brk_capped = False; _brk_max_lev = None; _brk_cap = None
+        _bk_pre_inv, _bk_pre_lev = investment, leverage          # 🪜📈 (535) the planned margin / leverage the brackets may lower
+        _bk_from_m = _bk_from_n = None
         if bool(getattr(config.trading_config.investment, 'leverage_bracket_cap_enabled', True)) and investment > 0 and leverage > 0:
             try:
                 _lim = leverage_bracket_limit(bracket_tiers_with_headroom((await binance_service.get_leverage_brackets()).get(pair)), leverage, investment)   # (319) 5 % headroom
@@ -14760,8 +14793,33 @@ class TradingEngine:
                             logger.info(f"[BRACKET_CAP] {pair} LONG: momentum long at the full margin keeps ${_ml_b[0] * _ml_b[1]:,.0f} at {_ml_b[1]:g}× "
                                         f"(reduced margin would give ${_new_inv * _lev_eff:,.0f}; reference ${investment * leverage:,.0f})")
                             _new_inv, _lev_eff = _ml_b
+                    # 🪜📈 (DECISION_LOG 535) KEEP THE PLANNED POSITION on a capped coin: the brackets lowered the position (same margin, lower
+                    # leverage) → for the listed sleeves (never MOMENTUM: its DL 298 keep above owns that path), the planned position (the margin ×
+                    # leverage the caps above left) at the highest whole leverage whose tier allows it, with MORE margin — ≤ max_margin_mult × the
+                    # planned margin, ≤ max_investment_size and ≤ the TRADEABLE balance at sizing (free − the schedule / fee reserve, review 535).
+                    # Runs BEFORE the min-margin skip (review: a coin the plain resize skips can open kept). Same position = the same $ per % move
+                    # / per stop as planned; only the margin changes. Fail-open (any error → today's resize). Stamps bracket_keep_*_from.
+                    _bk_inv = config.trading_config.investment
+                    if (bool(getattr(_bk_inv, 'bracket_keep_position_enabled', False)) and _wh_es != "MOMENTUM"
+                            and _wh_es in bracket_keep_sleeves(_bk_inv) and _new_inv * _lev_eff < _bk_pre_inv * _bk_pre_lev - 1.0):
+                        try:
+                            _bk_mult = max(1.0, float(getattr(_bk_inv, 'bracket_keep_position_max_margin_mult', 1.6) or 1.0))
+                            _bk_trd = _bk_tradeable
+                            _bk_room = float(available or 0.0) if _bk_trd is None else min(float(_bk_trd), float(available or 0.0))
+                            _bk_max_m = min(_bk_pre_inv * _bk_mult, max(0.0, _bk_room) * 0.98,
+                                            float(getattr(_bk_inv, 'max_investment_size', 0.0) or 0.0) or float("inf"))
+                            _bk = bracket_keep_position(bracket_tiers_with_headroom((await binance_service.get_leverage_brackets()).get(pair)),
+                                                        _bk_pre_lev, _bk_pre_inv * _bk_pre_lev, _bk_max_m)
+                            if _bk is not None and _bk[1] > _new_inv * _lev_eff + 1.0 and _bk[2] > _new_inv:
+                                _bk_from_m, _bk_from_n = _new_inv, _new_inv * _lev_eff
+                                logger.info(f"[BRACKET_KEEP] {pair} {direction} {_wh_es}: brackets gave ${_bk_from_n:,.0f} at {_lev_eff:g}× → keep "
+                                            f"${_bk[1]:,.0f} at {_bk[0]:g}× (planned ${_bk_pre_inv * _bk_pre_lev:,.0f}); margin ${_new_inv:.2f} → "
+                                            f"${_bk[2]:.2f} (≤ {_bk_mult:g}× planned ${_bk_pre_inv:.2f}, tradeable ${_bk_room:.2f})")
+                                _new_inv, _lev_eff = _bk[2], float(_bk[0])
+                        except Exception as _bke:
+                            logger.warning(f"[BRACKET_KEEP] {pair}: keep-position failed ({str(_bke)[:80]}) — today's resize kept")
                     if _new_inv < config.trading_config.investment.min_investment_size * _ml_min_scale * _ht_min_scale:   # ⚖️ (298) judged at today's size
-                        logger.warning(f"[BRACKET_CAP] {pair} {direction}: brackets allow ${_n_ok:,.0f} at {_lev_eff:g}× → margin "
+                        logger.warning(f"[BRACKET_CAP] {pair} {direction}: brackets allow ${_new_inv * _lev_eff:,.0f} at {_lev_eff:g}× → margin "
                                        f"${_new_inv:.2f} < min ${config.trading_config.investment.min_investment_size * _ml_min_scale * _ht_min_scale:.2f} — skip")
                         self._record_filter_block('BRACKET_CAP_SKIP', direction)
                         return None
@@ -15374,6 +15432,7 @@ class TradingEngine:
             entry_liquidity_cap_notional=_liq_cap,
             liquidity_capped=_liq_capped,
             entry_bracket_max_leverage=_brk_max_lev, entry_bracket_cap_notional=_brk_cap, bracket_capped=_brk_capped,   # 🪜 Oct-1
+            bracket_keep_margin_from=_bk_from_m, bracket_keep_notional_from=_bk_from_n,   # 🪜📈 (535) what the plain bracket resize gave
             entry_ml_risk_open_pct=_mlrc_open,   # 📈 (DECISION_LOG 533) open momentum-long risk at entry (% of account; momentum longs only)
             entry_ml_risk_shrunk_from=_mlrc_from,   # 📈 (533) the notional before the ML risk cap shrank it (NULL = not shrunk)
             entry_btc_rsi_closed=(_current_btc_rsi_closed if _rh_rsi_fresh(_current_btc_rsi_closed_bar_ts, _leash_time.time() * 1000.0) else None),   # 🩹 Oct-2

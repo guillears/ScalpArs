@@ -5185,6 +5185,22 @@
                             </div>
                             <p class="text-xs text-gray-500 mt-1">⑤ Size every order to what the exchange accepts for that pair (e.g. MOVR: 25× max, $5k at 25×): same margin, lower leverage or a smaller position; a manual order over the limit is refused. <span id="leverage-brackets-status" class="text-gray-400">table: —</span></p>
                         </div>
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-2" title="DECISION_LOG 535. When ⑤ lowers a position on a small coin (same margin, lower leverage → smaller position), the listed sleeves keep the PLANNED position at the highest leverage the coin allows, with more margin: at most 'Max margin ×' the planned margin and never more than the free balance. Same position = the same $ per % move and per stop as planned; only the margin locked changes. B25: 48 of 111 fills capped, +11.18 → +14.01 %/day.">🪜📈 Keep the planned position on capped coins</label>
+                            <div class="flex flex-wrap items-center gap-3 py-2">
+                                <label class="flex items-center cursor-pointer">
+                                    <input type="checkbox" id="config-bracket-keep-enabled" class="sr-only peer">
+                                    <div class="w-9 h-5 bg-white/10 peer-checked:bg-sky-500/50 rounded-full relative transition-colors">
+                                        <div class="w-4 h-4 bg-white rounded-full absolute top-0.5 left-0.5 peer-checked:translate-x-4 transition-transform"></div>
+                                    </div>
+                                    <span class="ml-2 text-sm text-gray-300">Enabled</span>
+                                </label>
+                                <label class="text-xs text-gray-400 flex items-center gap-1">Max margin ×
+                                    <input type="number" step="0.1" min="1" id="config-bracket-keep-max-mult" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-sm"></label>
+                            </div>
+                            <input type="text" id="config-bracket-keep-sleeves" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-xs" placeholder="FRENZY_LITE,FRENZY_LITE_RETRY,FRENZY_WILLY,FRENZY_WILLY_HT,FLATBASE_SHORT">
+                            <p class="text-xs text-gray-500 mt-1">⑥ Sleeves (entry strategy labels, comma-separated). Momentum Long is left out by design.</p>
+                        </div>
                         <div class="md:col-span-2">
                             <label class="block text-sm text-gray-400 mb-2">④ Balance → Leverage Schedule</label>
                             <div id="lev-schedule-rows" class="space-y-2">
@@ -12385,7 +12401,7 @@
             lines.push(`  Fee reserve floor: $${inv.fee_reserve_usd ?? 0} (never traded — BNB refuel; 0 = off)`);
             lines.push(`  Fee reserve = max($${inv.fee_reserve_usd ?? 0} min, ${inv.fee_reserve_pct ?? 0}% × equity (schedule tier active → × tradeable target), ${inv.fee_reserve_hours ?? 0}h × BOT-fill burn/hr ($${((status && typeof status.bnb_burn_rate_bot === 'number') ? status.bnb_burn_rate_bot : 0).toFixed(2)}/hr; manual fees excluded from this leg) − BNB held)`);
             lines.push(`  Cooldown After Any Close: ${inv.cooldown_after_loss_minutes || 0}min  |  No Expansion: ${inv.no_expansion_minutes || 0}min`);
-            lines.push(`  Liquidity Caps: ① ${inv.max_notional_pct_of_pair_volume || 0}% 24h vol / ceiling $${inv.max_notional_hard_ceiling || 0}  |  ② max gross lev ${inv.max_gross_leverage || 0}×  |  ③ redeploy ${inv.redeploy_leftover_enabled ? 'ON (hard ' + (inv.max_open_positions_hard || 0) + ')' : 'off'}  |  ⑤ exchange leverage brackets ${inv.leverage_bracket_cap_enabled !== false ? 'ON' : 'off'}  |  🔒 SPIKE LOWVOL (Aug-3 override): ${(inv.spike_lowvol_liq_cap_pct || 0) > 0 ? `${inv.spike_lowvol_liq_cap_pct}% cap on spike pairs < $${((inv.spike_lowvol_threshold_usd || 0)/1e6).toFixed(0)}M (LIQ2)` : 'off'}`);
+            lines.push(`  Liquidity Caps: ① ${inv.max_notional_pct_of_pair_volume || 0}% 24h vol / ceiling $${inv.max_notional_hard_ceiling || 0}  |  ② max gross lev ${inv.max_gross_leverage || 0}×  |  ③ redeploy ${inv.redeploy_leftover_enabled ? 'ON (hard ' + (inv.max_open_positions_hard || 0) + ')' : 'off'}  |  ⑤ exchange leverage brackets ${inv.leverage_bracket_cap_enabled !== false ? 'ON' : 'off'}  |  ⑥ keep planned position ${inv.bracket_keep_position_enabled ? 'ON (≤ ' + (inv.bracket_keep_position_max_margin_mult ?? 1.6) + '× margin)' : 'off'}  |  🔒 SPIKE LOWVOL (Aug-3 override): ${(inv.spike_lowvol_liq_cap_pct || 0) > 0 ? `${inv.spike_lowvol_liq_cap_pct}% cap on spike pairs < $${((inv.spike_lowvol_threshold_usd || 0)/1e6).toFixed(0)}M (LIQ2)` : 'off'}`);
             if (cfg.pair_blacklist) lines.push(`  Pair Blacklist: ${cfg.pair_blacklist}`);
             if (cfg.no_trade_pairs) lines.push(`  No-Trade Pairs (track-only): ${cfg.no_trade_pairs}`);
 
@@ -23066,6 +23082,9 @@
                 const _rde = document.getElementById('config-redeploy-leftover-enabled');
                 if (_rde) _rde.checked = !!config.investment.redeploy_leftover_enabled;
                 { const _lb = document.getElementById('config-leverage-bracket-cap-enabled'); if (_lb) _lb.checked = config.investment.leverage_bracket_cap_enabled !== false; }   // 🪜 Oct-1 (default ON)
+                { const _bk = document.getElementById('config-bracket-keep-enabled'); if (_bk) _bk.checked = !!config.investment.bracket_keep_position_enabled;   // 🪜📈 (535)
+                  const _bm = document.getElementById('config-bracket-keep-max-mult'); if (_bm) _bm.value = config.investment.bracket_keep_position_max_margin_mult ?? 1.6;
+                  const _bs = document.getElementById('config-bracket-keep-sleeves'); if (_bs) _bs.value = config.investment.bracket_keep_position_sleeves ?? ''; }
                 // ④ Balance→leverage schedule (per-line rows) + live readout (active tier @ balance)
                 window._levSchedBalance = (typeof config.paper_balance === 'number') ? config.paper_balance : 0;
                 const _levBals = Array.from(document.querySelectorAll('.lev-sched-bal'));
@@ -24847,6 +24866,9 @@
                     manual_max_open_positions: (() => { const _v = parseInt(document.getElementById('config-manual-max-open-positions')?.value); return Number.isFinite(_v) ? Math.max(0, _v) : 8; })(),   // 🖐 Sep-29 (0 = off)
                     redeploy_leftover_enabled: !!document.getElementById('config-redeploy-leftover-enabled')?.checked,
                     leverage_bracket_cap_enabled: !!document.getElementById('config-leverage-bracket-cap-enabled')?.checked,
+                    bracket_keep_position_enabled: !!document.getElementById('config-bracket-keep-enabled')?.checked,   // 🪜📈 (535)
+                    bracket_keep_position_max_margin_mult: (() => { const _v = safeFloat(document.getElementById('config-bracket-keep-max-mult')?.value); return Number.isFinite(_v) && _v >= 1 ? _v : 1.6; })(),
+                    bracket_keep_position_sleeves: ((document.getElementById('config-bracket-keep-sleeves')?.value ?? '').trim() || 'FRENZY_LITE,FRENZY_LITE_RETRY,FRENZY_WILLY,FRENZY_WILLY_HT,FLATBASE_SHORT'),   // review 535: blank → the default list (the toggle switches it off)
                     leverage_balance_schedule: (function(){ const t = []; const bs = document.querySelectorAll('.lev-sched-bal'), ls = document.querySelectorAll('.lev-sched-lev'); for (let i = 0; i < bs.length; i++) { const b = (bs[i].value || '').trim(), l = (ls[i].value || '').trim(); if (b !== '' && l !== '') { const bn = parseFloat(b), ln = parseFloat(l); if (!isNaN(bn) && !isNaN(ln)) t.push([bn, ln]); } } t.sort((a, b) => a[0] - b[0]); return t.map(x => x[0] + ':' + x[1]).join(', '); })()
                 },
                 thresholds: {

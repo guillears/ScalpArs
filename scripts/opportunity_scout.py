@@ -1468,6 +1468,14 @@ def run():
     except Exception as _lvs_e:
         log(f"LEV_STEP line failed: {_lvs_e}")
         _rg_sec += ["## 📈 B26 LEVERAGE STEP", "", f"Unavailable this run ({str(_lvs_e)[:120]}).", ""]
+    try:                                               # 🪜📈 Nov-12 KEEP THE PLANNED POSITION ON CAPPED COINS — revert gate (DECISION_LOG 535; stamped columns only)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_bracket_keep as _bkp
+        _rg_sec += _bkp.run(now_ms)
+    except Exception as _bkp_e:
+        log(f"BRACKET_KEEP line failed: {_bkp_e}")
+        _rg_sec += ["## 🪜📈 KEEP THE PLANNED POSITION", "", f"Unavailable this run ({str(_bkp_e)[:120]}).", ""]
     try:                                               # 🔂 Nov-11 ML SECOND CHANCE — the armed momentum-long exit's revert gate, booked vs today's-exit shadow (DECISION_LOG 532; stamped columns only)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

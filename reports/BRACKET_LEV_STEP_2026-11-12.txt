@@ -1,0 +1,76 @@
+# LEVERAGE STEP vs BINANCE POSITION LIMITS (2026-11-12)
+How much of the DL 533 leverage step survives Binance's per-pair position limits (operator 11-12, after H / ONE opened at 5× not 8×).
+Tiers = the bot's own cached table (dashboard /api/manual/limits, 2026-11-12, already × 0.95 headroom — the order path's numbers) →
+reports/BRACKETS_2026-11-12.txt. TODAY'S table applied to every fill (Binance changes limits now and then — caveat).
+Per fill at today's one size ($10,000 account, K.SLEEVES): margin = X × account / old leverage; old = what the bracket allowed at the old
+leverage, new = at the new leverage (services.trading_engine.leverage_bracket_limit, same margin, whole leverages). Gain kept = new / old notional.
+Then the B25 / master daily compound with each fill's REAL bracket-limited notional instead of the flat step.
+
+## B25 — 20 days · $10,000 account · today's sizes, today's bracket table
+| Sleeve | Fills | Step | Fills that get the FULL step | capped (lower lev / smaller) | avg notional new ÷ old | %/day: flat step (assumed) → with the limits |
+|---|---|---|---|---|---|---|
+| Momentum Long | 29 | 10→15× | 27 (93%) | 2 | 1.47× (flat 1.50×) | +2.62 → **+2.45** |
+| LITE | 27 | 8→8× | 13 (48%) | 14 | 1.00× (flat 1.00×) | +1.98 → **+1.61** |
+| LITE RETRY | 19 | 7→10× | 2 (11%) | 17 | 1.08× (flat 1.43×) | +3.56 → **+2.06** |
+| WILLY | 6 | 5→8× | 0 (0%) | 6 | 1.37× (flat 1.60×) | +0.63 → **+0.56** |
+| WILLY HT | 8 | 5→8× | 0 (0%) | 8 | 1.16× (flat 1.60×) | +1.89 → **+1.19** |
+| Flatbase | 22 | 5→8× | 21 (95%) | 1 | 1.57× (flat 1.60×) | +3.58 → **+3.50** |
+| **TOTAL** | 111 | | | | | +14.04 → **+11.18** (before the step, with the limits: +9.09) |
+
+WILLY / HT fills, one by one (want = today's size at 8×):
+| Opened | Pair | Sleeve | want at 8× | brackets allow | at | booked % |
+|---|---|---|---|---|---|---|
+| 10-26 12:30 | HUMAUSDT | WILLY | $19,600 | $19,000 | 8× | +1.25 |
+| 10-30 09:10 | BEAMXUSDT | WILLY | $19,600 | $19,000 | 8× | +1.25 |
+| 10-30 18:55 | BLURUSDT | WILLY HT | $19,600 | $12,250 | 5× | +1.25 |
+| 11-05 02:55 | UAIUSDT | WILLY HT | $19,600 | $12,250 | 5× | +7.69 |
+| 11-05 10:30 | ONUSDT | WILLY | $19,600 | $19,000 | 8× | +1.25 |
+| 11-05 18:55 | AKEUSDT | WILLY HT | $19,600 | $12,250 | 5× | +3.74 |
+| 11-06 12:00 | ONEUSDT | WILLY | $19,600 | $12,250 | 5× | +1.25 |
+| 11-07 01:55 | AKEUSDT | WILLY HT | $19,600 | $12,250 | 5× | +1.25 |
+| 11-08 07:55 | ICNTUSDT | WILLY HT | $19,600 | $19,000 | 8× | -4.00 |
+| 11-08 17:50 | JCTUSDT | WILLY HT | $19,600 | $14,250 | 8× | +8.00 |
+| 11-09 07:10 | AINUSDT | WILLY | $19,600 | $12,250 | 5× | +0.25 |
+| 11-09 19:35 | INITUSDT | WILLY | $19,600 | $19,000 | 8× | +1.25 |
+| 11-10 07:45 | ONEUSDT | WILLY HT | $19,600 | $12,250 | 5× | +1.25 |
+| 11-10 15:55 | ONUSDT | WILLY HT | $19,600 | $19,000 | 8× | +1.25 |
+
+## MASTER (all batches) — 145 days · $10,000 account · today's sizes, today's bracket table
+| Sleeve | Fills | Step | Fills that get the FULL step | capped (lower lev / smaller) | avg notional new ÷ old | %/day: flat step (assumed) → with the limits |
+|---|---|---|---|---|---|---|
+| Momentum Long | 123 | 10→15× | 113 (92%) | 10 | 1.46× (flat 1.50×) | +1.04 → **+0.95** |
+| LITE | 50 | 8→8× | 28 (56%) | 22 | 1.00× (flat 1.00×) | +0.36 → **+0.34** |
+| LITE RETRY | 20 | 7→10× | 3 (15%) | 17 | 1.10× (flat 1.43×) | +0.48 → **+0.28** |
+| WILLY | 17 | 5→8× | 7 (41%) | 10 | 1.47× (flat 1.60×) | +0.60 → **+0.58** |
+| WILLY HT | 8 | 5→8× | 0 (0%) | 8 | 1.16× (flat 1.60×) | +0.26 → **+0.16** |
+| Flatbase | 23 | 5→8× | 21 (91%) | 2 | 1.55× (flat 1.60×) | +0.56 → **+0.52** |
+| **TOTAL** | 241 | | | | | +3.23 → **+2.80** (before the step, with the limits: +2.17) |
+
+WILLY / HT fills, one by one (want = today's size at 8×):
+| Opened | Pair | Sleeve | want at 8× | brackets allow | at | booked % |
+|---|---|---|---|---|---|---|
+| 10-09 16:35 | ZKUSDT | WILLY | $19,600 | $19,600 | 8× | +0.25 |
+| 10-11 11:25 | SENTUSDT | WILLY | $19,600 | $19,600 | 8× | +2.69 |
+| 10-11 15:25 | SUSDT | WILLY | $19,600 | $19,600 | 8× | +1.25 |
+| 10-12 05:15 | RSRUSDT | WILLY | $19,600 | $19,600 | 8× | +6.60 |
+| 10-15 01:45 | DUSKUSDT | WILLY | $19,600 | $19,000 | 8× | +0.25 |
+| 10-15 04:40 | ZKUSDT | WILLY | $19,600 | $19,600 | 8× | +2.76 |
+| 10-15 09:30 | BLURUSDT | WILLY | $19,600 | $12,250 | 5× | +1.25 |
+| 10-15 13:30 | RLCUSDT | WILLY | $19,600 | $19,000 | 8× | +1.25 |
+| 10-15 15:30 | PYTHUSDT | WILLY | $19,600 | $19,600 | 8× | +1.37 |
+| 10-19 20:45 | BATUSDT | WILLY | $19,600 | $19,600 | 8× | +1.25 |
+| 10-23 16:30 | INITUSDT | WILLY | $19,600 | $19,000 | 8× | +7.42 |
+| 10-26 12:30 | HUMAUSDT | WILLY | $19,600 | $19,000 | 8× | +1.25 |
+| 10-30 09:10 | BEAMXUSDT | WILLY | $19,600 | $19,000 | 8× | +1.25 |
+| 10-30 18:55 | BLURUSDT | WILLY HT | $19,600 | $12,250 | 5× | +1.25 |
+| 11-05 02:55 | UAIUSDT | WILLY HT | $19,600 | $12,250 | 5× | +7.69 |
+| 11-05 10:30 | ONUSDT | WILLY | $19,600 | $19,000 | 8× | +1.25 |
+| 11-05 18:55 | AKEUSDT | WILLY HT | $19,600 | $12,250 | 5× | +3.74 |
+| 11-06 12:00 | ONEUSDT | WILLY | $19,600 | $12,250 | 5× | +1.25 |
+| 11-07 01:55 | AKEUSDT | WILLY HT | $19,600 | $12,250 | 5× | +1.25 |
+| 11-08 07:55 | ICNTUSDT | WILLY HT | $19,600 | $19,000 | 8× | -4.00 |
+| 11-08 17:50 | JCTUSDT | WILLY HT | $19,600 | $14,250 | 8× | +8.00 |
+| 11-09 07:10 | AINUSDT | WILLY | $19,600 | $12,250 | 5× | +0.25 |
+| 11-09 19:35 | INITUSDT | WILLY | $19,600 | $19,000 | 8× | +1.25 |
+| 11-10 07:45 | ONEUSDT | WILLY HT | $19,600 | $12,250 | 5× | +1.25 |
+| 11-10 15:55 | ONUSDT | WILLY HT | $19,600 | $19,000 | 8× | +1.25 |

@@ -1,0 +1,11 @@
+# B25 on a compounding account path (2026-11-12)
+B25 on a COMPOUNDING account path (operator 11-12): every trade sized off the account value AT ITS OPEN (X × equity, today's sizes), P&L booked
+at its close in time order, free balance = equity − margin of the trades open at that moment. Three sizings: FLAT (no Binance limits) · TODAY
+(limits, same margin → lower leverage, smaller position) · OPTION (limits, keep the position with more margin, ≤ 1.6× margin, not ML).
+Limits = today's bracket table — they bind HARDER as the account grows (bigger positions on the same small coins). DCR = (E_end/E_0)^(1/days) − 1.
+
+| Sizing | $10,000 → end | total return | %/day compounded | trades squeezed by free balance |
+|---|---|---|---|---|
+| FLAT | $165,662 | +1556.6 % | +15.07 | 0 |
+| TODAY | $66,084 | +560.8 % | +9.90 | 0 |
+| OPTION | $100,649 | +906.5 % | +12.24 | 0 |

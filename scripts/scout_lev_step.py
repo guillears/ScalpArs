@@ -4,7 +4,8 @@
 STEP       Momentum Long 10× → 15× · LITE RETRY 7× → 10× · WILLY 5× → 8× · WILLY HT 5× → 8× (follows WILLY) · Flatbase 5× → 8× (money in per trade
            unchanged) + the ML risk cap (ml_risk_cap_pct 10: Σ open momentum-long risk + the new trade ≤ 10 % of the account → shrink / skip).
 COHORT     per sleeve, CLOSED full-size fills (*_PROBE out, operator closes out) opened ≥ the DL 533 commit + 10 min AT the new leverage (a fill the
-           exchange brackets lowered is not counted), dedup (opened_at[:19], pair, entry_strategy), newest export wins. P&L = booked pnl_percentage.
+           exchange brackets lowered is not counted — DL 535 kept positions too: the 11-11 cohort is pre-committed, they are read by
+           scripts/scout_bracket_keep.py), dedup (opened_at[:19], pair, entry_strategy), newest export wins. P&L = booked pnl_percentage.
 🔒 GATE    (pre-committed 2026-11-11, never re-fit) per sleeve, decided once on its first 15 counted fills: WR < its breakeven (frozen: Momentum
            Long 61.1 % · LITE RETRY 50.0 % · WILLY 69.0 % · WILLY HT 69.0 % · Flatbase 66.7 %) OR avg % < 0 → REVERT to the old leverage (operator
            applies: ML 0.5 · RETRY 0.35 · WILLY 0.25 (HT follows WILLY's leverage → back to 5× too) · HT alone: HT frac 0.625 · Flatbase 0.25) · else KEEP.

@@ -122,3 +122,4 @@ exports_archive/
 reports/best_case/*.csv
 reports/best_case/*_out.txt
 reports/SCOUT_LEV_STEP.json
+reports/SCOUT_BRACKET_KEEP.json

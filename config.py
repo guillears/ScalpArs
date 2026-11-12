@@ -3112,6 +3112,14 @@ class InvestmentConfig(BaseModel):
     # leverage when that carries more; never more margin); a manual order over the limit is refused. Needs the exchange API
     # keys to read the table — without it nothing is capped (the dashboard shows whether it is loaded).
     leverage_bracket_cap_enabled: bool = True
+    # ⑥ 🪜📈 Nov-12 KEEP THE PLANNED POSITION ON A CAPPED COIN (DECISION_LOG 535, operator "build it"): when ⑤ lowers a position (same
+    # margin, lower leverage → smaller position), the listed sleeves keep the PLANNED position at the highest leverage whose tier allows
+    # it, with more margin — ≤ max_margin_mult × the planned margin, ≤ max_investment_size, ≤ 98 % of the tradeable balance. B25 study (reports/BRACKET_MARGIN_OPTION_B25_
+    # 2026-11-12.txt): 48 of 111 fills capped; one-size DCR +11.18 → +14.01 %/day (no-limit +14.04); compounding path +9.90 → +12.24.
+    # Momentum Long left out (little gain, $7.3k margin on a capped coin, the only free-balance squeeze). Code default OFF; the JSON arms it.
+    bracket_keep_position_enabled: bool = False
+    bracket_keep_position_max_margin_mult: float = 1.6
+    bracket_keep_position_sleeves: str = "FRENZY_LITE,FRENZY_LITE_RETRY,FRENZY_WILLY,FRENZY_WILLY_HT,FLATBASE_SHORT"
     max_open_positions_hard: int = 10  # absolute ceiling when redeploying
     # 🖐 Sep-29 MANUAL sleeve: its own slot lane — manual positions never consume a bot slot and are capped here (balance still binds)
     manual_max_open_positions: int = 8

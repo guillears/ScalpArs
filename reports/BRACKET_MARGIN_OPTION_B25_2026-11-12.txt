@@ -1,0 +1,77 @@
+# B25 — bracket-capped fills: keep the planned position with more margin (2026-11-12)
+B25 only (operator 11-12): the "keep the planned position, add margin at a lower leverage" option for bracket-capped fills.
+Three sizings per fill, today's one size ($10,000 account, K.SLEEVES X), today's bracket table (reports/BRACKETS_2026-11-12.txt, × 0.95 headroom):
+  TODAY   what the engine does now: same margin, the bracket lowers the leverage → smaller position (study_bracket_lev_step_1112.notional)
+  OPTION  the planned position (X × new-step leverage ratio) at the HIGHEST leverage ≤ the planned one whose tier allows it; margin = position ÷ that
+          leverage; if no tier allows it → the largest position any tier allows at that margin need ≤ … (the biggest the brackets allow)
+  FLAT    the planned position everywhere (no brackets — the assumption the DL 533 projection made)
+FREE BALANCE replayed on open / close times: a fill needs its margin ≤ $10,000 − Σ margin of the fills open at that moment (one-size account,
+no compounding); if not → it opens at what is free (position = free × its leverage), 0 = skipped. Applied to TODAY and OPTION alike.
+Second chance (DL 534 rule) on momentum longs; ML risk cap not replayed (it touched 1 B25 fill).
+
+## B25 — 20 days · $10,000 account
+
+| Sleeve | Fills | capped today | %/day TODAY (brackets) | %/day OPTION (more margin) | %/day FLAT (no limits) | avg margin per fill today → option |
+|---|---|---|---|---|---|---|
+| Momentum Long | 29 | 2 | +2.45 | **+2.59** | +2.62 | $2,428 → $2,657 |
+| LITE | 27 | 14 | +1.61 | **+1.98** | +1.98 | $2,000 → $2,677 |
+| LITE RETRY | 19 | 17 | +2.06 | **+3.56** | +3.56 | $2,194 → $4,421 |
+| WILLY | 6 | 6 | +0.56 | **+0.63** | +0.63 | $2,400 → $3,920 |
+| WILLY HT | 8 | 8 | +1.19 | **+1.89** | +1.89 | $2,348 → $3,920 |
+| Flatbase | 22 | 1 | +3.50 | **+3.58** | +3.58 | $980 → $1,007 |
+| **TOTAL** | 111 | 48 | +11.18 | **+14.01** | +14.04 | |
+
+Worst day: today -7.5 % · option -8.2 % · flat -8.2 %  |  max drawdown: today -7.5 % · option -8.2 % · flat -8.2 %
+Free balance: most margin in use at once — today 97 % · option 100 % of the account; fills squeezed by the free balance today 0 / option 1, skipped 0 / 1.
+
+Capped fills, one by one:
+| Opened | Pair | Sleeve | planned | today (margin · lev · position) | option (margin · lev · position) | booked % | $ today → option |
+|---|---|---|---|---|---|---|---|
+| 10-23 20:00 | BTRUSDT | Flatbase | $7,840 | $980 · 5× · $4,900 | $1,568 · 5× · $7,840 | +4.94 | +242 → +387 |
+| 10-25 18:05 | CAPUSDT | LITE RETRY | $23,333 | $2,333 · 5× · $11,667 | $4,667 · 5× · $23,333 | +3.00 | +350 → +700 |
+| 10-26 04:18 | BRUSDT | Momentum Long | $36,450 | $2,375 · 10× · $23,750 | $7,290 · 5× · $36,450 | +1.39 | +329 → +505 |
+| 10-26 04:50 | LIGHTUSDT | Momentum Long | $36,450 | $2,430 · 5× · $12,150 | $7,290 · 5× · $36,450 | +0.82 | +100 → +300 |
+| 10-26 12:30 | HUMAUSDT | WILLY | $19,600 | $2,375 · 8× · $19,000 | $3,920 · 5× · $19,600 | +1.25 | +238 → +245 |
+| 10-26 17:30 | AINUSDT | LITE | $16,333 | $2,042 · 5× · $10,208 | $3,267 · 5× · $16,333 | +3.00 | +306 → +490 |
+| 10-27 11:35 | CAPUSDT | LITE | $16,333 | $2,042 · 5× · $10,208 | $3,267 · 5× · $16,333 | -3.00 | -306 → -490 |
+| 10-27 13:10 | REZUSDT | LITE RETRY | $23,333 | $1,900 · 10× · $19,000 | $4,667 · 5× · $23,333 | -3.00 | -570 → -700 |
+| 10-27 17:40 | EVAAUSDT | LITE RETRY | $23,333 | $2,333 · 5× · $11,667 | $4,667 · 5× · $23,333 | +3.00 | +350 → +700 |
+| 10-27 19:35 | REZUSDT | LITE RETRY | $23,333 | $1,900 · 10× · $19,000 | $4,667 · 5× · $23,333 | +3.00 | +570 → +700 |
+| 10-28 03:50 | XANUSDT | LITE RETRY | $23,333 | $1,900 · 10× · $19,000 | $4,667 · 5× · $23,333 | +3.00 | +570 → +700 |
+| 10-28 10:05 | INITUSDT | LITE RETRY | $23,333 | $1,900 · 10× · $19,000 | $4,667 · 5× · $23,333 | +3.00 | +570 → +700 |
+| 10-28 18:00 | BLURUSDT | LITE | $16,333 | $2,042 · 5× · $10,208 | $3,267 · 5× · $16,333 | +3.00 | +306 → +490 |
+| 10-30 09:10 | BEAMXUSDT | WILLY | $19,600 | $2,375 · 8× · $19,000 | $3,920 · 5× · $19,600 | +1.25 | +238 → +245 |
+| 10-30 18:55 | BLURUSDT | WILLY HT | $19,600 | $2,450 · 5× · $12,250 | $3,920 · 5× · $19,600 | +1.25 | +153 → +245 |
+| 10-31 10:15 | LSKUSDT | LITE RETRY | $23,333 | $2,333 · 5× · $11,667 | $4,667 · 5× · $23,333 | +3.00 | +350 → +700 |
+| 11-01 17:30 | SOPHUSDT | LITE | $16,333 | $2,042 · 5× · $10,208 | $3,267 · 5× · $16,333 | +3.00 | +306 → +490 |
+| 11-01 21:15 | SOPHUSDT | LITE | $16,333 | $2,042 · 5× · $10,208 | $3,267 · 5× · $16,333 | +3.00 | +306 → +490 |
+| 11-03 19:20 | BMTUSDT | LITE RETRY | $23,333 | $2,333 · 5× · $11,667 | $4,667 · 5× · $23,333 | +3.00 | +350 → +700 |
+| 11-04 19:45 | CAPUSDT | LITE RETRY | $23,333 | $2,333 · 5× · $11,667 | $4,667 · 5× · $23,333 | +3.00 | +350 → +700 |
+| 11-05 02:55 | UAIUSDT | WILLY HT | $19,600 | $2,450 · 5× · $12,250 | $3,920 · 5× · $19,600 | +7.69 | +942 → +1,507 |
+| 11-05 03:45 | AINUSDT | LITE | $16,333 | $2,042 · 5× · $10,208 | $3,267 · 5× · $16,333 | -3.00 | -307 → -491 |
+| 11-05 05:40 | UAIUSDT | LITE RETRY | $23,333 | $2,333 · 5× · $11,667 | $4,667 · 5× · $23,333 | +3.00 | +350 → +700 |
+| 11-05 06:55 | ARIAUSDT | LITE RETRY | $23,333 | $2,333 · 5× · $11,667 | $4,667 · 5× · $23,333 | +3.00 | +350 → +700 |
+| 11-05 09:05 | UAIUSDT | LITE RETRY | $23,333 | $2,333 · 5× · $11,667 | $4,667 · 5× · $23,333 | -3.05 | -356 → -712 |
+| 11-05 10:30 | ONUSDT | WILLY | $19,600 | $2,375 · 8× · $19,000 | $3,920 · 5× · $19,600 | +1.25 | +238 → +245 |
+| 11-05 18:55 | AKEUSDT | WILLY HT | $19,600 | $2,450 · 5× · $12,250 | $3,920 · 5× · $19,600 | +3.74 | +458 → +733 |
+| 11-05 20:45 | ARIAUSDT | LITE | $16,333 | $2,042 · 5× · $10,208 | $3,267 · 5× · $16,333 | +3.00 | +306 → +490 |
+| 11-06 12:00 | ONEUSDT | WILLY | $19,600 | $2,450 · 5× · $12,250 | $3,920 · 5× · $19,600 | +1.25 | +153 → +245 |
+| 11-06 17:15 | ONEUSDT | LITE | $16,333 | $1,425 · 8× · $11,400 | $3,267 · 5× · $16,333 | +3.00 | +343 → +491 |
+| 11-07 01:55 | AKEUSDT | WILLY HT | $19,600 | $2,450 · 5× · $12,250 | $3,920 · 5× · $19,600 | +1.25 | +153 → +245 |
+| 11-07 08:20 | TAUSDT | LITE | $16,333 | $1,781 · 8× · $14,250 | $3,267 · 5× · $16,333 | +1.73 | +246 → +282 |
+| 11-08 01:15 | AIOTUSDT | LITE | $16,333 | $2,042 · 5× · $10,208 | $3,267 · 5× · $16,333 | -3.01 | -307 → -491 |
+| 11-08 05:00 | AIOTUSDT | LITE RETRY | $23,333 | $2,333 · 5× · $11,667 | $4,667 · 5× · $23,333 | +3.00 | +350 → +700 |
+| 11-08 07:55 | ICNTUSDT | WILLY HT | $19,600 | $2,375 · 8× · $19,000 | $3,920 · 5× · $19,600 | -4.00 | -761 → -785 |
+| 11-08 10:40 | AINUSDT | LITE RETRY | $23,333 | $2,333 · 5× · $11,667 | $4,667 · 5× · $23,333 | +3.00 | +350 → +700 |
+| 11-08 12:10 | JCTUSDT | LITE RETRY | $23,333 | $1,425 · 10× · $14,250 | $4,667 · 5× · $23,333 | +3.00 | +428 → +700 |
+| 11-08 13:30 | TAUSDT | LITE | $16,333 | $1,781 · 8× · $14,250 | $3,267 · 5× · $16,333 | +3.00 | +428 → +490 |
+| 11-08 14:25 | AINUSDT | LITE RETRY | $23,333 | $2,333 · 5× · $11,667 | $4,667 · 5× · $23,333 | +3.00 | +350 → +700 |
+| 11-08 17:50 | JCTUSDT | WILLY HT | $19,600 | $1,781 · 8× · $14,250 | $3,920 · 5× · $19,600 | +8.00 | +1,140 → +1,568 |
+| 11-09 07:10 | AINUSDT | WILLY | $19,600 | $2,450 · 5× · $12,250 | $3,920 · 5× · $19,600 | +0.25 | +31 → +49 |
+| 11-09 19:35 | INITUSDT | WILLY | $19,600 | $2,375 · 8× · $19,000 | $3,920 · 5× · $19,600 | +1.25 | +238 → +245 |
+| 11-09 21:40 | B2USDT | LITE | $16,333 | $2,042 · 5× · $10,208 | $3,267 · 5× · $16,333 | +3.00 | +306 → +490 |
+| 11-10 07:45 | ONEUSDT | WILLY HT | $19,600 | $2,450 · 5× · $12,250 | $3,920 · 5× · $19,600 | +1.25 | +153 → +245 |
+| 11-10 15:55 | ONUSDT | WILLY HT | $19,600 | $2,375 · 8× · $19,000 | $3,920 · 5× · $19,600 | +1.25 | +238 → +245 |
+| 11-10 22:25 | UAIUSDT | LITE | $16,333 | $2,042 · 5× · $10,208 | $3,267 · 5× · $16,333 | +3.00 | +306 → +490 |
+| 11-11 00:00 | UAIUSDT | LITE | $16,333 | $2,042 · 5× · $10,208 | $3,267 · 5× · $16,333 | -3.12 | -318 → -509 |
+| 11-11 11:00 | AGTUSDT | LITE RETRY | $23,333 | $2,333 · 5× · $11,667 | $4,667 · 5× · $23,333 | -3.01 | -351 → -703 |

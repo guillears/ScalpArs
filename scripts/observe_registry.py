@@ -124,6 +124,8 @@ BOOKED = {   # booked P&L — `era` = drops fills by WILLY exit era (registered 
     # RETRY +3 / −3 · WILLY V2b · Flatbase +5 / −10) → pinned to those exit keys
     "scout_lev_step.py": {"frenzy_stop_pct": 3.0, "frenzy_lite_tp_pct": 3.0, "frenzy_lite_c_enabled": False, "frenzy_willy_high_target_enabled": True,
                           "frenzy_willy_stop_pct": 4.0, "flatbase_tp_pct": 5.0, "flatbase_stop_pct": 10.0},
+    # (535) the keep-position gate reads BOOKED % × the added position (exit-agnostic: the same trade, the same exit, only the size differs)
+    "scout_bracket_keep.py": None,
     "scout_surge_wl_watch.py": {"surge_long_exit_no_lock": True, "surge_max_hold_minutes": 240, "sl_atr_multiplier": 1.5, "sl_atr_widen_floor_pct": -1.2, "bullrun_base_sl_pct": -0.7, "bullrun_be_arm_pct": 1.0, "surge_long_trail_atr_mult": 1.0},
     # (509) WILLY_FAILED_SPIKE + the WILLY OFF trigger judge booked WR against the same frozen V2b breakeven (69.0 %) → the same pins
     "scout_willy_failed_spike_watch.py": {"frenzy_willy_high_target_enabled": True, "frenzy_willy_stop_pct": 4.0, "frenzy_willy_high_k_pct": 1.0,

@@ -277,6 +277,7 @@ def run(now_ms=None, paths=None, state_path=STATE, since_ms=None, bars_fn=None, 
         post = allc[allc.o >= ship] if len(allc) else allc
         for nm, fn in (("revert gate", lambda: revert_lines(post, newest, now_ms, st if ok else None, state_path if ok else None)),
                        ("skipped side line", lambda: skipped_lines(ship, now_ms, dec_paths, bars_fn)),
+                       ("higher-high gate", lambda: hh_lines(now_ms, st if ok else None, state_path if ok else None, dec_paths, bars_fn)),
                        ("BANK-TYPE", lambda: bank_lines(post, now_ms, st if ok else None, state_path if ok else None, dec_paths, newest,
                                                         bars_fn=m1_bars_fn))):
             try:   # one section's failure never hides the others (the revert gate above all)
@@ -489,13 +490,91 @@ def revert_lines(c, newest, now_ms, st, state_path):
     return L + [""]
 
 
+HH_TAG = "HIGHER_HIGH"              # 🔺 (DECISION_LOG 540) services.flatbase.HH_TAG — the SKIPPED reason prefix of a higher-high refusal
+HH_KEY, HH_N, HH_EARLY_SUM = "FLATBASE_HIGHER_HIGH_REVERT", 5, 10.0
+
+
+def walk_from(bars, te):
+    """today's FLATBASE exit (+5 / −10, 72 h, the live booked net values) for a short entered at the first 5m open ≥ te. → net % or NaN (pending). PURE."""
+    b = [q for q in (bars or []) if int(q[0]) >= te]
+    if not b:
+        return np.nan
+    Ee = float(b[0][1])
+    for q in b:
+        if int(q[0]) >= te + MAX_H * HOUR:
+            return float(-(q[1] / Ee - 1) * 100 - TIME_FEE)
+        if q[2] >= Ee * (1 + STOP_GROSS / 100):
+            return STOP_NET if q[1] < Ee * (1 + STOP_GROSS / 100) else float(-(q[1] / Ee - 1) * 100 - TIME_FEE)
+        if q[3] < Ee * (1 - TP_GROSS / 100):
+            return TP_NET
+    return np.nan
+
+
+def hh_verdict(vals):
+    """🔒 (DECISION_LOG 540, frozen, declared override) the higher-high skips priced as if traded, in skip order → (state, detail):
+    EARLY REVERT the moment Σ > +HH_EARLY_SUM · at the first HH_N priced: Σ ≥ 0 → REVERT, else KEEP · else COLLECTING. PURE."""
+    v = [float(x) for x in vals if x == x]
+    for k in range(1, min(len(v), HH_N) + 1):   # in skip order, decided at the FIRST point either rule fires (KEEP at 5 is final)
+        t = sum(v[:k])
+        if t > HH_EARLY_SUM:
+            return "REVERT", f"EARLY: the first {k} skips would have made Σ {t:+.2f} pts > +{HH_EARLY_SUM:g} → switch flatbase_higher_high_block OFF (operator)"
+        if k == HH_N:
+            return ("REVERT", f"the first {HH_N} skips would have made Σ {t:+.2f} pts ≥ 0 → switch OFF (operator)") if t >= 0 else \
+                   ("KEEP", f"the first {HH_N} skips would have lost Σ {t:+.2f} pts → KEEP the filter (final)")
+    return "COLLECTING", f"{len(v)}/{HH_N} skips priced (Σ {sum(v):+.2f})"
+
+
+def hh_lines(now_ms, st, state_path, dec_paths=None, bars_fn=None):
+    """🔺 (540) every FLATBASE_HIGHER_HIGH refusal priced as if shorted at the confirm close (next 5m open, today's exit) + the frozen revert gate."""
+    L = ["### 🔺 FLATBASE_HIGHER_HIGH (DECISION_LOG 540, declared override) — the skipped higher-high confirms priced as if traded (positive = the skip cost money; "
+         "5m walk, stop checked first on a bar touching both → tilt toward KEEP; no entry slippage / funding → tilt toward REVERT)", ""]
+    try:
+        import scout_flatbase_short as FS
+        led = FS.load_ledger(FS.read_decisions(dec_paths))
+        sk = led[(led.fb_status.astype(str) == "SKIPPED") & led.fb_reason.astype(str).str.startswith(HH_TAG) & led.s4_ms.notna()].sort_values("s4_ms")
+    except Exception as e:
+        return L + [f"  unreadable ({str(e)[:80]})", ""]
+    rec = (st or {}).get(HH_KEY)
+    if rec is not None and not (isinstance(rec, dict) and {"state", "detail", "run_at"} <= set(rec)):
+        return L + [f"⚠ frozen {HH_KEY} record damaged — operator restore needed; not re-decided.", ""]
+    if not len(sk):
+        L.append("  none yet.")
+    bud, vals = LS.Budget(), []
+    for r in sk.itertuples():
+        te = int(r.s4_ms) + M5                                            # the confirm bar's close = the entry the filter refused
+        bars = bars_fn(r.pair, te, now_ms) if bars_fn else fetch_bars(r.pair, te, now_ms, bud)
+        v = walk_from(bars, te) if bars else np.nan
+        if v != v and now_ms > te + (MAX_H + 24) * HOUR:   # (540 review) never priceable after the hold + 1 day → out, the gate never stalls
+            L.append(f"  · {r.pair} confirm {pd.Timestamp(int(r.s4_ms), unit='ms'):%m-%d %H:%M} → NOT_EVALUABLE (no price path) — out of the gate")
+            continue
+        vals.append(v)
+        L.append(f"  · {r.pair} confirm {pd.Timestamp(int(r.s4_ms), unit='ms'):%m-%d %H:%M} at {r.px} → " + (f"{v:+.2f} %" if v == v else "pending / unpriced"))
+    done = []
+    for v in vals:                                                         # in skip order; the gate waits at the first unpriced one
+        if v != v:
+            break
+        done.append(v)
+    state, detail = hh_verdict(done)
+    if rec is None and state in ("REVERT", "KEEP") and st is not None and state_path:
+        rec = dict(state=state, detail=detail, run_at=pd.Timestamp(now_ms, unit="ms").strftime("%Y-%m-%d %H:%M UTC"))
+        st[HH_KEY] = rec
+        NF.du_save_state(st, state_path)
+    L.append(f"**Frozen verdict ({rec['run_at']}): {rec['state']}** — {rec['detail']}" if rec else f"Now: ⏳ {state} — {detail}")
+    if rec and len(done):
+        L.append(f"  watch (no re-freeze): Σ over all {len(done)} priced skips {sum(done):+.2f} pts" + (" ⚠ > +10" if sum(done) > HH_EARLY_SUM else ""))
+    L.append(f"  ⚠ interaction: the FB_CONFIRM revert / BANK gates now read fills the filter pre-screened — {len(done)} priced skip(s) "
+             f"(Σ {sum(done):+.2f}) to add back when those gates are read (DECISION_LOG 540).")
+    return L + [""]
+
+
 def skipped_lines(ship, now_ms, dec_paths=None, bars_fn=None):
     """side line, no verdict: SKIPPED episodes (no 4-h close below the S4 close in the wait) priced as if entered at the S4 bar."""
     L = ["### FB_CONFIRM — what the skips gave up (no verdict): SKIPPED episodes priced as if shorted at the S4 bar (next 5m open, +5 / −10, 72 h)", ""]
     try:
         import scout_flatbase_short as FS
         led = FS.load_ledger(FS.read_decisions(dec_paths))
-        sk = led[(led.fb_status.astype(str) == "SKIPPED") & led.s4_ms.notna() & (led.s4_ms >= ship.value // 10**6 - 30 * 3_600_000)]
+        sk = led[(led.fb_status.astype(str) == "SKIPPED") & led.s4_ms.notna() & (led.s4_ms >= ship.value // 10**6 - 30 * 3_600_000)
+                 & ~led.fb_reason.astype(str).str.startswith(HH_TAG)]   # 🔺 (540) higher-high skips have their own section (their entry = the confirm bar)
     except Exception as e:
         return L + [f"  unreadable ({str(e)[:80]})", ""]
     if not len(sk):
@@ -504,18 +583,7 @@ def skipped_lines(ship, now_ms, dec_paths=None, bars_fn=None):
     for r in sk.itertuples():
         te = int(r.s4_ms) + M5                                            # the S4 bar's close = the old entry time
         bars = bars_fn(r.pair, te, now_ms) if bars_fn else fetch_bars(r.pair, te, now_ms, bud)
-        v = np.nan
-        if bars:
-            b = [q for q in bars if int(q[0]) >= te]
-            if b:
-                Ee = float(b[0][1])
-                for q in b:
-                    if int(q[0]) >= te + MAX_H * HOUR:
-                        v = float(-(q[1] / Ee - 1) * 100 - TIME_FEE); break
-                    if q[2] >= Ee * (1 + STOP_GROSS / 100):
-                        v = STOP_NET if q[1] < Ee * (1 + STOP_GROSS / 100) else float(-(q[1] / Ee - 1) * 100 - TIME_FEE); break
-                    if q[3] < Ee * (1 - TP_GROSS / 100):
-                        v = TP_NET; break
+        v = walk_from(bars, te) if bars else np.nan   # 🔺 (540 review) one walker for both side lines
         got.append(v)
         L.append(f"  · {r.pair} S4 {pd.Timestamp(int(r.s4_ms), unit='ms'):%m-%d %H:%M} at {r.px} → " + (f"{v:+.2f} %" if v == v else "pending / unpriced"))
     x = pd.Series(got).dropna()

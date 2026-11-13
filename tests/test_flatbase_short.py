@@ -1249,3 +1249,78 @@ def test_shared_slots_gate_line_progress_keep_and_revert():
     t = "\n".join(SC.shared_slots_gate_lines(led, bf([5.0]), since_ms=0))
     assert "KEEP shared slots" in t                                                          # < 3 refusals
     assert "not evaluable yet" in "\n".join(SC.shared_slots_gate_lines(led, {}, since_ms=None))
+
+
+# ── 🔺 FLATBASE_HIGHER_HIGH (DECISION_LOG 540, declared override) ──────────────────────────────────────────────────────────────────
+
+def test_higher_high_check_pure():
+    t0 = 10 * 4 * HOUR
+    bars = [[t0 - (96 - k) * BAR, 1.0, 1.0, 0.9, 0.95, 1.0] for k in range(96)]   # two 4-h candles: k 0–47 = S4 candle, 48–95 = confirm
+    s4_close = bars[47][0] + BAR
+    assert FB.higher_high_check(bars, s4_close, bars[95][0]) is False                 # equal highs → not higher
+    b2 = [list(r) for r in bars]; b2[70][2] = 1.2
+    assert FB.higher_high_check(b2, s4_close, b2[95][0]) is True                      # the confirm candle printed a higher high
+    b3 = [list(r) for r in bars]; b3[10][2] = 1.5; b3[70][2] = 1.2
+    assert FB.higher_high_check(b3, s4_close, b3[95][0]) is False                     # below the S4 candle's own high
+    assert FB.higher_high_check(bars[60:], s4_close, bars[95][0]) is None             # the S4 candle is not in the rows → fail-open
+    assert FB.higher_high_check(bars, s4_close + 7, bars[95][0]) is None and FB.higher_high_check([], 0, 0) is None
+
+
+def test_engine_higher_high_skips_at_the_confirm(monkeypatch):
+    rows, on = _series()
+    rows = [list(r) for r in rows]
+    s4_hi = max(r[2] for r in rows[on + 25: on + 73])
+    rows[on + 110][2] = s4_hi * 1.05                                                  # the confirm candle (on + 73 … on + 120) re-pumps
+    e, led, opens, blocks = _run_bars(monkeypatch, rows, on, range(on + 1, on + 121),
+                                      th_kw=dict(flatbase_confirm_hours=24.0, flatbase_higher_high_block=True))
+    assert opens == [] and led[0].status == "SKIPPED" and led[0].reason.startswith(FB.HH_TAG)
+    assert blocks.count("FLATBASE_HIGHER_HIGH") == 1 and led[0].entry_price == rows[on + 120][4]   # counted once
+    e2, led2, opens2, _ = _run_bars(monkeypatch, rows, on, range(on + 1, on + 121),
+                                    th_kw=dict(flatbase_confirm_hours=24.0, flatbase_higher_high_block=False))
+    assert len(opens2) == 1 and led2[0].status == "OPENED"                             # switched off → today's entry
+
+
+def test_higher_high_config_ui_scout():
+    import config as C
+    mf = type(C.trading_config.thresholds).model_fields
+    assert mf["flatbase_higher_high_block"].default is False
+    assert json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]["flatbase_higher_high_block"] is True
+    html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
+    assert html.count('id="config-fbs-higher-high"') == 1
+    assert "config.thresholds.flatbase_higher_high_block === true" in html
+    assert "flatbase_higher_high_block: document.getElementById('config-fbs-higher-high')?.checked ?? true" in html
+    assert "higher-high confirm candle skipped (DL 540)" in html
+    sys.path.insert(0, os.path.join(ROOT, "scripts"))
+    import scout_flatbase_confirm_watch as W
+    assert W.HH_TAG == FB.HH_TAG
+    assert W.hh_verdict([-10.09])[0] == "COLLECTING" and W.hh_verdict([])[0] == "COLLECTING"
+    assert W.hh_verdict([4.94, 4.94, 4.94])[0] == "REVERT"                             # Σ +14.8 > +10 → early revert
+    assert W.hh_verdict([-10.09, 4.94, 4.94, -10.09, 4.94])[0] == "KEEP"               # the 5 skips lost Σ −5.36
+    assert W.hh_verdict([-10.09, 4.94, 4.94, 4.94, -1.0])[0] == "REVERT"               # Σ ≥ 0 at 5
+    assert np.isnan(W.walk_from([], 0))
+    src = open(os.path.join(ROOT, "scripts", "scout_flatbase_confirm_watch.py"), encoding="utf-8").read()
+    assert "~led.fb_reason.astype(str).str.startswith(HH_TAG)" in src                  # the FB_CONFIRM skip side line never prices them as S4 skips
+
+
+def test_higher_high_edges_and_gap():
+    t0 = 10 * 4 * HOUR
+    bars = [[t0 - (96 - k) * BAR, 1.0, 1.0, 0.9, 0.95, 1.0] for k in range(96)]
+    s4_close = bars[47][0] + BAR
+    b = [list(r) for r in bars]; b[48][2] = 1.0000001                                  # the confirm candle right after the S4 candle, first bar higher
+    assert FB.higher_high_read(b, s4_close, b[95][0])[0] is True
+    b = [list(r) for r in bars]; b[95][2] = 1.0                                        # a strict tie at the confirm bar itself → not higher
+    assert FB.higher_high_read(b, s4_close, b[95][0]) == (False, 1.0, 1.0)
+    g = bars[:20] + bars[21:]                                                          # a missing 5m row inside the S4 candle → fail-open
+    assert FB.higher_high_read(g, s4_close, g[-1][0]) == (None, None, None)
+    assert "flatbase_higher_high_block must be true or false" in " | ".join(FB.flatbase_config_errors(NS(flatbase_higher_high_block="yes"), 20.0))
+
+
+def test_engine_higher_high_fail_open_trades(monkeypatch):
+    import services.trading_engine as TE
+    rows, on = _series()
+    rows = [list(r) for r in rows]
+    rows[on + 110][2] = max(r[2] for r in rows[on + 25: on + 73]) * 1.05
+    monkeypatch.setattr(TE, "higher_high_read", lambda *a, **k: (None, None, None))   # unreadable candles → today's entry
+    e, led, opens, blocks = _run_bars(monkeypatch, rows, on, range(on + 1, on + 121),
+                                      th_kw=dict(flatbase_confirm_hours=24.0, flatbase_higher_high_block=True))
+    assert len(opens) == 1 and led[0].status == "OPENED" and "FLATBASE_HIGHER_HIGH" not in blocks and "FLATBASE_HH_UNREAD" in blocks

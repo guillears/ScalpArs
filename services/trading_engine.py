@@ -45,6 +45,7 @@ from services.flatbase import (FLATBASE_SHORT, FLATBASE_CLASS, flatbase_enabled,
                                ST_TRACKING, ST_OPENED, ST_SHADOW, ST_MISSED, ST_EXPIRED, ST_NOT_FLAT, ST_UNREADABLE, ST_REFUSED,
                                ACT_ENTER, ACT_MISSED, ACT_EXPIRED, ACT_NO_DATA, ROUTE_SHADOW,
                                ST_SKIPPED, ACT_SKIP, CONFIRM_TAG, confirm_scan, BAR_MS as FLATBASE_BAR_MS)   # ✅ (DECISION_LOG 428) FB_CONFIRM
+from services.flatbase import higher_high_read, HH_TAG   # 🔺 (DECISION_LOG 540) FLATBASE_HIGHER_HIGH
 from services.touch_snapshot import TOUCH_LEVELS, touch_mark, touch_features, touch_snapshot, touch_outcome   # 🛑👁 (317) observe-only touch snapshots
 from services.frenzy import (FRENZY_LITE_RETRY, FRENZY_LITE_FAMILY, frenzy_lite_retry_enabled, frenzy_lite_retry_pending,  # 🔁 (DECISION_LOG 316)
                              frenzy_lite_retry_pending_clean, frenzy_lite_retry_step, LITE_RETRY_OPEN, LITE_RETRY_DROP)
@@ -10188,7 +10189,21 @@ class TradingEngine:
         cf = rec['confirm']
         cs = confirm_scan(closed, cf['px'], cf['close_ms'], cf['hours'])
         st = cs.get('status')
-        if st == ACT_ENTER:
+        _hh = (higher_high_read(closed, cf['close_ms'], cs['bar_open'])
+               if st in (ACT_ENTER, ACT_MISSED) and bool(getattr(config.trading_config.thresholds, 'flatbase_higher_high_block', False))
+               else (None, None, None))
+        if st == ACT_ENTER and _hh[0] is True:
+            # 🔺 (DECISION_LOG 540, declared override) the confirm candle printed a higher high than the S4 candle → the pump restarted: no order
+            logger.info(f"[FLATBASE_SHORT] {pair}: FLATBASE_HIGHER_HIGH — confirm candle high {_hh[2]:g} > S4 candle high {_hh[1]:g} → no trade")
+            self._fbs_count("FLATBASE_HIGHER_HIGH", pair)   # (540 review) _fbs_count records the filter block itself — once
+            await self._flatbase_finalize(pair, spike_ms, ST_SKIPPED,   # the ledger's entry = the confirm bar (the scout prices the skip there)
+                                          f"{HH_TAG}: the confirm 4-h candle ({datetime.utcfromtimestamp((int(cs['bar_open']) + 300_000) / 1000):%m-%d %H:%M} UTC) "
+                                          f"made a higher high than the S4 candle → no trade (FLATBASE_HIGHER_HIGH, DECISION_LOG 540)",
+                                          entry_bar_at=datetime.utcfromtimestamp(int(cs['bar_open']) / 1000), entry_price=float(cs['close']))
+        elif st == ACT_ENTER:
+            if _hh[0] is None and bool(getattr(config.trading_config.thresholds, 'flatbase_higher_high_block', False)):
+                self._fbs_count("FLATBASE_HH_UNREAD", pair)   # (540 review) a fail-open is visible, never silent
+                logger.warning(f"[FLATBASE_SHORT] {pair}: FLATBASE_HIGHER_HIGH could not read both 4-h candles — traded as before (fail-open)")
             self.__dict__.setdefault('_fbs_enter_q', []).append(
                 (pair, spike_ms, rec, dict(cf['scan'], confirm=dict(close=cs['close'], bar_open=cs['bar_open'])), closed, info, bar_open))
         elif st == ACT_MISSED:
@@ -10198,7 +10213,8 @@ class TradingEngine:
             self._fbs_count("FLATBASE_CONFIRM_MISSED", pair)
             await self._flatbase_finalize(pair, spike_ms, ST_MISSED,   # the ledger's entry = the confirm bar (the scouts price a MISSED row there)
                                           f"the confirm 4-h close ({datetime.utcfromtimestamp((int(cs['bar_open']) + 300_000) / 1000):%m-%d %H:%M} UTC, "
-                                          f"{cs['close']:g} < {cf['px']:g}) was not judged live (outage / restart) — never caught up",
+                                          f"{cs['close']:g} < {cf['px']:g}) was not judged live (outage / restart) — never caught up"
+                                          + (" · HH=1 (FLATBASE_HIGHER_HIGH would have refused it)" if _hh[0] is True else ""),
                                           entry_bar_at=datetime.utcfromtimestamp(int(cs['bar_open']) / 1000), entry_price=float(cs['close']))
         elif st == ACT_SKIP:
             self._fbs_count("FLATBASE_CONFIRM_SKIP", pair)

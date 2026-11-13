@@ -95,7 +95,7 @@ def flatbase_config_errors(th, base_leverage=20.0) -> list:
     """🩳 PUT /api/config refusals for the FLATBASE_SHORT fields (DECISION_LOG 348). The stop's exchange backstop at the sleeve's leverage
     (base_leverage × flatbase_lev_mult, the STRONG_BUY level the sleeves open at) must sit ≥ MANUAL_BACKSTOP_MIN_GAP_PCT beyond the stop."""
     errs = []
-    for k in ('flatbase_short_enabled', 'resting_tp_flatbase_enabled', 'flatbase_shares_bot_slots'):   # 🧺 (515)
+    for k in ('flatbase_short_enabled', 'resting_tp_flatbase_enabled', 'flatbase_shares_bot_slots', 'flatbase_higher_high_block'):   # 🧺 (515) · 🔺 (540)
         if not isinstance(getattr(th, k, False), bool):
             errs.append(f"{k} must be true or false")
     rng = dict(flat_max=("a fraction > 0 and ≤ 5 (0.444 = a 44.4 % 14-day range)", lambda x: 0 < x <= 5.0),
@@ -292,6 +292,37 @@ def confirm_scan(bars, signal_px, signal_close_ms, hours) -> Dict:
         return dict(status=(ACT_SKIP if int(bars[-1][0]) + BAR_MS >= end else ACT_WAIT), idx=None)
     except (TypeError, ValueError, IndexError):
         return dict(status=ACT_NO_DATA, idx=None)
+
+
+HH_TAG = "HIGHER_HIGH"                  # 🔺 (DECISION_LOG 540) the SKIPPED reason prefix of a higher-high refusal (the scout prices these rows)
+CANDLE_BARS = 48                         # one 4-h candle = 48 closed 5m bars
+
+
+def higher_high_read(bars, s4_close_ms, confirm_bar_open) -> Tuple[Optional[bool], Optional[float], Optional[float]]:
+    """🔺 (DECISION_LOG 540, operator declared override) on CLOSED 5m rows [open_ms, o, h, l, c, …] (oldest first) → (flag, S4 candle high,
+    confirm candle high): flag True when the confirm 4-h candle (the 48 bars ending at the confirm bar) printed a HIGHER high than the S4 signal
+    4-h candle (the 48 bars ending at the bar that closes at s4_close_ms) — the pump restarted after the signal, no lower-high fade. (None, …)
+    when either candle is not fully and contiguously in the rows (a gap → its 48 rows would span more than 4 h) — fail-open: the caller
+    trades as before. PURE, never raises."""
+    try:
+        idx = {int(r[0]): k for k, r in enumerate(bars)}
+        s4_open, c_open = int(s4_close_ms) - BAR_MS, int(confirm_bar_open)
+        ks, kc = idx.get(s4_open), idx.get(c_open)
+        if ks is None or kc is None or ks < CANDLE_BARS - 1 or kc < CANDLE_BARS - 1 or kc <= ks:
+            return None, None, None
+        if int(bars[ks - CANDLE_BARS + 1][0]) != s4_open - (CANDLE_BARS - 1) * BAR_MS or \
+                int(bars[kc - CANDLE_BARS + 1][0]) != c_open - (CANDLE_BARS - 1) * BAR_MS:
+            return None, None, None
+        hs = max(float(r[2]) for r in bars[ks - CANDLE_BARS + 1: ks + 1])
+        hc = max(float(r[2]) for r in bars[kc - CANDLE_BARS + 1: kc + 1])
+        return hc > hs, hs, hc
+    except (TypeError, ValueError, IndexError):
+        return None, None, None
+
+
+def higher_high_check(bars, s4_close_ms, confirm_bar_open) -> Optional[bool]:
+    """the flag of higher_high_read (True / False / None = fail-open)."""
+    return higher_high_read(bars, s4_close_ms, confirm_bar_open)[0]
 
 
 def is_boundary_close(bar_open_ms) -> bool:

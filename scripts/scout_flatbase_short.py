@@ -476,7 +476,7 @@ def nonflat_lines(ctx):
 def _reason_class(status, reason):
     s = str(status or "")
     if s == ST_MISSED:
-        return "MISSED"
+        return "MISSED_HH" if "HH=1" in str(reason or "") else "MISSED"   # 🔺 (540 review) the filter would have refused it — not an outage cost
     if s == ST_UNREADABLE:
         return "FLAT_UNREADABLE"
     t = str(reason or "").lower()
@@ -491,7 +491,7 @@ def _reason_class(status, reason):
     return "REFUSED_OTHER"
 
 
-MISSED_ORDER = ("MISSED", "FLATBASE_BOOK_FULL", "FLATBASE_MAX_OPEN", "FLAT_UNREADABLE", "REFUSED_PAIR_HELD", "REFUSED_LATE", "REFUSED_OTHER")
+MISSED_ORDER = ("MISSED", "MISSED_HH", "FLATBASE_BOOK_FULL", "FLATBASE_MAX_OPEN", "FLAT_UNREADABLE", "REFUSED_PAIR_HELD", "REFUSED_LATE", "REFUSED_OTHER")
 
 
 def missed_lines(ctx):

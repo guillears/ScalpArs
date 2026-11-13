@@ -1624,6 +1624,15 @@ class SignalThresholds(BaseModel):
     # → +3.70 (3/3 won, 1 skipped); 2026 backtest +1.25 → +1.30 %/trade (total lower, holds longer) — the caveat. 🔒 Revert gate
     # (scripts/scout_flatbase_confirm_watch.py): first 8 confirmed fills avg < 0 OR ≥ 3 of them stopped → revert to 0. 0 = enter at the S4 bar.
     flatbase_confirm_hours: float = 24.0
+    # 🔺 FLATBASE_HIGHER_HIGH (DECISION_LOG 540, operator 2026-11-13 — DECLARED OVERRIDE: theory + backtest, not a passed filter): at the FB_CONFIRM
+    # close, no order when the confirm 4-h candle printed a HIGHER high than the S4 signal candle (the pump restarted after the signal — BARD 11-13
+    # −10.09). Backtest 1,002 traded-like trades (2024-11 → 2026-10): 91 · 64 % · −0.46 %/trade · 33 % stopped vs 911 · 72 % · +0.91 · 24 % —
+    # worse every half-year, but still positive in 2026 (+0.30 / +1.70: skipping cost ≈ 49 pts this year; +42 pts over the whole span, day-boot
+    # P 0.74). Real trades 3 (BARD lost, LIGHT / ARK won). 🔒 REVERT gate (scripts/scout_flatbase_confirm_watch.py): skipped trades priced as
+    # if traded, in skip order, within the FIRST 5 — Σ > +10 pts → OFF early · at 5: Σ ≥ 0 → OFF, else KEEP (final; the scout keeps printing
+    # Σ over every later skip as a watch line). Runs only on the FB_CONFIRM path (flatbase_confirm_hours > 0, TRADE-routed signals).
+    # Code default off; trading_config.json on.
+    flatbase_higher_high_block: bool = False
     flatbase_invest_mult: float = 0.4             # DL 528 C5 (5 % cap: one −10 stop ≈ 4.8 % of the account) · was 0.2 = momentum_long_invest_mult (DL 298): the margin share
     flatbase_lev_mult: float = 0.4                # × the STRONG_BUY leverage (20 × 0.4 = 8×, DL 533 B26 leverage step; was 0.25 = 5×) — its own field; 8× is its MAX (−10 stop, backstop 10.5 % ≤ the 11.04 % liquidation-share cap; liquidation ≈ 12.0 %)
     # its OWN optional open cap ON TOP of the shared bot slots (DL 515), 0 = no cap. Operator decided 10 on 2026-10-22 (the DL 348 no-slot lane): the study's bursts reached 24 open

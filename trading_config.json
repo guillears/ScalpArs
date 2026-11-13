@@ -820,6 +820,7 @@
     "flatbase_min_hours_after_spike": 4.0,
     "flatbase_max_hours_after_spike": 96.0,
     "flatbase_confirm_hours": 24.0,
+    "flatbase_higher_high_block": true,
     "flatbase_invest_mult": 0.4,
     "flatbase_lev_mult": 0.4,
     "flatbase_max_open": 0,

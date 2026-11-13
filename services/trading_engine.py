@@ -11283,7 +11283,7 @@ class TradingEngine:
         (logged, the session rolled back). The HARD guard is in open_position: every FRENZY_WILLY open re-counts the open WILLY rows inside
         the bot open lane, before any exchange order, and is refused at ≥ frenzy_willy_max_slots (FRENZY_WILLY_MAX_SLOTS) whatever the switch."""
         try:
-            _slots = max(1, int(getattr(config.trading_config.thresholds, 'frenzy_willy_max_slots', 1) or 1))
+            _slots = max(1, int(getattr(config.trading_config.thresholds, 'frenzy_willy_max_slots', 10) or 10))   # 🧺 DL 542: blank / 0 = 10 (no per-sleeve limit)
             _n = (await db.execute(select(func.count(Order.id)).where(and_(
                 Order.status == "OPEN", Order.is_paper == self.is_paper_mode, Order.entry_strategy == "FRENZY_WILLY")))).scalar() or 0
             return _n >= _slots
@@ -11299,7 +11299,7 @@ class TradingEngine:
         """🎲¼ (341) FRENZY_WILLY_HT's OWN slot: True = open FRENZY_WILLY_HT ≥ frenzy_willy_ht_max_slots (≥ 1). Unreadable → True (logged, rolled
         back) — the WILLY entry stays armed. open_position re-checks it under the bot open lane (hard guard)."""
         try:
-            _slots = max(1, int(getattr(config.trading_config.thresholds, 'frenzy_willy_ht_max_slots', 1) or 1))
+            _slots = max(1, int(getattr(config.trading_config.thresholds, 'frenzy_willy_ht_max_slots', 10) or 10))
             _n = (await db.execute(select(func.count(Order.id)).where(and_(
                 Order.status == "OPEN", Order.is_paper == self.is_paper_mode, Order.entry_strategy == FRENZY_WILLY_HT)))).scalar() or 0
             return _n >= _slots
@@ -11940,7 +11940,7 @@ class TradingEngine:
             # ① the hold / pair-held guards FIRST (round-3 deep review I1): a turnover refusal is recorded only when the entry could otherwise
             # open. Checked quietly; the FIRST time it blocks this pending entry, the open path runs once to record it (FRENZY_WILLY_HOLD /
             # FRENZY_WILLY_PAIR_HELD + the hold event) and the entry is marked blocked — later red bars re-check quietly.
-            # 🔓 (340) global hold OFF: the quiet check is WILLY's OWN slot cap (one WILLY at a time) instead of the hold — same "stays armed"
+            # 🔓 (340) global hold OFF: the quiet check is WILLY's OWN slot cap (10 since DL 542 — no longer one WILLY at a time) instead of the hold — same "stays armed"
             _held = (await self._willy_hold_state(db))[0] if self._willy_global_hold_on() else await self._willy_slots_full(db)
             if not _held:
                 try:
@@ -12056,10 +12056,10 @@ class TradingEngine:
                 flag[_lfk] = (f"{_bar_dt:%m-%d %H:%M} {_tg}refused: WILLY hold — FRENZY_WILLY {_wh.get('willy_pair') or ''} open"
                               if _wh.get('why') == 'OPEN' else f"{_bar_dt:%m-%d %H:%M} {_tg}refused: WILLY hold (open-WILLY check unreadable)")
                 return False
-            _sdef = 1 if _wl else 2   # 🎲 WILLY: 0 / blank → 1 (one WILLY at a time — its own guard since the global hold is OFF, DL 340)
-            _slots = max(1, int(getattr(th, 'frenzy_willy_max_slots' if _wl else ('frenzy_lite_max_slots' if lite else ('frenzy_wide_max_slots' if wide else 'frenzy_max_slots')), _sdef) or _sdef))   # 0 / blank = the sleeve default (2; WILLY 1)
+            _sdef = 10   # 🧺 DL 542 (operator 11-13): 0 / blank → 10 = no per-sleeve limit (was WILLY 1 · others 2)
+            _slots = max(1, int(getattr(th, 'frenzy_willy_max_slots' if _wl else ('frenzy_lite_max_slots' if lite else ('frenzy_wide_max_slots' if wide else 'frenzy_max_slots')), _sdef) or _sdef))   # 0 / blank = the sleeve default (10 since DL 542 — no per-sleeve limit)
             if _ht:
-                _slots = max(1, int(getattr(th, 'frenzy_willy_ht_max_slots', 1) or 1))   # 🎲¼ (341) HT's OWN slot (0 / blank → 1)
+                _slots = max(1, int(getattr(th, 'frenzy_willy_ht_max_slots', 10) or 10))   # 🎲¼ (341) HT's OWN slot (0 / blank → 10, DL 542)
             _n_open = 0 if _lr else ((await db.execute(select(func.count(Order.id)).where(and_(
                 Order.status == "OPEN", Order.is_paper == self.is_paper_mode, Order.entry_strategy == _es)))).scalar() or 0)   # 🔁 (316) the retry: NO sleeve slot limit (operator)
             if not _lr and _n_open >= _slots:
@@ -12342,7 +12342,7 @@ class TradingEngine:
                     self._record_filter_block(why, side)
                     await self._surge_ledger_counts(db, side, st)
                     continue
-                _slots = max(1, int(getattr(th, 'surge_max_slots', 4) or 4))
+                _slots = max(1, int(getattr(th, 'surge_max_slots', 10) or 10))   # 🧺 DL 542
                 _n_open = (await db.execute(select(func.count(Order.id)).where(and_(
                     Order.status == "OPEN", Order.is_paper == self.is_paper_mode, Order.entry_strategy == f"SURGE_{side}")))).scalar() or 0
                 # cap = concurrent open AND fills per trigger (a fill stopped inside the window must not free an entry beyond the cap — review)
@@ -12595,7 +12595,7 @@ class TradingEngine:
                     st['blk_sp_ts'] = st.get('dip_ts')
                     _bullrun_monitor['blk_spacing'] = _bullrun_monitor.get('blk_spacing', 0) + 1
                 return
-            slots = int(getattr(th, 'bullrun_max_slots', 4) or 4)
+            slots = max(1, int(getattr(th, 'bullrun_max_slots', 10) or 10))   # 🧺 DL 542
             _open_ct = (await db.execute(
                 select(func.count(Order.id)).where(and_(
                     Order.status == "OPEN", Order.is_paper == self.is_paper_mode,
@@ -14668,7 +14668,7 @@ class TradingEngine:
         # a fill — and refuses at ≥ frenzy_willy_max_slots (FRENZY_WILLY_MAX_SLOTS). _frenzy_open's slot check is the early, named one; this
         # one is the backstop for any path / timing that reaches open_position. Unreadable → refused (fail-closed).
         if _wh_es == "FRENZY_WILLY":
-            _wslots = max(1, int(getattr(config.trading_config.thresholds, 'frenzy_willy_max_slots', 1) or 1))
+            _wslots = max(1, int(getattr(config.trading_config.thresholds, 'frenzy_willy_max_slots', 10) or 10))   # 🧺 DL 542: blank / 0 = 10 (no per-sleeve limit)
             try:
                 _wn = (await db.execute(select(func.count(Order.id)).where(and_(
                     Order.status == "OPEN", Order.is_paper == self.is_paper_mode, Order.entry_strategy == "FRENZY_WILLY")))).scalar() or 0
@@ -14685,7 +14685,7 @@ class TradingEngine:
         # above it is a count-then-insert check: it is race-free ONLY because every bot open runs one at a time in the bot open lane
         # (serialized_per_pair(lane=BOT_OPEN_LANE) on open_position). An open path that bypassed the lane would need a re-count under the book lock.
         if _wh_es == FRENZY_WILLY_HT:
-            _hslots = max(1, int(getattr(config.trading_config.thresholds, 'frenzy_willy_ht_max_slots', 1) or 1))
+            _hslots = max(1, int(getattr(config.trading_config.thresholds, 'frenzy_willy_ht_max_slots', 10) or 10))
             try:
                 _hn = (await db.execute(select(func.count(Order.id)).where(and_(
                     Order.status == "OPEN", Order.is_paper == self.is_paper_mode, Order.entry_strategy == FRENZY_WILLY_HT)))).scalar() or 0

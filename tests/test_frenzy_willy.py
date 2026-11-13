@@ -890,7 +890,7 @@ def test_sizing_1x_1_0():
 
 FIELDS = {"frenzy_willy_enabled": True, "frenzy_willy_entry_a": True, "frenzy_willy_entry_b": False, "frenzy_willy_invest_mult": 1.0,   # DL 528 C5 (0.5: DL 487)
           "frenzy_willy_lev_mult": 0.4, "frenzy_willy_tp_pct": 1.25, "frenzy_willy_stop_pct": 4.0, "frenzy_willy_max_hold_minutes": 90,
-          "frenzy_willy_max_slots": 1, "frenzy_willy_red_max_wait_minutes": 60, "frenzy_willy_a_cold_max_bars": 3}
+          "frenzy_willy_max_slots": 10, "frenzy_willy_red_max_wait_minutes": 60, "frenzy_willy_a_cold_max_bars": 3}
 
 
 def test_config_d11():
@@ -898,7 +898,7 @@ def test_config_d11():
     mf = C.SignalThresholds.model_fields
     assert mf["frenzy_willy_enabled"].default is False
     assert mf["frenzy_willy_tp_pct"].default == 1.25 and mf["frenzy_willy_stop_pct"].default == 4.0 and mf["frenzy_willy_max_hold_minutes"].default == 90
-    assert mf["frenzy_willy_max_slots"].default == 1 and mf["frenzy_willy_red_max_wait_minutes"].default == 60
+    assert mf["frenzy_willy_max_slots"].default == 10 and mf["frenzy_willy_red_max_wait_minutes"].default == 60
     assert mf["frenzy_willy_a_cold_max_bars"].default == 3 and "GTCUSDT 2026-10-08" in open(os.path.join(ROOT, "config.py"), encoding="utf-8").read()
     assert mf["frenzy_willy_entry_a"].default is True and mf["frenzy_willy_entry_b"].default is True
     cfg = json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
@@ -918,7 +918,7 @@ def test_ui_inputs_load_save_and_both_exports():
         assert html.count(f'id="{_id}"') == 1, _id
     for row in ("['config-fz-willy-invest-mult', 'frenzy_willy_invest_mult', 0.5]", "['config-fz-willy-lev-mult', 'frenzy_willy_lev_mult', 0.25]",
                 "['config-fz-willy-tp', 'frenzy_willy_tp_pct', 1.25]", "['config-fz-willy-stop', 'frenzy_willy_stop_pct', 4.0]",
-                "['config-fz-willy-max-hold', 'frenzy_willy_max_hold_minutes', 90]", "['config-fz-willy-slots', 'frenzy_willy_max_slots', 1]",
+                "['config-fz-willy-max-hold', 'frenzy_willy_max_hold_minutes', 90]", "['config-fz-willy-slots', 'frenzy_willy_max_slots', 10]",
                 "['config-fz-willy-red-wait', 'frenzy_willy_red_max_wait_minutes', 60]", "['config-fz-willy-a-cold', 'frenzy_willy_a_cold_max_bars', 3]"):
         assert html.count(row) == 1, row
     assert "_key === 'frenzy_willy_max_slots' || _key === 'frenzy_willy_max_hold_minutes' || _key === 'frenzy_willy_red_max_wait_minutes' || _key === 'frenzy_willy_a_cold_max_bars') ? Math.round(x)" in html
@@ -955,7 +955,7 @@ def test_api_payload_and_sleeve_rows(monkeypatch):
     assert "Frenzy-Willy" in names
     monkeypatch.setattr(M.trading_engine, "_fz_willy_pending", {"FOOUSDT": dict(trig="A", spike=1, armed=2, exp=3, why="", blocked=False)}, raising=False)
     m = M._frenzy_monitor_payload()
-    assert m["willy_tp"] == 1.25 and m["willy_stop"] == 4.0 and m["willy_max_hold"] == 90 and m["willy_max_slots"] == 1 and m["willy_red_wait"] == 60
+    assert m["willy_tp"] == 1.25 and m["willy_stop"] == 4.0 and m["willy_max_hold"] == 90 and m["willy_max_slots"] == 10 and m["willy_red_wait"] == 60
     assert m["willy_pending"] == [dict(pair="FOOUSDT", trig="A", armed_ms=2, exp_ms=3, blocked=False)]
     v = M._frenzy_flag_view(dict(pair="X", spike_ts=LAST, willy_last="w", willy_pending=dict(trig="B", armed_ms=1, exp_ms=2)))
     assert v["willy_last"] == "w" and v["willy_pending"]["trig"] == "B"

@@ -297,7 +297,7 @@ def test_willy_slots_full_reader():
             TE.config.trading_config.thresholds.frenzy_willy_max_slots = _old
             await eng.dispose()
         return out
-    assert asyncio.run(go(0, 1)) is False and asyncio.run(go(1, 1)) is True and asyncio.run(go(1, 2)) is False and asyncio.run(go(1, 0)) is True
+    assert asyncio.run(go(0, 1)) is False and asyncio.run(go(1, 1)) is True and asyncio.run(go(1, 2)) is False and asyncio.run(go(1, 0)) is False   # 0 / blank → 10 since DL 542 (no per-sleeve limit)
 
     class Bad:
         async def execute(self, *a, **k):
@@ -311,6 +311,7 @@ def test_e2e_open_position_hard_single_willy_guard(monkeypatch):
     with the switch OFF and ON alike (ON: the hold refuses first). Raising the slot cap lets a second WILLY through (the guard is the cap)."""
     import config as C
     th = C.trading_config.thresholds
+    monkeypatch.setattr(th, "frenzy_willy_max_slots", 1)   # the guard itself (live value 10 since DL 542)
     kw = dict(frenzy_willy=True, entry_frenzy_willy_trigger="A")
     r, blocks, rows, opened = _e2e(monkeypatch, "FOOUSDT", **kw)
     assert r is None and "FRENZY_WILLY_MAX_SLOTS" in blocks and "FRENZY_WILLY_HOLD" not in blocks and opened == [("WWWUSDT", "FRENZY_WILLY")]

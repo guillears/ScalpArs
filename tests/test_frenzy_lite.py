@@ -476,7 +476,7 @@ def test_frenzy_open_lite_path(monkeypatch):
 
 # ── wiring / every surface ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-FIELDS = {"frenzy_lite_enabled": True, "frenzy_lite_invest_mult": 0.85, "frenzy_lite_lev_mult": 0.4, "frenzy_lite_max_slots": 2,   # 0.4: DECISION_LOG 309 (0.5: 283, 0.4: 277, 0.32: 247)
+FIELDS = {"frenzy_lite_enabled": True, "frenzy_lite_invest_mult": 0.85, "frenzy_lite_lev_mult": 0.4, "frenzy_lite_max_slots": 10,   # 10: DL 542 (no per-sleeve limit) · 0.4: DECISION_LOG 309 (0.5: 283, 0.4: 277, 0.32: 247)
           "frenzy_lite_max_hours": 16.75, "frenzy_lite_min_above_closes": 12}
 
 
@@ -498,7 +498,7 @@ def test_ui_inputs_load_save_and_reports():
                 "config-fz-lite-max-hours", "config-fz-lite-min-above"):
         assert html.count(f'id="{_id}"') == 1, _id
     for row in ("['config-fz-lite-invest-mult', 'frenzy_lite_invest_mult', 1.0]", "['config-fz-lite-lev-mult', 'frenzy_lite_lev_mult', 0.2]",
-                "['config-fz-lite-slots', 'frenzy_lite_max_slots', 2]", "['config-fz-lite-max-hours', 'frenzy_lite_max_hours', 16.75]",
+                "['config-fz-lite-slots', 'frenzy_lite_max_slots', 10]", "['config-fz-lite-max-hours', 'frenzy_lite_max_hours', 16.75]",
                 "['config-fz-lite-min-above', 'frenzy_lite_min_above_closes', 12]"):
         assert html.count(row) == 1, row                                                       # FRENZY_NUM_FIELDS drives load + save
     assert "_key === 'frenzy_lite_max_slots' || _key === 'frenzy_lite_min_above_closes' || _key === 'frenzy_willy_max_slots' || _key === 'frenzy_willy_max_hold_minutes' || _key === 'frenzy_willy_red_max_wait_minutes' || _key === 'frenzy_willy_a_cold_max_bars') ? Math.round(x)" in html   # ints

@@ -1027,7 +1027,7 @@ class SignalThresholds(BaseModel):
     bullrun_universe_size: int = 10        # sleeve trades scan-rank ≤ N (COIN-only universe; rank 11-20 refuted: 50% WR −$1,933)
     bullrun_dip_atr_mult: float = 0.3      # entry: dip ≥ N×ATR(14,5m) below 5m EMA20, then close reclaims
     bullrun_pair_spacing_hours: float = 2.0  # min hours between sleeve fires on the same pair
-    bullrun_max_slots: int = 4             # sleeve concurrency cap — operator-directed Aug-21: match max_open_positions (4), no separate sleeve throttle; global max_open remains the real bound
+    bullrun_max_slots: int = 10             # 🧺 DL 542 (operator 11-13): no per-sleeve limit — 10 = the book count ceiling (was 4) · sleeve concurrency cap — history: operator-directed Aug-21 matched max_open_positions (4), no separate sleeve throttle; global max_open remains the real bound
     bullrun_invest_mult: float = 1.0       # Inv Mult (same cell plumbing as other sleeves)
     bullrun_lev_mult: float = 1.0          # Lev Mult
     bullrun_base_sl_pct: float = -0.7      # sleeve base SL; widened by the existing sl_atr_multiplier/floor chain
@@ -1271,7 +1271,7 @@ class SignalThresholds(BaseModel):
     surge_long_entry_delay_min: float = 0.0      # minutes after the trigger bar CLOSES before a LONG may open
     surge_short_entry_delay_min: float = 20.0    # minutes after the trigger bar closes before a SHORT may open (short the bounce)
     surge_entry_window_min: float = 5.0          # entries allowed from delay to delay + this (then the trigger is spent)
-    surge_max_slots: int = 4                     # max fills PER TRIGGER and open PER SIDE (also count against max_open_positions).
+    surge_max_slots: int = 10                     # 🧺 DL 542 (operator 11-13): no per-sleeve limit — 10 = the book count ceiling (was 4) · max fills PER TRIGGER and open PER SIDE (also count against max_open_positions).
     # 3 → 4 (operator, 2026-09-30) = the general book size: the study never capped (SHORT averages 4.6 picks/dump; cap 3 kept Σ +80 %
     # of +122 %), but equal_split sizing gives each fill ¼ of the book at max_open_positions=4, so a 5th full-size fill can't fund.
     # 4 = SURGE may take the WHOLE book on an empty-book trigger: momentum then gets NO_BALANCE (only leftover-margin redeploy fills)
@@ -1398,7 +1398,7 @@ class SignalThresholds(BaseModel):
     frenzy_lock_floor_pct: float = 2.0
     frenzy_lock_trail_pct: float = 2.0
     frenzy_max_hold_minutes: int = 720           # 12 h cap (0 = the global max hold)
-    frenzy_max_slots: int = 2                    # max FRENZY_LONG open at once (they also count against max open positions)
+    frenzy_max_slots: int = 10                    # 🧺 DL 542 (operator 11-13): no per-sleeve limit — 10 = the book count ceiling (was 2) · max FRENZY_LONG open at once (they also count against max open positions)
     # Oct-2 (DECISION_LOG 177, operator): a ceiling on entries per pair per UTC day. Attempts read (pre-ATR-gate cut, after the fact):
     # 1st attempt −0.11 %, 2nd +0.14, 3rd +0.92; a cap of 1 was the worst cell, 3 keeps ~97 % of the tested entries. 0 = no cap.
     frenzy_max_entries_per_pair_day: int = 3
@@ -1454,7 +1454,7 @@ class SignalThresholds(BaseModel):
     frenzy_wide_enabled: bool = False
     frenzy_wide_invest_mult: float = 1.0         # absolute-assign like FRENZY_LONG · live JSON 0.2 since DL 289 (blocker size, gate at frenzy_long_lev_mult)
     frenzy_wide_lev_mult: float = 0.05           # DL 280: 1× code default = the SAFE fallback; live JSON 0.05 = 1× again since DL 286 (10× under DL 283 for one day)
-    frenzy_wide_max_slots: int = 2               # max FRENZY_WIDE open at once (they also count against max open positions)
+    frenzy_wide_max_slots: int = 10               # 🧺 DL 542 (operator 11-13): no per-sleeve limit — 10 = the book count ceiling (was 2) · max FRENZY_WIDE open at once (they also count against max open positions)
     # 🌀 Oct-5 (DECISION_LOG 215 — shipped OBSERVE-ONLY, JSON 0: the deep review found the study's fresh bar lagged the engine's, and on the
     # bars the engine trades the cohort did not separate; frozen candidate 67.8 pending re-validation). FRENZY_WIDE skips a CHOPPY / FADING pump — at most this % of the episode's 5m
     # closes since the spike held at / above the spike-anchored VWAP (services.frenzy.frenzy_wide_choppy; counter FRENZY_WIDE_CHOPPY).
@@ -1498,7 +1498,7 @@ class SignalThresholds(BaseModel):
     #   3 → 1.5 (LITE year +0.267 → +0.030 %/fill at the new exit). The 277 gate is superseded by the 283 gates (frenzy_long_lev_mult
     #   comment): revert LITE to 0.4 if its first 20 fills at 10× average < 0 or a UTC day's FRENZY fills lose > 25 % of the book; the TP via
     #   Scout FRENZY_TP_REVERT.
-    frenzy_lite_max_slots: int = 2               # max FRENZY_LITE open at once (they also count against max open positions)
+    frenzy_lite_max_slots: int = 10               # 🧺 DL 542 (operator 11-13): no per-sleeve limit — 10 = the book count ceiling (was 2) · max FRENZY_LITE open at once (they also count against max open positions)
     frenzy_lite_max_hours: float = 16.75         # episode age window end (h after the spike) — the study's "first ~17 h" (≤ frenzy_min_hours → 16.75 used)
     frenzy_lite_min_above_closes: int = 12       # (≤ 0 → 12 used) consecutive 5m closes at / above the spike VWAP (the study's 12 = FRENZY's hour; 6 vs 12 under study)
     # 🔁 2026-10-19 FRENZY_LITE_RETRY (operator DECLARED OVERRIDE below the locked gates, DECISION_LOG 316): a LITE stretch refused ONLY for a
@@ -1559,7 +1559,7 @@ class SignalThresholds(BaseModel):
     #   10× safe at any MMR ≤ 2.5 %. Year book (LITE 8×, LONG 2×, WIDE 1×): $42,716 vs today's $3,185 — in-sample, caps not modelled.
     #   🔒 REVERT the TP / cap (not the 10×): at the first 20 WILLY fills on ≥ 8 days after this deploy, if the old exit (+1/−4/120, Scout shadow
     #   OLD_EXIT) beats the new one by mean paired Δ > 0 at day-bootstrap P ≥ 0.90, OR the new exit's average < 0. 60-min cap read by Scout T125C60.
-    frenzy_willy_max_slots: int = 1               # max FRENZY_WILLY open at once — 1 (THE one-WILLY-at-a-time guard since the global hold is OFF, DL 340)
+    frenzy_willy_max_slots: int = 10               # 🧺 DL 542 (operator 11-13): no per-sleeve limit — 10 = the book count ceiling (was 1) · history: max FRENZY_WILLY open at once was 1 (THE one-WILLY-at-a-time guard since the global hold is OFF, DL 340)
     # 🔓 2026-10-21 (DECISION_LOG 340, operator: "we should revert it asap"): switch for the GLOBAL HOLD above. The hold was built for a 20×
     # WILLY with NO stop (a −3 % move ≈ 14 % of the account); since DL 271/280 WILLY runs a −4 % stop at 10×. Hold record (reports/
     # SCOUT_WILLY_HOLD.csv, priced at their then-exits): 13 setups blocked 10-09 → 10-17 — 5 were WILLY entries (still blocked by WILLY's own
@@ -1591,7 +1591,7 @@ class SignalThresholds(BaseModel):
     # p 0.64 and the WILLY backtest −15.7 (19 of 609 reach +1.25 then stop, mostly Jul–Sep 2026). 🔒 revert (scripts/scout_willy_ht_exit_lines.py):
     # first 8 HT fills Σ (live − the +1.25 exit) < 0 → 0; at 15 Σ ≤ 0 → 0. 0 = HT follows WILLY's base TP (the code default; the JSON arms 2.0).
     frenzy_willy_ht_tp_pct: float = 0.0
-    frenzy_willy_ht_max_slots: int = 1            # FRENZY_WILLY_HT open at once (its OWN slot; WILLY's slot never counts HT)
+    frenzy_willy_ht_max_slots: int = 10            # 🧺 DL 542 (operator 11-13): no per-sleeve limit — 10 = the book count ceiling (was 1) · FRENZY_WILLY_HT open at once (its OWN slot; WILLY's slot never counts HT)
     # 🩳 2026-10-22 FLATBASE_SHORT (DECISION_LOG 348 — operator DISCIPLINE OVERRIDE: the study FAILED its ship bars; alert-only gates, no
     # auto-off). Short a FRENZY episode whose coin was FLAT for the 14 days before the spike (14-d close range ≤ flatbase_flat_max at the base
     # bar, 30 min before the spike bar's close, ≥ 90 % of the 5m bars present, read once per episode — the study's exact 4,032 5m closes),

@@ -195,6 +195,9 @@ def test_ht_is_a_quarter_of_willy_at_the_same_leverage(monkeypatch):
 
 
 def test_ht_own_slot_hard_guard_and_willy_guards_ignore_ht(monkeypatch):
+    import config as C
+    monkeypatch.setattr(C.trading_config.thresholds, "frenzy_willy_ht_max_slots", 1)   # the guard itself (live value 10 since DL 542)
+    monkeypatch.setattr(C.trading_config.thresholds, "frenzy_willy_max_slots", 1)
     r, blocks, rows = _open(monkeypatch, "FOOUSDT", open_rows=[("BARUSDT", "FRENZY_WILLY_HT")], frenzy_willy=True, frenzy_willy_ht=True)
     assert r is None and "FRENZY_WILLY_HT_MAX_SLOTS" in blocks and len(rows) == 1                   # HT slot full → refused (hard guard)
     r, blocks, rows = _open(monkeypatch, "FOOUSDT", open_rows=[("BARUSDT", "FRENZY_WILLY_HT")], frenzy_willy=True)
@@ -256,14 +259,14 @@ def test_ht_exit_closes_like_willy():
 def test_config_json_ui_and_exports():
     import config as C
     mf = type(C.trading_config.thresholds).model_fields
-    assert mf["frenzy_willy_ht_enabled"].default is True and mf["frenzy_willy_ht_size_frac"].default == 0.5 and mf["frenzy_willy_ht_max_slots"].default == 1
+    assert mf["frenzy_willy_ht_enabled"].default is True and mf["frenzy_willy_ht_size_frac"].default == 0.5 and mf["frenzy_willy_ht_max_slots"].default == 10
     cfg = json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
-    assert cfg["frenzy_willy_ht_enabled"] is True and cfg["frenzy_willy_ht_size_frac"] == 1.0 and cfg["frenzy_willy_ht_max_slots"] == 1   # DL 528 C5 (0.5 before)
+    assert cfg["frenzy_willy_ht_enabled"] is True and cfg["frenzy_willy_ht_size_frac"] == 1.0 and cfg["frenzy_willy_ht_max_slots"] == 10   # DL 528 C5 (0.5 before)
     assert "DECISION_LOG 341" in open(os.path.join(ROOT, "config.py"), encoding="utf-8").read()
     html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
     for _id in ("config-fz-willy-ht-enabled", "config-fz-willy-ht-size-frac", "config-fz-willy-ht-slots"):
         assert html.count(f'id="{_id}"') == 1, _id
-    assert "['config-fz-willy-ht-size-frac', 'frenzy_willy_ht_size_frac', 0.5]" in html and "['config-fz-willy-ht-slots', 'frenzy_willy_ht_max_slots', 1]" in html
+    assert "['config-fz-willy-ht-size-frac', 'frenzy_willy_ht_size_frac', 0.5]" in html and "['config-fz-willy-ht-slots', 'frenzy_willy_ht_max_slots', 10]" in html
     assert "(_key === 'frenzy_willy_ht_max_slots' || _key === 'frenzy_max_slots'" in html                 # an int on save
     assert "getElementById('config-fz-willy-ht-enabled'); if (_e) _e.checked = config.thresholds.frenzy_willy_ht_enabled !== false;" in html
     assert "frenzy_willy_ht_enabled: document.getElementById('config-fz-willy-ht-enabled')?.checked ?? true," in html
@@ -279,7 +282,7 @@ def test_config_json_ui_and_exports():
 def test_monitor_payload_runs():
     import main as M
     p = M._frenzy_monitor_payload()
-    assert p.get("willy_ht_enabled") is True and p.get("willy_ht_size_frac") == 1.0 and p.get("willy_ht_max_slots") == 1   # DL 528 C5
+    assert p.get("willy_ht_enabled") is True and p.get("willy_ht_size_frac") == 1.0 and p.get("willy_ht_max_slots") == 10   # DL 528 C5
 
 
 def test_size_frac_reader_and_gate():

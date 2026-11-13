@@ -5021,12 +5021,12 @@ def _frenzy_monitor_payload():
                 "bearish_block": bool(getattr(_th, 'frenzy_bearish_day_block', False)),   # 🐻 Oct-8 (250): FRENZY / WIDE / LITE refuse on a bearish day
                 "gvol_bar": ((_dt.utcfromtimestamp(((_fzs.get('gvol') or {})['bar'] + 300_000) / 1000).strftime('%H:%M')) if (_fzs.get('gvol') or {}).get('bar') else None),
                 "lev_mult_strong": float(getattr(_th, 'frenzy_long_lev_mult_strong', 0) or 0),
-                "wide_lev_mult": float(1.0 if getattr(_th, 'frenzy_wide_lev_mult', 0.2) is None else getattr(_th, 'frenzy_wide_lev_mult', 0.2)), "wide_max_slots": max(1, int(getattr(_th, 'frenzy_wide_max_slots', 2) or 2)),
+                "wide_lev_mult": float(1.0 if getattr(_th, 'frenzy_wide_lev_mult', 0.2) is None else getattr(_th, 'frenzy_wide_lev_mult', 0.2)), "wide_max_slots": max(1, int(getattr(_th, 'frenzy_wide_max_slots', 10) or 10)),
                 # 🪶 Oct-7 (243) FRENZY_LITE: switch, size, slots, window, closes-above
                 "lite_enabled": bool(getattr(_th, 'frenzy_lite_enabled', False)),
                 "lite_invest_mult": float(1.0 if getattr(_th, 'frenzy_lite_invest_mult', 1.0) is None else getattr(_th, 'frenzy_lite_invest_mult', 1.0)),
                 "lite_lev_mult": float(1.0 if getattr(_th, 'frenzy_lite_lev_mult', 0.2) is None else getattr(_th, 'frenzy_lite_lev_mult', 0.2)),
-                "lite_max_slots": max(1, int(getattr(_th, 'frenzy_lite_max_slots', 2) or 2)),
+                "lite_max_slots": max(1, int(getattr(_th, 'frenzy_lite_max_slots', 10) or 10)),
                 "lite_max_hours": _fz_lite_hmax(_th), "lite_min_above": _fz_lite_need(_th),   # the values the engine USES (≤ 0 / bad → defaults)
                 # 🔁 (316) FRENZY_LITE_RETRY: switch, window (the value the engine USES), size, pending retries (no sleeve slot limit)
                 "lite_retry_enabled": getattr(_th, 'frenzy_lite_retry_enabled', False) is True,
@@ -5041,11 +5041,11 @@ def _frenzy_monitor_payload():
                 "willy_invest_mult": float(1.0 if getattr(_th, 'frenzy_willy_invest_mult', 1.0) is None else getattr(_th, 'frenzy_willy_invest_mult', 1.0)),
                 "willy_lev_mult": float(1.0 if getattr(_th, 'frenzy_willy_lev_mult', 1.0) is None else getattr(_th, 'frenzy_willy_lev_mult', 1.0)),
                 "willy_tp": _fz_willy_lv[0], "willy_stop": (abs(_fz_willy_lv[1]) if _fz_willy_lv[1] is not None else None),   # None = NO stop
-                "willy_max_hold": _fz_willy_lv[2], "willy_max_slots": max(1, int(getattr(_th, 'frenzy_willy_max_slots', 1) or 1)),
+                "willy_max_hold": _fz_willy_lv[2], "willy_max_slots": max(1, int(getattr(_th, 'frenzy_willy_max_slots', 10) or 10)),
                 "willy_global_hold": bool(getattr(_th, 'frenzy_willy_global_hold', True)),   # 🔓 (340) the switch the engine USES (OFF since 2026-10-21)
                 # 🎲¼ (341) FRENZY_WILLY_HT: switch, the size fraction the engine USES, own slot
                 "willy_ht_enabled": bool(getattr(_th, 'frenzy_willy_ht_enabled', True)),
-                "willy_ht_size_frac": _fz_ht_frac(_th), "willy_ht_max_slots": max(1, int(getattr(_th, 'frenzy_willy_ht_max_slots', 1) or 1)),
+                "willy_ht_size_frac": _fz_ht_frac(_th), "willy_ht_max_slots": max(1, int(getattr(_th, 'frenzy_willy_ht_max_slots', 10) or 10)),
                 "willy_red_wait": int(_fz_willy_wait(_th) // 60_000),   # 🟥 the red-candle wait the engine USES (minutes)
                 # 🩳 (348) FLATBASE_SHORT: switch, the values the engine USES, the episodes it is tracking now
                 "flatbase_enabled": getattr(_th, 'flatbase_short_enabled', False) is True,
@@ -5072,7 +5072,7 @@ def _frenzy_monitor_payload():
                 "lock_arm": float(getattr(_th, 'frenzy_lock_arm_pct', 0) or 0), "lock_floor": float(getattr(_th, 'frenzy_lock_floor_pct', 2.0) or 0),
                 "lock_trail": float(getattr(_th, 'frenzy_lock_trail_pct', 2.0) or 0),
                 "trail_arm": float(getattr(_th, 'frenzy_trail_arm_pct', 5.0) or 0), "trail_give": float(getattr(_th, 'frenzy_trail_giveback_pct', 1.5) or 0),
-                "max_slots": int(getattr(_th, 'frenzy_max_slots', 2) or 0),
+                "max_slots": max(1, int(getattr(_th, 'frenzy_max_slots', 10) or 10)),
                 "max_pair_day": int(getattr(_th, 'frenzy_max_entries_per_pair_day', 3) or 0),
                 "checked": (_dt.utcfromtimestamp(_ca / 1000).strftime('%H:%M') if _ca else None), "checked_ms": (int(_ca) if _ca else None),
                 "shortlisted": _fzs.get('shortlisted'), "unreadable": _fzs.get('unreadable'), "flagged": len(_fzf), "error": _fzs.get('error'),

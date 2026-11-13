@@ -889,7 +889,7 @@ def frenzy_willy_ht_config_errors(th) -> list:
     v = _fin(getattr(th, 'frenzy_willy_ht_size_frac', WILLY_HT_FRAC_DEF))
     if v is None or not (0 < v <= 1.0):
         errs.append("frenzy_willy_ht_size_frac must be > 0 and ≤ 1 (0.25 = a quarter of WILLY)")
-    s_ = _fin(getattr(th, 'frenzy_willy_ht_max_slots', 1))
+    s_ = _fin(getattr(th, 'frenzy_willy_ht_max_slots', 10))
     if s_ is None or s_ < 1:
         errs.append("frenzy_willy_ht_max_slots must be ≥ 1")
     tp_ = _fin(getattr(th, 'frenzy_willy_ht_tp_pct', 0.0) or 0.0)   # 🎯 (537 review) 0 = off, else above WILLY's TP and ≤ 50

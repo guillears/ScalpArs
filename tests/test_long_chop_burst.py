@@ -177,7 +177,9 @@ def test_master_sleeve_sizes_frozen_match_live_json():
                           "frenzy_lite_invest_mult", "frenzy_lite_retry_invest_mult", "frenzy_lite_retry_lev_mult", "flatbase_invest_mult",
                           "frenzy_willy_invest_mult",
                           # DL 533 B26 leverage step (live WILLY 8× · Flatbase 8× · RETRY 10× · ML 15×): same declaration — not re-priced in the master
-                          "frenzy_willy_lev_mult", "flatbase_lev_mult"}
+                          "frenzy_willy_lev_mult", "flatbase_lev_mult",
+                          # DL 545 SURGE LONG 0.2 × 1× · Bear-Run 1× (disable candidates): same declaration — not re-priced in the master
+                          "surge_long_invest_mult", "surge_long_lev_mult", "bearrun_lev_mult"}
     for k, v in frozen.items():
         if k in KNOWN_NOT_REPRICED:
             continue

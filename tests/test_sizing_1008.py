@@ -52,9 +52,9 @@ def live_registry(monkeypatch):
 
 def test_json_values():
     th = _json_th()
-    assert th["bearrun_lev_mult"] == 0.25
+    assert th["bearrun_lev_mult"] == 0.05                                                # DL 545: 1× (disable candidate; was 0.25 = 5×, DL 252)
     d = config.SignalThresholds()                                                       # code defaults = the live values (D11)
-    assert d.bearrun_lev_mult == 0.25
+    assert d.bearrun_lev_mult == 0.05
 
 
 @pytest.mark.parametrize("spec", ["json", "default", "FAN_RATIO_GATE:1:0.5", "FAN_RATIO_GATE:1.0:0.50"])
@@ -113,10 +113,10 @@ def test_engine_uses_the_relative_helpers():
     assert "cell_lev_mult = max(0.05, float(getattr(_th_bear, 'bearrun_lev_mult', 0.05) or 0.05))" in src
 
 
-def test_bearrun_is_5x():
+def test_bearrun_is_1x_545():
     lm = max(0.05, float(_json_th()["bearrun_lev_mult"] or 0.05))                       # the engine's BEARRUN branch
-    assert lm == 0.25 and _lev(lm) == 5
-    assert _lev(0.05) == 1                                                              # the rollback value is still the 1× probe
+    assert lm == 0.05 and _lev(lm) == 1                                                 # DL 545: 1× (was 0.25 = 5×, DL 252)
+    assert _lev(0.25) == 5
 
 
 def test_ui_round_trips():
@@ -154,6 +154,27 @@ def test_master_builder_frozen_sizing():
     th = _json_th()
     reg = dict((p.split(":")[0], p.split(":")) for p in th["flip_entry_sources"].split(","))
     assert B.FLIP_FAN_LEV_FROZEN == float(reg["FAN_RATIO_GATE"][2])
-    assert B.BEARRUN_LEV_FROZEN == th["bearrun_lev_mult"]
+    assert B.BEARRUN_LEV_FROZEN == 0.25 and th["bearrun_lev_mult"] == 0.05   # DL 545: live 1×, the master stays frozen at 5× (declared NOT re-priced; % size-free)
     bld = open(os.path.join(ROOT, "scripts", "build_master_pool.py"), encoding="utf-8").read()
     assert "bearrun_lev_mult=0.25," in bld and 'STACK_VERSION = "2026-11-11a"' in bld
+
+
+def test_surge_bearrun_1x_545():
+    """DL 545 (operator 2026-11-13): SURGE LONG and Bear-Run are disable candidates → sized like FRENZY_LONG, 0.2 × 1×, everywhere."""
+    th = _json_th()
+    assert (th["surge_long_invest_mult"], th["surge_long_lev_mult"], th["bearrun_invest_mult"], th["bearrun_lev_mult"]) == (0.2, 0.05, 0.2, 0.05)
+    d = config.SignalThresholds()
+    assert (d.surge_long_invest_mult, d.surge_long_lev_mult, d.bearrun_invest_mult, d.bearrun_lev_mult) == (0.2, 0.05, 0.2, 0.05)
+    html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
+    for frag in ('id="config-sg-long-invest-mult" step="0.1" min="0.1" value="0.2"', 'id="config-sg-long-lev-mult" step="0.05" min="0.05" value="0.05"',
+                 "['config-sg-long-invest-mult', 'surge_long_invest_mult', 0.2]", "['config-sg-long-lev-mult', 'surge_long_lev_mult', 0.05]",
+                 "_ssNum('config-sg-long-invest-mult', 0.2), _ssNum('config-sg-long-lev-mult', 0.05)",
+                 'id="config-be-invest-mult" step="0.1" min="0.1" value="0.2"', "['config-be-invest-mult', 'bearrun_invest_mult', 0.2]",
+                 "_ssNum('config-be-invest-mult', 0.2) || 0.2, _ssNum('config-be-lev-mult', 0.05) || 0.05"):
+        assert frag in html, frag
+    import sys
+    sys.path.insert(0, os.path.join(ROOT, "scripts"))
+    import book_capacity as BK
+    assert BK.ticket("SURGE_LONG", th) == 0.2 and BK.fills_on_empty_book(0.2, BK.limits()) == 10   # a trigger no longer locks the book's margin
+    from services.trading_engine import compose_leverage
+    assert compose_leverage(20, 0.05, True, 1.0) == 1

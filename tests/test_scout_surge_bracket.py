@@ -118,3 +118,12 @@ def test_surge_size_rows_and_lines():
     L0 = "\n".join(RG.surge_size_lines(_o([BTW]), target_lev=8.0, switch_ms=None))   # not deployed yet → every fill BEFORE
     assert "not yet (every fill counts as BEFORE)" in L0 and "| after 396 | 0 |" in L0
     assert RG.surge_size_lines(pd.DataFrame(), target_lev=8.0, switch_ms=None)       # empty never raises
+
+
+def test_surge_scouts_frozen_on_the_8x_era_545():
+    """review 545: today's 1× target must not re-class the 8× fills — both sections run at the frozen 8× target, 1× fills cut out."""
+    src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts", "scout_revert_gates.py")).read()
+    assert "surge_bracket_lines(_o396, op_closed, target_lev=SZ_396_TARGET" in src and "surge_size_lines(_o396, target_lev=SZ_396_TARGET" in src
+    assert RG.SZ_396_TARGET == 8.0
+    o = pd.DataFrame(dict(o_ms=[1, 5, 9]))
+    assert list(RG.surge_396_era(o, 5).o_ms) == [1] and len(RG.surge_396_era(o, None)) == 3

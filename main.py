@@ -9731,7 +9731,10 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         _closed_w = [w for w in reversed(bearrun_periods) if w.get('end') and (w.get('fills', 0) - w.get('open_fills', 0)) > 0]
         _w_signs = [(w['net'] or 0) > 0 for w in _closed_w]
         _arm_txt = _kill_txt = None
-        if _bear_lev < 1.0:
+        if _bear_lev <= 0.05:
+            # ⏬ DL 545 (2026-11-13, operator): 1× = a DISABLE CANDIDATE, not a probe — the arm bar (→ 20×) is retired; the kill bar below keeps reading.
+            _arm_txt = "⏬ 1× — disable candidate (DECISION_LOG 545) · arm bar retired"
+        elif _bear_lev < 1.0:
             # 🐻 Oct-4 (DECISION_LOG 200): RE-PROBE — the arm bar counts ONLY windows that started after the re-probe (2026-10-04 22:00 UTC;
             # the Sep windows already failed it in the replays) — ≥ 5 closed windows with fills, ≥ 3 positive ∧ Σ > 0 → bearrun_lev_mult 1.0 (manual).
             _fresh = [w for w in _closed_w if str(w.get('start') or '') >= '2026-10-04T22:00']
@@ -9743,8 +9746,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                               else f"⚪ arm bar NOT met — {len(_fresh)} probe windows, {_pos} positive · Σ {_sumf:+.2f} %/window (bar: ≥3 positive ∧ Σ>0) → stays at lev ×{_bear_lev:g}")
             else:
                 _arm_txt = f"{'1× PROBE' if _bear_lev <= 0.05 else f'PARTIAL ~{max(1, int(round(20 * _bear_lev)))}× (252)'} (lev ×{_bear_lev:g}) since the 10-04 re-probe · arm bar: {len(_fresh)}/5 windows, {_pos} positive · Σ {_sumf:+.2f} %/window (bar: ≥3 of ≥5 ∧ Σ>0, window-mean pnl %)"
-        if _bear_lev > 0.05:
-            # 252 review: the kill bar applies from fill 1 at ANY live size above the 1× probe (5× partial or armed), not only at 1.0.
+        if True:
+            # 252 review: the kill bar applies from fill 1 at ANY live size (DL 545: the 1× disable candidate too — it is the disable read).
             # Kill bar reads the LIFETIME first 10 closed fills (unfiltered query — the dashboard's regime/window
             # filters must never fake or hide the bar; same rule as the bull-run twin). Falls back to the view on error.
             try:
@@ -9762,7 +9765,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             if (_f_n >= 10 and (_f_wr <= 45.0 or _f_usd < 0)) or _two_neg:
                 _kill_txt = f"🔴 KILL BAR HIT — first {_f_n}/10: WR {_f_wr:.0f}% · ${_f_usd:+.0f}{' · 2 consecutive net-negative windows' if _two_neg else ''} → toggle OFF (manual)"
             else:
-                _kill_txt = f"{'ARMED' if _bear_lev >= 1.0 else 'PARTIAL ~' + str(max(1, int(round(20 * _bear_lev)))) + '×'} (lev ×{_bear_lev:g}) · kill bar: first {_f_n}/10 WR {_f_wr:.0f}% · ${_f_usd:+.0f} (trip: ≤45% ∨ Σ<0 at 10, or 2 consecutive negative windows)"
+                _kill_txt = f"{'ARMED' if _bear_lev >= 1.0 else ('1× disable candidate' if _bear_lev <= 0.05 else 'PARTIAL ~' + str(max(1, int(round(20 * _bear_lev)))) + '×')} (lev ×{_bear_lev:g}) · kill bar: first {_f_n}/10 WR {_f_wr:.0f}% · ${_f_usd:+.0f} (trip: ≤45% ∨ Σ<0 at 10, or 2 consecutive negative windows)"
         _bear_gate = " · ".join(t for t in (_kill_txt, _arm_txt) if t) or "–"
         bearrun_rows.append({"row": "ALL sleeve fills (BTC-gate bypass while the 24h bear monitor is ON)", **_bear_stats(_bear_all), "gate": _bear_gate})
         if _bear_all:

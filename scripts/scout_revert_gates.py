@@ -1856,6 +1856,27 @@ def surge_bracket_lines(orders, op_closed=None, target_lev=None, since_ms=None, 
 SZ_SLOTS, SZ_FEE_RES = 4, 0.975                      # equal split over max_open_positions (4) after the 2.5 % fee reserve (trading_config 10-27)
 
 
+SZ_396_TARGET = 8.0   # ⏬ DL 545: SURGE_LONG went 8× → 0.2 × 1× (disable candidate). SURGE_BRACKET / SURGE_SIZE are FROZEN on the 396 era:
+                      # judged against its 8× target, fills opened from the 545 deploy (commit + 10 min) left out (a 1× fill is neither capped
+                      # nor a size question; reading it against the 1× target would re-class every 8× fill as BEFORE / capped — review 545).
+
+
+def surge_545_cut_ms():
+    """the DL 545 deploy (commit + 10 min) or None while it is not committed (no 1× fill can exist yet)."""
+    try:
+        ct = _GK.tag_commit_ts("(DECISION_LOG 545)")
+        return int(ct) * 1000 + 10 * MIN if ct is not None else None
+    except Exception:
+        return None
+
+
+def surge_396_era(orders, cut_ms):
+    """orders opened before the 545 cut (all while cut_ms is None) — pure."""
+    if orders is None or not len(orders) or cut_ms is None or "o_ms" not in orders:
+        return orders
+    return orders[orders.o_ms < int(cut_ms)]
+
+
 def surge_size_switch_ms():
     """the DL 396 deploy (commit + 10 min, as deploy_ms) or None while it is not committed (every fill then counts as BEFORE) — resolved
     directly (no GATE NOT EVALUABLE alarm: an observe-only split, not a revert gate)."""
@@ -2412,13 +2433,17 @@ def run_section(now_ms=None, noted=None, record_notes=True):
             L.append(f"- {DEFS[code][0]}: {dt}")
     L += ["", f"_Tick archives fetched this run: {fetched}. State: reports/SCOUT_REVERT_GATES.json._", ""]
     _sw = surge_size_switch_ms()                              # ⚡📏 (396) resolved once for both sections
+    _c545 = surge_545_cut_ms()                                # ⏬ (545) both sections frozen on the 8× era
+    _o396 = surge_396_era(orders, _c545)
+    _frz = [f"_⏬ Frozen by DECISION_LOG 545: SURGE_LONG is 0.2 × 1× (disable candidate) since {(_fmt_t(_c545, True) + ' UTC') if _c545 is not None else 'its deploy'} — "
+            f"read against the 8× target, 1× fills not included; the size-up gate is moot._", ""]
     try:                                                      # 👁 (335) SURGE_BRACKET — observe-only, never a gate row
-        L += surge_bracket_lines(orders, op_closed, switch_ms=_sw)
+        L += surge_bracket_lines(_o396, op_closed, target_lev=SZ_396_TARGET, switch_ms=_sw)[:-1] + _frz
     except Exception as e:
         log(f"SURGE_BRACKET: {e}")
         L += ["## 👁 SURGE_BRACKET", "", f"Unavailable this run ({str(e)[:120]}).", ""]
     try:                                                      # ⚡📏 (396) SURGE_SIZE — observe-only, never a gate row
-        L += surge_size_lines(orders, switch_ms=_sw)
+        L += surge_size_lines(_o396, target_lev=SZ_396_TARGET, switch_ms=_sw)[:-1] + _frz
     except Exception as e:
         log(f"SURGE_SIZE: {e}")
         L += ["## ⚡📏 SURGE_SIZE", "", f"Unavailable this run ({str(e)[:120]}).", ""]

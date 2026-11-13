@@ -51,7 +51,7 @@ def test_account_pct_and_fit():
 def test_live_values_and_wiring():
     th = json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
     assert (th["momentum_long_lev_mult"], th["frenzy_lite_retry_lev_mult"], th["frenzy_willy_lev_mult"], th["flatbase_lev_mult"],
-            th["frenzy_willy_ht_size_frac"], th["frenzy_lite_lev_mult"], th["ml_risk_cap_pct"]) == (0.75, 0.5, 0.4, 0.4, 1.0, 0.4, 10.0)
+            th["frenzy_willy_ht_size_frac"], th["frenzy_lite_lev_mult"], th["ml_risk_cap_pct"]) == (0.75, 0.5, 0.4, 0.25, 1.0, 0.4, 10.0)   # Flatbase 0.25: DL 544 early revert
     from config import SignalThresholds
     assert SignalThresholds().ml_risk_cap_pct == 0.0
     html = open(os.path.join(ROOT, "templates", "index.html")).read()
@@ -137,3 +137,25 @@ def test_engine_cap_block_scope():
     assert "and not _mlrc_probe" in blk                                   # probes are never capped
     assert '_record_filter_block("ML_RISK_CAP", direction)' in blk and "ML_RISK_CAP_SHRINK" not in blk   # a shrink is stamped, never counted as a block
     assert "entry_ml_risk_shrunk_from=_mlrc_from" in src
+
+
+def test_flatbase_operator_revert_544(tmp_path):
+    """DL 544: Flatbase back to 5× before its 15-fill gate — the scout shows the operator decision, never gates / freezes it, and the
+    live value is 0.25 everywhere (config default, JSON, UI input + loader fallback)."""
+    sys.path.insert(0, os.path.join(ROOT, "scripts"))
+    import scout_lev_step as M
+    rows = [dict(opened_at=f"2026-11-13T{i:02d}:00:00", pair=f"F{i}USDT", direction="SHORT", entry_strategy="FLATBASE_SHORT", status="CLOSED",
+                 pnl_percentage=-10.0, close_reason="STOP_LOSS", cell_multiplier_source="", leverage=8, notional_value=1000) for i in range(16)]
+    f = tmp_path / "scalpars_orders_paper_2026-11-14_00-00-00.csv"
+    pd.DataFrame(rows).to_csv(f, index=False)
+    stp = tmp_path / "state.json"
+    out = "\n".join(M.run(paths=[str(f)], floor_ms=int(pd.Timestamp("2026-11-12").value // 10**6), state_path=str(stp)))
+    assert "| Flatbase | 8× | 16 | **REVERTED (operator)** | DECISION_LOG 544" in out and "⛔ Flatbase" not in out
+    assert not stp.exists() or "Flatbase" not in json.load(open(stp))
+    from config import SignalThresholds
+    assert SignalThresholds().flatbase_lev_mult == 0.25
+    assert json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]["flatbase_lev_mult"] == 0.25
+    html = open(os.path.join(ROOT, "templates", "index.html")).read()
+    assert "['config-fbs-lev-mult', 'flatbase_lev_mult', 0.25]" in html
+    i = html.index('id="config-fbs-lev-mult"')
+    assert 'value="0.25"' in html[i:i + 300]

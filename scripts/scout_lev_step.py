@@ -10,6 +10,8 @@ COHORT     per sleeve, CLOSED full-size fills (*_PROBE out, operator closes out)
            Long 61.1 % · LITE RETRY 50.0 % · WILLY 69.0 % · WILLY HT 69.0 % · Flatbase 66.7 %) OR avg % < 0 → REVERT to the old leverage (operator
            applies: ML 0.5 · RETRY 0.35 · WILLY 0.25 (HT follows WILLY's leverage → back to 5× too) · HT alone: HT frac 0.625 · Flatbase 0.25) · else KEEP.
            Frozen once decided (reports/SCOUT_LEV_STEP.json, gitignored) — a reset / missing export never flips a verdict.
+OPERATOR   a sleeve the operator reverted BEFORE its gate decided (OPERATOR_DECIDED) shows that decision and is no longer gated — its later fills
+           run at the old leverage, so the 8× cohort cannot grow. Flatbase: DL 544 (2026-11-13), 8× → 5× at 3 of 15.
 ALSO       the ML risk cap: momentum longs opened with the cap shrinking them (notional below the paired 15× size) and the open risk stamped at entry
            (entry_ml_risk_open_pct); its skips are priced by scout_blocked_filters (line ML_RISK_CAP).
 Usage: venv/bin/python -I scripts/scout_lev_step.py [export.csv …]
@@ -34,6 +36,10 @@ SLEEVES = {"Momentum Long": ("MOMENTUM", "LONG", 15, 0.611, "momentum_long_lev_m
                      "(an HT that passed its own gate can only be kept bigger via frenzy_willy_ht_size_frac ≤ 1)"),
            "WILLY HT": ("FRENZY_WILLY_HT", "LONG", 8, 0.690, "frenzy_willy_ht_size_frac 1.0 → 0.625 (HT back to the 5× notional)"),
            "Flatbase": ("FLATBASE_SHORT", "SHORT", 8, 0.667, "flatbase_lev_mult 0.4 → 0.25")}
+# sleeve label → (verdict, detail): reverted by the operator before the frozen gate decided (shown, never gated, never written to STATE)
+# ⚠ remove the entry if that sleeve is ever stepped up again, or the scout keeps printing REVERTED
+OPERATOR_DECIDED = {"Flatbase": ("REVERTED (operator)", "DECISION_LOG 544, 2026-11-13: back to 5× early at 3 of 15 fills (1 W · 2 −10 stops) — "
+                                 "one −10 stop at 8× ≈ 7.8 % of the account > the 5 %-per-trade limit")}
 EXPORT_GLOB = os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")
 COLS = ("opened_at", "pair", "direction", "entry_strategy", "status", "pnl_percentage", "close_reason", "cell_multiplier_source", "leverage",
         "entry_ml_risk_open_pct", "entry_ml_risk_shrunk_from", "notional_value")
@@ -97,7 +103,9 @@ def run(now_ms=None, paths=None, floor_ms=None, state_path=STATE):
     for name, (es, di, lev, be, how) in SLEEVES.items():
         g = c[(c.entry_strategy.astype(str) == es) & (c.direction.astype(str) == di)]
         g = g[pd.to_numeric(g.leverage, errors="coerce") >= lev - 1e-9]
-        if name in st:                                    # decided once — frozen
+        if name in OPERATOR_DECIDED:                      # operator revert before the gate decided (DL 544)
+            v, why = OPERATOR_DECIDED[name]
+        elif name in st:                                  # decided once — frozen
             v, why = st[name]["verdict"], st[name]["detail"] + f" (frozen {st[name]['at']})"
         else:
             v, why = gate(g.pct.tolist(), be)
@@ -125,7 +133,8 @@ def run(now_ms=None, paths=None, floor_ms=None, state_path=STATE):
         L.append("Skips: blocked-trades scout line ML_RISK_CAP (a risk limiter — its price is what the cap cost).")
     if fired:
         L += [""] + fired
-    return L + ["", "Gate per sleeve (frozen 2026-11-11): first 15 fills at the new leverage, WR < breakeven or avg < 0 → old leverage.", ""]
+    return L + ["", "Gate per sleeve (frozen 2026-11-11): first 15 fills at the new leverage, WR < breakeven or avg < 0 → old leverage. "
+                 "Flatbase: operator-reverted to 5× early (DL 544), not gated.", ""]
 
 
 if __name__ == "__main__":

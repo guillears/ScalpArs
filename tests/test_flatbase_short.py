@@ -651,7 +651,7 @@ def test_exit_and_protection_sites_wired():
 
 FIELDS = {"flatbase_confirm_hours": 24.0, "flatbase_max_open": 0, "flatbase_shares_bot_slots": True, "flatbase_short_enabled": True, "flatbase_flat_max": 0.444, "flatbase_min_vol_usd": 20e6, "flatbase_turnover_min": 1.0,
           "flatbase_tp_pct": 5.0, "flatbase_stop_pct": 10.0, "flatbase_max_hold_hours": 72.0, "flatbase_min_hours_after_spike": 4.0,
-          "flatbase_max_hours_after_spike": 96.0, "flatbase_invest_mult": 0.4, "flatbase_lev_mult": 0.4, "resting_tp_flatbase_enabled": True}   # 0.4: DL 528 C5 · lev 0.4 = 8×: DL 533
+          "flatbase_max_hours_after_spike": 96.0, "flatbase_invest_mult": 0.4, "flatbase_lev_mult": 0.25, "resting_tp_flatbase_enabled": True}   # 0.4: DL 528 C5 · lev 0.25 = 5×: DL 544 (DL 533 8× reverted early)
 
 
 def test_config_defaults_json_ui_and_exports():

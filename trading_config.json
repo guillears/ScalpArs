@@ -822,7 +822,7 @@
     "flatbase_confirm_hours": 24.0,
     "flatbase_higher_high_block": true,
     "flatbase_invest_mult": 0.4,
-    "flatbase_lev_mult": 0.4,
+    "flatbase_lev_mult": 0.25,
     "flatbase_max_open": 0,
     "flatbase_shares_bot_slots": true,
     "resting_tp_willy_enabled": true,

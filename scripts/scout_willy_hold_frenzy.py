@@ -15,7 +15,9 @@ COHORT      the WILLY_HOLD tracker's store (reports/SCOUT_WILLY_HOLD.csv — the
               · TAKEN LATER — the same pair + sleeve opened within frenzy_catchup_max_bars (6) + 1 bars after the signal (a refused fresh ON bar /
                 LITE stretch is NOT consumed: the catch-up / stretch retry took it once the WILLY closed) → not a lost trade, out
               · PAIR HELD — another open position on the pair at the signal (any strategy: open_position's PAIR_HELD) → out
-              · SLOTS — the sleeve's own open positions ≥ its max slots at the signal → out
+              · SLOTS — the sleeve's own open positions ≥ its max slots at the signal → out (10 since DL 542 = no sleeve limit)
+              · BOOK_FULL / NO_BALANCE (DL 542) — the shared book at the signal (every bot position open, MANUAL out, + earlier kept
+                refusals): ≥ the count ceiling, or no margin left (4 tickets, each fill = its invest multiplier; scripts/book_capacity) → out
               · COOLDOWN — a position on the pair closed ≤ cooldown_after_loss_minutes (5) before the signal (open_position) → out
               · PAIR-DAY CAP — FRENZY_LONG / WIDE / LITE (WILLY alone is exempt in the engine): same pair + sleeve fills that UTC day ≥
                 frenzy_max_entries_per_pair_day → out
@@ -72,10 +74,12 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATE = os.path.join(_ROOT, "reports", "SCOUT_HOLD_FRENZY_EXEMPT.json")
 EXPORT_GLOB = os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")
 OCOLS = ("opened_at", "closed_at", "pair", "entry_strategy", "status", "entry_btc_1d_ret_pct", "entry_btc_trend_gap_pct")
-ECOLS = ("close_reason",) + tuple(WEra.V2_COLS)     # DL 356: read along (era line only) — OCOLS stays the selftest's positional schema
+ECOLS = ("close_reason", "direction", "confidence") + tuple(WEra.V2_COLS)   # 🧺 (DL 542) direction / confidence: the shared-book read     # DL 356: read along (era line only) — OCOLS stays the selftest's positional schema
 REVERT = ("Pre-committed revert if the exemption is ever armed: the first 15 FRENZY-family fills opened while a WILLY was open average "
           "< 0 % → restore the hold for them.")
 
+
+import book_capacity as _BK   # 🧺 (DL 542) the shared book binds, not the sleeve slots (10)
 
 def _ms(s):
     try:
@@ -92,7 +96,8 @@ def _th():
                 bearish=bool(g("frenzy_bearish_day_block", False)), cooldown=_cooldown_min(),
                 hold_green=float(g("frenzy_wide_hold_green_streak", 0) or 0),
                 slots={"FRENZY_LONG": int(float(g("frenzy_max_slots", 2) or 2)), "FRENZY_WIDE": int(float(g("frenzy_wide_max_slots", 2) or 2)),
-                       "FRENZY_LITE": int(float(g("frenzy_lite_max_slots", 2) or 2))})
+                       "FRENZY_LITE": int(float(g("frenzy_lite_max_slots", 2) or 2))},
+                book=_BK.limits(), tickets={s_: _BK.ticket(s_, th) for s_ in ("FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE")}, th_obj=th)
 
 
 def _cooldown_min():
@@ -193,6 +198,15 @@ def recheck(r, o, th, ctx=None):
     n_open = (int((open_real & (es == sl)).sum()) if len(o) else 0) + int((open_syn & (syn.sleeve == sl)).sum())
     if n_open >= th["slots"].get(sl, 2):
         return "SLOTS", ""
+    if th.get("book"):   # 🧺 (DL 542) the SHARED book: every bot position open (MANUAL out) + earlier kept refusals → BOOK_FULL / NO_BALANCE
+        bot = (open_real & ~(es.str.upper().eq("MANUAL") | o.get("confidence", pd.Series("", index=o.index)).astype(str).str.upper().eq("MANUAL"))
+               if len(o) else pd.Series(dtype=bool))
+        used = ([_BK.ticket(a_, th.get("th_obj"), d_) for a_, d_ in zip(o.entry_strategy[bot], o.get("direction", pd.Series("", index=o.index))[bot])]
+                if len(o) else [])
+        used += [th["tickets"].get(x_, 1.0) for x_ in syn.sleeve[open_syn]]
+        why = _BK.check(used, th["tickets"].get(sl, 1.0), th["book"])[1]
+        if why:
+            return why, f"{len(used)} open · {sum(used):.2f} of {th['book']['margin']:g} tickets"
     cd = float(th.get("cooldown", 0) or 0) * 60_000
     if cd > 0:
         rc = len(o) and (o._c & (o.pair == pair) & (o.c_ms > sig - cd) & (o.c_ms <= sig)).any()
@@ -340,15 +354,15 @@ def run(now_ms=None, rows=None, orders=None, state_path=None, th=None, ctx=None)
     pend = keep[keep.pct.isna()] if len(keep) else keep
     L = ["## 🔓 HOLD_FRENZY_EXEMPT — should FRENZY / WIDE / LITE be exempt from the WILLY global hold? (DECISION_LOG 266, OBSERVE only)", "",
          "The bot's own WILLY_HOLD refusals of FRENZY_LONG / WIDE / LITE (the WILLY_HOLD tracker's store, priced AS IF OPENED at the live FRENZY exit when priced — +3 / −3 / 12 h until DECISION_LOG 283, +1.5 / −3 / 12 h after — on "
-         "1m klines, fees + slip), re-checked in signal order against the gates the hold pre-empted (unreadable check · catch-up took it later · pair held · slots · "
+         "1m klines, fees + slip), re-checked in signal order against the gates the hold pre-empted (unreadable check · catch-up took it later · pair held · slots · shared book (count / margin, DL 542) · "
          "cooldown · pair-day cap · WIDE hold-green · bearish day on rebuilt BTC values · unpriceable); earlier kept refusals occupy pair / slot / "
-         "day count. Blind spots: lateness, dislocation, WIDE's reclaim streak, book / margin caps, a 2nd signal during one WILLY.", ""]
+         "day count. Blind spots: lateness, dislocation, WIDE's reclaim streak, open P&L / MANUAL margin on the book, a 2nd signal during one WILLY.", ""]
     if not len(r):
         L.append("No FRENZY-family setup refused by the hold yet.")
     else:
         L += ["| Kept / out | N | Days | WR | avg % | Σ % |", "|---|---|---|---|---|---|"]
         for lab, g in [("**KEPT (lost trades)**", c), ("kept — pending price", pend)] + [(f"out — {s}", r[r.status == s]) for s in
-                                                         ("UNREAD", "TAKEN_LATER", "PAIR_HELD", "SLOTS", "COOLDOWN", "PAIR_DAY_CAP",
+                                                         ("UNREAD", "TAKEN_LATER", "PAIR_HELD", "SLOTS", "BOOK_FULL", "NO_BALANCE", "COOLDOWN", "PAIR_DAY_CAP",
                                                           "WIDE_HOLD_GREEN", "BEARISH_DAY", "UNPRICEABLE")]:
             if not lab.startswith("**") and not len(g):
                 continue
@@ -473,6 +487,15 @@ def selftest():
         two = [["2026-10-09T14:00:00", "", f"X{i}USDT", "FRENZY_WIDE", "OPEN", 0.5, 0.1] for i in range(2)]
         chk(recheck(row(), od([stamp] + two), th)[0] == "SLOTS", "both WIDE slots busy → refused anyway")
         chk(recheck(row(), od([stamp] + [two[0]]), th)[0] == "KEEP", "one slot free → kept")
+        thb = dict(th, slots={"FRENZY_LONG": 10, "FRENZY_WIDE": 10, "FRENZY_LITE": 10}, book=dict(count=10, margin=4.0),
+                   tickets={"FRENZY_LONG": 0.2, "FRENZY_WIDE": 0.2, "FRENZY_LITE": 0.85}, th_obj=None)
+        full = [["2026-10-09T14:00:00", "", f"M{i}USDT", "MOMENTUM", "OPEN", 0.5, 0.1] for i in range(4)]
+        chk(recheck(row(), od([stamp] + two), thb)[0] == "KEEP", "DL 542: two WIDE open, no sleeve limit, book has room → kept")
+        chk(recheck(row(), od([stamp] + full), thb)[0] == "NO_BALANCE", "DL 542: 4 full tickets open → no margin left")
+        ten = [["2026-10-09T14:00:00", "", f"L{i}USDT", "FRENZY_LONG", "OPEN", 0.5, 0.1] for i in range(10)]
+        chk(recheck(row(), od([stamp] + ten), thb)[0] == "BOOK_FULL", "DL 542: 10 cheap LONGs open (2 tickets) → the count ceiling")
+        man = [["2026-10-09T14:00:00", "", f"H{i}USDT", "MANUAL", "OPEN", 0.5, 0.1] for i in range(10)]
+        chk(recheck(row(), od([stamp] + man), thb)[0] == "KEEP", "DL 542: MANUAL positions live in their own lane")
         cap = [[f"2026-10-09T0{h}:00:00", f"2026-10-09T0{h}:30:00", "MAGICUSDT", "FRENZY_WIDE", "CLOSED", 0.5, 0.1] for h in (1, 2, 3)]
         chk(recheck(row(), od([stamp] + cap), th)[0] == "PAIR_DAY_CAP" and recheck(row(sleeve="FRENZY_LITE"), od([stamp] + [
             [a, b, c, "FRENZY_LITE", e, f, g] for a, b, c, _, e, f, g in cap]), th)[0] == "PAIR_DAY_CAP", "pair-day cap: LONG / WIDE / LITE")

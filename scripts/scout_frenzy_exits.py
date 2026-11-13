@@ -1341,6 +1341,56 @@ def today_backfill(df, sig_of, ex, lag_ms, now_ms, budget, skip=()):
     return d, n, err, late
 
 
+_BOOK_ROWS = {}
+
+
+def _book_rows():
+    """🧺 (DL 542) every bot position in the paper exports (MANUAL out, both directions, every sleeve) → k, closed_at, entry_strategy,
+    direction — the shared book a refused FRENZY_LONG would have had to fit into. Cached per run."""
+    if "o" in _BOOK_ROWS:   # (a stored row without the book reading — written before DL 542's re-base — is re-read from the exports still on disk;
+                            #  when those are gone it reads an empty book and passes: fail-open, the engine's own refusals are in the journal)
+        return _BOOK_ROWS["o"]
+    fr, cols = [], ("opened_at", "closed_at", "pair", "direction", "entry_strategy", "confidence", "status")
+    for f in _EG.glob_exports(os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")):
+        try:
+            d = pd.read_csv(f, low_memory=False, usecols=lambda c: c in cols)
+        except Exception:
+            continue
+        if {"opened_at", "pair", "direction"} <= set(d.columns):
+            fr.append(d.assign(_m=os.path.getmtime(f)))
+    o = (pd.concat(fr, ignore_index=True).sort_values("_m", kind="stable").reindex(columns=list(cols) + ["_m"]) if fr
+         else pd.DataFrame(columns=list(cols) + ["_m"]))
+    o["k"] = o.opened_at.astype(str).str[:19]
+    o = o.drop_duplicates(["k", "pair", "direction"], keep="last")
+    still = ~o.status.astype(str).str.upper().eq("CLOSED") & o.closed_at.isna()   # OPEN in its export → open until that export's time (review:
+    o.loc[still, "closed_at"] = pd.to_datetime(o.loc[still, "_m"].astype(float), unit="s").dt.strftime("%Y-%m-%dT%H:%M:%S")   # never forever)
+    man = o.entry_strategy.astype(str).str.upper().eq("MANUAL") | o.confidence.astype(str).str.upper().eq("MANUAL")
+    _BOOK_ROWS["o"] = o[~man].reset_index(drop=True)
+    return _BOOK_ROWS["o"]
+
+
+def _book_at(k, th, B=None):
+    """🧺 (DL 542) (bot positions open at k, their margin in tickets) — scripts/book_capacity."""
+    import book_capacity as BK
+    B = _book_rows() if B is None else B
+    if not len(B):
+        return 0, 0.0
+    ca = B.closed_at.astype(str).str[:19]
+    op = B[(B.k < k) & (B.closed_at.isna() | (ca > k))]
+    return int(len(op)), float(sum(BK.ticket(es, th, d) for es, d in zip(op.entry_strategy, op.direction)))
+
+
+def _book_ok(n_open, used, th):
+    """🧺 (DL 542) a FRENZY_LONG fits the shared book (count ceiling, margin) — unknown (old stored rows: NaN) passes."""
+    import book_capacity as BK
+    if n_open is None or used is None or pd.isna(n_open) or pd.isna(used):
+        return True
+    lim = _BOOK_ROWS.setdefault("lim", BK.limits())
+    if int(n_open) >= int(lim["count"]):
+        return False                                       # BOOK_FULL
+    return BK.check([float(used)], BK.ticket("FRENZY_LONG", th), dict(lim, count=10**9))[1] is None   # margin only (count judged above)
+
+
 def _gc_price(sig, sym, th, now_ms, budget, J, F):
     """one FRENZY_GREEN_BAR refusal (signal bar closing at sig ms) → the engine replay + the hypothetical FRENZY_LONG priced on the live lock
     with the FORMAL shadow pricing (first print ≥ close + 12 s, 0.10 slippage). Raises on data trouble (the caller keeps the old row)."""
@@ -1368,7 +1418,8 @@ def _gc_price(sig, sym, th, now_ms, budget, J, F):
     dcap = max(0, int(float(getattr(th, "frenzy_max_entries_per_pair_day", 3) or 0)))
     parity = code == "FRENZY_GREEN_BAR"
     gv_ok = gvol not in ("high", "unread") or gvol_gate_off_at(sig)   # 🌊 (263) from the gate-off deploy the market-volume gate no longer blocks
-    eligible = bool(parity and gv_ok and long_open < slots and (dcap == 0 or pday < dcap))
+    book_n, book_used = _book_at(k, th)   # 🧺 (DL 542) the shared book binds, not the sleeve's slots (frenzy_max_slots 10)
+    eligible = bool(parity and gv_ok and long_open < slots and (dcap == 0 or pday < dcap) and _book_ok(book_n, book_used, th))
     ex = live_exit(th, "FRENZY_LONG")   # 🎯 DECISION_LOG 284: priced as FRENZY_LONG (its TP) · (2026-10-09) TODAY's live exit (the pre-registered 12 s entry kept) + the old lock (reference) from the same prints
     S = _live_shadow(sym, sig, now_ms, budget, ex, ENTRY_LAG_MS, lock=True)
     e, t_e, pnl, x_ms, how, px, st, final = S["lock"]
@@ -1380,7 +1431,7 @@ def _gc_price(sig, sym, th, now_ms, budget, J, F):
                 vol_mult=(round(ep["vol_mult"], 1) if ep and ep.get("vol_mult") is not None else None),
                 bar_ret=(round(ep["bar_ret_pct"], 4) if ep and ep.get("bar_ret_pct") is not None else None), atr=atr,
                 replay_code=code, parity=parity, strong=strong, long_lev=float(getattr(th, "frenzy_long_lev_mult", 0.32)),   # FORMAL: promote at 0.32, no strong multiplier
-                gvol=gvol, long_open=long_open, pair_day_n=pday, eligible=eligible, entry=e, entry_at=(_iso(t_e) if t_e else None),
+                gvol=gvol, long_open=long_open, pair_day_n=pday, book_open=book_n, book_used=round(book_used, 4), eligible=eligible, entry=e, entry_at=(_iso(t_e) if t_e else None),
                 px_src=px, tick_state=st, LOCK=pnl, exit_how=how, exit_at=(_iso(x_ms) if x_ms else None),
                 wide_k=(wf.k.iloc[0] if len(wf) else None),
                 wide_actual=(float(wf.pnl_percentage.iloc[0]) if len(wf) and pd.notna(wf.pnl_percentage.iloc[0]) and str(wf.status.iloc[0]).upper() == "CLOSED" else None),
@@ -1427,7 +1478,7 @@ def gc_run(now_ms, th, F, J, allr):
     if len(new) and len(old):
         prev = old.drop_duplicates(["k", "pair"], keep="last").set_index(["k", "pair"])
         idx = pd.MultiIndex.from_arrays([new.k, new.pair])
-        for c in ("long_open", "pair_day_n"):          # the first reading (the exports were freshest then) wins
+        for c in ("long_open", "pair_day_n", "book_open", "book_used"):          # the first reading (the exports were freshest then) wins
             if c in prev:
                 o_ = prev[c].reindex(idx).values
                 new[c] = np.where(pd.notna(o_), o_, new[c])
@@ -1439,7 +1490,9 @@ def gc_run(now_ms, th, F, J, allr):
         dcap = max(0, int(float(getattr(th, "frenzy_max_entries_per_pair_day", 3) or 0)))
         _off = pd.Series([gvol_gate_off_at(_ms(k_)) for k_ in new.k], index=new.index, dtype=bool)
         new["eligible"] = (new.parity.astype(str).isin(_TRUE) & (~new.gvol.isin(["high", "unread"]) | _off)
-                           & (pd.to_numeric(new.long_open) < slots) & ((dcap == 0) | (pd.to_numeric(new.pair_day_n) < dcap)))
+                           & (pd.to_numeric(new.long_open) < slots) & ((dcap == 0) | (pd.to_numeric(new.pair_day_n) < dcap))
+                           & pd.Series([_book_ok(a_, b_, th) for a_, b_ in zip(new.get("book_open", pd.Series(np.nan, index=new.index)),
+                                                                              new.get("book_used", pd.Series(np.nan, index=new.index)))], index=new.index))
     allg = pd.concat([old, new], ignore_index=True) if len(new) else old
     ex = live_exit(th, "FRENZY_LONG"); n_bf = 0   # 🎯 DECISION_LOG 284: every GREEN_CLOCK row is a hypothetical FRENZY_LONG
     if len(allg):

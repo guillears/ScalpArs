@@ -107,8 +107,8 @@ def run(X, start=3000.0):
         close_until(r.t_in)
         sk = SLOTKEY.get(r.S, r.S)
         why = None
-        if len(openp) >= P.MAXPOS:
-            why = "global_slots"
+        if len(openp) >= P.COUNT:          # 🧺 (DL 542) the book COUNT ceiling (10), not the 4 margin slots
+            why = "book_full"
         elif sum(SLOTKEY.get(p["S"], p["S"]) == sk for p in openp) >= CAPS[r.S]:
             why = "sleeve_slots"
         elif any(p["pair"] == r.pair for p in openp):
@@ -126,8 +126,10 @@ def run(X, start=3000.0):
                 fee_eq = min(eq, tgt) if tgt else eq
                 fres = max(float(INV["fee_reserve_usd"]), fee_eq * float(INV["fee_reserve_pct"]) / 100)
                 inv = min(split * r.mult, max(0.0, eq - margin - sres - fres))
-            if inv < 5.0 or eq <= 0:
+            if tradeable_inv <= 0 or eq <= 0:   # 🧺 (DL 542 re-base) the engine skips only when tradeable < min_investment_size
                 why = "no_balance"
+            else:
+                inv = max(inv, MIN_INV)   # … and clamps a smaller margin UP to it
         if why is None:
             lev = min(r.lev, levcap) if levcap else r.lev
             if not np.isnan(r.liq):

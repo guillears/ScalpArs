@@ -9,11 +9,13 @@ Fills (each sleeve's own source, never re-derived here):
   FRENZY_LITE          the 724-fill study cohort, bearish-day block, same tick walk (single cohort; identical in every seed run)
 Sizing (services/trading_engine sizing, trading_config.json today): equal split = (equity − schedule reserve − fee reserve) / max_open_positions
 (4); schedule reserve from reserve_schedule (none below $10k; above: equity − tier target); fee reserve = max($15, 2.5 % × min(equity, tier
-target)); investment ≤ tradeable = free balance − reserves; × invest mult (1 for all five); leverage = max(1, round(20 × lev mult)) capped by
+target)); investment ≤ tradeable = free balance − reserves; × the sleeve's invest mult from trading_config (scripts/book_capacity.ticket — FRENZY_LONG / WIDE 0.2, LITE 0.85, BEARRUN 0.2,
+BULLRUN 1 today; the Oct-8 run had 1 for all five), clamped up to min_investment_size ($100; the old run skipped below $5); leverage = max(1, round(20 × lev mult)) capped by
 leverage_balance_schedule (20 below $25k, 15 above): FRENZY_LONG 6× (10× when entry ADX Δ > 0 ∧ DI spread > 0), WIDE 4×, LITE 6×,
 BEARRUN 5×, BULLRUN 20×. P&L $ = investment × leverage × net % / 100 (net % already carries the fees). Equity = realized book (marked at
-closes; open P&L not marked). Capacity: global 4 open positions shared; per-sleeve caps FRENZY_LONG 2 · WIDE 2 · LITE 2 · BULLRUN 4 ·
-BEARRUN (global only); one position per pair; ≤ 3 entries per pair per UTC day per FRENZY sleeve. Fills processed in entry-time order;
+closes; open P&L not marked). Capacity (DL 542 re-base, 2026-11-13): the shared book — ≤ the count ceiling (max_open_positions_hard 10 with redeploy on) and the
+margin left (each fill ≤ the free tradeable balance; < min_investment_size → no_balance); per-sleeve caps from trading_config (all 10 now —
+the run with the Oct-8 caps FRENZY 2 · BULLRUN 4 is the historical result); one position per pair; ≤ 3 entries per pair per UTC day per FRENZY sleeve. Fills processed in entry-time order;
 a fill that cannot open is skipped (counted per sleeve and reason). Not modelled: liquidation (paper), funding, the WILLY global hold (WILLY
 is not in this book), exchange min-notional, slippage beyond the entry 0.10 % (FRENZY family) / the replay's own fills (BULL/BEAR).
 Usage: venv/bin/python scripts/study_tp34_portfolio.py"""
@@ -27,7 +29,10 @@ OUT = os.path.join(SCR, "tp34")
 T0, TS, T1 = pd.Timestamp("2026-01-04"), pd.Timestamp("2026-05-20"), pd.Timestamp("2026-10-04")
 CFG = json.load(open(os.path.join(ROOT, "trading_config.json")))
 INV = CFG["investment"]; TH = CFG.get("thresholds", CFG)
-MAXPOS = int(INV["max_open_positions"])
+MAXPOS = int(INV["max_open_positions"])            # the equal-split divisor (margin = 4 tickets)
+import book_capacity as BK
+COUNT = BK.limits(CFG)["count"]                     # 🧺 (DL 542) the book COUNT ceiling (10 with redeploy on) — not the 4 margin slots
+SLEEVE_OF = {"BULLRUN": "BULLRUN_LONG", "BEARRUN": "BEARRUN_SHORT"}   # 🧺 the engine entry_strategy names (invest mult lookup)
 CAPS = {"FRENZY_LONG": int(TH["frenzy_max_slots"]), "FRENZY_WIDE": int(TH["frenzy_wide_max_slots"]), "FRENZY_LITE": int(TH["frenzy_lite_max_slots"]),
         "BULLRUN": int(TH["bullrun_max_slots"]), "BEARRUN": 99}
 DAYCAP = int(TH["frenzy_max_entries_per_pair_day"])
@@ -48,7 +53,9 @@ def tier(tab, x):
     return v
 
 
-def size(equity, margin_used):
+def size(equity, margin_used, mult=1.0):
+    """→ (margin, leverage cap) or (0, cap) when the engine skips: ticket × the sleeve's invest mult, ≤ tradeable, clamped UP to
+    min_investment_size, skipped only when that floor exceeds tradeable (services/trading_engine sizing; 🧺 DL 542 re-base)."""
     from services.trading_engine import _reserve_schedule_target
     tgt = _reserve_schedule_target(INV["reserve_schedule"], equity)   # DL 424: the engine's straight line
     sres = max(0.0, equity - tgt) if tgt else 0.0
@@ -57,7 +64,10 @@ def size(equity, margin_used):
     held = max(sres, fres) if tgt else fres
     inv = max(0.0, equity - held) / MAXPOS
     tradeable = max(0.0, equity - margin_used - held)
-    return min(inv, tradeable), tier(LEVS, equity)
+    mn = float(INV.get("min_investment_size") or 100.0)   # config.py default $100
+    if tradeable < mn:
+        return 0.0, tier(LEVS, equity)
+    return max(min(inv * mult, tradeable), mn), tier(LEVS, equity)
 
 
 def fills(seed, F, A, Cc):
@@ -87,8 +97,8 @@ def run(X, start=3000.0):
     for r in X.itertuples():
         close_until(r.t_in)
         why = None
-        if len(openp) >= MAXPOS:
-            why = "global_slots"
+        if len(openp) >= COUNT:
+            why = "book_full"
         elif sum(p["S"] == r.S for p in openp) >= CAPS[r.S]:
             why = "sleeve_slots"
         elif any(p["pair"] == r.pair for p in openp):
@@ -96,8 +106,8 @@ def run(X, start=3000.0):
         elif r.S.startswith("FRENZY") and daycnt.get((r.S, r.pair, r.t_in // 86_400_000), 0) >= DAYCAP:
             why = "pair_day_cap"
         if why is None:
-            inv, levcap = size(eq, sum(p["inv"] for p in openp))
-            if inv < 5.0 or eq <= 0:
+            inv, levcap = size(eq, sum(p["inv"] for p in openp), BK.ticket(SLEEVE_OF.get(r.S, r.S), TH))
+            if inv <= 0 or eq <= 0:
                 why = "no_balance"
         if why:
             skipped[(r.S, why)] = skipped.get((r.S, why), 0) + 1; continue

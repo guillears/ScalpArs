@@ -9,7 +9,7 @@ Stages:
   feat <era>   per-pair features at every BTC bar with 30-min move ≥ 0.3 % ∧ bar volume ≥ 5× (high or not) and the 3 bars after:
                rolling 24 h quote volume (universe rank + market-volume gvol), Wilder ATR %, 30-min move, EMA13−EMA50 gap, pair 24 h high.
                → reports/backtest_cache/surge_missed/feat_<era>.pkl  (era = 2025 | 2026; cache = backtest_cache_2025 | backtest_cache)
-  sim          sequential sleeve simulation (after-fill spacing, ≤ 4 per trigger, ≤ 4 open, one position per pair) for TODAY and every
+  sim          sequential sleeve simulation (after-fill spacing, the shared book — count 10, 4 tickets of margin, scripts/book_capacity.py, DL 542 —, one position per pair) for TODAY and every
                variant; walks every needed (pair, entry) once on aggTrade ticks (1m fallback, flagged) with TODAY's SURGE exit.
                → reports/SURGE_MISSED_OPPS_fills.csv (one row per variant fill), reports/SURGE_MISSED_OPPS_walks.csv,
                  reports/SURGE_MISSED_OPPS_universe.csv (per trigger × top-20 pair status)
@@ -31,6 +31,9 @@ ERAS = {"2025": (os.path.join(REP, "backtest_cache_2025"), "2025-01-01", "2026-0
         "2026": (os.path.join(REP, "backtest_cache"), "2026-01-01", "2026-10-15")}
 MOVE = float(TH["surge_btc_move_pct"]); VOLX = float(TH["surge_btc_vol_mult"]); GMIN = float(TH["surge_long_gvol_min"])
 ATR_MIN = float(TH["surge_atr_min_pct"]); UNI = int(TH["surge_universe_size"]); SLOTS = int(TH["surge_max_slots"])
+import book_capacity as BK   # 🧺 (DL 542) the shared book (count 10 · 4 tickets of margin) binds, not the sleeve cap (10)
+BOOK, TICKET = BK.limits(CFG), BK.ticket("SURGE_LONG", TH)
+BOOK_N = BK.fills_on_empty_book(TICKET, BOOK, cap=SLOTS)   # fills one trigger can open on an empty book (4 at a 1.0 ticket)
 SPACING_H = float(TH["surge_trigger_spacing_hours"]); GAP_MIN = float(TH.get("surge_long_min_ema13_50_gap_pct") or 0.0)
 HOLD = int(TH.get("surge_max_hold_minutes", 240))
 LATENCY_S = 60          # the review / replay calibration (live fills opened 27–45 s after the bar close)
@@ -250,7 +253,7 @@ def sim():
     fills, uni_rows = [], []
     for name, v in VARIANTS.items():
         last_fill = -10**18
-        open_pos = []   # (pair, exit_ms)
+        open_pos = []   # (pair, exit_ms, margin in tickets) — the SURGE fills on the shared book (other sleeves not modelled)
         n_trig = n_spaced = 0
         for t in cand:
             b = B.loc[t]
@@ -267,8 +270,8 @@ def sim():
                     uni_rows.append(dict(trig=t, era=era_of[t], status="SPACED", btc_move=b.r30, gvol=g, at_hi=bool(b.at_hi)))
                 continue
             n_trig += 1
-            open_pos = [(p, x) for p, x in open_pos if x > t + BAR]
-            taken = {p for p, _ in open_pos}
+            open_pos = [o for o in open_pos if o[1] > t + BAR]
+            taken = {o[0] for o in open_pos}
             got = 0
             for k in range(0, v["wb"] + 1):
                 bt = int(t) + k * BAR
@@ -284,7 +287,8 @@ def sim():
                                              atr=r.atr, pmove=r.pmove, gap=r.gap, p_off_hi=r.p_off_hi, p_r4h=r.p_r4h,
                                              btc_move=bm, gvol=g, pair_status=st))
                 for p, why in _picks(rows, bm, v, taken):
-                    if got >= SLOTS or len(open_pos) >= SLOTS:
+                    size, refused = (0.0, "SURGE_MAX_SLOTS") if got >= SLOTS else BK.check([o[2] for o in open_pos], TICKET, BOOK)
+                    if refused:
                         break
                     r = rows[rows.pair == p].iloc[0]
                     te = bt + BAR + LATENCY_S * 1000
@@ -292,8 +296,8 @@ def sim():
                     if not np.isfinite(w.get("pnl", np.nan)):
                         continue
                     got += 1; taken.add(p)
-                    open_pos.append((p, te + float(w["minutes"]) * MIN))
-                    fills.append(dict(variant=name, trig=int(t), era=era_of[t], entry_bar=bt, bar_k=k, pair=p, kind=why, rank=r.rank,
+                    open_pos.append((p, te + float(w["minutes"]) * MIN, size))
+                    fills.append(dict(variant=name, trig=int(t), era=era_of[t], entry_bar=bt, bar_k=k, pair=p, kind=why, rank=r.rank, book_size=round(size, 4),
                                       mv_rank=r.mv_rank, atr=r.atr, pmove=r.pmove, btc_move=bm, gap=r.gap, p_off_hi=r.p_off_hi,
                                       gvol=g, at_hi=bool(b.at_hi), t_entry=te, pnl=w["pnl"], why=w["why"], minutes=w["minutes"],
                                       peak=w["peak"], src=w["src"]))
@@ -310,7 +314,7 @@ def sim():
         t = r["trig"]; rows = byt.get(t)
         if rows is None:
             continue
-        for p, why in _picks(rows, float(B.at[t, "r30"]), VARIANTS["TODAY"], set())[:SLOTS]:
+        for p, why in _picks(rows, float(B.at[t, "r30"]), VARIANTS["TODAY"], set())[:BOOK_N]:
             rr = rows[rows.pair == p].iloc[0]
             w = get_walk(p, t + BAR + LATENCY_S * 1000, float(rr.atr), era_of[t])
             sp.append(dict(trig=t, era=era_of[t], pair=p, atr=rr.atr, pmove=rr.pmove, gap=rr.gap, pnl=w.get("pnl"), why=w.get("why"), src=w.get("src")))

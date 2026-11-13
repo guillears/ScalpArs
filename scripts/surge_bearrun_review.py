@@ -24,6 +24,7 @@ import numpy as np, pandas as pd
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
+sys.path.insert(0, os.path.join(ROOT, "scripts"))
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 CACHE = os.path.join(ROOT, "reports", "backtest_cache")
 OUT = os.path.join(CACHE, "surge_review"); os.makedirs(OUT, exist_ok=True)
@@ -175,6 +176,16 @@ def _gvol_at(t):
     return sum(x[1] for x in top) / sum(x[2] for x in top)
 
 
+def _book_room(book, side):
+    """🧺 (DL 542) one more SURGE fill on this trigger? The sleeve's own cap (surge_max_slots, 10 = no sleeve limit) then the SHARED book
+    (scripts/book_capacity: count ceiling 10, margin = 4 tickets, each fill = its SURGE invest multiplier) → (size in tickets, refusal|None).
+    The book is assumed EMPTY at the trigger (other sleeves' open positions are not modelled — a live trigger can only get fewer)."""
+    import book_capacity as BK
+    if len(book) >= int(TH.get("surge_max_slots", 10) or 10):
+        return 0.0, "SURGE_MAX_SLOTS"
+    return BK.check(book, BK.ticket("SURGE_" + side, TH), BK.limits(CFG))
+
+
 def events():
     import services.surge as S
     from types import SimpleNamespace
@@ -271,7 +282,7 @@ def events():
             if ON_FILL and e["bar_ts"] - last_fill < float(TH["surge_trigger_spacing_hours"]) * 3600_000:
                 continue
             uni = ranked(e["bar_ts"], side)
-            n_open = 0
+            book = []          # 🧺 (DL 542) this trigger's fills on the SHARED book (empty at the trigger — other sleeves not modelled)
             picked = set()
             for rank, p in enumerate(uni, 1):
                 if PCD and e["bar_ts"] - pair_last.get(p, -10**18) < PCD:
@@ -279,10 +290,11 @@ def events():
                 ok, why, atr, pm = S.surge_pair_pick(bars(p, e["bar_ts"]), e["bar_ts"], e["btc_move"], th_full, side)
                 status = "PICK" if ok else why
                 if ok:
-                    if n_open >= int(TH["surge_max_slots"]):
-                        status = "SURGE_MAX_SLOTS"
+                    size, refused = _book_room(book, side)
+                    if refused:
+                        status = refused
                     else:
-                        n_open += 1
+                        book.append(size)
                 if status == "PICK":
                     picked.add(p); pair_last[p] = e["bar_ts"]
                 rows.append(dict(side=side, trig=e["bar_ts"], btc_move=e["btc_move"], btc_vol_mult=e["btc_vol_mult"], pair=p,
@@ -291,14 +303,14 @@ def events():
             for k in range(1, WB + 1):
                 bt = int(e["bar_ts"]) + k * BAR
                 bm = r30_at.get(bt)
-                if bm is None or not np.isfinite(bm) or n_open >= int(TH["surge_max_slots"]):
+                if bm is None or not np.isfinite(bm) or _book_room(book, side)[1]:
                     break
                 for rank, p in enumerate(ranked(bt, side), 1):
-                    if p in picked or n_open >= int(TH["surge_max_slots"]):
+                    if p in picked or _book_room(book, side)[1]:
                         continue
                     ok, why, atr, pm = S.surge_pair_pick(bars(p, bt), bt, bm, th_full, side)
                     if ok:
-                        n_open += 1; picked.add(p)
+                        book.append(_book_room(book, side)[0]); picked.add(p)
                         rows.append(dict(side=side, trig=e["bar_ts"], btc_move=e["btc_move"], btc_vol_mult=e["btc_vol_mult"], pair=p,
                                          rank=rank, status="PICK", atr=atr, pair_move=pm, entry_bar=bt))
             if picked:
@@ -331,11 +343,11 @@ def ctrl():
                     continue
                 i = c.index.get_loc(t)
                 bm = (c.iloc[i] / c.iloc[i - 6] - 1) * 100
-                n = 0
+                book = []
                 for rank, p in enumerate(ranked(t, side), 1):
                     ok, why, atr, pm = S.surge_pair_pick(bars(p, t), t, bm, th_full, side)
-                    if ok and n < int(TH["surge_max_slots"]):
-                        n += 1
+                    if ok and not _book_room(book, side)[1]:
+                        book.append(_book_room(book, side)[0])
                         rows.append(dict(side=side, trig=t0, ctrl_t=t, off=off, btc_move=bm, pair=p, rank=rank, atr=atr, pair_move=pm))
     C = pd.DataFrame(rows)
     C.to_csv(os.path.join(OUT, "ctrl_picks.csv"), index=False)
@@ -349,7 +361,7 @@ def entry_ms(side, trig_bar_ts):
 
 
 def fill_list(include_refused=True):
-    """Fills to walk: PICK (the live rule), CONTROL (same pair, 24 h earlier), REFUSED (ATR_LOW / NOT_LEADER / MAX_SLOTS)."""
+    """Fills to walk: PICK (the live rule), CONTROL (same pair, 24 h earlier), REFUSED (ATR_LOW / NOT_LEADER / MAX_SLOTS / BOOK_FULL / NO_BALANCE)."""
     F = pd.read_csv(os.path.join(OUT, "events_picks.csv"))
     rows = []
     for r in F.itertuples():
@@ -512,7 +524,8 @@ def variants(side, atr):
     return V
 
 
-def walk(kinds=("PICK", "CONTROL_SAMEPAIR", "CTRL"), live_only_kinds=("REFUSED_ATR_LOW", "REFUSED_NOT_LEADER", "REFUSED_MAX_SLOTS")):
+def walk(kinds=("PICK", "CONTROL_SAMEPAIR", "CTRL"), live_only_kinds=("REFUSED_ATR_LOW", "REFUSED_NOT_LEADER", "REFUSED_MAX_SLOTS",
+                                                                      "REFUSED_BOOK_FULL", "REFUSED_NO_BALANCE")):
     L = fill_list()
     L = L[L.kind.isin(list(kinds) + list(live_only_kinds))]
     res = []
@@ -1027,7 +1040,8 @@ def report():
         g = W[(W.side == side)]
         H(f"SURGE_{side} — tick replica, live rules (entry +{LATENCY_S}s, live exit, 240 min, net of 0.09 %)")
         rows = []
-        for k in ("PICK", "CTRL", "CONTROL_SAMEPAIR", "REFUSED_ATR_LOW", "REFUSED_NOT_LEADER", "REFUSED_MAX_SLOTS"):
+        for k in ("PICK", "CTRL", "CONTROL_SAMEPAIR", "REFUSED_ATR_LOW", "REFUSED_NOT_LEADER", "REFUSED_MAX_SLOTS", "REFUSED_BOOK_FULL",
+                  "REFUSED_NO_BALANCE"):
             x = g[g.kind == k]
             if len(x):
                 l = ev_line(x); l.pop("ci_lo"); l.pop("ci_hi"); rows.append(dict(cohort=k, **l))

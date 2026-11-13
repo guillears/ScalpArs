@@ -91,15 +91,15 @@ def main():
                 if name == "TODAY" and gv_ok:   # spaced-out: price its would-be picks
                     rows = byt.get(t)
                     if rows is not None:
-                        for p, why in M._picks(rows, float(b.r30), v, set())[:M.SLOTS]:
+                        for p, why in M._picks(rows, float(b.r30), v, set())[:M.BOOK_N]:
                             rr = rows[rows.pair == p].iloc[0]
                             te = int(t) + BAR + M.LATENCY_S * 1000
                             need.add((p, te))
                             fills.append(dict(variant="SPACED_OUT_PICKS", trig=int(t), pair=p, kind=why, atr=rr.atr, pmove=rr.pmove,
                                               btc_move=b.r30, gap=rr.gap, t_entry=te))
                 continue
-            open_pos = [(p, x) for p, x in open_pos if x > t + BAR]
-            taken = {p for p, _ in open_pos}; got = 0
+            open_pos = [o for o in open_pos if o[1] > t + BAR]
+            taken = {o[0] for o in open_pos}; got = 0
             for k in range(v["wb"] + 1):
                 bt = int(t) + k * BAR
                 rows = byt.get(bt)
@@ -117,14 +117,15 @@ def main():
                             fills.append(dict(variant="REFUSED_" + st, trig=int(t), pair=r.pair, kind=st, atr=r.atr, pmove=r.pmove, btc_move=bm,
                                               gap=r.gap, t_entry=te))
                 for p, why in M._picks(rows, bm, v, taken):
-                    if got >= M.SLOTS or len(open_pos) >= M.SLOTS:
+                    size, refused = (0.0, "SURGE_MAX_SLOTS") if got >= M.SLOTS else M.BK.check([o[2] for o in open_pos], M.TICKET, M.BOOK)
+                    if refused:   # 🧺 (DL 542) the shared book binds (4 tickets / count 10), as in study_surge_missed_opps.sim
                         break
                     rr = rows[rows.pair == p].iloc[0]
                     te = bt + BAR + M.LATENCY_S * 1000
                     need.add((p, te))
                     w = walk_1m(p, te, float(rr.atr))
                     got += 1; taken.add(p)
-                    open_pos.append((p, te + float(w.get("minutes", M.HOLD) if np.isfinite(w.get("pnl", np.nan)) else M.HOLD) * MIN))
+                    open_pos.append((p, te + float(w.get("minutes", M.HOLD) if np.isfinite(w.get("pnl", np.nan)) else M.HOLD) * MIN, size))
                     fills.append(dict(variant=name, trig=int(t), entry_bar=bt, bar_k=k, pair=p, kind=why, atr=rr.atr, pmove=rr.pmove, btc_move=bm,
                                       gap=rr.gap, t_entry=te))
             if got:

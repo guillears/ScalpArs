@@ -1676,9 +1676,34 @@ class BinanceService:
             logger.debug(f"[BINANCE] research kline read failed for {symbol}: {e}")
             return None
 
-    async def fetch_orderbook(self, symbol: str, limit: int = 5) -> Optional[Dict]:
-        """Get best bid/ask from orderbook"""
+    async def fetch_funding_history(self, pair: str, start_ms: int, end_ms: int) -> Optional[List[Tuple[int, float, Optional[float]]]]:
+        """💸 (DECISION_LOG 539) the settled funding of one contract over (start_ms, end_ms]: [(fundingTime ms, rate, markPrice | None), …]
+        oldest first, from the PUBLIC /fapi/v1/fundingRate (no key; its own 500 / 5 min / IP budget). None on any error / during a ban
+        (never raises, never sleeps out a ban) — the caller keeps what it already counted and retries later."""
         try:
+            if _ban_until > time.time():
+                return None
+            _mid = pair.replace('/USDT:USDT', 'USDT') if '/' in pair else pair   # the fapi symbol IS the bot's pair id (BARDUSDT)
+            rows = await self.public_exchange.fapiPublicGetFundingRate({'symbol': _mid, 'startTime': int(start_ms) + 1,
+                                                                        'endTime': int(end_ms), 'limit': 1000})
+            out = []
+            for r in rows or []:
+                try:
+                    mp = r.get('markPrice')
+                    out.append((int(r['fundingTime']), float(r['fundingRate']), float(mp) if mp not in (None, '') else None))
+                except (KeyError, TypeError, ValueError):
+                    continue
+            return sorted(out)
+        except Exception as e:
+            self._detect_ban(e)
+            logger.warning(f"[FUNDING] public history read failed for {pair}: {str(e)[:120]}")
+            return None
+
+    async def fetch_orderbook(self, symbol: str, limit: int = 5) -> Optional[Dict]:
+        """Get best bid/ask from orderbook (None during an IP ban — 💸 DL 539 review: the paper exit read must never add a banned request)"""
+        try:
+            if _ban_until > time.time():
+                return None
             await self.load_markets()
             ob = await self.exchange.fetch_order_book(symbol, limit)
             if ob and ob.get('bids') and ob.get('asks'):

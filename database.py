@@ -799,6 +799,10 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_chop_burst_prior_fill_s FLOAT"))
                 if 'funding_fee_usd' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN funding_fee_usd FLOAT"))
+                if 'funding_in_pnl' not in columns:   # 💸 (DECISION_LOG 539) funding inside pnl on rows closed from the ship on
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN funding_in_pnl BOOLEAN"))
+                if 'funding_accrued_ms' not in columns:   # 💸 (539) the newest settlement already accrued on an open row
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN funding_accrued_ms BIGINT"))
                 # Jun 7: phantom EMA13 cross (records would-have-exited pnl when EMA13
                 # cross exit is DISABLED for that direction — observation CF).
                 if 'phantom_ema13_cross_pnl' not in columns:

@@ -14,6 +14,7 @@
   'use strict';
   const API = 'https://fapi.binance.com/fapi/v1/klines';
   const IV = { '1m': 60, '5m': 300, '15m': 900, '1h': 3600 };
+  const EXIT_C = '#fbbf24';                 // 📈 exit line / arrow colour (amber — operator 11-13)
   const AFTER_MIN = 45;                      // the bot's own post-exit record window
   const cache = new Map();
   let state = null;                          // { o, iv, rows }
@@ -158,7 +159,8 @@
       </div>
       <div id="tc-area"><div class="tc-msg">Loading candles from Binance…</div></div>
       <div class="tc-leg">
-        <span><span class="tc-sw" style="background:#60a5fa"></span>Entry / exit</span>
+        <span><span class="tc-sw" style="background:#60a5fa"></span>Entry</span>
+        <span><span class="tc-sw" style="background:#fbbf24"></span>Exit</span>
         <span><span class="tc-sw" style="background:#34d399"></span>Best in trade</span>
         <span><span class="tc-sw" style="background:#f87171"></span>Worst in trade</span>
         <span><span class="tc-sw" style="background:rgba(96,165,250,.35)"></span>45 min after the exit</span>
@@ -232,9 +234,13 @@
     g.fillStyle = 'rgba(96,165,250,.10)'; g.fillRect(X(closeS), T, Math.max(0, X(Math.min(t1, closeS + AFTER_MIN * 60)) - X(closeS)), ph);
     g.fillStyle = 'rgba(255,255,255,.03)'; g.fillRect(X(openS), T, Math.max(1, X(closeS) - X(openS)), ph);
     // reference lines
-    const line = (p, c, lab, right) => { if (p == null || !(p > 0)) return; g.strokeStyle = c; g.setLineDash([5, 4]); g.beginPath(); g.moveTo(L, Y(p)); g.lineTo(W - R, Y(p)); g.stroke(); g.setLineDash([]);
-      g.fillStyle = c; g.textAlign = right ? 'right' : 'left'; g.fillText(lab, right ? W - R - 4 : L + 4, Y(p) - 4); g.textAlign = 'left'; };
-    line(best, '#34d399', 'best in trade'); line(worst, '#f87171', 'worst in trade'); line(entry, '#60a5fa', 'entry', true);   // entry label on the right: never on top of best / worst
+    const line = (p, c, lab, right, below, dash) => { if (p == null || !(p > 0)) return; g.strokeStyle = c; g.setLineDash(dash || [5, 4]); g.beginPath(); g.moveTo(L, Y(p)); g.lineTo(W - R, Y(p)); g.stroke(); g.setLineDash([]);
+      g.fillStyle = c; g.textAlign = right ? 'right' : 'left'; g.fillText(lab, right ? W - R - 4 : L + 4, Y(p) + (below ? 12 : -4)); g.textAlign = 'left'; };
+    line(best, '#34d399', 'best in trade'); line(worst, '#f87171', 'worst in trade');
+    // 📈 exit line (operator 11-13): dotted amber at the exit price; its label goes under the line when it would touch the entry label (both on the right)
+    const _near = exit > 0 && Math.abs(Y(exit) - Y(entry)) < 14;   // both labels sit on the right: push them apart, whichever is higher
+    if (exit > 0) line(exit, EXIT_C, 'exit', true, _near && Y(exit) >= Y(entry), [2, 3]);   // dotted (operator 11-13)
+    line(entry, '#60a5fa', 'entry', true, _near && Y(entry) > Y(exit));   // entry label on the right: never on top of best / worst
     // candles
     for (const k of K) {
       const up = k[4] >= k[1], c = up ? '#34d399' : '#f87171', x = X(k[0]) + bw / 2;
@@ -242,11 +248,11 @@
       const y1 = Y(Math.max(k[1], k[4])), y2 = Y(Math.min(k[1], k[4])); g.fillStyle = c; g.fillRect(x - bw / 2, y1, bw, Math.max(1, y2 - y1));
     }
     // entry / exit arrows
-    const arrow = (t, p, up, lab) => { const x = X(t), y = Y(p); g.fillStyle = '#60a5fa'; g.beginPath();
+    const arrow = (t, p, up, lab, col) => { const x = X(t), y = Y(p); g.fillStyle = col || '#60a5fa'; g.beginPath();
       if (up) { g.moveTo(x, y + 3); g.lineTo(x - 6, y + 13); g.lineTo(x + 6, y + 13); } else { g.moveTo(x, y - 3); g.lineTo(x - 6, y - 13); g.lineTo(x + 6, y - 13); }
       g.fill(); g.font = '600 11px system-ui,sans-serif'; g.fillText(lab, x - lab.length * 3, up ? y + 26 : y - 17); g.font = '11px ui-monospace,Menlo,monospace'; };
     const long = o.direction !== 'SHORT';
-    arrow(openS, entry, long, 'entry'); if (exit > 0) arrow(closeS, exit, !long, 'exit');
+    arrow(openS, entry, long, 'entry'); if (exit > 0) arrow(closeS, exit, !long, 'exit', EXIT_C);
     // BTC strip
     if (B && B.length) {
       const base = (B.find(k => k[0] <= openS && openS < k[0] + step) || B[0])[1], v = B.map(k => (k[4] / base - 1) * 100);

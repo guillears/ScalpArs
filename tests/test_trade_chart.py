@@ -13,7 +13,7 @@ JS = os.path.join(ROOT, "static", "trade_chart.js")
 def test_three_tagged_hooks_only():
     html = open(os.path.join(ROOT, "templates", "index.html")).read()
     assert html.count("📈 (536) trade chart") == 3                       # rollback = these 3 lines + the file (or git revert)
-    assert '<script src="/static/trade_chart.js?v=2" defer></script>' in html
+    assert '<script src="/static/trade_chart.js?v=3" defer></script>' in html   # v=3: exit line (11-13)
     assert 'data-order-id="${o.id}"' in html
     assert "window._closedOrdersById = Object.fromEntries(data.map(o => [String(o.id), o]));" in html
 
@@ -53,3 +53,12 @@ def test_review_fixes_present():
     src = open(JS).read()
     assert "tok !== seq" in src and "cache.set(key, p)" in src and "MAX_BARS" in src and "e.detail > 1" in src
     assert "setTimeout(redraw, 200)" in src and "limit=${lim}" in src and "!e.defaultPrevented" in src
+
+
+def test_exit_line_drawn_in_amber():
+    """📈 (operator 11-13) the exit price gets its own dotted amber line + amber exit arrow, and the legend splits entry / exit."""
+    src = open(os.path.join(ROOT, "static", "trade_chart.js")).read()
+    assert "const EXIT_C = '#fbbf24'" in src
+    assert "line(exit, EXIT_C, 'exit', true" in src and "[2, 3]);   // dotted" in src
+    assert "arrow(closeS, exit, !long, 'exit', EXIT_C)" in src
+    assert "background:#fbbf24\"></span>Exit</span>" in src

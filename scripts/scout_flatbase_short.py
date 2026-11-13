@@ -74,7 +74,7 @@ DEC_PATTERNS = (os.path.expanduser("~/Downloads/scalpars_decisions_*.csv"), os.p
 CACHE = os.path.join(_R, "reports", "backtest_cache", "scout_flatbase_short")
 SLIP_DEF = 0.03                                              # % per taker side when the real fills carry too few slippage stamps
 ORDER_COLS = ("opened_at", "closed_at", "pair", "direction", "status", "entry_strategy", "pnl", "pnl_percentage", "close_reason", "is_paper",
-              "funding_fee_usd", "entry_price", "quantity", "entry_slippage_pct", "entry_mcap_usd", "cell_multiplier",
+              "funding_fee_usd", "funding_in_pnl", "entry_price", "quantity", "entry_slippage_pct", "entry_mcap_usd", "cell_multiplier",
               "entry_frenzy_run_pct", "entry_flatbase_off_peak_pct",
               "entry_frenzy_spike_at", "entry_frenzy_hours", "entry_flatbase_peak_age_h")   # ⏱ (DECISION_LOG 401) hours since the peak
 FUND_URL = "https://fapi.binance.com/fapi/v1/fundingRate?symbol={s}&startTime={a}&endTime={b}&limit=1000"
@@ -151,7 +151,9 @@ def load_orders(paths=None):
     a["pct"] = pd.to_numeric(a.pnl_percentage, errors="coerce")
     a["usd"] = pd.to_numeric(a.pnl, errors="coerce")
     a["es"] = a.entry_strategy.astype(str)
-    nf = [net_of_funding_pct(p, f, e, q) for p, f, e, q in zip(a.pct, a.funding_fee_usd, a.entry_price, a.quantity)]
+    _fip = a.funding_in_pnl if "funding_in_pnl" in a.columns else [None] * len(a)   # 💸 (539) older exports carry no such column
+    nf = [net_of_funding_pct(p, f, e, q, (str(fi).lower() in ("true", "1", "1.0") if fi is not None and str(fi) != "nan" else None))
+          for p, f, e, q, fi in zip(a.pct, a.funding_fee_usd, a.entry_price, a.quantity, _fip)]
     a["net"] = [x[0] for x in nf]
     a["fund_known"] = [x[1] for x in nf]
     return a[a.o.notna()].drop(columns=["_c", "_i"]).sort_values("o").reset_index(drop=True)
@@ -722,7 +724,8 @@ def blocked_lines(ctx):
         hs = list(holders.values())
         cl = [h for h in hs if str(h.status) == "CLOSED"]
         nets = [float(h.net) for h in cl if _fnum(h.net) is not None]
-        usd_f = sum((_fnum(h.usd) or 0.0) + (_fnum(h.funding_fee_usd) or 0.0) for h in cl)
+        usd_f = sum((_fnum(h.usd) or 0.0) + (0.0 if str(getattr(h, "funding_in_pnl", "")).lower() in ("true", "1", "1.0")
+                                             else (_fnum(h.funding_fee_usd) or 0.0)) for h in cl)   # 💸 (539) never added twice
         L.append(f"- the holding shorts: {len(hs)} FLATBASE_SHORT holds · closed {len(cl)} {_st(nets)} · ${usd_f:+.2f} (pnl + funding) · "
                  f"open {len(hs) - len(cl)}")
         blk_usd, n_pos = 0.0, 0

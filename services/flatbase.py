@@ -402,12 +402,15 @@ GATE_OBS_REAL_N = 30
 STOP_REASONS = ("STOP_LOSS", "BACKSTOP_STOP", "BACKSTOP")
 
 
-def net_of_funding_pct(pnl_pct, funding_fee_usd, entry_price, quantity) -> Tuple[Optional[float], bool]:
+def net_of_funding_pct(pnl_pct, funding_fee_usd, entry_price, quantity, funding_in_pnl=None) -> Tuple[Optional[float], bool]:
     """(pnl % + funding / entry notional × 100, funding known) — the gates read a short NET of funding (shorts pay it in squeezes;
-    Order.funding_fee_usd: negative = paid, NOT folded into pnl). Funding unknown (paper / not yet read) → (pnl %, False)."""
+    Order.funding_fee_usd: negative = paid). 💸 (DECISION_LOG 539) rows with funding_in_pnl already carry it → (pnl %, True), never added
+    twice. Older rows: NOT folded into pnl; funding unknown (old paper / not yet read) → (pnl %, False)."""
     p = _fin(pnl_pct)
     if p is None:
         return None, False
+    if funding_in_pnl:
+        return p, True
     f, e, q = _fin(funding_fee_usd), _fin(entry_price), _fin(quantity)
     if f is None or not (e and e > 0 and q and q > 0):
         return p, False

@@ -663,7 +663,7 @@ def reconcile_report(state: dict, era_start: Optional[datetime], db_pnl: float, 
                      app_est_rows: int, key_to_id: Optional[Dict[str, int]] = None) -> dict:
     """The apples-to-apples check (DECISION_LOG 329). Binance: REALIZED_PNL is GROSS of commission, COMMISSION and FUNDING_FEE are their own
     income rows → Binance trading P&L = Σ REALIZED_PNL + Σ COMMISSION (USDT); funding = Σ FUNDING_FEE. DB: every row's pnl is NET of its
-    fees with funding NOT in it (funding_fee_usd) → DB trading P&L = Σ pnl, funding = Σ funding_fee_usd, over ALL live CLOSED rows (bot +
+    fees with funding NOT in it (funding_fee_usd; 💸 DL 539 rows carry it inside pnl and reconcile_from_db backs it out first) → DB trading P&L = Σ pnl, funding = Σ funding_fee_usd, over ALL live CLOSED rows (bot +
     🖐 + 📥 + 📱) closed since the era start. gap = Binance − DB, per part and in total; what is known to sit in it is listed."""
     days = (state or {}).get("days") or {}
     rp = sum(float(v[0]) for v in days.values())
@@ -945,7 +945,8 @@ class AppTradeRecorder:
             imported = str(o.import_source or "") == IMPORT_SOURCE_IMPORTED
             out.append(RowView(id=o.id, direction=str(o.direction or "").upper(), status=str(o.status or ""), qty=float(o.quantity or 0),
                                open_ms=dt_to_ms(o.imported_at if imported and o.imported_at else o.opened_at), close_ms=dt_to_ms(o.closed_at),
-                               pnl=(float(o.pnl) if o.pnl is not None else None), imported=imported, order_ids=frozenset(s),
+                               pnl=(float(o.pnl) - (float(o.funding_fee_usd or 0.0) if getattr(o, 'funding_in_pnl', None) else 0.0)   # 💸 (539) ex funding
+                                    if o.pnl is not None else None), imported=imported, order_ids=frozenset(s),
                                entry_id_known=bool(o.binance_order_id), funding=o.funding_fee_usd, close_reason=str(o.close_reason or ""),
                                notes=str(o.notes or ""), exit_price=o.exit_price, rtp_price=o.resting_tp_price))
         return out
@@ -1355,9 +1356,12 @@ async def reconcile_from_db(db, state: dict, era: Optional[datetime]) -> dict:
     from models import Order
     if era is None:
         return reconcile_report(state, None, 0.0, 0.0, 0, 0)
-    pnl, fund, n = (await db.execute(select(func.coalesce(func.sum(Order.pnl), 0.0), func.coalesce(func.sum(Order.funding_fee_usd), 0.0),
-                                            func.count(Order.id)).where(and_(Order.is_paper == False, Order.status == "CLOSED",  # noqa: E712
-                                                                             Order.closed_at >= era)))).one()
+    from sqlalchemy import case
+    _in = func.coalesce(func.sum(case((Order.funding_in_pnl == True, func.coalesce(Order.funding_fee_usd, 0.0)), else_=0.0)), 0.0)  # noqa: E712
+    pnl, fund, n, fin = (await db.execute(select(func.coalesce(func.sum(Order.pnl), 0.0), func.coalesce(func.sum(Order.funding_fee_usd), 0.0),
+                                                 func.count(Order.id), _in).where(and_(Order.is_paper == False, Order.status == "CLOSED",  # noqa: E712
+                                                                                       Order.closed_at >= era)))).one()
+    pnl = float(pnl or 0) - float(fin or 0)   # 💸 (DECISION_LOG 539) rows with funding inside pnl: back it out → the trading part stays ex funding
     est = (await db.execute(select(func.count(Order.id)).where(and_(Order.is_paper == False, Order.app_fee_estimated == True,  # noqa: E712
                                                                     Order.import_source == IMPORT_SOURCE_APP_HISTORY)))).scalar() or 0
     k2i = {k: i for k, i in (await db.execute(select(Order.app_trade_key, Order.id).where(and_(

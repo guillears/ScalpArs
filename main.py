@@ -706,6 +706,10 @@ async def start_background_tasks():
     global _acct_task
     from services.accounting_export import statement_loop as _statement_loop
     _acct_task = asyncio.create_task(_statement_loop(lambda: should_stop, _ACCOUNTING_LOCK))
+    # 💸 (DECISION_LOG 539) open-trade funding accrual (paper AND live): own task + own sessions, bookkeeping only (no exit reads it)
+    global _funding_task
+    from services.funding_accrual import funding_accrual_loop as _funding_accrual_loop
+    _funding_task = asyncio.create_task(_funding_accrual_loop(lambda: should_stop))
     logger.info("[STARTUP] Monitor, scan, BNB swap, NAV snapshot and FRENZY loops started independently")
 
 
@@ -718,6 +722,13 @@ async def stop_background_tasks():
     await websocket_tracker.stop()
     logger.info("[SHUTDOWN] WebSocket price tracker stopped")
 
+    _fdt = globals().get('_funding_task')   # 💸 (DECISION_LOG 539) open-trade funding accrual: cancelled (the next start re-reads from the marker)
+    if _fdt is not None and not _fdt.done():
+        _fdt.cancel()
+        try:
+            await _fdt
+        except (asyncio.CancelledError, Exception):
+            pass
     _at = globals().get('_acct_task')   # 📒 (DECISION_LOG 457) the monthly statement loop: cancelled (a half-built month is retried next start)
     if _at is not None and not _at.done():
         _at.cancel()
@@ -2292,6 +2303,9 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
             pnl = 0
             pnl_pct = 0
             estimated_exit_fee = 0
+        # 💸 (DECISION_LOG 539) the shown current % includes the funding accrued so far (best / worst stay price-only, clamped around it)
+        _pct_shown = pnl_pct + (float(getattr(o, 'funding_fee_usd', None) or 0.0) / (o.entry_price * o.quantity) * 100
+                                if o.entry_price and o.quantity else 0.0)
         
         # Calculate duration
         duration_seconds = (datetime.utcnow() - o.opened_at).total_seconds()
@@ -2364,15 +2378,17 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
             # persistence. See CLAUDE.md "Peak/Trough P&L Invariant Bug + Option A Fix".
             "peak_pnl": round(max(
                 cached_peak_pnl if cached_peak_pnl is not None else (o.peak_pnl or 0),
-                pnl_pct,
+                pnl_pct, _pct_shown,   # 💸 (539 review) the shown current % (funding in) never sits outside best / worst
             ), 2),
             # 📉 Worst P&L % (operator 2026-10-24) — the trough, same source order + invariant as the peak: cache, then DB, never above current
             "trough_pnl": round(min(
                 cached_trough_pnl if cached_trough_pnl is not None else (o.trough_pnl or 0),
-                pnl_pct,
+                pnl_pct, _pct_shown,
             ), 2),
-            "pnl": round(pnl, 2),
-            "pnl_percentage": round(pnl_pct, 2),
+            # 💸 (DECISION_LOG 539) the open P&L shown includes the funding accrued so far (best / worst above stay price-only)
+            "pnl": round(pnl + float(getattr(o, 'funding_fee_usd', None) or 0.0), 2),
+            "pnl_percentage": round(_pct_shown, 2),
+            "funding_usd": round(float(getattr(o, 'funding_fee_usd', None) or 0.0), 4),
             "duration": f"{hours:02d}:{minutes:02d}:{seconds:02d}",
             "duration_seconds": duration_seconds,
             "opened_at": o.opened_at.isoformat(),
@@ -4106,11 +4122,23 @@ async def _close_orphan_orders(db: AsyncSession, binance_pairs: set) -> list:
                 order.pnl_percentage = round(((raw - fee) / notional) * 100, 4)
                 order.exit_fee = round(_exit_fee_usd, 4)
                 order.total_fee = round((order.entry_fee or 0) + order.exit_fee, 4)
+                _pct_price_rc = order.pnl_percentage   # 💸 (DECISION_LOG 539 review) price-only, for the touch read below
+                try:   # 💸 (539 review) reconciled closes (backstop / external / resting TP) carry funding inside pnl too: the accrued part now,
+                    from services.paper_costs import fold_funding as _fold_fund   # the authoritative read in the post-close reconcile below
+                    _fu_rc = float(order.funding_fee_usd or 0.0)
+                    if _fu_rc:
+                        order.pnl, order.pnl_percentage = _fold_fund(order.pnl, order.pnl_percentage, notional, _fu_rc)
+                    order.funding_fee_usd, order.funding_in_pnl = round(_fu_rc, 6), True
+                    _rc_ft = asyncio.create_task(trading_engine._funding_reconcile_async(order.id, order.pair, order.opened_at, order.closed_at, False))
+                    trading_engine._bg_tasks.add(_rc_ft)
+                    _rc_ft.add_done_callback(trading_engine._bg_tasks.discard)
+                except Exception as _rc_fe:
+                    logger.warning(f"[FUNDING] {order.pair} #{order.id}: reconciled-close funding fold skipped ({str(_rc_fe)[:80]})")
                 try:
                     trading_engine._register_post_exit_tracking(order, order.close_reason)   # (DECISION_LOG 419) every reconciled close (backstop, external, resting TP), once fully booked
                 except Exception as _pe_reg_err:
                     logger.error(f"[POST_EXIT_REG_FAILED] {order.pair}: {_pe_reg_err}")
-                trading_engine._touch_finalize(order, order.pnl_percentage, order.close_reason)   # 🛑👁 (317, dual review) observe-only touch outcome (never raises)
+                trading_engine._touch_finalize(order, _pct_price_rc, order.close_reason)   # 🛑👁 (317, dual review) observe-only touch outcome (💸 539: price-only)
 
                 tx = Transaction(
                     order_id=order.id, pair=order.pair,
@@ -4611,7 +4639,7 @@ def _period_stats(label, trades):
         return {"period": label, "count": 0, "longs": 0, "shorts": 0,
                 "win_rate": 0, "avg_pnl_pct": 0, "total_pnl": 0, "profit_factor": 0,
                 "total_fees": 0, "total_investment": 0, "total_notional": 0,
-                "pnl_over_inv": 0, "pnl_over_not": 0}
+                "pnl_over_inv": 0, "pnl_over_not": 0, "total_funding": 0}
     longs = sum(1 for o in trades if o.direction == "LONG")
     shorts = count - longs
     wins = [o for o in trades if (o.pnl or 0) > 0]
@@ -4619,6 +4647,8 @@ def _period_stats(label, trades):
     avg_pnl_pct = round(sum(o.pnl_percentage or 0 for o in trades) / count, 4)
     total_pnl = round(sum(o.pnl or 0 for o in trades), 2)
     total_fees = round(sum(o.total_fee or 0 for o in trades), 2)
+    # 💸 (DECISION_LOG 539) funding already inside the P&L of these rows (negative = paid) — shown on its own, never added again
+    total_funding = round(sum((getattr(o, 'funding_fee_usd', None) or 0) for o in trades if getattr(o, 'funding_in_pnl', None)), 2)
     total_investment = round(sum(o.investment or 0 for o in trades), 2)
     total_notional = round(sum(o.notional_value or 0 for o in trades), 2)
     pnl_over_inv = round(total_pnl / total_investment * 100, 2) if total_investment > 0 else 0
@@ -4641,6 +4671,7 @@ def _period_stats(label, trades):
         "total_investment": total_investment, "total_notional": total_notional,
         "pnl_over_inv": pnl_over_inv, "pnl_over_not": pnl_over_not,
         "avg_slippage_pct": avg_slippage_pct, "total_slippage_usd": total_slippage_usd, "slippage_count": len(slippage_trades),
+        "total_funding": total_funding,
     }
 
 
@@ -9904,14 +9935,15 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             if _fz_es == "FLATBASE_SHORT":   # 🩳 (348) alert-only gates (operator-closed fills out) + the observe-only shadow cohort (ledger)
                 from services.flatbase import flatbase_gate as _fbg
                 from services.flatbase import net_of_funding_pct as _fbn
-                _fb_q = select(Order.opened_at, Order.pnl_percentage, Order.close_reason, Order.funding_fee_usd, Order.entry_price, Order.quantity).where(and_(
+                _fb_q = select(Order.opened_at, Order.pnl_percentage, Order.close_reason, Order.funding_fee_usd, Order.entry_price, Order.quantity,
+                               Order.funding_in_pnl).where(and_(
                     Order.entry_strategy == "FLATBASE_SHORT", Order.status == 'CLOSED', Order.is_paper == trading_engine.is_paper_mode,
                     Order.pnl_percentage.isnot(None)))
                 _fb_bot, _fb_unk = [], 0
-                for a, p_, r, ff, ep_, q_ in (await db.execute(_fb_q)).all():
+                for a, p_, r, ff, ep_, q_, fip_ in (await db.execute(_fb_q)).all():
                     if str(r or '').upper().split(' ')[0] in ('MANUAL', 'EXTERNAL_CLOSE') or str(r or '').upper().startswith('MANUAL_'):
                         continue
-                    _nv, _known = _fbn(p_, ff, ep_, q_)   # the gates read the short NET of funding
+                    _nv, _known = _fbn(p_, ff, ep_, q_, fip_)   # the gates read the short NET of funding (💸 539: never added twice)
                     _fb_unk += 0 if _known else 1
                     _fb_bot.append((a, _nv, r))
                 _fz_gate = _fbg(_fb_bot)[1] + (f" · net of funding (funding unknown on {_fb_unk} fill(s) — paper / unread: pnl % only)" if _fb_unk

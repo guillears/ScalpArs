@@ -213,7 +213,7 @@ def test_unknown_outcome_excluded_and_frozen_main_sample():
 def test_reconciler_finalizes_the_touch_outcome():
     main = open(os.path.join(ROOT, "main.py"), encoding="utf-8").read()
     i = main.index("order.close_reason = \"EXTERNAL_CLOSE\""); j = main.index("tx = Transaction(", i)
-    assert "trading_engine._touch_finalize(order, order.pnl_percentage, order.close_reason)" in main[i:j]
+    assert "trading_engine._touch_finalize(order, _pct_price_rc, order.close_reason)" in main[i:j]   # 💸 (539) the price-only % (funding folded after)
 
 
 def test_touch_markers_pruned_and_skipped_while_closing(monkeypatch):

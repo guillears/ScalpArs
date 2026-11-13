@@ -324,7 +324,8 @@ async def _bot_side(db, day: str) -> dict:
     opened = (await db.execute(select(Order).where(and_(Order.is_paper == False, Order.opened_at >= lo,       # noqa: E712
                                                         Order.opened_at < hi)))).scalars().all()
     f = lambda v: float(v or 0.0)
-    return dict(gross=round(sum(f(o.pnl) + f(o.entry_fee) + f(o.exit_fee) for o in closed), 4),
+    fin = lambda o: f(o.funding_fee_usd) if getattr(o, 'funding_in_pnl', None) else 0.0   # 💸 (DECISION_LOG 539) funding inside pnl: backed out
+    return dict(gross=round(sum(f(o.pnl) - fin(o) + f(o.entry_fee) + f(o.exit_fee) for o in closed), 4),
                 fees=round(sum(f(o.entry_fee) for o in opened) + sum(f(o.exit_fee) for o in closed), 4),
                 funding=round(sum(f(o.funding_fee_usd) for o in closed), 4), closed=len(closed), opened=len(opened))
 

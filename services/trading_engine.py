@@ -34,6 +34,9 @@ from services.orderbook_stats import orderbook_metrics, OB_FIELDS
 from services.frenzy import frenzy_catchup_check, frenzy_catchup_moved, frenzy_vol24_at, FRENZY_CATCHUP_STALE, frenzy_tp_for
 from services.frenzy import frenzy_lite_c_tp, frenzy_lite_c_enabled, frenzy_lite_tp_override   # 🎯 (DECISION_LOG 301) LITE C
 from services.frenzy import frenzy_stop_for   # 🛑 (DECISION_LOG 317) FRENZY_LONG's own stop
+from services.paper_costs import paper_exit_book_price, exit_slip_pct, accrue_funding, fold_funding, funding_topup_needed, live_income_foreign   # 💸 (DECISION_LOG 539) paper = live costs
+from sqlalchemy.orm.attributes import flag_modified   # 💸 (DECISION_LOG 539 review) force the funding write on every close attempt
+PAPER_EXIT_SLIP_SANE_PCT = 3.0   # 💸 (539) a paper exit book read further than this from the decision price is a bad read (booked at the decision price)
 from services.watch_filters import frenzy_blocks as watch_frenzy_blocks, ml_blocks as watch_ml_blocks, fade_blocks as watch_fade_blocks, block_code as watch_block_code   # 🧱 (DECISION_LOG 527) armed watch-line filters
 from services.frenzy import FRENZY_WILLY_HT, WILLY_EXIT_CLASS, frenzy_willy_ht_frac   # 🎲¼ (DECISION_LOG 341) the quarter-size WILLY
 from services.flatbase import (FLATBASE_SHORT, FLATBASE_CLASS, flatbase_enabled, flatbase_params, flatbase_exit_for,   # 🩳 (DECISION_LOG 348)
@@ -17884,25 +17887,82 @@ class TradingEngine:
         st['exit_btc_regime'] = st.get('entry_btc_regime')   # initialised to entry, updated on close — as open_position does
         return st
 
-    async def _stamp_funding_async(self, order_id: int, pair: str, opened_at) -> None:
-        """Aug-24 (33): stamp Σ funding on a CLOSED live order from its own session, off the close funnel.
-        Fail-open: any error logs and exits; the column stays NULL (recorded-only metric, not in pnl)."""
+    async def _funding_at_close(self, order: Order, exit_price: float) -> Tuple[Optional[float], Optional[int]]:
+        """💸 (DECISION_LOG 539) Σ funding over the trade's life AT its close, paper AND live: what the open-trade accrual already counted
+        (read fresh — the row object may predate the accrual loop's write) + a bounded top-up read of the settlements since. → (usd, newest
+        settlement ms counted). A failed top-up keeps the accrued part (0 when none); the post-close reconcile corrects the row. Never raises."""
+        acc, acc_ms = 0.0, None
         try:
-            if opened_at is None:
-                return
-            _f_start = int(opened_at.replace(tzinfo=timezone.utc).timestamp() * 1000)
-            _f_end = int(datetime.utcnow().replace(tzinfo=timezone.utc).timestamp() * 1000) + 60000
-            _fund = await binance_service.get_funding_fees_usd(pair, _f_start, _f_end)
-            if _fund is None:
-                return
-            async with AsyncSessionLocal() as _fdb:
-                _row = await _fdb.get(Order, order_id)
-                if _row is not None and _row.status == "CLOSED":
-                    _row.funding_fee_usd = float(_fund)
-                    await locked_commit(_fdb)
-                    logger.info(f"[FUNDING] {pair} order {order_id}: Σ funding {float(_fund):+.4f} USDT over the position's life (not in pnl)")
-        except Exception as _fe:
-            logger.warning(f"[FUNDING] async stamp failed for {pair} order {order_id}: {_fe}")
+            async def _read():
+                async with AsyncSessionLocal() as _fdb:
+                    return (await _fdb.execute(select(Order.funding_fee_usd, Order.funding_accrued_ms).where(Order.id == order.id))).first()
+            _r = await asyncio.wait_for(_read(), 1.0)   # 💸 (539 review) bounded: this runs under the global close lock
+            if _r is not None:
+                acc = float(_r[0] or 0.0)
+                acc_ms = int(_r[1]) if _r[1] is not None else None
+        except Exception as _e:
+            logger.warning(f"[FUNDING] {order.pair} #{order.id}: accrued read failed ({str(_e)[:80]}) — top-up from the open")
+            acc, acc_ms = 0.0, None
+        try:
+            _open_ms = int(order.opened_at.replace(tzinfo=timezone.utc).timestamp() * 1000) if order.opened_at else None
+            _since = acc_ms if acc_ms is not None else _open_ms
+            _now = int(time.time() * 1000)
+            if _since is None or not funding_topup_needed(_since, _now):   # no hour boundary since → no settlement possible → no read
+                return acc, acc_ms
+            _rows = await asyncio.wait_for(binance_service.fetch_funding_history(order.pair, _since, _now), 1.5)
+            if _rows is None:
+                return acc, acc_ms
+            _add, _last, _skip = accrue_funding(order.direction, order.quantity, _rows, _since, _now, fallback_mark=exit_price)
+            return acc + _add, (_last if _last is not None else acc_ms)
+        except Exception as _e:
+            logger.warning(f"[FUNDING] {order.pair} #{order.id}: close top-up failed ({str(_e)[:80]}) — booked the accrued {acc:+.4f}; reconcile follows")
+            return acc, acc_ms
+
+    async def _funding_reconcile_async(self, order_id: int, pair: str, opened_at, closed_at, is_paper: bool) -> None:
+        """💸 (DECISION_LOG 539; replaces the Aug-24 live-only stamp) after a close, the authoritative Σ funding over [open, close]: LIVE = the
+        account's FUNDING_FEE income (Binance's own number), PAPER = the public settled rates × this position. A difference ≥ $0.005 moves
+        funding_fee_usd AND (rows with funding_in_pnl) pnl / pnl_percentage by the same Δ — the row keeps pnl = price P&L − fees + funding.
+        3 tries (30 s / 2 min / 10 min). Own session, off the close funnel; never raises."""
+        if opened_at is None:
+            return
+        _a = int(opened_at.replace(tzinfo=timezone.utc).timestamp() * 1000)
+        _b = int((closed_at or datetime.utcnow()).replace(tzinfo=timezone.utc).timestamp() * 1000)
+        for _wait in (30, 120, 600):
+            await asyncio.sleep(_wait)
+            try:
+                async with AsyncSessionLocal() as _fdb:
+                    _row = await _fdb.get(Order, order_id)
+                    if _row is None or _row.status != "CLOSED" or _row.opened_at != opened_at:   # 539 review: ids reset on a paper reset
+                        return
+                    _pub = await binance_service.fetch_funding_history(pair, _a, _b)
+                    _est = accrue_funding(_row.direction, _row.quantity, _pub, _a, _b, fallback_mark=_row.exit_price)[0] if _pub is not None else None
+                    if is_paper:
+                        if _est is None:
+                            continue
+                        _fund = _est
+                    else:
+                        _fund = await binance_service.get_funding_fees_usd(pair, _a, _b + 60000)
+                        if _fund is None:
+                            continue
+                        if live_income_foreign(_fund, _est):   # the symbol's income holds more than this row (an operator app position)
+                            logger.warning(f"[FUNDING] {pair} #{order_id}: account income {float(_fund):+.4f} vs this position's public-rate "
+                                           f"estimate {_est:+.4f} — another position on the coin; booked the estimate")
+                            _fund = _est
+                    _old = float(_row.funding_fee_usd or 0.0)
+                    _d = float(_fund) - _old
+                    if abs(_d) < 0.005 and _row.funding_fee_usd is not None:
+                        return
+                    _row.funding_fee_usd = round(float(_fund), 6)
+                    if _row.funding_in_pnl:
+                        _row.pnl, _row.pnl_percentage = fold_funding(_row.pnl, _row.pnl_percentage,
+                                                                     (_row.entry_price or 0) * (_row.quantity or 0), _d)
+                    await locked_commit(_fdb)   # the paper balance picks the Δ up at its next recalculation (no unlocked recalc here)
+                    logger.info(f"[FUNDING] {pair} #{order_id}: Σ funding {float(_fund):+.4f} USDT ({'paper, public rates' if is_paper else 'live income'})"
+                                f" · Δ {_d:+.4f} vs the close{' — folded into pnl' if _row.funding_in_pnl else ' (legacy row: not in pnl)'}")
+                    return
+            except Exception as _fe:
+                logger.warning(f"[FUNDING] reconcile try failed for {pair} #{order_id}: {str(_fe)[:120]}")
+        logger.warning(f"[FUNDING] {pair} #{order_id}: reconcile gave up after 3 tries — the close-time funding stands")
 
     async def close_position(
         self,
@@ -18540,7 +18600,18 @@ class TradingEngine:
                         order.exit_fee = round(exit_fee, 4)
                         order.total_fee = round((order.entry_fee or 0) + exit_fee, 4)
                         order.exit_order_type = "EXTERNAL"
-                        self._touch_finalize(order, order.pnl_percentage, order.close_reason)   # 🛑👁 (317) observe-only touch outcome
+                        self._touch_finalize(order, order.pnl_percentage, order.close_reason)   # 🛑👁 (317) observe-only touch outcome (price-only: before the fold)
+                        try:   # 💸 (DECISION_LOG 539 review) the fallback close carries funding inside pnl too: accrued part now, the authoritative
+                            _fu_fb = float(order.funding_fee_usd or 0.0)   # read in the post-close reconcile (spawned below)
+                            if _fu_fb:
+                                order.pnl, order.pnl_percentage = fold_funding(order.pnl, order.pnl_percentage, _notional, _fu_fb)
+                            order.funding_fee_usd, order.funding_in_pnl = round(_fu_fb, 6), True
+                            _fb_ft = asyncio.create_task(self._funding_reconcile_async(order.id, order.pair, order.opened_at,
+                                                                                       order.closed_at or datetime.utcnow(), False))
+                            self._bg_tasks.add(_fb_ft)
+                            _fb_ft.add_done_callback(self._bg_tasks.discard)
+                        except Exception as _fb_fe:
+                            logger.warning(f"[FUNDING] {order.pair} #{order.id}: fallback-close funding fold skipped ({str(_fb_fe)[:80]})")
                         if _rtp_set and not _rtp_set.get('blocked'):   # 🎯 (296)
                             order.resting_tp_filled_qty = float(_rtp_set.get('filled') or 0)
                             if _rtp_set.get('full'):
@@ -18770,7 +18841,20 @@ class TradingEngine:
                 notional_at_close = order.quantity * actual_exit_price
                 exit_fee = notional_at_close * exit_fee_rate
             else:
-                notional_at_close = order.quantity * current_price
+                # 💸 (DECISION_LOG 539) paper = live: a market exit fills at the live book (LONG → best bid, SHORT → best ask), like the paper
+                # Frenzy / Flatbase entries; the fill vs the decision price is the exit slippage. Bounded read; no book → the decision price, slip NULL.
+                try:
+                    _xb = await asyncio.wait_for(binance_service.fetch_orderbook(order.pair.replace('USDT', '/USDT:USDT')), 1.5)   # under the close lock
+                    _xpx = paper_exit_book_price(order.direction, (_xb or {}).get('best_bid'), (_xb or {}).get('best_ask'))
+                except Exception:
+                    _xpx = None
+                _xsl = exit_slip_pct(order.direction, current_price, _xpx) if _xpx else None
+                if _xsl is not None and abs(_xsl) <= PAPER_EXIT_SLIP_SANE_PCT:   # a book further away than this = a bad read, not a fill
+                    actual_exit_price, _slippage_pct = _xpx, _xsl
+                elif _xsl is not None:
+                    logger.warning(f"[PAPER_EXIT_BOOK] {order.pair} #{order.id}: book {_xpx} is {_xsl:+.2f} % from the decision {current_price} — "
+                                   f"implausible, booked at the decision price (slip NULL)")
+                notional_at_close = order.quantity * actual_exit_price
                 exit_fee = notional_at_close * taker_fee_rate
 
         total_fee = (order.entry_fee or 0) + exit_fee
@@ -18793,6 +18877,13 @@ class TradingEngine:
             entry_fee=order.entry_fee or 0,
             exit_fee=exit_fee
         )
+        # 💸 (DECISION_LOG 539) funding INSIDE pnl (paper AND live): Σ over the trade's life folded in here, kept on its own in funding_fee_usd.
+        # pct_price = the price-only % (fees in, funding out) — the peak / trough invariant and every price-path read keep using it.
+        pnl_data['pct_price'] = pnl_data['pnl_percentage']
+        _fund_usd, _fund_last = await self._funding_at_close(order, actual_exit_price)
+        if _fund_usd:
+            pnl_data['pnl'], pnl_data['pnl_percentage'] = fold_funding(pnl_data['pnl'], pnl_data['pnl_percentage'],
+                                                                       (order.entry_price or 0) * (order.quantity or 0), _fund_usd)
 
         # 📏 (DECISION_LOG 295) resting-TP shadow context — fixed-TP FRENZY sleeves only. NO await (this close holds the global close
         # lock): the tick comes from the already-loaded market cache, plausibility-guarded; unknown → the shadow stays NULL. Observe only.
@@ -18837,6 +18928,7 @@ class TradingEngine:
         _tx_leverage = order.leverage
         _tx_is_paper = order.is_paper
         _tx_opened_at = order.opened_at  # Aug-24 (33): snapshot for the async funding stamp
+        _close_time_for_funding = datetime.utcnow()   # 💸 (539) the reconcile window's end (≈ the close; the row's closed_at is set below)
         _db_attempt = 0
 
         # Track total time spent waiting on the DB across all retry attempts so we can
@@ -18870,6 +18962,11 @@ class TradingEngine:
                 order.exit_order_type = exit_order_type
                 order.pnl = pnl_data['pnl']
                 order.pnl_percentage = pnl_data['pnl_percentage']
+                order.funding_fee_usd = round(float(_fund_usd or 0.0), 6)   # 💸 (539) the funding inside that pnl
+                order.funding_in_pnl = True
+                order.funding_accrued_ms = _fund_last
+                for _fm in ('funding_fee_usd', 'funding_accrued_ms'):   # 💸 (539 review) force the write: an equal in-memory value is a no-op
+                    flag_modified(order, _fm)                            # while the accrual loop may have moved the DB value meanwhile
                 if _rtp_set and not _rtp_set.get('blocked'):   # 🎯 (296) what the resting TP filled rides the row (survives a phase-1 retry re-fetch)
                     order.resting_tp_filled_qty = float(_rtp_set.get('filled') or 0)
                     if not _rtp_set.get('pending'):
@@ -18887,10 +18984,11 @@ class TradingEngine:
                 # Re-enable = manual UI toggle after investigation.
                 # ─────────────────────────────────────────────────────────────
                 try:
+                    _tw_pct = pnl_data.get('pct_price', order.pnl_percentage)   # 💸 (539) price-only: funding never trips a guard
                     if ((order.entry_strategy or "") == "SPIKE_FADE"
-                            and order.pnl_percentage is not None
+                            and _tw_pct is not None
                             and getattr(config.trading_config.thresholds, 'spike_fade_enabled', False)
-                            and order.pnl_percentage <= float(getattr(config.trading_config.thresholds, 'spike_fade_tripwire_pct', -1.5) or -1.5)):
+                            and _tw_pct <= float(getattr(config.trading_config.thresholds, 'spike_fade_tripwire_pct', -1.5) or -1.5)):
                         # Aug-5 operator directive: tripwire is ALERT-ONLY unless
                         # spike_tripwire_autodisable is re-enabled (see config comment).
                         if getattr(config.trading_config.thresholds, 'spike_tripwire_autodisable', False):
@@ -18917,10 +19015,11 @@ class TradingEngine:
                 # operator removed the N-based kill gate — this is a stop-FAILURE
                 # detector, not a performance verdict.
                 try:
+                    _tw_pct = pnl_data.get('pct_price', order.pnl_percentage)   # 💸 (539) price-only
                     if ((order.entry_strategy or "") == "SPIKE_BOUNCE"
-                            and order.pnl_percentage is not None
+                            and _tw_pct is not None
                             and getattr(config.trading_config.thresholds, 'spike_bounce_enabled', False)
-                            and order.pnl_percentage <= float(getattr(config.trading_config.thresholds, 'spike_bounce_tripwire_pct', -1.5) or -1.5)):
+                            and _tw_pct <= float(getattr(config.trading_config.thresholds, 'spike_bounce_tripwire_pct', -1.5) or -1.5)):
                         if getattr(config.trading_config.thresholds, 'spike_tripwire_autodisable', False):
                             config.trading_config.thresholds.spike_bounce_enabled = False
                             from config import save_trading_config as _sb_save_cfg
@@ -18997,7 +19096,7 @@ class TradingEngine:
                 # Log every activation so we can quantify how often the cache lag is happening
                 # — frequent activations indicate an upstream realtime-callback issue worth
                 # investigating beyond this symptom-level guard.
-                _close_pct = pnl_data['pnl_percentage']
+                _close_pct = pnl_data.get('pct_price', pnl_data['pnl_percentage'])   # 💸 (539) price-only: funding never moves best / worst in trade
                 _old_peak = order.peak_pnl
                 _old_trough = order.trough_pnl
                 if order.peak_pnl is None or order.peak_pnl < _close_pct:
@@ -19019,12 +19118,12 @@ class TradingEngine:
                 order.closed_at = _close_time
                 order.close_reason = reason
                 order.exit_slippage_pct = _slippage_pct
-                self._touch_finalize(order, pnl_data['pnl_percentage'], reason)   # 🛑👁 (317) observe-only touch outcome (never raises)
+                self._touch_finalize(order, pnl_data.get('pct_price', pnl_data['pnl_percentage']), reason)   # 🛑👁 (317) observe-only (💸 539: price-only)
                 if _rtp_ctx is not None:   # 📏 (295) what a resting post-only TP limit would have booked — observe only, never raises
                     try:
                         _rtp_lim, _rtp_fill, _rtp_pnl = resting_tp_shadow(order.direction, order.entry_price, _rtp_ctx[2], _rtp_ctx[0], _rtp_ctx[3],
                                                                           _rtp_ctx[1], order.high_price_since_entry, order.low_price_since_entry,
-                                                                          pnl_data['pnl_percentage'])
+                                                                          pnl_data.get('pct_price', pnl_data['pnl_percentage']))   # 💸 (539) price vs price
                         order.shadow_rtp_price, order.shadow_rtp_filled, order.shadow_rtp_pnl_pct = _rtp_lim, _rtp_fill, _rtp_pnl
                         if _db_attempt == 1:
                             logger.info(f"[RTP_SHADOW] {order_pair} {_tx_direction} ({order.entry_strategy}, {reason}): TP +{_rtp_ctx[0]}% → resting limit {_rtp_lim} "
@@ -19118,12 +19217,13 @@ class TradingEngine:
 
         self.close_db_priority = max(0, self.close_db_priority - 1)
 
-        # Aug-24 (33)/M6: funding stamp runs OFF the close funnel (it held an HTTP await + commit
-        # inside the contention window) as a fire-and-forget task with its own session. Guarded by
-        # _db_commit_success, so retry-path commits are stamped too (review m2). Live only; RECORDED, not in pnl.
-        if _db_commit_success and not self.is_paper_mode:
+        # Aug-24 (33)/M6 → 💸 (DECISION_LOG 539): the authoritative funding read runs OFF the close funnel as a fire-and-forget task with its
+        # own session (paper: public rates · live: the account's income) and corrects funding_fee_usd + pnl by any Δ. Guarded by
+        # _db_commit_success, so retry-path commits are covered too (review m2).
+        if _db_commit_success:
             try:
-                _ft = asyncio.create_task(self._stamp_funding_async(order_id, order_pair, _tx_opened_at))
+                _ft = asyncio.create_task(self._funding_reconcile_async(order_id, order_pair, _tx_opened_at, _close_time_for_funding,
+                                                                         bool(self.is_paper_mode)))
                 self._bg_tasks.add(_ft)
                 _ft.add_done_callback(self._bg_tasks.discard)
             except Exception as _ft_err:

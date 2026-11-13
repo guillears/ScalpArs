@@ -1181,17 +1181,18 @@
                                     <th class="px-3 py-2 font-medium text-right whitespace-nowrap" title="P&L as $ and % of total notional">P&L / Not</th>
                                     <th class="px-3 py-2 font-medium text-right" title="Total Wins $ / Total Losses $ (>1 = profitable)">PF</th>
                                     <th class="px-3 py-2 font-medium text-right text-yellow-400" title="Total fees paid (entry + exit)">Fees</th>
-                                    <th class="px-3 py-2 font-medium text-right" title="Avg COMBINED entry+exit slippage per trade (+ = filled worse than decision price, - = better). Only live trades.">Slip % <span class="text-gray-500 font-normal">(cost)</span></th>
+                                    <th class="px-3 py-2 font-medium text-right" title="💸 Funding paid (−) / received (+) while the trades were open — already INSIDE the P&amp;L (trades closed from 2026-11-13, DECISION_LOG 539; older trades: not counted here)">Funding</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Avg COMBINED entry+exit slippage per trade (+ = filled worse than decision price, - = better). Paper market exits fill at the live book since 2026-11-13 (DECISION_LOG 539).">Slip % <span class="text-gray-500 font-normal">(cost)</span></th>
                                     <th class="px-3 py-2 font-medium text-right" title="Total $ cost of that same combined entry+exit slippage: Σ slip% × notional. Same calculation as Slip %, in dollars (+ = cost, - = in your favor).">Slip $ <span class="text-gray-500 font-normal">(cost)</span></th>
                                     <th class="px-3 py-2 font-medium text-right text-blue-400" title="Projected balance if current Daily Compound Return continues for this period. Formula: Current Balance × (1 + DCR)^days">Projected Balance</th>
                                 </tr>
                             </thead>
                             <tbody id="period-performance-body" class="divide-y divide-white/5">
-                                <tr><td colspan="13" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                                <tr><td colspan="14" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
                             </tbody>
                         </table>
                     </div>
-                    <p class="text-[11px] text-gray-500 mt-2">Slip legend: <span class="text-red-400">+ positive = filled worse than the decision price (a cost, already inside P&amp;L)</span> · <span class="text-emerald-400">− negative = filled better (in your favor)</span>. Fees and Slip are diagnostics of costs the P&amp;L column already absorbs.</p>
+                    <p class="text-[11px] text-gray-500 mt-2">Slip legend: <span class="text-red-400">+ positive = filled worse than the decision price (a cost, already inside P&amp;L)</span> · <span class="text-emerald-400">− negative = filled better (in your favor)</span>. Fees, Funding and Slip are diagnostics of costs the P&amp;L column already absorbs (funding from 2026-11-13).</p>
                 </div>
                 
                 <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-6">
@@ -8582,6 +8583,9 @@
     <!-- ════════════════════════════════════════════════════════════════════ -->
 
     <script>
+        // 💸 (DECISION_LOG 539) funding formatter — period table + both text exports: − = paid, + = received, inside the P&L
+        function fmtFunding(v) { const n = Number(v); if (v == null || !isFinite(n)) return '-'; return (n < 0 ? '-$' : '+$') + Math.abs(n).toFixed(2); }
+
         // State
         let isRunning = false;
         let isPaperMode = true;
@@ -10772,7 +10776,7 @@
             if (perf.period_performance && perf.period_performance.length > 0) {
                 lines.push(`\n${hr2}`);
                 lines.push('## Period Performance\n');
-                lines.push(`${'Period'.padEnd(12)} ${'#'.padEnd(6)} ${'Dir'.padEnd(10)} ${'WinRate'.padEnd(9)} ${'AvgP&L%'.padEnd(12)} ${'TotInv'.padEnd(12)} ${'TotNot'.padEnd(14)} ${'P&L/Inv'.padEnd(22)} ${'P&L/Not'.padEnd(24)} ${'PF'.padEnd(6)} ${'Fees'.padEnd(10)} ${'Slip%'.padEnd(8)} ${'Slip$'.padEnd(9)}`);
+                lines.push(`${'Period'.padEnd(12)} ${'#'.padEnd(6)} ${'Dir'.padEnd(10)} ${'WinRate'.padEnd(9)} ${'AvgP&L%'.padEnd(12)} ${'TotInv'.padEnd(12)} ${'TotNot'.padEnd(14)} ${'P&L/Inv'.padEnd(22)} ${'P&L/Not'.padEnd(24)} ${'PF'.padEnd(6)} ${'Fees'.padEnd(10)} ${'Funding'.padEnd(10)} ${'Slip%'.padEnd(8)} ${'Slip$'.padEnd(9)}`);
                 for (const r of perf.period_performance) {
                     const dirStr = `${r.longs}L/${r.shorts}S`;
                     const wrStr = r.count > 0 ? r.win_rate.toFixed(1) + '%' : '-';
@@ -10787,7 +10791,7 @@
                     const feesStr = '$' + Math.round(r.total_fees).toLocaleString('en-US');
                     const slipStr = r.avg_slippage_pct != null ? (r.avg_slippage_pct >= 0 ? '+' : '') + r.avg_slippage_pct.toFixed(3) + '%' : '-';
                     const slipUsdStr = r.total_slippage_usd != null ? (r.total_slippage_usd >= 0 ? '+$' : '-$') + Math.abs(r.total_slippage_usd).toFixed(2) : '-';
-                    lines.push(`${r.period.padEnd(12)} ${String(r.count).padEnd(6)} ${dirStr.padEnd(10)} ${wrStr.padEnd(9)} ${avgStr.padEnd(12)} ${invStr.padEnd(12)} ${notStr.padEnd(14)} ${pnlInvStr.padEnd(22)} ${pnlNotStr.padEnd(24)} ${pfStr.padEnd(6)} ${feesStr.padEnd(10)} ${slipStr.padEnd(8)} ${slipUsdStr.padEnd(9)}`);
+                    lines.push(`${r.period.padEnd(12)} ${String(r.count).padEnd(6)} ${dirStr.padEnd(10)} ${wrStr.padEnd(9)} ${avgStr.padEnd(12)} ${invStr.padEnd(12)} ${notStr.padEnd(14)} ${pnlInvStr.padEnd(22)} ${pnlNotStr.padEnd(24)} ${pfStr.padEnd(6)} ${feesStr.padEnd(10)} ${fmtFunding(r.total_funding).padEnd(10)} ${slipStr.padEnd(8)} ${slipUsdStr.padEnd(9)}`);
                 }
             }
 
@@ -12689,7 +12693,7 @@
                 if (perf.period_performance && perf.period_performance.length > 0) {
                     lines.push(`\n${hr2}`);
                     lines.push('## Period Performance\n');
-                    lines.push(`${'Period'.padEnd(12)} ${'#'.padEnd(6)} ${'Dir'.padEnd(10)} ${'WinRate'.padEnd(9)} ${'AvgP&L%'.padEnd(12)} ${'TotInv'.padEnd(12)} ${'TotNot'.padEnd(14)} ${'P&L/Inv'.padEnd(22)} ${'P&L/Not'.padEnd(24)} ${'PF'.padEnd(6)} ${'Fees'.padEnd(10)} ${'Slip%'.padEnd(8)} ${'Slip$'.padEnd(9)}`);
+                    lines.push(`${'Period'.padEnd(12)} ${'#'.padEnd(6)} ${'Dir'.padEnd(10)} ${'WinRate'.padEnd(9)} ${'AvgP&L%'.padEnd(12)} ${'TotInv'.padEnd(12)} ${'TotNot'.padEnd(14)} ${'P&L/Inv'.padEnd(22)} ${'P&L/Not'.padEnd(24)} ${'PF'.padEnd(6)} ${'Fees'.padEnd(10)} ${'Funding'.padEnd(10)} ${'Slip%'.padEnd(8)} ${'Slip$'.padEnd(9)}`);
                     for (const r of perf.period_performance) {
                         const dirStr = `${r.longs}L/${r.shorts}S`;
                         const wrStr = r.count > 0 ? r.win_rate.toFixed(1) + '%' : '-';
@@ -12704,7 +12708,7 @@
                         const feesStr = '$' + Math.round(r.total_fees).toLocaleString('en-US');
                         const slipStr = r.avg_slippage_pct != null ? (r.avg_slippage_pct >= 0 ? '+' : '') + r.avg_slippage_pct.toFixed(3) + '%' : '-';
                         const slipUsdStr = r.total_slippage_usd != null ? (r.total_slippage_usd >= 0 ? '+$' : '-$') + Math.abs(r.total_slippage_usd).toFixed(2) : '-';
-                        lines.push(`${r.period.padEnd(12)} ${String(r.count).padEnd(6)} ${dirStr.padEnd(10)} ${wrStr.padEnd(9)} ${avgStr.padEnd(12)} ${invStr.padEnd(12)} ${notStr.padEnd(14)} ${pnlInvStr.padEnd(22)} ${pnlNotStr.padEnd(24)} ${pfStr.padEnd(6)} ${feesStr.padEnd(10)} ${slipStr.padEnd(8)} ${slipUsdStr.padEnd(9)}`);
+                        lines.push(`${r.period.padEnd(12)} ${String(r.count).padEnd(6)} ${dirStr.padEnd(10)} ${wrStr.padEnd(9)} ${avgStr.padEnd(12)} ${invStr.padEnd(12)} ${notStr.padEnd(14)} ${pnlInvStr.padEnd(22)} ${pnlNotStr.padEnd(24)} ${pfStr.padEnd(6)} ${feesStr.padEnd(10)} ${fmtFunding(r.total_funding).padEnd(10)} ${slipStr.padEnd(8)} ${slipUsdStr.padEnd(9)}`);
                     }
                 }
 
@@ -14592,13 +14596,14 @@
                             <td class="px-3 py-2 text-right whitespace-nowrap ${pnlClass} font-medium">${pnlNotStr}</td>
                             <td class="px-3 py-2 text-right ${pfClass} font-medium">${safe(r.profit_factor) >= 999 ? '∞' : safe(r.profit_factor).toFixed(2)}</td>
                             <td class="px-3 py-2 text-right text-yellow-400">$${fmtNum(r.total_fees)}</td>
+                            <td class="px-3 py-2 text-right ${(Number(r.total_funding) || 0) < -0.005 ? 'text-red-400' : (Number(r.total_funding) || 0) > 0.005 ? 'text-emerald-400' : 'text-gray-400'}">${fmtFunding(r.total_funding)}</td>
                             <td class="px-3 py-2 text-right ${r.avg_slippage_pct != null ? (r.avg_slippage_pct > 0.02 ? 'text-red-400' : r.avg_slippage_pct < -0.02 ? 'text-emerald-400' : 'text-gray-300') : 'text-gray-500'}">${r.avg_slippage_pct != null ? (r.avg_slippage_pct >= 0 ? '+' : '') + r.avg_slippage_pct.toFixed(3) + '%' : '-'}</td>
                             <td class="px-3 py-2 text-right ${r.total_slippage_usd != null ? (r.total_slippage_usd > 1 ? 'text-red-400' : r.total_slippage_usd < -1 ? 'text-emerald-400' : 'text-gray-300') : 'text-gray-500'}">${r.total_slippage_usd != null ? (r.total_slippage_usd >= 0 ? '+' : '-') + '$' + Math.abs(r.total_slippage_usd).toFixed(2) : '-'}</td>
                             <td class="px-3 py-2 text-right ${projClass} font-medium">${projStr}</td>
                         </tr>`;
                     }).join('');
                 } else {
-                    ppBody.innerHTML = '<tr><td colspan="13" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                    ppBody.innerHTML = '<tr><td colspan="14" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                 }
                 
                 // Entry Funnel (Jun 17) — why so few normal trades
@@ -25541,7 +25546,7 @@
 
     <!-- Live Terminal — UI-only observability layer (additive, no trading impact) -->
     <script src="/static/live_terminal.js?v=13"></script>
-    <script src="/static/trade_chart.js?v=2" defer></script><!-- 📈 (536) trade chart -->
+    <script src="/static/trade_chart.js?v=3" defer></script><!-- 📈 (536) trade chart -->
 <!-- ============================================================
      JARVIS WELCOME — plays once on dashboard load after login.
      Triggered by sessionStorage flag set in login.html form submit.

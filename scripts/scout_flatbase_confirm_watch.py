@@ -194,7 +194,7 @@ def crossing_prefix(rows):
     return None
 
 
-def run(now_ms=None, paths=None, state_path=STATE, since_ms=None, bars_fn=None, ship_ms=None, dec_paths=None):
+def run(now_ms=None, paths=None, state_path=STATE, since_ms=None, bars_fn=None, ship_ms=None, dec_paths=None, m1_bars_fn=None):
     """→ markdown lines. since_ms None → the DECISION_LOG 417 commit + 10 min (not in git → NOT EVALUABLE). state_path None → no write. bars_fn(pair, te, now_ms) → bars or None; None → public klines.
     ship_ms None → the DECISION_LOG 428 commit + 10 min (not in git yet → the observe line still runs, no revert gate); False → not shipped.
     dec_paths → the decisions exports for the SKIPPED side line (None → Downloads + exports_archive/)."""
@@ -277,7 +277,8 @@ def run(now_ms=None, paths=None, state_path=STATE, since_ms=None, bars_fn=None, 
         post = allc[allc.o >= ship] if len(allc) else allc
         for nm, fn in (("revert gate", lambda: revert_lines(post, newest, now_ms, st if ok else None, state_path if ok else None)),
                        ("skipped side line", lambda: skipped_lines(ship, now_ms, dec_paths, bars_fn)),
-                       ("BANK-TYPE", lambda: bank_lines(post, now_ms, st if ok else None, state_path if ok else None, dec_paths, newest))):
+                       ("BANK-TYPE", lambda: bank_lines(post, now_ms, st if ok else None, state_path if ok else None, dec_paths, newest,
+                                                        bars_fn=m1_bars_fn))):
             try:   # one section's failure never hides the others (the revert gate above all)
                 L += fn()
             except Exception as e:
@@ -305,7 +306,87 @@ def bank_depth(fills, led):
     return f
 
 
-def bank_lines(c, now_ms, st, state_path, dec_paths=None, newest=None):
+M1_MARGIN = 1.0                     # 🏦🪞 (DECISION_LOG 539) the M1 shadow: the confirm must close ≥ this % below the S4 close (the frozen DL 429 level)
+S4_MATCH_PCT = 0.05                 # the S4 bar = the 4-h close before the fill whose close matches the stamped S4 price within this %
+
+
+def price_m1(bars, s4_px, te, now_ms):
+    """🏦🪞 (539) the M1 filter on ONE real shallow fill, priced on its own 5m path. bars = [[open ms, o, h, l, c], …] CLOSED, ascending,
+    covering ≥ 24 h before te → 96 h after. The S4 bar = the 4-h close before te whose close matches s4_px (± S4_MATCH_PCT); M1 enters at
+    the next 5m open after the FIRST 4-h close ≤ S4 × (1 − M1_MARGIN %) within 24 h of the S4 close (after te — the shallow confirm itself
+    is < 1 %), else SKIP (0 %); then today's exit from ITS entry (+5 / −10, 72 h). → (why, net %): TP · STOP · TIME · SKIP · PENDING ·
+    UNPRICED (no matching S4 bar / no path). PURE."""
+    if not len(bars) or not (s4_px and s4_px > 0):
+        return "UNPRICED", np.nan
+    b = np.asarray(bars, float)
+    t, o, h, l, c = b[:, 0].astype("int64"), b[:, 1], b[:, 2], b[:, 3], b[:, 4]
+    ce = t + M5
+    cand = np.flatnonzero((ce % H4 == 0) & (ce <= te - H4) & (ce >= te - CONFIRM_H * HOUR))   # 539 review: never the confirm bar itself
+    if not len(cand):
+        return "UNPRICED", np.nan
+    dev = np.abs(c[cand] / s4_px - 1) * 100
+    k = int(len(dev) - 1 - np.argmin(dev[::-1]))   # a tie → the LATEST matching 4-h close (the S4 that started this wait)
+    if dev[k] > S4_MATCH_PCT:
+        return "UNPRICED", np.nan
+    end = int(ce[cand[k]]) + CONFIRM_H * HOUR
+    hit = np.flatnonzero((ce % H4 == 0) & (ce > te) & (ce <= end) & (c <= s4_px * (1 - M1_MARGIN / 100)))
+    if not len(hit):
+        return ("SKIP", 0.0) if int(ce[-1]) >= end else ("PENDING", np.nan)
+    i0 = int(hit[0]) + 1
+    if i0 >= len(t):
+        return "PENDING", np.nan
+    Ee, t0 = float(o[i0]), int(t[i0])
+    for i in range(i0, len(t)):
+        if t[i] >= t0 + MAX_H * HOUR:
+            return "TIME", float(-(o[i] / Ee - 1) * 100 - TIME_FEE)
+        line = Ee * (1 + STOP_GROSS / 100)
+        if h[i] >= line:
+            return "STOP", float(STOP_NET if o[i] < line else -(o[i] / Ee - 1) * 100 - TIME_FEE)
+        if l[i] < Ee * (1 - TP_GROSS / 100):
+            return "TP", TP_NET
+    return "PENDING", np.nan
+
+
+def fetch_bars_m1(pair, te, now_ms, bud):
+    """5m closed bars from te − 24 h for 150 h (2 pages). → bars or None on a budget / error stop."""
+    start = (int(te) - CONFIRM_H * HOUR) // M5 * M5
+    out = []
+    for k in range(2):
+        st_ = start + k * PAGE_BARS * M5
+        if st_ > now_ms:
+            break
+        pg = LS.fapi_klines(pair, "5m", st_, PAGE_BARS, bud, CACHE, now_ms, fetch=True)
+        if pg is None or getattr(bud, "errors", 0):
+            return None
+        out += [q[:5] for q in pg]
+        if len(pg) < PAGE_BARS:
+            break
+    return out
+
+
+def m1_lines(sh, now_ms, bars_fn=None):
+    """🏦🪞 (539, operator 11-13: price every real shallow fill both ways) — observe only, NO verdict: the frozen DL 429 read decides."""
+    L = [f"  🪞 M1 shadow (DECISION_LOG 539, observe — the confirm must close ≥ {M1_MARGIN:g} % below S4, else keep waiting ≤ 24 h, else skip):"]
+    if not len(sh):
+        return L + ["    no shallow fills yet."]
+    bud = LS.Budget()
+    rows = []
+    for r in sh.itertuples():
+        s4 = (float(r.entry_frenzy_vwap) * (1 + float(r.entry_frenzy_vs_vwap_pct) / 100)
+              if pd.notna(getattr(r, "entry_frenzy_vwap", np.nan)) and pd.notna(getattr(r, "entry_frenzy_vs_vwap_pct", np.nan)) else None)
+        bars = (bars_fn or fetch_bars_m1)(r.pair, int(r.te), now_ms, bud)
+        why, pct = price_m1(bars or [], s4, int(r.te), now_ms) if bars is not None else ("UNPRICED", np.nan)
+        rows.append((r, why, pct))
+        L.append(f"    · {r.pair} {r.o:%m-%d %H:%M} today {r.pct:+.2f} % → M1 {why} {'' if pct != pct else f'{pct:+.2f} %'}")
+    done = [(r, p) for r, w, p in rows if w in ("TP", "STOP", "TIME", "SKIP")]
+    if done:
+        a = sum(float(r.pct) for r, _ in done)
+        b = sum(float(p) for _, p in done)
+        L.append(f"    priced {len(done)} of {len(rows)}: today Σ {a:+.2f} → M1 Σ {b:+.2f} (Δ {b - a:+.2f} pts) · pending / unpriced {len(rows) - len(done)}")
+    return L
+
+
+def bank_lines(c, now_ms, st, state_path, dec_paths=None, newest=None, bars_fn=None):
     """🏦 (429) the BANK-type tracker on the confirmed fills (opened ≥ the ship)."""
     L = [f"### 🏦 BANK-TYPE — confirm close < {BANK_DEPTH:g} % below the S4 close (DECISION_LOG 429; registration BANK 10-26 0.81 % · −10.09, never counted)", ""]
     keep, _ = _GK.split_operator_closed(c) if len(c) else (c, c)
@@ -328,6 +409,10 @@ def bank_lines(c, now_ms, st, state_path, dec_paths=None, newest=None):
           f"  unscored (not a confirm entry / no OPENED ledger row / stamp): N {len(un)}"]
     for r in sh.itertuples():
         L.append(f"    · {r.pair} {r.o:%m-%d %H:%M} depth {r.depth:.2f} % · {r.pct:+.2f} %")
+    try:   # 🏦🪞 (539) never takes the frozen BANK read down with it
+        L += m1_lines(sh, now_ms, bars_fn)
+    except Exception as e:
+        L.append(f"  🪞 M1 shadow unavailable this run ({str(e)[:80]})")
     rec = (st or {}).get(BANK_KEY)
     if rec is not None and not (isinstance(rec, dict) and {"state", "detail", "at", "run_at"} <= set(rec)):
         return L + [f"⚠ frozen BANK record damaged — operator restore needed ({BANK_KEY}); not re-decided.", ""]

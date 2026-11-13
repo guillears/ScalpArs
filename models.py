@@ -451,7 +451,9 @@ class Order(Base):
     entry_bear_eff24 = Column(Float, nullable=True)
     entry_bear_off24lo = Column(Float, nullable=True)
     entry_bear_bypass = Column(String(160), nullable=True)   # comma list of the BTC macro gates this fill passed through
-    funding_fee_usd = Column(Float, nullable=True)  # Aug 24 M6: Σ funding paid/received while open (live; negative = paid). NOT folded into pnl.
+    funding_fee_usd = Column(Float, nullable=True)  # Aug 24 M6: Σ funding paid/received while open (negative = paid). Paper too since DL 539.
+    funding_in_pnl = Column(Boolean, nullable=True)  # 💸 (DL 539) True = pnl / pnl_percentage already include funding_fee_usd (older rows: NULL = NOT in pnl)
+    funding_accrued_ms = Column(BigInteger, nullable=True)  # 💸 (DL 539) newest funding settlement (ms) already counted in funding_fee_usd while open
 
     # Jul 27 🚀 SPIKE full ship — option-D L2 state (SPIKE_CHASE longs).
     # spike_rsi_max = running maximum of 5m RSI(12) since entry (the RSI-cool exit

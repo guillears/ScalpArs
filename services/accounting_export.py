@@ -87,6 +87,8 @@ def trade_row(o) -> dict:
     fees = _f(getattr(o, "entry_fee", 0)) + _f(getattr(o, "exit_fee", 0))
     pnl = _f(getattr(o, "pnl", 0))
     funding = _f(getattr(o, "funding_fee_usd", 0))
+    if getattr(o, "funding_in_pnl", None):   # 💸 (DECISION_LOG 539) pnl already carries the funding: back it out → net of fees, ex funding
+        pnl -= funding
     size = _f(getattr(o, "notional_value", 0)) or _f(getattr(o, "entry_price", 0)) * _f(getattr(o, "quantity", 0))
     lev = _f(getattr(o, "leverage", 0)) or 1.0
     net = pnl + funding

@@ -1074,6 +1074,89 @@ def frenzy_willy_v2_config_errors(th) -> list:
     return errs
 
 
+# ── 🏃 2026-11-13 WILLY RUNNER (DECISION_LOG 541, operator declared override in paper) ─────────────────────────────────────────────────────
+# FRENZY_WILLY only (never HT), coins whose own 1h EMA20 is BELOW their EMA200 at the fill (entry_pair_1h_ema20_200_gap_pct < 0 — falling +
+# mild coins). Decided ONCE at the open and stored on the row (frenzy_willy_runner_k = k; NULL = today's exit). Such a row carries NO resting
+# take profit (services.resting_tp.rtp_row_target → None): at its target T (the row's own V2b TP) it does not sell — it ARMS a trail:
+#   line = max(peak − k × entry_atr_pct, +frenzy_willy_runner_floor_pct, −stop) → WILLY_RUNNER_TRAIL (market exit) when pnl ≤ line.
+# The floor (+0.10) means a trade that touched its target can never end a loss (the pure trail turned 16 backtest winners into losses).
+# Before the target: today's exit unchanged (−4 stop, late TP +0.25 from minute 30, 90-min cap). Once armed: no late TP; the 90-min cap stays.
+# Evidence (reports/WILLY_RUNNER_FLOOR_1113_rows.csv): falling + mild WILLY, 2 × ATR + 0.10 floor — backtest 115 fills Δ +88.7 pts vs today
+# (0 target-hit trades turned into losses), master 7 fills Δ +33.2. Rising coins: no gain (not run). Mechanism: short squeezes on falling
+# coins follow through after the target (63 % vs 37 %). ATR: gain grows with ATR (< 1.25 % ≈ 0, the trail sits next to today's exit).
+# 🔒 REVERT (scripts/scout_willy_runner_watch.py, verdict persisted): every runner fill priced at today's exit on its own path; early — Σ(runner −
+# today) < −5 pts at any point → REVERT · final — at the first 10 runner fills (all closed) Σ < 0 → REVERT, else KEEP. Decided once.
+WILLY_RUNNER_K_DEF, WILLY_RUNNER_FLOOR_DEF = 2.0, 0.10
+
+
+def frenzy_willy_runner_on(th) -> bool:
+    return getattr(th, 'frenzy_willy_runner_enabled', False) is True
+
+
+def frenzy_willy_runner_k_for(th, entry_strategy, pair_gap_pct, atr_pct) -> Optional[float]:
+    """the k a NEW fill stores (None = today's exit): switch on · FRENZY_WILLY (never HT) · the coin's 1h EMA20−200 gap known and < 0 ·
+    entry ATR % known and > 0 · k finite and > 0. Never raises."""
+    try:
+        if not frenzy_willy_runner_on(th) or str(entry_strategy or "") != "FRENZY_WILLY":
+            return None
+        g, a = _fin(pair_gap_pct), _fin(atr_pct)
+        k = _fin(getattr(th, 'frenzy_willy_runner_atr_k', WILLY_RUNNER_K_DEF))
+        if g is None or g >= 0 or a is None or a <= 0 or k is None or k <= 0:
+            return None
+        return float(k)
+    except Exception:
+        return None
+
+
+def frenzy_willy_runner_params(th, row) -> Optional[Tuple[float, float, float]]:
+    """(k, atr %, floor %) for a row that runs the runner, else None. Read from the ROW (restart-proof); the floor from the config
+    (blank / < 0 → +0.10). Never raises."""
+    try:
+        k, a = _fin(_g(row, 'frenzy_willy_runner_k')), _fin(_g(row, 'entry_atr_pct'))
+        if k is None or k <= 0 or a is None or a <= 0:
+            return None
+        fl = _fin(getattr(th, 'frenzy_willy_runner_floor_pct', WILLY_RUNNER_FLOOR_DEF))
+        return k, a, (fl if (fl is not None and fl >= 0) else WILLY_RUNNER_FLOOR_DEF)
+    except Exception:
+        return None
+
+
+def frenzy_willy_runner_arm_at(tp) -> float:
+    """the TAKER-net % at which the runner arms = where today's resting MAKER limit at T would have filled: T − (taker − maker) fee % (the
+    engine's pnl is taker-net, T is maker-net — review 541 M2: arming at T itself would miss the ≈ 0.027 % band today's limit books)."""
+    try:
+        import config as _cfg
+        gap = (float(_cfg.trading_config.taker_fee) - float(_cfg.trading_config.maker_fee)) * 100.0
+        return float(tp) - (gap if 0 <= gap < 0.2 else 0.0)
+    except Exception:
+        return float(tp)
+
+
+def frenzy_willy_runner_line(peak_pnl, tp, k, atr, floor, stop) -> float:
+    """the armed runner's exit line (net %): max(peak − k × atr, floor, stop). The peak is at least the target once armed."""
+    pk = max(float(peak_pnl), float(tp))
+    line = max(pk - float(k) * float(atr), float(floor))
+    return max(line, float(stop)) if stop is not None else line
+
+
+def frenzy_willy_runner_config_errors(th) -> list:
+    """🏃 (DECISION_LOG 541) PUT /api/config refusals for the WILLY runner fields."""
+    errs = []
+    if not isinstance(getattr(th, 'frenzy_willy_runner_enabled', False), bool):
+        errs.append("frenzy_willy_runner_enabled must be true or false")
+    k = _fin(getattr(th, 'frenzy_willy_runner_atr_k', WILLY_RUNNER_K_DEF))
+    if k is None or not (0 < k <= 10):
+        errs.append("frenzy_willy_runner_atr_k must be above 0 and at most 10 (× ATR below the peak)")
+    fl = _fin(getattr(th, 'frenzy_willy_runner_floor_pct', WILLY_RUNNER_FLOOR_DEF))
+    try:
+        wtp = frenzy_willy_levels(th)[0]
+    except Exception:
+        wtp = 1.25
+    if fl is None or not (0 <= fl < wtp):
+        errs.append(f"frenzy_willy_runner_floor_pct must be from 0 to below the WILLY take profit (+{wtp}%)")
+    return errs
+
+
 def frenzy_willy_exit_for(pnl, peak_pnl, th, held_minutes=None, stop_floor=None, resting_tp=False, row=None) -> Tuple[bool, str, Optional[float]]:
     """FRENZY_WILLY's own exit → (close, reason, line). Order: TP — pnl ≥ +tp → FRENZY_TP; a peak that already reached +tp while the close was
     missed (feed gap / failed close / restart) closes at once → FRENZY_TP if the exit pnl ≥ 0 else FRENZY_TP_LATE (never labelled a TP at a
@@ -1086,7 +1169,9 @@ def frenzy_willy_exit_for(pnl, peak_pnl, th, held_minutes=None, stop_floor=None,
     resting_tp=True (🎯 DECISION_LOG 296): a resting exchange TP limit is alive — neither TP branch fires here (the limit books the TP; the
     engine runs the through + grace safety net); stop and time cap are judged exactly as before.
     🎲² row (DECISION_LOG 356, an Order or its cache dict): the row's OWN take profit (frenzy_willy_tp_target_pct) replaces the config one.
-    🎲²ᵇ (DECISION_LOG 358) no floor: stop, late TP and time cap apply to every order. row None / a pre-V2 row → the config exit."""
+    🎲²ᵇ (DECISION_LOG 358) no floor: stop, late TP and time cap apply to every order. row None / a pre-V2 row → the config exit.
+    🏃 (DECISION_LOG 541) a row with frenzy_willy_runner_k (and no resting TP alive): reaching the target ARMS the trail instead of selling —
+    WILLY_RUNNER_TRAIL at max(peak − k × ATR, floor, stop); before the target the late TP / stop / cap as above; once armed the cap only."""
     tp, stop, mh = frenzy_willy_levels(th)
     if row is not None:
         tp = frenzy_willy_row_tp(th, row)
@@ -1094,6 +1179,23 @@ def frenzy_willy_exit_for(pnl, peak_pnl, th, held_minutes=None, stop_floor=None,
         p = float(pnl); pk = float(peak_pnl or 0.0)
         if stop_floor is not None:
             stop = float(stop_floor) if stop is None else max(stop, float(stop_floor))
+        run = frenzy_willy_runner_params(th, row) if (row is not None and not resting_tp) else None
+        if run is not None:
+            if max(pk, p) >= frenzy_willy_runner_arm_at(tp):            # armed (where today's resting limit at T would have filled)
+                line = frenzy_willy_runner_line(max(pk, p), tp, run[0], run[1], run[2], stop)
+                if p <= line:
+                    return True, "WILLY_RUNNER_TRAIL", line
+                if held_minutes is not None and float(held_minutes) >= mh:
+                    return True, "MAX_HOLD_TIME", p
+                return False, "WILLY_RUNNER_TRAIL", line
+            late_tp, late_reason = frenzy_willy_tp_at(th, held_minutes, tp_used=tp)
+            if late_reason == "WILLY_LATE_TP" and p >= late_tp:
+                return True, "WILLY_LATE_TP", late_tp
+            if stop is not None and p <= stop:
+                return True, "STOP_LOSS", stop
+            if held_minutes is not None and float(held_minutes) >= mh:
+                return True, "MAX_HOLD_TIME", p
+            return False, "MAX_HOLD_TIME", stop
         if p >= tp and not resting_tp:
             return True, "FRENZY_TP", tp
         late_tp, late_reason = frenzy_willy_tp_at(th, held_minutes, tp_used=tp)

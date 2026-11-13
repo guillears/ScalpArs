@@ -244,6 +244,8 @@ def dedup(raw):
     if not len(o):
         return o.assign(_k=pd.Series(dtype=object), batch=pd.Series(dtype=object))
     o = o[o.entry_strategy.astype(str).isin(STRATEGIES) & (o.direction.astype(str) == "LONG")].copy()
+    if "frenzy_willy_runner_k" in o.columns:   # 🏃 (DECISION_LOG 541) a runner row trails past its target — judged by scout_willy_runner_watch, never by the V2b gates
+        o = o[~(pd.to_numeric(o.frenzy_willy_runner_k, errors="coerce") > 0)].copy()
     o["_k"] = o.opened_at.astype(str).str[:19]
     if "_m" not in o:
         o["_m"] = 0.0

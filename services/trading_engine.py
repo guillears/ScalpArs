@@ -50,6 +50,7 @@ from services.touch_snapshot import TOUCH_LEVELS, touch_mark, touch_features, to
 from services.frenzy import (FRENZY_LITE_RETRY, FRENZY_LITE_FAMILY, frenzy_lite_retry_enabled, frenzy_lite_retry_pending,  # 🔁 (DECISION_LOG 316)
                              frenzy_lite_retry_pending_clean, frenzy_lite_retry_step, LITE_RETRY_OPEN, LITE_RETRY_DROP)
 from services.frenzy import frenzy_walk, frenzy_flagged, frenzy_long_status, frenzy_exit_for, frenzy_breaks, normal_hour_usd, frenzy_di_spread, frenzy_adx_delta, frenzy_vol_trend, frenzy_wide_ready, frenzy_wide_shadow, FRENZY_WIDE_CODES, global_volume_ratio, merge_klines, frenzy_wide_choppy, frenzy_wide_hold_green_block, frenzy_gvol_block, frenzy_bearish_block, frenzy_lite_status, frenzy_lite_stretch_id, FRENZY_LITE_READY, FRENZY_LITE_COUNTED, FRENZY_LITE_SHOWN, FRENZY_LITE_JUDGES, frenzy_lite_need, frenzy_willy_exit_for, frenzy_willy_levels, frenzy_willy_new_flag, frenzy_willy_a_cold_bars, frenzy_willy_late_bars, frenzy_willy_pending_clean, frenzy_willy_red, frenzy_willy_wait_ms, vol_mcap_ratio, frenzy_willy_a_nomiss_on, frenzy_willy_no_red_missed
+from services.frenzy import frenzy_willy_runner_k_for, frenzy_willy_runner_on   # 🏃 (DECISION_LOG 541) WILLY runner
 from services.frenzy import frenzy_willy_high_target, frenzy_willy_row_tp   # 🎲² (DECISION_LOG 356) WILLY exit V2 · 🎲²ᵇ (358) floor removed
 from services.frenzy import frenzy_willy_ht_tp, frenzy_willy_ht_target   # 🎯 (DECISION_LOG 537) HT's own base take profit
 from services.hard_tp_ladder import parse_hard_tp_ladder, hard_tp_ladder_floor, DEFAULT_LADDER_RUNGS
@@ -15295,6 +15296,18 @@ class TradingEngine:
                 _z_pair_gap = closed_ema_gap_pct(await asyncio.wait_for(binance_service.get_ohlcv(f"{pair[:-4]}/USDT:USDT", '1h', 260), 8.0), 20, 200)   # bounded: the bot open lane is held here (review)
         except Exception:
             _z_pair_gap = None
+        # 🏃 (DECISION_LOG 541) WILLY RUNNER — decided ONCE here from the fill's own stamps (the coin's 1h EMA20−200 gap just read + the entry
+        # ATR %), stored on the row: k = trail past the target (no resting TP on that row); None = today's exit. FRENZY_WILLY only.
+        _wrun_k = None
+        if _frenzy and _fz_es == "FRENZY_WILLY":
+            _wrun_k = frenzy_willy_runner_k_for(config.trading_config.thresholds, _fz_es, _z_pair_gap, entry_atr_pct)
+            if frenzy_willy_runner_on(config.trading_config.thresholds):
+                _wrun_why = ("RUNNER k=" + format(_wrun_k, "g") if _wrun_k else
+                             "today exit — gap UNREADABLE" if _z_pair_gap is None else
+                             "today exit — ATR UNREADABLE" if not entry_atr_pct else "today exit (coin not falling)")
+                if _wrun_k is None and (_z_pair_gap is None or not entry_atr_pct):
+                    self._record_filter_block("WILLY_RUNNER_UNREAD", "LONG")   # a possible runner fill lost to a missing stamp — counted, never silent
+                logger.info(f"[WILLY_RUNNER] {pair}: {_wrun_why} (1h ema20-200 gap={_z_pair_gap}, atr%={entry_atr_pct})")
         _zg = globals(); _zfresh = (_leash_time.time() - (_zg.get('_zone_stamps_at') or 0)) <= 1800
         # 🔒 Sep-30 book lock: final funds check → insert → commit, one open at a time across ALL pairs. The size above was set
         # from `available` read at sizing time; since then a MANUAL fill (dashboard) or a BNB top-up (15-min wake / a close's
@@ -15470,6 +15483,7 @@ class TradingEngine:
             frenzy_lite_tp_used=_lc_tp_used, lite_c_zone=_lc_zone,   # 🎯 (DECISION_LOG 301) LITE C: the TP decided at entry (NULL = config TP) · zone flag
             entry_frenzy_willy_spike_high=(entry_frenzy_willy_spike_high if (_frenzy and _fz_es in WILLY_EXIT_CLASS) else None),   # 🎲² (356) WILLY exit V2 stamps
             frenzy_willy_tp_target_pct=_wv2_tp,   # 🎲² (356) the WILLY TP decided at entry (NULL = pre-V2 row → config TP)
+            frenzy_willy_runner_k=_wrun_k,   # 🏃 (541) WILLY runner k (NULL = today's exit)
             entry_willy_ht_size_frac=_ht_frac_stamp,   # 📈 (365) HT only: the size fraction it opened at (the HT re-size ladder)
             entry_alt_corr24=_ac_stamp.get('entry_alt_corr24'), entry_alt_beta24=_ac_stamp.get('entry_alt_beta24'),   # 📈 (DECISION_LOG 383) OBS-R1 / R1b
             entry_mkt_up4h_pct=_mb_stamp.get('entry_mkt_up4h_pct'), entry_mkt_up4h_n=_mb_stamp.get('entry_mkt_up4h_n'),   # 🌡 (489)
@@ -15795,6 +15809,7 @@ class TradingEngine:
                 'pattern_fixed_sl_pct': _pcell_fixed_sl,
                 'frenzy_lite_tp_used': _lc_tp_used,   # 🎯 (DECISION_LOG 301) LITE C stored TP (NULL = config TP)
                 'frenzy_willy_tp_target_pct': _wv2_tp,   # 🎲² (356) WILLY exit V2 (row-derived exit)
+                'frenzy_willy_runner_k': _wrun_k,   # 🏃 (541) WILLY runner (row-derived exit)
             }
             if pair not in _open_orders_cache:
                 _open_orders_cache[pair] = []
@@ -18909,7 +18924,8 @@ class TradingEngine:
             _rtp_th = config.trading_config.thresholds
             _rtp_lock = float(getattr(_rtp_th, 'frenzy_lock_arm_pct', 0) or 0) > 0   # lock-then-trail REPLACES the fixed TP (not WILLY)
             if (_rtp_es in WILLY_EXIT_CLASS or (_rtp_es in ("FRENZY_LITE", "FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE_RETRY") and not _rtp_lock)) \
-                    and order.entry_price and order.notional_value:
+                    and order.entry_price and order.notional_value \
+                    and not getattr(order, 'frenzy_willy_runner_k', None):   # 🏃 (541) a runner row never rests a TP — no shadow
                 _rtp_tp = frenzy_willy_row_tp(_rtp_th, order) if _rtp_es in WILLY_EXIT_CLASS else frenzy_tp_for(_rtp_th, _rtp_es, getattr(order, 'frenzy_lite_tp_used', None))
                 _rtp_tick = cached_tick(binance_service.exchange.markets if getattr(binance_service, '_markets_loaded', False) else None,
                                         order.pair.replace('USDT', '/USDT:USDT'), order.entry_price)
@@ -26459,6 +26475,7 @@ class TradingEngine:
                 'exit_override_at': getattr(order, 'exit_override_at', None),   # ✎ operator exit override (survives the rebuild)
                 'frenzy_lite_tp_used': getattr(order, 'frenzy_lite_tp_used', None),   # 🎯 (DECISION_LOG 301) LITE C stored TP (restart-proof)
                 'frenzy_willy_tp_target_pct': getattr(order, 'frenzy_willy_tp_target_pct', None),   # 🎲² (356) WILLY exit V2 — restart-proof
+                'frenzy_willy_runner_k': getattr(order, 'frenzy_willy_runner_k', None),   # 🏃 (541) WILLY runner — restart-proof
             }
 
             if order.pair not in new_cache:

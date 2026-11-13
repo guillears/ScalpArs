@@ -1693,6 +1693,15 @@ class SignalThresholds(BaseModel):
     frenzy_willy_high_target_enabled: bool = True  # on (False = TP frenzy_willy_tp_pct, exactly the pre-356 exit)
     frenzy_willy_high_k_pct: float = 1.0          # target price = spike high × (1 − k %) (0–20)
     frenzy_willy_high_tp_max_pct: float = 8.0     # cap on the net target (≥ frenzy_willy_tp_pct, ≤ 50)
+    # 🏃 2026-11-13 WILLY RUNNER (DECISION_LOG 541, operator declared override in PAPER; services/frenzy.py frenzy_willy_runner_*): FRENZY_WILLY only
+    # (never HT) on coins whose 1h EMA20 < EMA200 at the fill → at the target it does not sell; it trails at max(peak − k × entry ATR %,
+    # +floor, −stop) → WILLY_RUNNER_TRAIL; no resting TP on those rows. Decided at the open, stored on the row (frenzy_willy_runner_k).
+    # Evidence: backtest 115 falling + mild WILLY fills Δ +88.7 pts vs today with the +0.10 floor (+134 without it, but 16 target-hit trades
+    # turned into losses), master 7 fills Δ +33.2; rising coins no gain. 🔒 REVERT (scripts/scout_willy_runner_watch.py, priced vs today's exit
+    # on every runner fill): Σ Δ < −5 pts at any point → off · at the first 10 runner fills Σ Δ < 0 → off · else keep. Code default OFF.
+    frenzy_willy_runner_enabled: bool = False
+    frenzy_willy_runner_atr_k: float = 2.0        # trail distance = k × the fill's ATR % below the peak (0 < k ≤ 10)
+    frenzy_willy_runner_floor_pct: float = 0.10   # once the target is touched the exit line never goes below this net % (0 ≤ floor < WILLY TP)
     # 🟥 Oct-8 (operator): A / B no longer open on the trigger bar — the trigger ARMS a pending entry that opens on the FIRST closed RED 5m bar
     # (close < open; unreadable ≠ red; a red trigger bar opens at once) within this many minutes of the trigger bar while the episode lasts;
     # else FRENZY_WILLY_RED_EXPIRED (no entry, the episode's A / B one-shot stays used). Guards are judged at the red bar; a global-hold /

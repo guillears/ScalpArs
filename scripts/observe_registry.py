@@ -84,6 +84,13 @@ EXIT = {
                                          "frenzy_willy_tp_pct": 1.25, "frenzy_willy_ht_tp_pct": 2.0, "frenzy_willy_max_hold_minutes": 90,
                                          "frenzy_willy_high_target_enabled": True, "frenzy_willy_stop_pct": 4.0, "frenzy_willy_high_k_pct": 1.0,
                                          "frenzy_willy_high_tp_max_pct": 8.0, "frenzy_willy_late_tp_minutes": 30.0, "frenzy_willy_late_tp_pct": 0.25}),
+    # 🏃 (541) WILLY runner revert gate: the live runner vs today's V2b exit at the row's target, walked on each fill's path → pinned to the V2b
+    # exit keys + the shipped runner knobs (a change to either makes the line STALE)
+    "scout_willy_runner_watch.py": dict(dl="541", sleeves="FRENZY_WILLY (1h EMA20 < EMA200)", walks={
+                                        "frenzy_willy_tp_pct": 1.25, "frenzy_willy_max_hold_minutes": 90, "frenzy_willy_high_target_enabled": True,
+                                        "frenzy_willy_stop_pct": 4.0, "frenzy_willy_high_k_pct": 1.0, "frenzy_willy_high_tp_max_pct": 8.0,
+                                        "frenzy_willy_late_tp_minutes": 30.0, "frenzy_willy_late_tp_pct": 0.25, "frenzy_willy_runner_enabled": True,
+                                        "frenzy_willy_runner_atr_k": 2.0, "frenzy_willy_runner_floor_pct": 0.10}),
     "study_surge_exit_grid.py": dict(dl="397", sleeves="SURGE_LONG", walks={"surge_long_exit_no_lock": True}),
 }
 # 🔂 (532) the second-chance revert gate: today's-exit shadow (sc_base_pnl) is the runner trail / ladder level at the trigger; the

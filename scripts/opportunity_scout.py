@@ -1476,6 +1476,14 @@ def run():
     except Exception as _whx_e:
         log(f"WILLY_HT_EXIT line failed: {_whx_e}")
         _rg_sec += ["## 👁 WILLY HT EXIT — watch lines", "", f"Unavailable this run ({str(_whx_e)[:120]}).", ""]
+    try:                                               # 🏃 Nov-13 WILLY RUNNER revert gate (DECISION_LOG 541; budgeted public 1m)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_willy_runner_watch as _wrn
+        _rg_sec += _wrn.run(now_ms)
+    except Exception as _wrn_e:
+        log(f"WILLY_RUNNER line failed: {_wrn_e}")
+        _rg_sec += ["## 🏃 WILLY RUNNER — revert gate", "", f"Unavailable this run ({str(_wrn_e)[:120]}).", ""]
     try:                                               # 🪜📈 Nov-12 KEEP THE PLANNED POSITION ON CAPPED COINS — revert gate (DECISION_LOG 535; stamped columns only)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

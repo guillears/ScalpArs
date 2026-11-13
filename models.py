@@ -647,6 +647,9 @@ class Order(Base):
     entry_frenzy_willy_spike_high = Column(Float, nullable=True)
     frenzy_willy_tp_target_pct = Column(Float, nullable=True)
     willy_floor_armed_at = Column(DateTime, nullable=True)
+    # 🏃 (DECISION_LOG 541) WILLY RUNNER: k (× entry_atr_pct below the peak) when this FRENZY_WILLY fill runs the trailing runner after its target
+    # (coin 1h EMA20 < EMA200 at the fill, switch on) — decided ONCE at the open; NULL = today's exit (and a resting TP as before).
+    frenzy_willy_runner_k = Column(Float, nullable=True)
     # 📈 (DECISION_LOG 365) FRENZY_WILLY_HT only: the size fraction of WILLY's margin this HT order opened at (frenzy_willy_ht_frac at entry) —
     # the HT re-size ladder counts each rung on the fills actually opened at it. NULL on every other fill and on HT fills before 365 (all 0.25).
     entry_willy_ht_size_frac = Column(Float, nullable=True)

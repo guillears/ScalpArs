@@ -97,6 +97,8 @@ def rtp_row_target(th, row, held_minutes=None) -> Optional[Tuple[float, str]]:
         if why is None and str(getattr(row, 'entry_strategy', None) or "") == "FLATBASE_SHORT":
             return _flatbase_row_target(th, row)   # 🩳 (348) the PRICE TP → the row's own net target (its entry fee)
         if why is None and str(getattr(row, 'entry_strategy', None) or "") in ("FRENZY_WILLY", "FRENZY_WILLY_HT"):
+            if _f(getattr(row, 'frenzy_willy_runner_k', None)):   # 🏃 (DECISION_LOG 541) a runner row trails past its target — no resting limit
+                return None
             return rtp_target(th, getattr(row, 'entry_strategy', None), held_minutes,
                               willy_tp=getattr(row, 'frenzy_willy_tp_target_pct', None))   # 🎲² (356) the row's stored TP · 🎲²ᵇ (358) late TP for every row
         if why is None:

@@ -153,3 +153,86 @@ def test_stop_section_not_evaluable_without_its_commit(monkeypatch):
     monkeypatch.setattr(W._GK, "dl_deploy_ms", lambda n, **k: None if n == 546 else 0)
     L = "\n".join(W._stop_section(pd.DataFrame(columns=["key", "status", "opened_at"]), pd.DataFrame(columns=["k", "opened_at"]), {}, None))
     assert "Not evaluable yet" in L and "EVAA" in L
+
+
+# 🛑🧱 DECISION_LOG 548 — the same stop lines on BLOCKED HT signals (separate line, own frozen keys)
+def _fake_blocked(n):
+    te0 = 1_900_000_000_000
+    return pd.DataFrame([dict(pair=f"P{i}USDT", sleeve="FRENZY_WILLY_HT", direction="LONG", t_ms=te0 + i * 7_200_000, te=te0 + i * 7_200_000 + 8000,
+                              price=1.0, E=1.001, lines="WILLY_FAILED_SPIKE", sole=True, snap={}, bar=str(i),
+                              day=pd.Timestamp(te0 + i * 7_200_000 + 8000, unit="ms").strftime("%Y-%m-%d"), key=f"P{i}USDT|FRENZY_WILLY_HT|{i}")
+                         for i in range(n)])
+
+
+def test_price_blocked_stop_label_and_pending(monkeypatch):
+    import scout_blocked_filters as SB
+    book = {0: {4: (2.0, "TP"), 6: (2.0, "TP"), 8: (2.0, "TP"), 10: (2.0, "TP")},          # never stopped → identical at every stop
+            1: {4: (-4.0, "STOP"), 6: (-6.0, "STOP"), 8: (0.25, "LATE_TP"), 10: (0.25, "LATE_TP")},
+            2: {4: (-4.0, "STOP"), 6: (-6.0, "STOP"), 8: (-8.0, "STOP"), 10: (None, "UNRES")}}   # a wider walk still filling in
+    def fake(r, t, now, pc, tc, bud):
+        i = int(r["bar"]); p, w = book[i][int(t["frenzy_willy_stop_pct"])]
+        return (p, w, "PRICED", r["te"] + 60_000) if p is not None else (None, w, "PENDING", None)
+    monkeypatch.setattr(SB, "price_frenzy", fake)
+    R = W.price_blocked(_fake_blocked(3), 2_000_000_000_000, fetch_ok=False).set_index("pair")
+    assert list(R.status) == ["PRICED", "PRICED", "PENDING"]
+    assert list(R.live_stop) == [False, True, True]                         # 'stopped' = the −4 walk's STOP
+    assert R.loc["P1USDT", "STOP8"] == 0.25 and R.loc["P1USDT", "NEW2"] == -4.0
+    F = R[R.status.eq("PRICED")].reset_index()
+    g = W.gate_stop(F, list(F.day))
+    assert g["STOP8"][2] == pytest.approx(4.25) and g["STOP6"][2] == pytest.approx(-2.0)   # Δ only on the stopped fill
+
+
+def test_blocked_section_not_evaluable_and_own_keys(monkeypatch):
+    monkeypatch.setattr(W._GK, "dl_deploy_ms", lambda n, **k: None if n == 548 else 0)
+    L = "\n".join(W._blocked_stop_section({}, None, 0, False))
+    assert "Not evaluable yet" in L and "548" in L
+
+
+def test_blocked_section_ignores_kept_line_frozen_keys(monkeypatch):
+    import scout_blocked_filters as SB
+    monkeypatch.setattr(W._GK, "dl_deploy_ms", lambda n, **k: 0)
+    monkeypatch.setattr(SB, "load_blocked", lambda paths=None, since_ms=None: _fake_blocked(2))
+    monkeypatch.setattr(SB, "price_frenzy", lambda r, t, now, pc, tc, bud: (-4.0, "STOP", "PRICED", r["te"] + 60_000))
+    st = {"STOP10": dict(verdict="NO CHANGE", detail="kept line", at="2026-11-20 00:00")}
+    L = "\n".join(W._blocked_stop_section(st, None, 2_000_000_000_000, False))
+    assert "**Blocked · stop −10**: **OBSERVING**" in L and "kept line" not in L            # its own keys — never the kept line's verdict
+    assert not any(k.startswith(W.BLK_PREFIX) for k in st)                                  # nothing frozen below the bar
+
+
+def test_price_blocked_shadow_order_and_row_error(monkeypatch):
+    import scout_blocked_filters as SB
+    B = _fake_blocked(4)
+    B.loc[1, "pair"] = "P0USDT"; B.loc[1, "key"] = "P0USDT|FRENZY_WILLY_HT|1"            # same pair, refused while row 0's shadow is open
+    B.index = [10, 30, 20, 40]                                                              # non-contiguous index, rows out of te order
+    B = B.iloc[::-1]
+    def fake(r, t, now, pc, tc, bud):
+        if r["bar"] == "3":
+            raise ValueError("bad snap")
+        return (-4.0, "STOP", "PRICED", r["te"] + 3 * 3_600_000)                            # each shadow open 3 h (> the 2 h spacing)
+    monkeypatch.setattr(SB, "price_frenzy", fake)
+    R = W.price_blocked(B, 2_000_000_000_000, fetch_ok=False).set_index("key")
+    assert R.loc["P0USDT|FRENZY_WILLY_HT|1", "status"] == "SHADOWED"
+    assert R.loc["P0USDT|FRENZY_WILLY_HT|0", "status"] == "PRICED" and R.loc["P2USDT|FRENZY_WILLY_HT|2", "status"] == "PRICED"
+    assert R.loc["P3USDT|FRENZY_WILLY_HT|3", "status"] == "NOT_EVALUABLE"                  # an error row, not a dead section
+    assert list(R.opened_at) == sorted(R.opened_at)
+
+
+def test_blocked_freeze_writes_own_keys(monkeypatch, tmp_path):
+    import scout_blocked_filters as SB
+    monkeypatch.setattr(W._GK, "dl_deploy_ms", lambda n, **k: 0)
+    B = _fake_blocked(8)
+    B["te"] = [1_900_000_000_000 + i * 86_400_000 for i in range(8)]                        # one per day → 8 days
+    B["day"] = [pd.Timestamp(t, unit="ms").strftime("%Y-%m-%d") for t in B.te]
+    monkeypatch.setattr(SB, "load_blocked", lambda paths=None, since_ms=None: B)
+    def fake(r, t, now, pc, tc, bud):
+        s_ = int(t["frenzy_willy_stop_pct"])
+        return ((-4.0, "STOP", "PRICED", r["te"] + 60_000) if s_ == 4 else (0.25, "LATE_TP", "PRICED", r["te"] + 60_000))
+    monkeypatch.setattr(SB, "price_frenzy", fake)
+    path = str(tmp_path / "st.json")
+    st = {"STOP6": dict(verdict="NO CHANGE", detail="kept line", at="x")}
+    W._blocked_stop_section(st, path, 2_000_000_000_000, False)
+    saved = json.load(open(path))
+    assert saved["STOP6"]["detail"] == "kept line"                                          # the kept line's freeze untouched
+    assert {"BLK_STOP6", "BLK_STOP8", "BLK_STOP10"} <= set(saved)
+    L = "\n".join(W._blocked_stop_section(saved, path, 2_000_000_000_000, False))
+    assert "(frozen" in L                                                                   # the second run reads the frozen verdict

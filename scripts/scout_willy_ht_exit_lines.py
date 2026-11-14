@@ -27,6 +27,12 @@ LINES      reports/STOP_WIDTH_KEPT_2026-11-14.md: on today's-filter kept HT fill
            Δeq_i = variant_i × 4 / s − NEW2_i on EVERY fill (a wider stop must ship at size × 4 / s to keep one stop ≈ 7.8 % of the account).
            🔒 decided ONCE per line when ≥ 6 live-stopped HT fills on ≥ 4 days are counted and no earlier fill is pending: Σ Δ > 0 ∧
            day-block bootstrap 95 % CI low > 0 ∧ Σ Δeq > 0 → OPERATOR CALL (a ship = size × 4 / s + its own revert gate) · else NO CHANGE.
+🛑🧱 BLOCKED (DECISION_LOG 548, operator 2026-11-14 — OBSERVE only, a SEPARATE line, never pooled) the same −6 / −8 / −10 lines on HT
+STOP LINES signals an armed filter BLOCKED (decisions-CSV e=BLOCKED, refused ≥ the 548 commit + 10 min), priced by the blocked-trade pricer
+           (scout_blocked_filters.price_frenzy: refusal + 8 s, 0.10 % slip, taker, today's HT exit with the stop moved; one shadow per pair).
+           'Stopped' = the −4 walk's STOP (no live fill — a wick live might ride counts, tilts wider). Same frozen bar as above, own state keys
+           BLK_STOP6 / 8 / 10; a pass = SUPPORTING evidence beside the kept-fill line. In-sample at registration (never counted): 17 HT −4 stops
+           incl. blocked, B25 + B26 → Σ Δ −6 +4.9 · −8 +7.3 · −10 +32.4 pts.
 PATHS      the study's 1m cache + this scout's own reports/backtest_cache/scout_willy_ht_exit/1m (public klines, ≤ MAX_CALLS / run, stop at
            X-MBX-USED-WEIGHT-1M ≥ 800, the shared Binance cooldown honoured and armed on 418 / 429).
 Usage: venv/bin/python -I scripts/scout_willy_ht_exit_lines.py [--no-fetch]
@@ -70,6 +76,8 @@ STOP_TODAY = 4.0
 STOP_MIN_STOPPED, STOP_MIN_DAYS = 6, 4
 LIVE_STOP_REASONS = ("STOP_LOSS", "BACKSTOP_STOP", "BACKSTOP")   # review 546: a live exchange-backstop stop is a live stop too
 HT_ACCT_PER_PCT = 1.95             # today's HT one size: % of the account per 1 % move (1.0 × 9,750 / 4 / 10,000 × 8×) — report text only
+DL_BLK = 548                       # 🛑🧱 (548) the same stop lines on HT signals an armed filter BLOCKED — a SEPARATE line, own gate
+BLK_PREFIX = "BLK_"                # its frozen verdicts: state keys BLK_STOP6 / BLK_STOP8 / BLK_STOP10
 MIN = 60_000
 
 def _load_1m(pair):
@@ -341,6 +349,117 @@ def _stop_section(R, d, st, state_path):
                 "CI low > 0 ∧ risk-equal Σ Δ > 0 → operator call, else no change (decided once)."]
 
 
+def price_blocked(B, now_ms, fetch_ok=True):
+    """🛑🧱 (548) blocked HT signals (scout_blocked_filters.load_blocked rows) priced with the blocked-trade pricer at today's stop (−4) and at
+    each STOP_LINES stop → DataFrame: key, pair, opened_at, day, status (PRICED / PENDING / NOT_EVALUABLE / SHADOWED), NEW2 (today's −4
+    price), STOP6 / 8 / 10, live_stop (= the −4 walk STOPPED: no live fill exists, the replica decides). Shadowing (one shadow per pair at a
+    time) is read on the −4 walk and applied to every stop (one cohort). A row is PRICED only when every stop priced."""
+    import scout_blocked_filters as SB
+    import scout_frenzy_v2b_shadow as VB
+    cols = ["key", "pair", "opened_at", "day", "status", "NEW2", "NEW2_why", "live_stop"] + [f"STOP{s_}" for s_ in STOP_LINES] \
+        + [f"STOP{s_}_why" for s_ in STOP_LINES]
+    price_blocked.last_budget = ""
+    if not len(B):
+        return pd.DataFrame(columns=cols)
+    bud = VB._Bud(bool(fetch_ok))
+    rec = B.to_dict("records")
+    stops = (STOP_TODAY,) + tuple(float(x) for x in STOP_LINES)
+    ths = {}
+    for s_ in stops:
+        ths[s_] = SB.th()
+        ths[s_]["frenzy_willy_stop_pct"] = s_
+    res = {s_: [] for s_ in stops}
+    pc, tc = {}, {}                                            # review 548: the path and the target do not depend on the stop — load once
+    for r in rec:                                              # review 548: rows outer, stops inner — a budget stop drops whole rows,
+        for s_ in stops:                                       # never only their wider walks
+            try:
+                res[s_].append(SB.price_frenzy(r, ths[s_], now_ms, pc, tc, bud))
+            except Exception as e:                             # review 548: one bad row never kills the section (price_all's pattern)
+                end = int(r["te"]) + (SB.exit_of(r["sleeve"], ths[s_])["cap"] + 1) * MIN
+                res[s_].append((None, f"ERR:{type(e).__name__}", SB._late_over(now_ms, end), None))
+    price_blocked.last_budget = bud.stop or ""
+    r4 = res[STOP_TODAY]
+    C = B.assign(pct=[x[0] for x in r4], why=[x[1] for x in r4], status=[x[2] for x in r4], exit_ms=[x[3] for x in r4])
+    t4 = SB.th()
+    t4["frenzy_willy_stop_pct"] = STOP_TODAY
+    C = SB.shadow_episodes(C, t4)
+    order = {k: i for i, k in enumerate(B.key)}                # res lists follow B's row order; shadow_episodes re-sorts C by te
+    out = []
+    for r in C.itertuples():
+        i = order[r.key]
+        st = r.status
+        if st == "PRICED" and any(res[float(s_)][i][2] != "PRICED" for s_ in STOP_LINES):
+            st = next(res[float(s_)][i][2] for s_ in STOP_LINES if res[float(s_)][i][2] != "PRICED")   # a wider walk still filling in
+        row = dict(key=r.key, pair=r.pair, opened_at=pd.Timestamp(int(r.te), unit="ms").strftime("%Y-%m-%dT%H:%M:%S"), day=r.day, status=st,
+                   NEW2=r.pct, NEW2_why=r.why, live_stop=(str(r.why) == "STOP"))
+        for s_ in STOP_LINES:
+            p, w = res[float(s_)][i][0], res[float(s_)][i][1]
+            row[f"STOP{s_}"], row[f"STOP{s_}_why"] = p, w
+        out.append(row)
+    return pd.DataFrame(out, columns=cols).sort_values(["opened_at", "key"], kind="stable").reset_index(drop=True)
+
+
+def _blocked_stop_section(st, state_path, now_ms, fetch_ok, dec_paths=None):
+    """🛑🧱 (548) the wider-stop lines on BLOCKED HT signals — a separate population (failed spikes the filter refuses), its own frozen gate
+    (same bar as the kept-fill lines), never pooled with them. → report lines."""
+    import scout_blocked_filters as SB
+    L = ["", "### 🛑🧱 HT wider-stop lines on BLOCKED signals (DECISION_LOG 548, observe only — a separate line, never pooled with the kept fills)"]
+    fl = _GK.dl_deploy_ms(DL_BLK, label="WILLY_HT_BLOCKED_STOP_LINES")
+    if fl is None:
+        return L + ["Not evaluable yet: the DECISION_LOG 548 commit is not in git history (counted from its commit + 10 min). "
+                    "In-sample at registration (never counted): 17 HT −4 stops incl. blocked, B25 + B26 — Σ Δ vs −4: −6 +4.9 · −8 +7.3 · −10 +32.4 pts."]
+    B = SB.load_blocked(paths=dec_paths, since_ms=fl)
+    B = B[B.sleeve.astype(str) == "FRENZY_WILLY_HT"] if len(B) else B
+    R = price_blocked(B, now_ms, fetch_ok)
+    F = R[R.status.eq("PRICED")].copy()
+    pend = R[R.status.eq("PENDING")]
+    days = list(F.day)
+    g = gate_stop(F, days, pend=list(pend.opened_at))
+    changed = False
+    for c, (v, det, _, _) in list(g.items()):
+        k = BLK_PREFIX + c
+        if k in st:
+            g[c] = (st[k]["verdict"], st[k]["detail"] + f" (frozen {st[k]['at']})", None, None)
+        elif v != "OBSERVING":
+            st[k] = dict(verdict=v, detail=det, at=pd.Timestamp.now(tz="UTC").strftime("%Y-%m-%d %H:%M")); changed = True
+    if changed and state_path:
+        try:
+            _save_state(st, state_path)
+        except Exception:
+            L.append("⚠ blocked stop-line state not saved this run.")
+    n_sh = int(R.status.eq("SHADOWED").sum()); n_ne = int(R.status.isin(["NOT_EVALUABLE"]).sum())
+    n_np = int((R.status.isin(["PENDING", "NOT_EVALUABLE"]) & R.NEW2_why.astype(str).eq("NO_PATH")).sum())
+    L.append(f"Blocked HT signals refused since {pd.Timestamp(int(fl), unit='ms'):%Y-%m-%d %H:%M} UTC: {len(R)} · priced {len(F)} "
+             f"({int(F.live_stop.astype(bool).sum())} stopped by the −4 walk) · pending {len(pend)} · shadowed {n_sh} · not evaluable {n_ne}. "
+             "Ruler = the blocked-trade pricer (refusal + 8 s, 0.10 % slip, taker, today's HT exit); 'stopped' is the replica's −4 stop — no live "
+             "fill exists, so a wick live polling might ride through counts here (tilts toward a wider stop); shadows (one per pair at a time) are "
+             "read on the −4 walk, so a refusal a wider-stop shadow would still cover counts as fresh (slight tilt wider). Paths come from the "
+             f"blocked-trade pricer's hourly fetch — without a path: {n_np}"
+             + (f" · ⚠ data budget stopped: {getattr(price_blocked, 'last_budget', '')}" if getattr(price_blocked, "last_budget", "") else "") + ".")
+    for s_ in STOP_LINES:
+        c = f"STOP{s_}"
+        L.append(f"- **Blocked · stop −{s_}**: **{g[c][0]}** — {g[c][1]}")
+    stp = F[F.live_stop.astype(bool)]
+    if len(stp):
+        L += ["", "| Refused + 8 s (UTC) | Pair | −4 | −6 | −8 | −10 |", "|---|---|---|---|---|---|"]
+        for r in stp.itertuples():
+            L.append(f"| {str(r.opened_at)[5:16].replace('T', ' ')} | {r.pair} | {r.NEW2:+.2f} | {r.STOP6:+.2f} ({r.STOP6_why}) | "
+                     f"{r.STOP8:+.2f} ({r.STOP8_why}) | {r.STOP10:+.2f} ({r.STOP10_why}) |")
+    if any(g[c][0] == "OPERATOR CALL" for c in g):
+        L.append("👁 A blocked-signal stop line passed — SUPPORTING evidence only (a different population): read it beside the kept-fill line above; "
+                 "a ship still needs size × 4 / s and its own revert gate.")
+    return L + [f"Gate (frozen 2026-11-14, DL 548): the same bar as the kept-fill lines — ≥ {STOP_MIN_STOPPED} −4-stopped blocked signals on ≥ "
+                f"{STOP_MIN_DAYS} days, none pending → Σ Δ > 0 ∧ 95 % CI low > 0 ∧ risk-equal Σ Δ > 0 → operator call (supporting), else no change (decided once)."]
+
+
+def _blocked_safe(st, state_path, now_ms, fetch_ok):
+    """🛑🧱 (548) the blocked-signal section in its own try (review 548: shown even when no kept HT fill is exported)."""
+    try:
+        return _blocked_stop_section(st, state_path, now_ms, fetch_ok)
+    except Exception as e:
+        return ["", f"### 🛑🧱 HT wider-stop lines on blocked signals — unavailable this run ({type(e).__name__}: {str(e)[:100]})."]
+
+
 def _state(path):
     try:
         st = json.load(open(path)) if (path and os.path.exists(path)) else {}
@@ -374,10 +493,11 @@ def _run(now_ms, paths, floor_ms, fetch_ok, state_path):
         S.TH = S.CF.load_th()
         floor = floor_ms if floor_ms is not None else _GK.dl_deploy_ms(DL, label="WILLY_HT_EXIT_LINES")
         if floor is None:
-            return L + ["Not evaluable yet: the DECISION_LOG 537 commit is not in git history (counted from its commit + 10 min).", ""]
+            return L + ["Not evaluable yet: the DECISION_LOG 537 commit is not in git history (counted from its commit + 10 min).", ""] \
+                + _blocked_safe(_state(state_path), state_path, now_ms, fetch_ok)
         d = load(paths)
         if not len(d):
-            return L + ["No closed WILLY HT fill in the exports yet.", ""]
+            return L + ["No closed WILLY HT fill in the exports yet.", ""] + _blocked_safe(_state(state_path), state_path, now_ms, fetch_ok)
         d["k"] = [S._key(o, p) for o, p in zip(d.opened_at, d.pair)]
         o_ms = [S.CF._ms(x) for x in d.opened_at]
         d["fwd"] = [(t is not None and t >= floor) for t in o_ms]
@@ -432,6 +552,7 @@ def _run(now_ms, paths, floor_ms, fetch_ok, state_path):
             L += _stop_section(R, d, st, state_path)
         except Exception as _se:
             L += ["", f"### 🛑 HT wider-stop watch lines — unavailable this run ({type(_se).__name__}: {str(_se)[:100]})."]
+        L += _blocked_safe(st, state_path, now_ms, fetch_ok)    # 🛑🧱 (548) its own try — never hides the lines above
         if g["TP2"][0] == "REVERT":
             L.append("⛔ TP2 GATE FIRED → REVERT: set frenzy_willy_ht_tp_pct 0 (dashboard WILLY_HT take profit) and log it in DECISION_LOG — operator applies.")
         if g["RUN15"][0] == "OPERATOR CALL":

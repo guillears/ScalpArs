@@ -6,6 +6,7 @@ import types
 
 import numpy as np
 import pandas as pd
+import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
@@ -103,3 +104,52 @@ def test_post_537_ht_fills_never_v2b_runners(monkeypatch):
     assert V.is_runner({col: 2.0, "entry_strategy": "FRENZY_WILLY_HT", "opened_at": "2027-01-02T00:00:00"}) is False
     assert V.is_runner({col: 3.0, "entry_strategy": "FRENZY_WILLY_HT", "opened_at": "2026-12-30T00:00:00"}) is True     # pre-537 HT unchanged
     assert V.is_runner({col: 3.0, "entry_strategy": "FRENZY_WILLY", "opened_at": "2027-01-02T00:00:00"}) is True        # WILLY unchanged
+
+
+# ── 🛑 DECISION_LOG 546 — HT wider-stop watch lines ──────────────────────────────────────────────────────────────────────────────────
+def _F(stopped, n, saved=True):
+    """n fills, the first `stopped` stopped live at −4; a wider stop saves them (+2) or not (−s)."""
+    rows = []
+    for i in range(n):
+        ls = i < stopped
+        rows.append(dict(live_stop=ls, NEW2=(-4.05 if ls else 2.0),
+                         **{f"STOP{s}": ((2.0 if saved else -s - 0.05) if ls else (-s - 0.05 if i == n - 1 else 2.0)) for s in W.STOP_LINES}))
+    return pd.DataFrame(rows)
+
+
+def test_stop_lines_pinned_verdicts():
+    g = W.gate_stop(_F(6, 20), _days(20, per=1))
+    assert g["STOP6"][0] == "OPERATOR CALL" and g["STOP10"][0] == "OPERATOR CALL"
+    assert g["STOP6"][2] == pytest.approx(6 * (2.0 + 4.05))      # Δ only on live-stopped fills (cohort = the first 6 fills)
+    assert W.gate_stop(_F(6, 20, saved=False), _days(20, per=1))["STOP6"][0] == "NO CHANGE"
+    assert W.gate_stop(_F(5, 20), _days(20, per=1))["STOP6"][0] == "OBSERVING"            # < 6 live-stopped
+    assert W.gate_stop(_F(6, 20), ["2027-01-01"] * 3 + ["2027-01-02"] * 17)["STOP6"][0] == "OBSERVING"   # stops on < 4 days
+    assert W.gate_stop(_F(6, 20), _days(20, per=1), held=True)["STOP6"][0] == "OBSERVING"
+    # risk-equal: winners shrink to × 4/s — many winners + few small saves → NO CHANGE even with Σ Δ > 0
+    F = _F(6, 200)
+    F = pd.concat([F.iloc[6:], F.iloc[:6]], ignore_index=True)    # 194 winners first, the 6 stops last → the cohort = all 200
+    g2 = W.gate_stop(F, _days(200, per=1))
+    assert g2["STOP10"][3] < 0 and g2["STOP10"][0] == "NO CHANGE"
+    # frozen prefix: fills after the 6th stop never join the decision (review 546)
+    F3 = pd.concat([_F(6, 6), pd.DataFrame([dict(live_stop=True, NEW2=-4.05, **{f"STOP{s}": -s - 0.05 for s in W.STOP_LINES})] * 20)], ignore_index=True)
+    assert W.gate_stop(F3, _days(26, per=1))["STOP6"][0] == "OPERATOR CALL"
+    # a pending fill opened before the deciding fill holds the decision; one opened after does not
+    F4 = _F(6, 6).assign(opened_at=[f"2027-01-0{i + 1}T00:00:00" for i in range(6)])
+    assert W.gate_stop(F4, _days(6, per=1), pend=["2027-01-03T12:00:00"])["STOP6"][0] == "OBSERVING"
+    assert W.gate_stop(F4, _days(6, per=1), pend=["2027-01-09T00:00:00"])["STOP6"][0] == "OPERATOR CALL"
+    assert W.stop_cut(_F(5, 20), _days(20, per=1)) is None
+
+
+def test_leg_stop_restores_constant():
+    P = dict(te=0, t=np.array([60_000, 120_000]), hi=np.array([0.0, 0.0]), lo=np.array([-5.0, -5.0]), cl=np.array([-5.0, -5.0]),
+             op=np.array([np.nan, np.nan]), bar=np.array([True, True]), end_ms=10 ** 9)
+    old = W.S.STOP
+    assert W._leg_stop(P, 2.0, 4)[1] == "STOP" and W._leg_stop(P, 2.0, 6)[1] != "STOP"
+    assert W.S.STOP == old
+    assert W.STOP_LINES == (6, 8, 10) and W.STOP_TODAY == 4.0 and (W.STOP_MIN_STOPPED, W.STOP_MIN_DAYS) == (6, 4) and W.DL_STOP == 546
+
+
+def test_stop_section_not_evaluable_without_its_commit(monkeypatch):
+    monkeypatch.setattr(W._GK, "dl_deploy_ms", lambda n, **k: None if n == 546 else 0)
+    L = "\n".join(W._stop_section(pd.DataFrame(columns=["key", "status", "opened_at"]), pd.DataFrame(columns=["k", "opened_at"]), {}, None))
+    assert "Not evaluable yet" in L and "EVAA" in L

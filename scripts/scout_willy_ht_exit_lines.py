@@ -18,6 +18,15 @@ COHORT     CLOSED full-size FRENZY_WILLY_HT fills (*_PROBE out, operator closes 
            REVERT · else KEEP (a go-live is a separate decision).
            RUN15 (observe): at 15 fills, Δ = RUN15 − NEW2: Σ Δ > 0 ∧ day-block bootstrap 95 % CI low > 0 ∧ day sign-flip p ≤ 0.10 → OPERATOR CALL
            · else NO CHANGE. Both wait while an earlier fill is pending and need ≥ 2 days. Frozen in reports/SCOUT_WILLY_HT_EXIT_LINES.json.
+🛑 STOP    (DECISION_LOG 546, operator 2026-11-14 — OBSERVE only, pre-registered, never re-fit) would a WIDER HT stop pay? Study
+LINES      reports/STOP_WIDTH_KEPT_2026-11-14.md: on today's-filter kept HT fills both stop-outs recovered — ICNT (B25) at a −6 stop, EVAA (B26)
+           only at −10 — 2 fills = watch only. Lines STOP6 / STOP8 / STOP10 = today's HT exit (TP T_new, late +0.25 from 30, cap 90) with the
+           stop at −6 / −8 / −10 instead of −4, walked on each fill's path. COHORT = forward HT fills opened ≥ the DL 546 commit + 10 min (EVAA
+           / ICNT are the motivating fills — never counted). Δ_i = variant − NEW2 ONLY on fills that stopped LIVE (close_reason STOP_LOSS); a
+           fill live did not stop counts Δ 0 (CLAUDE.md exit/stop CF rule — a replica-only stop is a wick live rode through). RISK-EQUAL
+           Δeq_i = variant_i × 4 / s − NEW2_i on EVERY fill (a wider stop must ship at size × 4 / s to keep one stop ≈ 7.8 % of the account).
+           🔒 decided ONCE per line when ≥ 6 live-stopped HT fills on ≥ 4 days are counted and no earlier fill is pending: Σ Δ > 0 ∧
+           day-block bootstrap 95 % CI low > 0 ∧ Σ Δeq > 0 → OPERATOR CALL (a ship = size × 4 / s + its own revert gate) · else NO CHANGE.
 PATHS      the study's 1m cache + this scout's own reports/backtest_cache/scout_willy_ht_exit/1m (public klines, ≤ MAX_CALLS / run, stop at
            X-MBX-USED-WEIGHT-1M ≥ 800, the shared Binance cooldown honoured and armed on 418 / 429).
 Usage: venv/bin/python -I scripts/scout_willy_ht_exit_lines.py [--no-fetch]
@@ -55,6 +64,12 @@ EXPORT_GLOB = os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")
 STATE = os.path.join(_R, "reports", "SCOUT_WILLY_HT_EXIT_LINES.json")
 K1_DIR = os.path.join(_R, "reports", "backtest_cache", "scout_willy_ht_exit", "1m")
 MAX_CALLS, WEIGHT_STOP = 20, 800
+DL_STOP = 546
+STOP_LINES = (6, 8, 10)            # 🛑 (546) the wider HT stops watched (today −4 = frenzy_willy_stop_pct, registry-pinned)
+STOP_TODAY = 4.0
+STOP_MIN_STOPPED, STOP_MIN_DAYS = 6, 4
+LIVE_STOP_REASONS = ("STOP_LOSS", "BACKSTOP_STOP", "BACKSTOP")   # review 546: a live exchange-backstop stop is a live stop too
+HT_ACCT_PER_PCT = 1.95             # today's HT one size: % of the account per 1 % move (1.0 × 9,750 / 4 / 10,000 × 8×) — report text only
 MIN = 60_000
 
 def _load_1m(pair):
@@ -181,6 +196,59 @@ def gate(D, days, held=False):
     return out
 
 
+def _leg_stop(P, tp, stop):
+    """the study's walker with its stop at −stop (S.STOP is a module constant — set and always restored)."""
+    old = S.STOP
+    try:
+        S.STOP = float(stop)
+        return S.leg(P, tp)
+    finally:
+        S.STOP = old
+
+
+def stop_cut(F, days):
+    """🛑 (546) the frozen cohort: the shortest open-time prefix holding ≥ STOP_MIN_STOPPED live-stopped fills on ≥ STOP_MIN_DAYS days → its
+    length, or None while not reached (review 546: the decision never depends on how often the scout runs). Pure."""
+    ls = F.live_stop.fillna(False).astype(bool).to_numpy() if len(F) else np.array([], bool)
+    seen = set()
+    for i, (k, dd) in enumerate(zip(ls, days)):
+        if k:
+            seen.add(dd)
+            if int(ls[:i + 1].sum()) >= STOP_MIN_STOPPED and len(seen) >= STOP_MIN_DAYS:
+                return i + 1
+    return None
+
+
+def gate_stop(F, days, held=False, pend=()):
+    """🛑 (546) F = per counted fill (open-time order): live_stop (bool), NEW2, STOP6 / STOP8 / STOP10 (net %), opened_at (optional); days
+    aligned; pend = opened_at of forward fills whose path is still filling in → {line: (verdict, detail, Σ Δ, Σ Δeq)}. Decided on the
+    frozen prefix (stop_cut) only; held while a pending fill opened before its last fill. Pure."""
+    out = {}
+    n = stop_cut(F, days)
+    if n is not None:
+        F, days = F.iloc[:n], list(days)[:n]
+        if "opened_at" in F and any(str(p) < str(F.opened_at.iloc[-1]) for p in pend):
+            held = True
+    ls = F.live_stop.fillna(False).astype(bool).to_numpy() if len(F) else np.array([], bool)
+    n_st = int(ls.sum()); d_st = len({d for d, k in zip(days, ls) if k})
+    for s_ in STOP_LINES:
+        c = f"STOP{s_}"
+        v = F[c].to_numpy(float) if len(F) else np.array([])
+        nw = F.NEW2.to_numpy(float) if len(F) else np.array([])
+        dl = np.where(ls, v - nw, 0.0)
+        deq = np.where(ls, v, nw) * (STOP_TODAY / s_) - nw
+        sd, se = float(np.nansum(dl)), float(np.nansum(deq))
+        if n is None or held:
+            why = ("an earlier fill is still pending · " if held else "") + f"{n_st} of {STOP_MIN_STOPPED} live-stopped fills on {d_st} of {STOP_MIN_DAYS} days"
+            out[c] = ("OBSERVING", f"{why} · Σ Δ {sd:+.2f} pts · risk-equal Σ Δ {se:+.2f}", sd, se)
+            continue
+        lo, hi = S.boot_ci(dl, days)
+        ok = sd > 0 and lo == lo and lo > 0 and se > 0
+        out[c] = (("OPERATOR CALL" if ok else "NO CHANGE"), f"{len(F)} fills · {n_st} live-stopped · Σ Δ {sd:+.2f} pts · 95 % CI [{lo:+.2f}, {hi:+.2f}] · "
+                  f"risk-equal (size × {STOP_TODAY / s_:.2f}) Σ Δ {se:+.2f}", sd, se)
+    return out
+
+
 def price(use):
     """→ DataFrame per fill: T_old / T_new, OLD125 · NEW2 · RUN15 (net %, NaN = unpriced) + why, booked, status. The study's walker."""
     rows, cache, tcache = [], {}, {}
@@ -209,9 +277,68 @@ def price(use):
         run = S.leg(P, t_old, run_k=1.5, atr=base["atr"]) if (base["atr"] and base["atr"] > 0) else (float("nan"), "NO_ATR")
         st = "UNRES" if (old[1] == "UNRES" or new[1] == "UNRES") else "priced"
         st = "T_UNKNOWN" if (st == "priced" and t_src == "assumed") else st   # never counted (it would bias Δ toward +2)
+        wide = {f"STOP{s_}": _leg_stop(P, t_new, s_) for s_ in STOP_LINES}       # 🛑 (546)
         rows.append(dict(base, status=st, T_old=t_old, T_new=t_new, T_src=t_src, OLD125=old[0], OLD125_why=old[1], NEW2=new[0], NEW2_why=new[1],
-                         RUN15=(run[0] if run[1] != "UNRES" else float("nan")), RUN15_why=run[1]))
+                         RUN15=(run[0] if run[1] != "UNRES" else float("nan")), RUN15_why=run[1],
+                         live_stop=str(r.get("close_reason")).upper().split(":")[0].strip() in LIVE_STOP_REASONS,
+                         **{k: (v[0] if v[1] != "UNRES" else float("nan")) for k, v in wide.items()}, **{k + "_why": v[1] for k, v in wide.items()}))
     return pd.DataFrame(rows)
+
+
+def _stop_section(R, d, st, state_path):
+    """🛑 (546) the wider-stop watch lines → report lines; verdicts frozen in the same state file (keys STOP6 / STOP8 / STOP10)."""
+    L = ["", "### 🛑 HT wider-stop watch lines (DECISION_LOG 546, observe only)"]
+    fl = _GK.dl_deploy_ms(DL_STOP, label="WILLY_HT_STOP_LINES")
+    if fl is None:
+        return L + ["Not evaluable yet: the DECISION_LOG 546 commit is not in git history (counted from its commit + 10 min).",
+                    "Motivating fills (never counted): ICNT B25 11-08 −4.05 (−6 → +0.25) · EVAA B26 11-14 −4.33 (−10 → +8.00)."]
+    o_ms = dict(zip(d.k, [S.CF._ms(x) for x in d.opened_at]))
+    R = R.assign(fwd2=[(o_ms.get(k) is not None and o_ms.get(k) >= fl) for k in R.key])
+    tu = R.status.eq("T_UNKNOWN") & (pd.to_numeric(R.get("stamped_T"), errors="coerce") - HT_TP_SHIPPED).abs().lt(1e-6)
+    ok_st = R.status.eq("priced") | tu                      # review 546: T_new = +2 is known when the row stamped the HT TP (not when unstamped)
+    F = R[R.fwd2 & ok_st].sort_values("opened_at").copy()
+    for c in [f"STOP{s_}" for s_ in STOP_LINES]:
+        if c not in F:
+            F[c] = np.nan
+    F["live_stop"] = F["live_stop"].fillna(False).astype(bool) if "live_stop" in F else False
+    wide_unres = F[~F[[f"STOP{s_}" for s_ in STOP_LINES]].notna().all(axis=1)]   # review 546: a wider walk still filling in = pending
+    F = F[F[[f"STOP{s_}" for s_ in STOP_LINES]].notna().all(axis=1)]
+    pend = R[R.fwd2 & ~ok_st]
+    pu = pend[pend.status.eq("UNRES")]
+    days = list(pd.to_datetime(F.opened_at).dt.strftime("%Y-%m-%d"))
+    g = gate_stop(F, days, pend=list(pu.opened_at) + list(wide_unres.opened_at))
+    changed = False
+    for c, (v, det, _, _) in list(g.items()):
+        if c in st:
+            g[c] = (st[c]["verdict"], st[c]["detail"] + f" (frozen {st[c]['at']})", None, None)
+        elif v != "OBSERVING":
+            st[c] = dict(verdict=v, detail=det, at=pd.Timestamp.now(tz="UTC").strftime("%Y-%m-%d %H:%M")); changed = True
+    if changed and state_path:
+        try:
+            _save_state(st, state_path)
+        except Exception:
+            L.append("⚠ stop-line state not saved this run.")
+    L.append(f"Forward since {pd.Timestamp(int(fl), unit='ms'):%Y-%m-%d %H:%M} UTC: {len(F)} priced HT fills, {int(F.live_stop.astype(bool).sum())} "
+             f"stopped live · pending {len(pend) + len(wide_unres)}. Motivating fills (never counted): ICNT B25 −4.05 (−6 → +0.25) · EVAA B26 −4.33 (−10 → +8.00).")
+    for s_ in STOP_LINES:
+        c = f"STOP{s_}"
+        L.append(f"- **Stop −{s_}** (one stop ≈ {s_ * HT_ACCT_PER_PCT:.1f} % of the account at today's size): **{g[c][0]}** — {g[c][1]}")
+    stp = F[F.live_stop.astype(bool)]
+    off = stp[stp.NEW2_why.astype(str) != "STOP"] if "NEW2_why" in stp else stp.iloc[0:0]
+    if len(off):
+        L.append(f"⚠ {len(off)} live-stopped fill(s) the replica did NOT stop at −4 ({', '.join(off.pair)}) — their Δ is measured from the replica, read with care.")
+    nop = pend[pend.status.astype(str).isin(["no path", "no entry"])]
+    if len(nop):
+        L.append(f"⚠ {len(nop)} forward fill(s) could not be priced ({', '.join(nop.pair.astype(str))}) — outside the stop cohort.")
+    if len(stp):
+        L += ["", "| Opened (UTC) | Pair | live −4 (booked) | −6 | −8 | −10 |", "|---|---|---|---|---|---|"]
+        for r in stp.itertuples():
+            L.append(f"| {str(r.opened_at)[5:16].replace('T', ' ')} | {r.pair} | {r.booked:+.2f} | {r.STOP6:+.2f} ({r.STOP6_why}) | "
+                     f"{r.STOP8:+.2f} ({r.STOP8_why}) | {r.STOP10:+.2f} ({r.STOP10_why}) |")
+    if any(g[c][0] == "OPERATOR CALL" for c in g):
+        L.append("👁 A wider-stop line passed → OPERATOR CALL: ship only at size × 4 / s (one stop stays ≈ 7.8 % of the account) with its own revert gate.")
+    return L + [f"Gate (frozen 2026-11-14): ≥ {STOP_MIN_STOPPED} live-stopped HT fills on ≥ {STOP_MIN_DAYS} days, none pending → Σ Δ > 0 ∧ 95 % "
+                "CI low > 0 ∧ risk-equal Σ Δ > 0 → operator call, else no change (decided once)."]
 
 
 def _state(path):
@@ -301,6 +428,10 @@ def _run(now_ms, paths, floor_ms, fetch_ok, state_path):
         bad = live[(live.NEW2 - live.booked).abs() > 0.15]
         if len(bad):
             L.append(f"⚠ replica ≠ booked on {len(bad)} forward fill(s) by > 0.15 pt ({', '.join(bad.pair)}) — read those with care.")
+        try:                                                   # review 546: the stop lines can never hide the TP2 / RUN15 banners
+            L += _stop_section(R, d, st, state_path)
+        except Exception as _se:
+            L += ["", f"### 🛑 HT wider-stop watch lines — unavailable this run ({type(_se).__name__}: {str(_se)[:100]})."]
         if g["TP2"][0] == "REVERT":
             L.append("⛔ TP2 GATE FIRED → REVERT: set frenzy_willy_ht_tp_pct 0 (dashboard WILLY_HT take profit) and log it in DECISION_LOG — operator applies.")
         if g["RUN15"][0] == "OPERATOR CALL":

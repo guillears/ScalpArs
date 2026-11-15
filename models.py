@@ -58,6 +58,11 @@ class Order(Base):
     # price at the order (NULL = guard off / book unreadable) · the planned notional when the guard shrank the entry (NULL = not shrunk)
     entry_depth_fillable_usd = Column(Float, nullable=True)
     entry_depth_shrunk_from = Column(Float, nullable=True)
+    # 📖🧢 (DECISION_LOG 553) capped entry (live FRENZY / SURGE / FLATBASE): the limit price sent (the guard's ceiling) · filled ÷ requested
+    # quantity · share of the filled quantity that filled at once (the rest filled while resting). NULL = market-order path.
+    entry_cap_price = Column(Float, nullable=True)
+    entry_cap_fill_frac = Column(Float, nullable=True)
+    entry_cap_immediate_frac = Column(Float, nullable=True)
     shadow_rtp_price = Column(Float, nullable=True)
     shadow_rtp_filled = Column(Boolean, nullable=True)
     shadow_rtp_pnl_pct = Column(Float, nullable=True)

@@ -111,7 +111,7 @@ def test_a_cancelled_task_still_flattens(monkeypatch):
 def test_open_position_wiring():
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
     assert "    @serialized_per_pair(lane=BOT_OPEN_LANE)\n    @flatten_unbooked_live_fill\n    async def open_position(" in eng
-    assert eng.count("self._note_live_fill(pair, symbol, direction, quantity, actual_price)") == 2     # maker and taker live fills
+    assert eng.count("self._note_live_fill(pair, symbol, direction, quantity, actual_price)") == 3     # maker, capped (DL 553) and taker live fills
     i = eng.index("        db.add(transaction)\n\n        await locked_commit(db)\n")
     assert "_st_fill['committed'] = True" in eng[i:i + 400]                                           # marked right after the commit
     assert "_st_fill['bk'] = _bk_algo_id" in eng

@@ -14,6 +14,7 @@ Lines (sleeve → refuse when):
   FRENZY_WILLY_HT  WILLY_FAILED_SPIKE  the same                                             (DL 511)
   FRENZY_LITE_RETRY RETRY_BTC1H        BTC 1 h EMA20 slope ≤ 0                               (DL 415)
   FRENZY_LITE      LITE_BTC_EMA20_DOWN BTC 5 m EMA20 slope ≤ 0 (the RAW slope — the engine's display copy reads an unreadable slope as 0)  (DL 522)
+                   LITE_BTC_RSI_HOT    BTC RSI (the entry stamp, 1 dp) ≥ 70 — BTC overbought                (DL 554, declared override)
   FRENZY_LONG      LONG_WEAK_FRENZY    frenzy volume multiple ≤ 119× normal                  (DL 525)
   SPIKE_FADE       OBS-F1 late weak spike  BTC 1 d EMA50 > EMA200 (late tape) ∧ pair +DI ≤ 48.5 ∧ price ≤ 1.80 % above the pair's EMA13  (DL 384)
   MOMENTUM LONG    ML_MKT_HOT          > 50 % of the rolling top-100 up over 4 h (services/mkt_up4h share > 0.50)   (DL 416 / 489)
@@ -26,6 +27,7 @@ WILLY_GAP_EMA_GAP_MAX = 0.90
 FAILED_SPIKE_VWAP_MAX = 0.0
 RETRY_BTC1H_MAX = 0.0
 LITE_EMA20_MAX = 0.0
+LITE_BTC_RSI_HOT_MIN = 70.0        # (DL 554) the textbook overbought line, NOT fitted (75 sat just above the one winner — cherry-picked)
 LONG_WEAK_VOL_MAX = 119.0
 FADE_LATE_GAP_MIN = 0.0            # BTC 1 d EMA50 / EMA200 − 1 (%) > this = late tape
 FADE_POS_DI_MAX = 48.5
@@ -40,6 +42,7 @@ TOGGLES = {
     "WILLY_HT_FAILED_SPIKE": "watch_block_willy_ht_failed_spike",
     "RETRY_BTC1H": "watch_block_retry_btc1h",
     "LITE_BTC_EMA20_DOWN": "watch_block_lite_btc_ema20_down",
+    "LITE_BTC_RSI_HOT": "watch_block_lite_btc_rsi_hot",
     "LONG_WEAK_FRENZY": "watch_block_long_weak_frenzy",
     "FADE_LATE_WEAK": "watch_block_fade_late_weak",
     "ML_MKT_HOT": "watch_block_ml_mkt_hot",
@@ -80,9 +83,15 @@ def retry_blocks(th, btc_1h_slope):
     return ["RETRY_BTC1H"] if (_on(th, "RETRY_BTC1H") and v is not None and v <= RETRY_BTC1H_MAX) else []
 
 
-def lite_blocks(th, btc_ema20_slope_raw):
+def lite_blocks(th, btc_ema20_slope_raw, btc_rsi=None):
+    out = []
     v = _num(btc_ema20_slope_raw)
-    return ["LITE_BTC_EMA20_DOWN"] if (_on(th, "LITE_BTC_EMA20_DOWN") and v is not None and v <= LITE_EMA20_MAX) else []
+    if _on(th, "LITE_BTC_EMA20_DOWN") and v is not None and v <= LITE_EMA20_MAX:
+        out.append("LITE_BTC_EMA20_DOWN")
+    r = _num(btc_rsi)
+    if _on(th, "LITE_BTC_RSI_HOT") and r is not None and round(r, 1) >= LITE_BTC_RSI_HOT_MIN:   # judged on the stamp's 1-dp value (master parity)
+        out.append("LITE_BTC_RSI_HOT")
+    return out
 
 
 def long_blocks(th, frenzy_vol_mult):
@@ -111,7 +120,7 @@ def ml_blocks(th, mkt_hot_share, bull_pct):
 
 
 def frenzy_blocks(th, sleeve, adx=None, ema_gap_8_13=None, vs_vwap_pct=None, btc_1h_slope=None, btc_ema20_slope_raw=None,
-                  frenzy_vol_mult=None):
+                  frenzy_vol_mult=None, btc_rsi=None):
     """the FRENZY open helper's single call: sleeve = the order's entry_strategy → its refusing lines (FRENZY_WIDE / unknown → [])."""
     if sleeve == "FRENZY_WILLY":
         return willy_blocks(th, adx, ema_gap_8_13, vs_vwap_pct, ht=False)
@@ -120,7 +129,7 @@ def frenzy_blocks(th, sleeve, adx=None, ema_gap_8_13=None, vs_vwap_pct=None, btc
     if sleeve == "FRENZY_LITE_RETRY":
         return retry_blocks(th, btc_1h_slope)
     if sleeve == "FRENZY_LITE":
-        return lite_blocks(th, btc_ema20_slope_raw)
+        return lite_blocks(th, btc_ema20_slope_raw, btc_rsi)
     if sleeve == "FRENZY_LONG":
         return long_blocks(th, frenzy_vol_mult)
     return []

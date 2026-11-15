@@ -1770,6 +1770,138 @@ class BinanceService:
             logger.error(f"[BINANCE] Error creating limit order for {symbol}: {e}")
             return None
 
+    _CAP_TERMINAL = ('closed', 'canceled', 'cancelled', 'expired', 'rejected')
+
+    async def _cap_settle(self, symbol: str, oid, px: float, st: Dict, cid: Optional[str] = None) -> Dict:
+        """📖🧢 (DL 553 deep review B1 / B2) make the capped order TERMINAL and read its final fill: cancel → re-read, re-sending the cancel on
+        every non-terminal read (5 tries) → else cancel_all_orders(symbol) (regular orders only — never the algo backstops; the pair has no
+        open row (PAIR_HELD) so only this order is there, but an operator's own app order on the symbol would be cancelled too) → one more
+        read. Still not terminal → 'unconfirmed' and the final size falls back to the live position. Writes filled / average into `st`."""
+        def _q(x):
+            return {'origClientOrderId': cid} if (cid and not oid) else {}
+        final = None
+        _not_found = 0
+        for _i in range(5):
+            if final is not None:
+                break
+            try:
+                if oid:
+                    await self.exchange.cancel_order(oid, symbol)
+                elif cid:
+                    await self.exchange.cancel_order(None, symbol, params={'origClientOrderId': cid})
+            except Exception:
+                pass                                       # "unknown order" = it filled / was cancelled meanwhile — the re-read decides
+            await asyncio.sleep(0.3 if _i == 0 else 0.5)
+            try:
+                o = await (self.exchange.fetch_order(oid, symbol) if oid else self.exchange.fetch_order(None, symbol, params={'origClientOrderId': cid}))
+                oid = oid or o.get('id')
+                cur = {'status': o.get('status'), 'filled': float(o.get('filled') or 0), 'average': float(o.get('average') or 0)}
+                if cur['status'] in self._CAP_TERMINAL:
+                    final = cur
+            except Exception as e:
+                self._detect_ban(e)
+                if not oid and isinstance(e, ccxt.OrderNotFound):
+                    _not_found += 1
+                    if _not_found >= 2:                           # (re-review N1) searched by client id twice: it was never placed
+                        final = {'status': 'canceled', 'filled': 0.0, 'average': 0.0}
+        unconfirmed = False
+        if final is None:
+            try:
+                await self.exchange.cancel_all_orders(symbol)
+                await asyncio.sleep(0.5)
+                if oid:
+                    o = await self.exchange.fetch_order(oid, symbol)
+                    if o.get('status') in self._CAP_TERMINAL:
+                        final = {'status': o.get('status'), 'filled': float(o.get('filled') or 0), 'average': float(o.get('average') or 0)}
+            except Exception as e:
+                self._detect_ban(e)
+        if final is None:
+            unconfirmed = True
+            try:
+                pos = await self.get_position_for_symbol(symbol)
+                final = {'filled': abs(float((pos or {}).get('contracts') or 0)), 'average': float((pos or {}).get('entry_price') or 0) or px}
+                logger.critical(f"[CAPPED_ENTRY] {symbol}: order {oid or cid} NOT confirmed terminal after cancel + cancel-all — booking the live "
+                                f"position {final['filled']} @ {final['average']} (a later fill would not be ours to book: CHECK BINANCE)")
+            except Exception as e:
+                final = {'filled': float(st.get('filled') or 0), 'average': float(st.get('average') or 0) or px}
+                logger.critical(f"[CAPPED_ENTRY] {symbol}: order {oid or cid} AND position unreadable ({e}) — booking the at-once fill "
+                                f"{final['filled']} (CHECK BINANCE)")
+        st.update(filled=float(final.get('filled') or 0), average=float(final.get('average') or 0) or px, unconfirmed=unconfirmed, id=oid)
+        return st
+
+    async def create_capped_entry(self, symbol: str, side: str, amount: float, limit_price: float, wait_s: float = 15.0,
+                                  poll_s: float = 1.0, status: Optional[Dict] = None) -> Optional[Dict]:
+        """📖🧢 (DECISION_LOG 553) a capped ENTRY: a GTC limit at `limit_price` (the depth guard's ceiling — the caller has already set and
+        verified the leverage, so nothing runs between its book read and this order). What fills at once fills; the rest rests up to wait_s
+        seconds, then is cancelled. → {'id', 'amount' (filled), 'price' (average), 'immediate', 'requested', 'limit', 'wait_s', 'unconfirmed'}
+        — amount 0 = nothing bought. None = refused before sending (status['sent'] stays False).
+        Deep review: ① a cancel (deploy restart) at ANY point after the send runs the shielded settle (cancel + final read) and writes
+        status['filled'] / ['average'] before re-raising, so the caller can flatten what filled · ② a send that raised after leaving is
+        recovered by its client order id · ③ the final size never trusts a missing read (cancel-all, then the live position, flagged)."""
+        st = status if status is not None else {}
+        try:
+            await self._check_ban()
+            await self.load_markets()
+            amount = float(self.exchange.amount_to_precision(symbol, amount))
+            px = float(self.exchange.price_to_precision(symbol, limit_price))
+            if (side == 'buy' and px > limit_price * (1 + 1e-12)) or (side == 'sell' and px < limit_price * (1 - 1e-12)):
+                px = float(limit_price)                              # the formatter rounded the wrong way: keep the tick-safe price
+            _mkt = self.exchange.market(symbol)
+            _min_amt = ((_mkt.get('limits') or {}).get('amount') or {}).get('min')
+            _min_cost = ((_mkt.get('limits') or {}).get('cost') or {}).get('min') or 5.0
+            if amount <= 0 or (_min_amt and amount < float(_min_amt)) or amount * px < float(_min_cost):
+                logger.error(f"[CAPPED_ENTRY] {symbol}: {amount} @ {px} below the exchange minimum — order not sent")
+                return None
+        except Exception as e:
+            self._detect_ban(e)
+            logger.error(f"[CAPPED_ENTRY] {symbol}: pre-send failed ({e}) — order not sent")
+            return None
+        import uuid as _uuid
+        cid = f"cap{_uuid.uuid4().hex[:24]}"
+        st.update(sent=True, filled=0.0, average=0.0, id=None, cid=cid)
+        oid, immediate, t0 = None, 0.0, time.time()
+        try:
+            try:
+                order = await self.exchange.create_order(symbol=symbol, type='limit', side=side, amount=amount, price=px,
+                                                         params={'timeInForce': 'GTC', 'newClientOrderId': cid})
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:                                   # it may have left: recover it by its client id (review M1)
+                self._detect_ban(e)
+                if not isinstance(e, ccxt.NetworkError):             # (re-review N1) a definite rejection (margin, invalid order …): nothing rests
+                    logger.error(f"[CAPPED_ENTRY] {symbol}: order rejected ({e}) — not sent")
+                    return None
+                logger.error(f"[CAPPED_ENTRY] {symbol}: send raised ({e}) — recovering order {cid}")
+                await asyncio.shield(self._cap_settle(symbol, None, px, st, cid))
+                if float(st.get('filled') or 0) <= 0 and not st.get('unconfirmed'):
+                    return None
+                return {'id': st.get('id'), 'amount': float(st['filled']), 'price': float(st['average']), 'immediate': float(st['filled']),
+                        'requested': amount, 'limit': px, 'wait_s': round(time.time() - t0, 2), 'unconfirmed': bool(st.get('unconfirmed'))}
+            oid = order.get('id')
+            immediate = float(order.get('filled') or 0)              # RESULT response type: the crossing fill is in the reply
+            cur = {'status': order.get('status'), 'filled': immediate, 'average': float(order.get('average') or 0)}
+            st.update(id=oid, filled=immediate, average=cur['average'] or px)
+            while cur.get('status') not in self._CAP_TERMINAL and time.time() - t0 < float(wait_s):
+                await asyncio.sleep(poll_s)
+                _s = await self.fetch_order_status(symbol, oid)
+                if _s:
+                    cur = _s
+                    st.update(filled=float(_s.get('filled') or 0), average=float(_s.get('average') or 0) or px)
+            if cur.get('status') == 'closed':
+                st.update(filled=float(cur.get('filled') or 0), average=float(cur.get('average') or 0) or px, unconfirmed=False)
+            else:
+                await asyncio.shield(self._cap_settle(symbol, oid, px, st, cid))
+        except BaseException:
+            # a cancel (deploy restart) mid-wait: settle under shield, record the fill for the caller's flatten, re-raise
+            try:
+                await asyncio.shield(self._cap_settle(symbol, oid, px, st, cid))
+            except BaseException:
+                pass
+            raise
+        filled = float(st.get('filled') or 0)
+        return {'id': oid, 'amount': filled, 'price': float(st.get('average') or 0) or px, 'immediate': min(immediate, filled),
+                'requested': amount, 'limit': px, 'wait_s': round(time.time() - t0, 2), 'unconfirmed': bool(st.get('unconfirmed'))}
+
     async def fetch_order_status(self, symbol: str, order_id: str) -> Optional[Dict]:
         """Check the fill status of an order"""
         try:

@@ -44,3 +44,40 @@ def depth_guard_size(planned_notional, fillable_usd, min_frac):
     if f < max(0.0, float(min_frac or 0.0)) * n:
         return SKIP, f
     return SHRINK, f
+
+
+# ── 📖🧢 (DECISION_LOG 553) CAPPED ENTRY — the guarded order can never fill above the price the guard measured ─────────────────────────────
+# Operator 2026-11-15 (INIT LITE: fill 0.32 % above the book the guard read, ~1 s later): the entry is a LIMIT order at the guard's ceiling
+# (best price ± max_sweep_pct, rounded to the tick on the safe side); what fills at once fills, the rest rests up to wait_s seconds (fills
+# only if the price comes back to the ceiling), then is cancelled — the trade keeps what filled. No fill at all = no trade.
+
+import math as _math
+
+
+def cap_price(best, direction, max_sweep_pct, tick):
+    """the guard's ceiling as an order price: LONG best × (1 + p) rounded DOWN to the tick (never above the ceiling) · SHORT best × (1 − p)
+    rounded UP. None when the inputs are unusable."""
+    try:
+        b, p, t = float(best), float(max_sweep_pct), float(tick or 0)
+        if b <= 0 or p < 0:
+            return None
+        raw = b * (1 + p / 100.0) if direction == "LONG" else b * (1 - p / 100.0)
+        if t <= 0:
+            return raw
+        steps = raw / t
+        n = _math.floor(steps + 1e-9) if direction == "LONG" else _math.ceil(steps - 1e-9)
+        px = n * t
+        if direction == "LONG" and px < b:          # a ceiling below the best ask could never fill: at least the best price
+            px = b
+        if direction != "LONG" and px > b:
+            px = b
+        return px
+    except (TypeError, ValueError):
+        return None
+
+
+def capped_fill_fee(immediate_qty, total_qty, avg_price, taker_rate, maker_rate):
+    """entry fee of a capped entry: the part that filled at once crossed the book (taker), the part that filled while resting was maker."""
+    q, q0, px = max(0.0, float(total_qty or 0)), max(0.0, float(immediate_qty or 0)), float(avg_price or 0)
+    q0 = min(q0, q)
+    return q0 * px * float(taker_rate or 0) + (q - q0) * px * float(maker_rate or 0)

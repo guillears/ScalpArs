@@ -28,7 +28,7 @@ from services.binance_service import binance_service, is_leverage_blocked
 from services.indicators import closed_ema_gap_pct, last_closed_bar_ret_pct, closed_wilder_ndi, fade_laggard_block, calculate_indicators, get_signal, check_exit_conditions, calculate_pnl, determine_macro_regime, is_signal_direction_active, gap_expand_marginal, gap_expand_flat, gap_min_band, _rsi_adx_block_rule, rsiceil_band, adxmax_band, adxmax2_band, gminflat_band
 from services.regime import classify_btc_regime
 from services.ml_second_chance import sc_params, sc_in_zone, sc_base_reason, sc_phase2_exit, net_pnl_pct as _sc_net_pnl_pct, SC_URGENT
-from services.entry_depth import depth_fillable_usd, depth_guard_size, FULL as DEPTH_FULL, SHRINK as DEPTH_SHRINK, SKIP as DEPTH_SKIP   # 📖 (DECISION_LOG 551)
+from services.entry_depth import cap_price, capped_fill_fee, depth_fillable_usd, depth_guard_size, FULL as DEPTH_FULL, SHRINK as DEPTH_SHRINK, SKIP as DEPTH_SKIP   # 📖 (DECISION_LOG 551)
 from services.ml_risk_cap import worst_stop_pct as _mlrc_worst_stop, open_trade_risk_pct as _mlrc_trade_risk, open_risk_pct_of_account as _mlrc_open_pct, fit_notional as _mlrc_fit
 from services.surge import surge_trigger, surge_entry_open, surge_pair_pick, surge_tripwire, surge_live_readings, wilder_atr_pct, surge_gvol_gate, surge_long_ema_gap_block, SURGE_LONG_EMA_GAP, SURGE_LONG_EMA_GAP_FAILOPEN
 from services.orderbook_stats import orderbook_metrics, OB_FIELDS
@@ -4416,7 +4416,7 @@ class TradingEngine:
     STAMP_SLEEVE_PREFIXES = ('entry_frenzy_', 'entry_flatbase_', 'entry_surge_', 'entry_br_', 'entry_bear_', 'entry_willy_', 'entry_book_')
     STAMP_SLEEVE_ONLY = ('entry_order_lag_s', 'entry_fill_vs_book_pct', 'entry_chop_burst_prior_fill_s', 'entry_long_heat_flags',
                          'entry_pair_rank', 'entry_macro_trend', 'entry_ml_risk_open_pct', 'entry_ml_risk_shrunk_from',
-                         'entry_depth_fillable_usd', 'entry_depth_shrunk_from')   # sleeve / path specific — NULL elsewhere is by design
+                         'entry_depth_fillable_usd', 'entry_depth_shrunk_from', 'entry_cap_price', 'entry_cap_fill_frac', 'entry_cap_immediate_frac')   # sleeve / path specific — NULL elsewhere is by design
     STAMP_BOOKING = ('entry_price', 'entry_fee', 'entry_strategy', 'entry_order_type')
     STAMP_LEGACY = ('entry_btc_regime_started_at',)   # no code path writes it (0 % on every sleeve) — kept for old CSVs, never required
     STAMP_BEST_EFFORT = ('entry_mcap_usd', 'entry_cmc_rank', 'entry_vol_mcap_ratio', 'entry_pair_1d_ndi', 'entry_funding_rate',
@@ -12233,14 +12233,15 @@ class TradingEngine:
                 vs_vwap_pct=(round(flag['vs_vwap_pct'], 3) if flag.get('vs_vwap_pct') is not None else None),   # review: the stamp's rounding
                 btc_1h_slope=(_ef.get('entry_btc_1h_slope') if _ef.get('entry_btc_1h_slope') is not None else _g.get('_current_btc_1h_slope')),
                 btc_ema20_slope_raw=_g.get('_btc_ema20_slope_pct_raw'),
-                frenzy_vol_mult=(round(flag['vol_mult'], 1) if flag.get('vol_mult') is not None else None))
+                frenzy_vol_mult=(round(flag['vol_mult'], 1) if flag.get('vol_mult') is not None else None),
+                btc_rsi=(_ef.get('entry_btc_rsi') if _ef.get('entry_btc_rsi') is not None else _g.get('_current_btc_rsi')))   # 🧱 (554) LITE_BTC_RSI_HOT
             if _wfl:
                 _wcode = watch_block_code(_es, _wfl)
                 self._record_filter_block(_wcode, "LONG")
                 flag[_lfk] = f"{_bar_dt:%m-%d %H:%M} {_tg}refused: armed filter {' + '.join(_wfl)}"
                 logger.info(f"[{_es}] {pair}: {_sig} but armed filter {' + '.join(_wfl)} — skipped ({_wcode}; adx={(indicators or {}).get('adx')} "
                             f"gap8_13={_ef.get('entry_ema_gap_8_13')} vs_vwap={flag.get('vs_vwap_pct')} vol={flag.get('vol_mult')} "
-                            f"btc1h={_ef.get('entry_btc_1h_slope')} btc_ema20_raw={_g.get('_btc_ema20_slope_pct_raw')})")
+                            f"btc1h={_ef.get('entry_btc_1h_slope')} btc_ema20_raw={_g.get('_btc_ema20_slope_pct_raw')} btc_rsi={_ef.get('entry_btc_rsi')})")
                 _wef = dict(_ef)
                 _wef.update(entry_adx=(indicators or {}).get('adx'), entry_rsi=(indicators or {}).get('rsi'), entry_atr_pct=atr,
                             entry_frenzy_vs_vwap_pct=flag.get('vs_vwap_pct'), entry_frenzy_vol_mult=flag.get('vol_mult'),
@@ -14954,6 +14955,8 @@ class TradingEngine:
         _sg_live_px = None
         _sg_ob = None
         _dg_fill = _dg_from = None   # 📖 (DECISION_LOG 551) entry depth guard stamps
+        _cap_on = False; _cap_px = None; _cap_tick = None; _cap_sym = None   # 📖🧢 (DECISION_LOG 553) capped entry
+        _cap_stamp = {}
         _eb_bid = _eb_ask = _eb_lag = None   # 📏 (295) execution-quality shadow: the book read just before the order (FRENZY / SURGE only)
         if _frenzy and frenzy_bar_open_ms is not None:   # 🔥 Oct-3 (lane review), just before the order path: _frenzy_open judged lateness BEFORE waiting for the
             _fz_late2 = (_leash_time.time() * 1000 - int(frenzy_bar_open_ms)) / 1000.0   # bot open lane — a scan open can hold it 15–45 s
@@ -14975,6 +14978,22 @@ class TradingEngine:
             maker_enabled = False
             try:   # the fresh book: WS trackers exist only for pairs already held, and a SURGE pair never is (PAIR_HELD)
                 _dg_on = bool(getattr(config.trading_config.investment, 'entry_depth_guard_enabled', False))   # 📖 (551) 50 levels: same request weight (2) as 5
+                # 📖🧢 (DECISION_LOG 553) capped entry, live only: set + verify the leverage and read the tick BEFORE the book read, so the order
+                # leaves right after it (was: set_leverage + a ticker read between the read and the market order, ~1 s on INIT 11-15).
+                # A leverage that cannot be confirmed → the plain market-order path (which re-checks and blocks the pair as before).
+                _cap_on = bool(not self.is_paper_mode and _dg_on and getattr(config.trading_config.investment, 'entry_depth_cap_enabled', False)
+                               and leverage and float(leverage) >= 1 and float(leverage).is_integer())
+                if _cap_on:
+                    try:
+                        _cap_sym = pair.replace('USDT', '/USDT:USDT')
+                        _cap_lv = await asyncio.wait_for(binance_service.set_leverage(_cap_sym, int(leverage)), 5.0)
+                        _cap_tick = await binance_service.get_tick_size(_cap_sym)
+                        if _cap_lv != int(leverage):
+                            logger.warning(f"[CAPPED_ENTRY] {pair}: leverage {_cap_lv}× ≠ {int(leverage)}× — market-order path")
+                            _cap_on = False
+                    except Exception as _cle:
+                        logger.warning(f"[CAPPED_ENTRY] {pair}: leverage pre-set failed ({str(_cle)[:60]}) — market-order path")
+                        _cap_on = False
                 _sg_ob = await asyncio.wait_for(binance_service.fetch_orderbook(pair.replace('USDT', '/USDT:USDT'), limit=(50 if _dg_on else 5)), 5.0)   # bounded: the bot open lane is held
                 _sg_live_px = float(_sg_ob['best_ask'] if direction == 'LONG' else _sg_ob['best_bid']) if _sg_ob else None
                 try:   # 📏 (295) observe only, own guard (never resets the book price above) — the book this order meets + when it was read
@@ -15059,6 +15078,13 @@ class TradingEngine:
                     logger.info(f"[DEPTH_GUARD] {pair} {direction} {_wh_es}: book holds ${_dg_fill:,.0f} within "
                                 f"{getattr(_dg_inv, 'entry_depth_guard_max_sweep_pct', 0.15)}% → notional ${_dg_from:,.0f} → ${notional_value:,.0f} "
                                 f"(margin ${investment:.2f} at {leverage}×)")
+            if _cap_on and _sg_ob:   # 📖🧢 (553) the order price = the guard's ceiling (same book, same max push)
+                try:
+                    _cap_side = _sg_ob.get('asks') if direction == 'LONG' else _sg_ob.get('bids')
+                    _cap_px = cap_price(float(_cap_side[0][0]), direction,
+                                        float(getattr(config.trading_config.investment, 'entry_depth_guard_max_sweep_pct', 0.15) or 0.15), _cap_tick)
+                except Exception:
+                    _cap_px = None
         maker_fee_rate = getattr(tc, 'maker_fee', tc.trading_fee)
         taker_fee_rate = getattr(tc, 'taker_fee', tc.trading_fee)
 
@@ -15148,6 +15174,52 @@ class TradingEngine:
                 else:
                     logger.error(f"[MAKER_ENTRY] {pair}: Both maker and fallback failed")
                     return None
+            elif _cap_px:
+                # 📖🧢 (DECISION_LOG 553) CAPPED ENTRY: a limit at the guard's ceiling — fills at once up to it, the rest rests up to
+                # entry_depth_cap_wait_s, then is cancelled. The trade keeps what filled; nothing filled = no trade (counted).
+                _req_qty_snapshot = quantity
+                _cap_wait = float(getattr(config.trading_config.investment, 'entry_depth_cap_wait_s', 15.0) or 0.0)
+                _cap_st = {}
+                try:
+                    result = await binance_service.create_capped_entry(symbol, side, quantity, _cap_px, wait_s=max(0.0, min(_cap_wait, 60.0)),
+                                                                       status=_cap_st)
+                except BaseException:
+                    # (553 deep review B1) cancelled mid-wait (deploy restart): the settle already ran under shield and wrote what filled →
+                    # hand it to the 292 ③ wrapper, which flattens an unbooked live fill at market, then re-raise
+                    if float(_cap_st.get('filled') or 0) > 0:
+                        self._note_live_fill(pair, symbol, direction, float(_cap_st['filled']), float(_cap_st.get('average') or _cap_px))
+                    raise
+                if not result:
+                    logger.error(f"[CAPPED_ENTRY] {pair}: capped order failed (refused before sending or Binance error)")
+                    return None
+                if float(result.get('amount') or 0) <= 0:
+                    if result.get('unconfirmed'):   # (B2) the order may still rest on Binance: block the pair until the reconciler clears it
+                        self._mark_untracked(pair, direction, 0.0, _cap_px, "CAP_ORDER_UNCONFIRMED", "CAPPED_ENTRY")
+                        logger.critical(f"[CAPPED_ENTRY] {pair}: no fill booked but the cap order is NOT confirmed cancelled — pair blocked, CHECK BINANCE")
+                    self._record_filter_block("DEPTH_CAP_NOFILL", direction)
+                    if _frenzy or _fbs:
+                        self._frenzy_open_refusal = f"nothing filled at or under the cap {_cap_px} within {_cap_wait:g}s"
+                    logger.warning(f"[CAPPED_ENTRY] {pair} {direction} {_wh_es}: nothing filled at ≤ {_cap_px} in {result.get('wait_s')}s — no trade")
+                    try:   # (review L3) priced by the blocked-trade scout like a depth-guard skip
+                        _cn_ef = {k: v for k, v in locals().items() if k.startswith('entry_') and not callable(v)}
+                        _cn_ef.update(mkt_up4h_stamp())
+                        self._blocked_record(_wh_es, direction, pair, current_price, ["DEPTH_CAP_NOFILL"], _cn_ef)
+                    except Exception:
+                        pass
+                    return None
+                binance_order_id = result['id']
+                actual_price = float(result['price'])
+                quantity = float(result['amount'])
+                self._note_live_fill(pair, symbol, direction, quantity, actual_price)   # 🛡 (292 ③) from here an unbooked exit flattens
+                _cap_imm = float(result.get('immediate') or 0)
+                entry_fee = capped_fill_fee(_cap_imm, quantity, actual_price, taker_fee_rate, maker_fee_rate)
+                entry_order_type = "TAKER" if _cap_imm >= quantity * 0.999 else "TAKER+MAKER"   # (review L2) its own label, never the maker-entry bucket
+                _cap_stamp = {'entry_cap_price': _cap_px,
+                              'entry_cap_fill_frac': round(quantity / result['requested'], 4) if result.get('requested') else None,
+                              'entry_cap_immediate_frac': round(min(_cap_imm, quantity) / quantity, 4)}
+                logger.info(f"[CAPPED_ENTRY] {pair} {direction} {_wh_es}: cap {_cap_px} · filled {quantity}/{result.get('requested')} "
+                            f"({_cap_stamp['entry_cap_fill_frac'] or 0:.0%}) @ {actual_price} · at once {_cap_stamp['entry_cap_immediate_frac']:.0%} · "
+                            f"waited {result.get('wait_s')}s" + (" · ⚠ order NOT confirmed terminal (booked the live position)" if result.get('unconfirmed') else ""))
             else:
                 _req_qty_snapshot = quantity
                 result = await binance_service.create_market_order(
@@ -15544,6 +15616,8 @@ class TradingEngine:
             entry_book_drift_pct=_eb_m.get('entry_book_drift_pct'), entry_book_spread_pct=_eb_m.get('entry_book_spread_pct'),   # 📏 (295)
             entry_fill_vs_book_pct=_eb_m.get('entry_fill_vs_book_pct'), entry_order_lag_s=_eb_m.get('entry_order_lag_s'),
             entry_depth_fillable_usd=_dg_fill, entry_depth_shrunk_from=_dg_from,   # 📖 (551) entry depth guard
+            entry_cap_price=_cap_stamp.get('entry_cap_price'), entry_cap_fill_frac=_cap_stamp.get('entry_cap_fill_frac'),   # 📖🧢 (553)
+            entry_cap_immediate_frac=_cap_stamp.get('entry_cap_immediate_frac'),
             entry_fee=entry_fee,
             entry_order_type=entry_order_type,
             peak_pnl=0.0,

@@ -634,10 +634,28 @@ def _has_line(lines, line):
     return lines.astype(str).str.split("+").map(lambda ls: line in ls)
 
 
+# 🧱 (DECISION_LOG 554) a DECLARED-OVERRIDE line with a TIGHTER pre-committed gate: decided at its first TIGHT_N priced refusals (no day / kept
+# minimum) — REVERT if their average > 0 OR ≥ TIGHT_WINS of them won; else KEEP. Frozen once like every line.
+TIGHT = {"LITE_BTC_RSI_HOT": (5, 3)}
+
+
 def gate_read(B, K, line):
     """the line's blocked trades (priced, not shadowed, refusal order) vs the sleeve's kept fills → (state, detail, prefix)."""
     a = B[_has_line(B.lines, line)].sort_values("te") if len(B) else B
     g = a[a.status == "PRICED"]
+    if line in TIGHT:
+        tn, tw = TIGHT[line]
+        if len(g) < tn:
+            return "COLLECTING", f"{len(g)}/{tn} priced (tight gate, DL 554)", g
+        pre = g.iloc[:tn]
+        pend = a[(a.status == "PENDING") & (a.te <= int(pre.te.max()))]
+        if len(pend):
+            return "COLLECTING", f"{tn} priced, but {len(pend)} earlier refusal(s) still pending", g
+        ba, wins = float(pre.pct.mean()), int((pre.pct > 0).sum())
+        det = f"blocked {tn} (tight gate) · {wins} winners · avg {ba:+.3f} %"
+        if ba > 0 or wins >= tw:
+            return "REVERT CANDIDATE (operator switches the line off — never automatic)", det, pre
+        return "KEEP", det, pre
     seen, n, cut = set(), 0, None
     for i, dd in enumerate(g.day):
         n += 1; seen.add(dd)
@@ -672,7 +690,7 @@ ML_RISKCAP = "MOMENTUM_LONG_RISKCAP"
 ML_SLEEVES = ("MOMENTUM_LONG", ML_RISKCAP)
 KEPT_AS = {ML_RISKCAP: "MOMENTUM_LONG"}
 LINES = {"FRENZY_WILLY": ("WILLY_GAP", "WILLY_FAILED_SPIKE"), "FRENZY_WILLY_HT": ("WILLY_FAILED_SPIKE",), "FRENZY_LITE_RETRY": ("RETRY_BTC1H",),
-         "FRENZY_LITE": ("LITE_BTC_EMA20_DOWN",), "FRENZY_LONG": ("LONG_WEAK_FRENZY",), "SPIKE_FADE": ("FADE_LATE_WEAK",),
+         "FRENZY_LITE": ("LITE_BTC_EMA20_DOWN", "LITE_BTC_RSI_HOT"), "FRENZY_LONG": ("LONG_WEAK_FRENZY",), "SPIKE_FADE": ("FADE_LATE_WEAK",),
          "MOMENTUM_LONG": ("ML_MKT_HOT", "ML_BULL90"),
          ML_RISKCAP: ("ML_RISK_CAP",)}   # 📈 (533) a RISK limiter, not an edge filter: its "REVERT CANDIDATE" reads as what the cap COST
 # (skipped trades still profitable) — weigh it against the drawdown it avoided; never an automatic revert

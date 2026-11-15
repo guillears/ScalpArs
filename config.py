@@ -1770,6 +1770,10 @@ class SignalThresholds(BaseModel):
     watch_block_willy_ht_failed_spike: bool = False     # FRENZY_WILLY_HT: the same (DL 511)
     watch_block_retry_btc1h: bool = False               # FRENZY_LITE_RETRY: BTC 1 h EMA20 slope ≤ 0 (DL 415)
     watch_block_lite_btc_ema20_down: bool = False       # FRENZY_LITE: BTC 5 m EMA20 slope ≤ 0, raw slope (DL 522)
+    # 🧱 (DECISION_LOG 554, operator "ship it with 70" — DECLARED OVERRIDE): FRENZY_LITE refused while BTC RSI ≥ 70 (overbought). Master LITE
+    # by BTC RSI: < 70 ≈ +1 %/fill · 70–75 2 · 50 % · −0.85 · ≥ 75 2 · 0 % · −1.59 + live SHELL −3.31 (3 market windows, far below the 15 / 8
+    # bar); other long sleeves win there (WILLY / FRENZY_LONG / Bull-Run). 🔒 Revert: first 5 priced blocked signals avg > 0 OR ≥ 3 winners → off.
+    watch_block_lite_btc_rsi_hot: bool = False
     watch_block_long_weak_frenzy: bool = False          # FRENZY_LONG: frenzy volume ≤ 119× normal (DL 525)
     watch_block_fade_late_weak: bool = False            # SPIKE_FADE OBS-F1: BTC 1 d EMA50 > EMA200 ∧ +DI ≤ 48.5 ∧ ≤ 1.80 % above EMA13 (DL 384)
     watch_block_ml_mkt_hot: bool = False                # MOMENTUM LONG: > 50 % of the rolling top-100 up over 4 h (DL 416 / 489)
@@ -3153,6 +3157,14 @@ class InvestmentConfig(BaseModel):
     entry_depth_guard_enabled: bool = False
     entry_depth_guard_max_sweep_pct: float = 0.15
     entry_depth_guard_min_frac: float = 0.5
+    # ⑦b 📖🧢 Nov-15 CAPPED ENTRY (DECISION_LOG 553, operator "build it, deep reviews, commit and push"): INIT LITE filled 0.32 % above the
+    # book the guard had read ~1 s earlier (set_leverage + a ticker read sat between the read and the market order). Live, with the guard
+    # on: leverage is set before the book read and the entry is a LIMIT at the guard's ceiling (best ± max_sweep_pct) — fills at once up to
+    # it, the rest rests up to wait_s (fills only if the price comes back), then is cancelled; nothing filled = no trade (DEPTH_CAP_NOFILL).
+    # Paper keeps its full fill at the live price (no book replay). Stamps entry_cap_price / entry_cap_fill_frac / entry_cap_immediate_frac.
+    # Code default OFF; the JSON arms it. Judged with the guard's 15-entry revert gate (cap-reduced size counts as guarded).
+    entry_depth_cap_enabled: bool = False
+    entry_depth_cap_wait_s: float = 15.0
     max_open_positions_hard: int = 10  # absolute ceiling when redeploying
     # 🖐 Sep-29 MANUAL sleeve: its own slot lane — manual positions never consume a bot slot and are capped here (balance still binds)
     manual_max_open_positions: int = 8

@@ -1239,7 +1239,8 @@ def main(allow_proxy=False):
         if e in ("FRENZY_WILLY", "FRENZY_WILLY_HT", "FRENZY_LITE_RETRY", "FRENZY_LITE", "FRENZY_LONG"):
             lines = WF.frenzy_blocks(_WF_TH, e, adx=_num(r, "entry_adx"), ema_gap_8_13=_num(r, "entry_ema_gap_8_13"),
                                      vs_vwap_pct=_num(r, "entry_frenzy_vs_vwap_pct"), btc_1h_slope=_num(r, "entry_btc_1h_slope"),
-                                     btc_ema20_slope_raw=_num(r, "entry_btc_ema20_slope"), frenzy_vol_mult=_num(r, "entry_frenzy_vol_mult"))
+                                     btc_ema20_slope_raw=_num(r, "entry_btc_ema20_slope"), frenzy_vol_mult=_num(r, "entry_frenzy_vol_mult"),
+                                     btc_rsi=_num(r, "entry_btc_rsi"))   # 🧱 (554) LITE_BTC_RSI_HOT — applied at the next master re-freeze
         elif e == "SPIKE_FADE":
             lines = WF.fade_blocks(_WF_TH, _gap1d[i], _num(r, "entry_pos_di"), _num(r, "entry_dist_from_ema13_pct"))
         elif _mlm[i]:

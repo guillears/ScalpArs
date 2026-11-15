@@ -14297,6 +14297,18 @@ async def _nav_unbooked_check(db: AsyncSession, reference_equity: float):
         return None
     booked = sum(float(a or 0) for t, a in led if t == "DEPOSIT") - sum(float(a or 0) for t, a in led if t in ("WITHDRAW", "CASHOUT", "EXPENSE"))   # (486) a booked expense left the exchange
     gap = unbooked_flow(sum(a for _, a in rows), booked, reference_equity)
+    if gap is not None:   # (550) a fund opened on money already on the account before the add-time check existed: relabel its first row once
+        from services.nav_flows import legacy_opening_row
+        try:
+            _first = (await db.execute(select(InvestorLedger).where(InvestorLedger.created_at >= ep_at)
+                                       .order_by(InvestorLedger.created_at, InvestorLedger.id).limit(1))).scalar_one_or_none()
+            if _first is not None and legacy_opening_row((_first.type, _first.amount, _first.created_at), gap):
+                _first.type = "OPENING"
+                _first.note = ((_first.note + " · ") if _first.note else "") + "Opening capital — already on the account at the NAV start (DL 550 relabel)"   # the caller's snapshot commit persists it
+                logger.warning(f"[NAV_FLOW] ledger row {_first.id}: DEPOSIT ${_first.amount:,.2f} relabelled OPENING (money already on the account at the NAV start)")
+                gap = unbooked_flow(sum(a for _, a in rows), booked - float(_first.amount or 0), reference_equity)
+        except Exception as _e:
+            logger.warning(f"[NAV_FLOW] opening relabel skipped: {str(_e)[:100]}")
     if gap is not None and _NAV_UNBOOKED["usd"] != gap:
         logger.warning(f"[NAV_FLOW_UNBOOKED] outside money ${gap:+,.2f} does not match the ledger: if it is a real deposit or withdrawal, book it, or NAV reads it as profit / loss")
     _NAV_UNBOOKED.update(usd=gap)
@@ -14346,6 +14358,30 @@ async def _nav_start_warning_for(db: AsyncSession, deposit: float):
     if (await _get_total_shares(db)) > _NAV_SHARES_EPS:
         return None
     return nav_start_warning(await _get_portfolio_value(db), deposit)
+
+
+async def _deposit_ledger_type(db: AsyncSession, deposit: float) -> str:
+    """(DECISION_LOG 550) live, share-less fund, equity already ≈ the deposit → "OPENING" (capital already on the account: the outside-money
+    check must not wait for a transfer that landed before the NAV start); anything else → "DEPOSIT". Read BEFORE the first write. Fail-open to DEPOSIT."""
+    from services.nav_flows import opening_on_account, unbooked_flow, gap_is_this_deposit
+    if trading_engine.is_paper_mode or deposit <= 0 or (await _get_total_shares(db)) > _NAV_SHARES_EPS:
+        return "DEPOSIT"
+    try:
+        _eq = await _get_portfolio_value(db)
+        if not opening_on_account(_eq, deposit):
+            return "DEPOSIT"
+        _, ep_at = await _get_nav_epoch(db)
+        if ep_at is None:
+            return "DEPOSIT"
+        # (550 deep review) money on the account is not enough: a wire that landed AFTER the NAV start is a real DEPOSIT —
+        # OPENING only when booking it as DEPOSIT would leave exactly this deposit with no transfer since the epoch
+        ext = sum(a for _, a in await _external_flow_rows(db, int(ep_at.replace(tzinfo=timezone.utc).timestamp() * 1000)))
+        led = (await db.execute(select(InvestorLedger.type, InvestorLedger.amount).where(InvestorLedger.created_at >= ep_at))).all()
+        booked = sum(float(a or 0) for t, a in led if t == "DEPOSIT") - sum(float(a or 0) for t, a in led if t in ("WITHDRAW", "CASHOUT", "EXPENSE"))
+        return "OPENING" if gap_is_this_deposit(unbooked_flow(ext, booked + deposit, _eq), deposit) else "DEPOSIT"
+    except Exception as _e:
+        logger.warning(f"[NAV_FLOW] opening check skipped (read failed): {str(_e)[:100]}")
+        return "DEPOSIT"
 
 
 async def _get_nav_per_share(db: AsyncSession) -> float:
@@ -14774,6 +14810,7 @@ async def add_investor(body: InvestorCreate, db: AsyncSession = Depends(get_db))
         nav = await _get_nav_per_share(db)
         if nav <= 0:
             raise HTTPException(503, "NAV unavailable — retry shortly (nothing was created)")
+    _dep_type = "FOUNDING" if _founding else ((await _deposit_ledger_type(db, _dep)) if (_dep > 0 and not getattr(body, "preview", False)) else "DEPOSIT")
     _bd = None
     if getattr(body, "preview", False) and _dep > 0 and not _founding and body.joined and str(body.joined).strip():
         # 🗓 (488) information only: the NAV at the START of the joined day = the close of the day before (UTC-3 rows, current epoch)
@@ -14825,9 +14862,9 @@ async def add_investor(body: InvestorCreate, db: AsyncSession = Depends(get_db))
                 raise HTTPException(503, "Bot state unavailable — refusing to mint founding shares")
             _st.founding_allocated_usd = float(_st.founding_allocated_usd or 0.0) + _dep
         await db.flush()
-        _log_investor_ledger(db, inv.id, "FOUNDING" if _founding else "DEPOSIT", _dep, nav, _dep_shares,
-                             note=("Founding allocation — share of pre-existing capital at NAV 1.0"
-                                   if _founding else None))
+        _log_investor_ledger(db, inv.id, _dep_type, _dep, nav, _dep_shares,
+                             note=("Founding allocation — share of pre-existing capital at NAV 1.0" if _founding
+                                   else ("Opening capital — already on the account at the NAV start (DL 550)" if _dep_type == "OPENING" else None)))
     binance_service.invalidate_flow_caches()  # Sep-7 integration review: initial deposit path — same class
     return {"ok": True, "id": inv.id, "name": inv.name, "eth_wallet": inv.eth_wallet,
             "deposited": _dep if _dep > 0 else None, "new_shares": round(_dep_shares, 6) if _dep_shares else None,
@@ -14989,10 +15026,12 @@ async def investor_deposit(body: InvestorDeposit, db: AsyncSession = Depends(get
         if trading_engine.is_paper_mode:   # (422) a Settings top-up already mints: both would count the same money twice
             _w = ((_w + " ") if _w else "") + "Paper: this adds shares without adding paper money. To add capital use Paper Balance in Settings, which mints the shares itself; do not do both."
         return {"ok": True, "preview": True, "new_shares": round(new_shares, 6), "nav": round(nav, 6), "nav_start_warning": _w}
+    _dep_type = await _deposit_ledger_type(db, body.amount)   # (550) read before the first write
     inv.shares += new_shares
     inv.total_deposited += body.amount
     await db.flush()
-    _log_investor_ledger(db, inv.id, "DEPOSIT", body.amount, nav, new_shares)
+    _log_investor_ledger(db, inv.id, _dep_type, body.amount, nav, new_shares,
+                         note=("Opening capital — already on the account at the NAV start (DL 550)" if _dep_type == "OPENING" else None))
 
     binance_service.invalidate_flow_caches()  # Sep-7 integration review: single-investor flows also move real money — same cache staleness as the fund-level endpoints
 

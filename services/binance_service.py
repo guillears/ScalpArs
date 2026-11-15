@@ -1712,6 +1712,7 @@ class BinanceService:
                     'best_ask': float(ob['asks'][0][0]),
                     'bid_qty': float(ob['bids'][0][1]),
                     'ask_qty': float(ob['asks'][0][1]),
+                    'bids': ob['bids'], 'asks': ob['asks'],   # 📖 (DECISION_LOG 551) the levels read (best first) — the entry depth guard sizes on them
                 }
             return None
         except Exception as e:

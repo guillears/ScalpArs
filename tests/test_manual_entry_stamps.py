@@ -23,6 +23,7 @@ NOT_A_MOMENTUM_STAMP = {
     "entry_ml_risk_open_pct", "entry_ml_risk_shrunk_from",   # 📈 (533) the ML risk cap's bot-decision stamp (open momentum-long risk at entry); MANUAL is never capped
     "entry_chop_burst_prior_fill_s",   # 🌀👥 Oct-4: the LONG_CHOP_BURST gate's own input — a bot decision stamp (DB lookup); MANUAL is never gated
     "entry_book_drift_pct", "entry_book_spread_pct", "entry_fill_vs_book_pct", "entry_order_lag_s",   # 📏 (295) FRENZY / SURGE book-path execution shadow (sleeve-only)
+    "entry_depth_fillable_usd", "entry_depth_shrunk_from",   # 📖 (551) entry depth guard on the FRENZY / SURGE / FLATBASE taker path (sleeve-only)
     "entry_flatbase_flat14_pct", "entry_flatbase_flat_cov_pct", "entry_flatbase_off_peak_pct", "entry_flatbase_peak_age_h",   # 🩳 (348) FLATBASE_SHORT episode stamps (sleeve-only)
 }
 

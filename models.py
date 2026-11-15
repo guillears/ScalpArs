@@ -54,6 +54,10 @@ class Order(Base):
     entry_book_spread_pct = Column(Float, nullable=True)
     entry_fill_vs_book_pct = Column(Float, nullable=True)
     entry_order_lag_s = Column(Float, nullable=True)
+    # 📖 (DECISION_LOG 551) entry depth guard (FRENZY / SURGE / FLATBASE taker entries): $ the book held within the max push of the best
+    # price at the order (NULL = guard off / book unreadable) · the planned notional when the guard shrank the entry (NULL = not shrunk)
+    entry_depth_fillable_usd = Column(Float, nullable=True)
+    entry_depth_shrunk_from = Column(Float, nullable=True)
     shadow_rtp_price = Column(Float, nullable=True)
     shadow_rtp_filled = Column(Boolean, nullable=True)
     shadow_rtp_pnl_pct = Column(Float, nullable=True)

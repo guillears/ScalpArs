@@ -28,6 +28,7 @@ from services.binance_service import binance_service, is_leverage_blocked
 from services.indicators import closed_ema_gap_pct, last_closed_bar_ret_pct, closed_wilder_ndi, fade_laggard_block, calculate_indicators, get_signal, check_exit_conditions, calculate_pnl, determine_macro_regime, is_signal_direction_active, gap_expand_marginal, gap_expand_flat, gap_min_band, _rsi_adx_block_rule, rsiceil_band, adxmax_band, adxmax2_band, gminflat_band
 from services.regime import classify_btc_regime
 from services.ml_second_chance import sc_params, sc_in_zone, sc_base_reason, sc_phase2_exit, net_pnl_pct as _sc_net_pnl_pct, SC_URGENT
+from services.entry_depth import depth_fillable_usd, depth_guard_size, FULL as DEPTH_FULL, SHRINK as DEPTH_SHRINK, SKIP as DEPTH_SKIP   # 📖 (DECISION_LOG 551)
 from services.ml_risk_cap import worst_stop_pct as _mlrc_worst_stop, open_trade_risk_pct as _mlrc_trade_risk, open_risk_pct_of_account as _mlrc_open_pct, fit_notional as _mlrc_fit
 from services.surge import surge_trigger, surge_entry_open, surge_pair_pick, surge_tripwire, surge_live_readings, wilder_atr_pct, surge_gvol_gate, surge_long_ema_gap_block, SURGE_LONG_EMA_GAP, SURGE_LONG_EMA_GAP_FAILOPEN
 from services.orderbook_stats import orderbook_metrics, OB_FIELDS
@@ -4414,7 +4415,8 @@ class TradingEngine:
         'entry_bracket_max_leverage', 'entry_bracket_cap_notional')
     STAMP_SLEEVE_PREFIXES = ('entry_frenzy_', 'entry_flatbase_', 'entry_surge_', 'entry_br_', 'entry_bear_', 'entry_willy_', 'entry_book_')
     STAMP_SLEEVE_ONLY = ('entry_order_lag_s', 'entry_fill_vs_book_pct', 'entry_chop_burst_prior_fill_s', 'entry_long_heat_flags',
-                         'entry_pair_rank', 'entry_macro_trend', 'entry_ml_risk_open_pct', 'entry_ml_risk_shrunk_from')   # sleeve / path specific — NULL elsewhere is by design
+                         'entry_pair_rank', 'entry_macro_trend', 'entry_ml_risk_open_pct', 'entry_ml_risk_shrunk_from',
+                         'entry_depth_fillable_usd', 'entry_depth_shrunk_from')   # sleeve / path specific — NULL elsewhere is by design
     STAMP_BOOKING = ('entry_price', 'entry_fee', 'entry_strategy', 'entry_order_type')
     STAMP_LEGACY = ('entry_btc_regime_started_at',)   # no code path writes it (0 % on every sleeve) — kept for old CSVs, never required
     STAMP_BEST_EFFORT = ('entry_mcap_usd', 'entry_cmc_rank', 'entry_vol_mcap_ratio', 'entry_pair_1d_ndi', 'entry_funding_rate',
@@ -14950,6 +14952,8 @@ class TradingEngine:
         # fill — the spike 18/18-taker-fallback lesson) + the Bull-Run dislocation guard (57f) on the LIVE price vs the decision price:
         # a book that ran > surge_max_entry_dislocation_pct away is skipped, not chased. Paper fills at that live price.
         _sg_live_px = None
+        _sg_ob = None
+        _dg_fill = _dg_from = None   # 📖 (DECISION_LOG 551) entry depth guard stamps
         _eb_bid = _eb_ask = _eb_lag = None   # 📏 (295) execution-quality shadow: the book read just before the order (FRENZY / SURGE only)
         if _frenzy and frenzy_bar_open_ms is not None:   # 🔥 Oct-3 (lane review), just before the order path: _frenzy_open judged lateness BEFORE waiting for the
             _fz_late2 = (_leash_time.time() * 1000 - int(frenzy_bar_open_ms)) / 1000.0   # bot open lane — a scan open can hold it 15–45 s
@@ -14970,7 +14974,8 @@ class TradingEngine:
         if _surge:
             maker_enabled = False
             try:   # the fresh book: WS trackers exist only for pairs already held, and a SURGE pair never is (PAIR_HELD)
-                _sg_ob = await asyncio.wait_for(binance_service.fetch_orderbook(pair.replace('USDT', '/USDT:USDT')), 5.0)   # bounded: the bot open lane is held
+                _dg_on = bool(getattr(config.trading_config.investment, 'entry_depth_guard_enabled', False))   # 📖 (551) 50 levels: same request weight (2) as 5
+                _sg_ob = await asyncio.wait_for(binance_service.fetch_orderbook(pair.replace('USDT', '/USDT:USDT'), limit=(50 if _dg_on else 5)), 5.0)   # bounded: the bot open lane is held
                 _sg_live_px = float(_sg_ob['best_ask'] if direction == 'LONG' else _sg_ob['best_bid']) if _sg_ob else None
                 try:   # 📏 (295) observe only, own guard (never resets the book price above) — the book this order meets + when it was read
                     if _sg_ob:
@@ -15005,6 +15010,55 @@ class TradingEngine:
                 self._frenzy_open_refusal = f"catch-up: book {(_cu_px / frenzy_catchup_ref_price - 1) * 100:+.2f}% from the ON bar's close at the order (max {_sg_max or 0}%)"
                 logger.warning(f"[{_fz_bk}_CATCHUP_MOVED] {pair}: entry aborted at the order — {self._frenzy_open_refusal}")
                 return None
+            # 📖 (DECISION_LOG 551) ENTRY DEPTH GUARD: keep the taker entry to what the book just read fills within max_sweep_pct of the best
+            # price — fits → unchanged · ≥ min_frac → shrink · less → skip (counted + recorded for the blocked-trade pricer). Only shrinks; no
+            # usable book / any error → unchanged (fail-open). services/entry_depth.py. Paper runs the same rule on the real book.
+            _dg_inv = config.trading_config.investment
+            if bool(getattr(_dg_inv, 'entry_depth_guard_enabled', False)) and _sg_ob and notional_value > 0 and leverage > 0:
+                try:
+                    _dg_sw = float(getattr(_dg_inv, 'entry_depth_guard_max_sweep_pct', 0.15) or 0.15)
+                    _dg_side = _sg_ob.get('asks') if direction == 'LONG' else _sg_ob.get('bids')
+                    _dg_fill = depth_fillable_usd(_dg_side, direction, _dg_sw)
+                    if _dg_fill is None and _dg_side and len(_dg_side) >= 50:   # (551 deep review) a dense book cut at 50 levels: one deeper read (weight 10)
+                        try:
+                            _dg_ob2 = await asyncio.wait_for(binance_service.fetch_orderbook(pair.replace('USDT', '/USDT:USDT'), limit=500), 2.0)
+                            _dg_fill = depth_fillable_usd((_dg_ob2 or {}).get('asks' if direction == 'LONG' else 'bids'), direction, _dg_sw)
+                        except Exception:
+                            _dg_fill = None
+                        if _dg_fill is None:
+                            self._record_filter_block("DEPTH_GUARD_TRUNCATED", direction)   # counted (not a block): the depth stayed unmeasured → full size
+                    _dg_fill = round(_dg_fill, 2) if _dg_fill is not None else None
+                    _dg_act, _dg_n = depth_guard_size(notional_value, _dg_fill, float(getattr(_dg_inv, 'entry_depth_guard_min_frac', 0.5) or 0.0))
+                except Exception as _dge:
+                    logger.warning(f"[DEPTH_GUARD] {pair}: guard failed ({str(_dge)[:80]}) — full size (fail-open)")
+                    _dg_act, _dg_n, _dg_fill = DEPTH_FULL, notional_value, None
+                _dg_min_m = _dg_inv.min_investment_size * _ml_min_scale * _ht_min_scale
+                _dg_min_note = ""
+                if _dg_act == DEPTH_SHRINK and _dg_n / leverage < _dg_min_m:
+                    _dg_act = DEPTH_SKIP
+                    _dg_min_note = f" — shrunk margin ${_dg_n / leverage:.2f} < min ${_dg_min_m:.2f}"
+                if _dg_act == DEPTH_SKIP:
+                    self._record_filter_block("DEPTH_GUARD_SKIP", direction)
+                    _dg_msg = (f"the book holds ${_dg_fill or 0:,.0f} within {getattr(_dg_inv, 'entry_depth_guard_max_sweep_pct', 0.15)}% of the best "
+                               f"price vs ${notional_value:,.0f} planned (min {getattr(_dg_inv, 'entry_depth_guard_min_frac', 0.5)}×){_dg_min_note}")
+                    if _frenzy or _fbs:   # (551 deep review) FLATBASE too: its caller reads the refusal text (no double FLATBASE_OPEN_REFUSED)
+                        self._frenzy_open_refusal = _dg_msg
+                    logger.warning(f"[DEPTH_GUARD_SKIP] {pair} {direction} {_wh_es}: {_dg_msg} — skipped")
+                    try:
+                        _dg_ef = {k: v for k, v in locals().items() if k.startswith('entry_') and not callable(v)}
+                        _dg_ef.update(mkt_up4h_stamp())
+                        self._blocked_record(_wh_es, direction, pair, current_price, ["DEPTH_GUARD"], _dg_ef)
+                    except Exception:
+                        pass
+                    return None
+                if _dg_act == DEPTH_SHRINK:
+                    _dg_from = round(notional_value, 2)
+                    investment = _dg_n / leverage
+                    notional_value = investment * leverage
+                    quantity = notional_value / (_sg_live_px or current_price)   # (551 deep review) at the book price the depth was measured at
+                    logger.info(f"[DEPTH_GUARD] {pair} {direction} {_wh_es}: book holds ${_dg_fill:,.0f} within "
+                                f"{getattr(_dg_inv, 'entry_depth_guard_max_sweep_pct', 0.15)}% → notional ${_dg_from:,.0f} → ${notional_value:,.0f} "
+                                f"(margin ${investment:.2f} at {leverage}×)")
         maker_fee_rate = getattr(tc, 'maker_fee', tc.trading_fee)
         taker_fee_rate = getattr(tc, 'taker_fee', tc.trading_fee)
 
@@ -15489,6 +15543,7 @@ class TradingEngine:
             entry_mkt_up4h_pct=_mb_stamp.get('entry_mkt_up4h_pct'), entry_mkt_up4h_n=_mb_stamp.get('entry_mkt_up4h_n'),   # 🌡 (489)
             entry_book_drift_pct=_eb_m.get('entry_book_drift_pct'), entry_book_spread_pct=_eb_m.get('entry_book_spread_pct'),   # 📏 (295)
             entry_fill_vs_book_pct=_eb_m.get('entry_fill_vs_book_pct'), entry_order_lag_s=_eb_m.get('entry_order_lag_s'),
+            entry_depth_fillable_usd=_dg_fill, entry_depth_shrunk_from=_dg_from,   # 📖 (551) entry depth guard
             entry_fee=entry_fee,
             entry_order_type=entry_order_type,
             peak_pnl=0.0,

@@ -268,6 +268,10 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_fill_vs_book_pct FLOAT"))
                 if 'entry_order_lag_s' not in columns:   # 📏 (DECISION_LOG 295) execution-quality shadow
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_order_lag_s FLOAT"))
+                if 'entry_depth_fillable_usd' not in columns:   # 📖 (DECISION_LOG 551) entry depth guard
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_depth_fillable_usd FLOAT"))
+                if 'entry_depth_shrunk_from' not in columns:   # 📖 (DECISION_LOG 551) entry depth guard
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_depth_shrunk_from FLOAT"))
                 if 'shadow_rtp_price' not in columns:   # 📏 (DECISION_LOG 295) execution-quality shadow
                     connection.execute(text("ALTER TABLE orders ADD COLUMN shadow_rtp_price FLOAT"))
                 if 'shadow_rtp_filled' not in columns:   # 📏 (DECISION_LOG 295) execution-quality shadow

@@ -3143,6 +3143,16 @@ class InvestmentConfig(BaseModel):
     bracket_keep_position_enabled: bool = False
     bracket_keep_position_max_margin_mult: float = 1.6
     bracket_keep_position_sleeves: str = "FRENZY_LITE,FRENZY_LITE_RETRY,FRENZY_WILLY,FRENZY_WILLY_HT,FLATBASE_SHORT"
+    # ⑦ 📖 Nov-15 ENTRY DEPTH GUARD (DECISION_LOG 551, operator "build it" after the first live trade): SHELL FRENZY_LITE $16,575 filled
+    # 0.32 % above the best ask on a thin book (11 earlier small live LITE fills: fill-vs-book never above 0.11 %). On the taker path that
+    # already reads the book (FRENZY / SURGE / FLATBASE) the entry keeps to what fills within max_sweep_pct of the best price: fits → full ·
+    # ≥ min_frac fits → shrink to it · less → skip (DEPTH_GUARD_SKIP, recorded for the blocked-trade pricer). Only shrinks / skips; an
+    # unreadable book = unchanged (fail-open). Paper runs the same rule (paper = live). Stamps entry_depth_fillable_usd / entry_depth_shrunk_from (the other sizing stamps keep the pre-guard sizing).
+    # Revert gate: after 15 guarded (shrunk / skipped) live entries, the full-size counterfactual vs the guarded result — guard off if it cost more.
+    # Code default OFF; the JSON arms it.
+    entry_depth_guard_enabled: bool = False
+    entry_depth_guard_max_sweep_pct: float = 0.15
+    entry_depth_guard_min_frac: float = 0.5
     max_open_positions_hard: int = 10  # absolute ceiling when redeploying
     # 🖐 Sep-29 MANUAL sleeve: its own slot lane — manual positions never consume a bot slot and are capped here (balance still binds)
     manual_max_open_positions: int = 8

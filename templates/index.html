@@ -8733,11 +8733,21 @@
             // Fix: document.hidden gates every interval + per-key in-flight guards; a
             // visibilitychange listener does one full refresh when the tab returns.
             window._rfInflight = {};
+            // 📱 Nov-15 (operator: the phone's total needed a reload after a close): a request frozen while the phone slept never settles,
+            // so its in-flight flag blocked every later refresh until a reload. A run that started BEFORE the page last went to the
+            // background no longer blocks (deep review: never on age alone — a merely slow server must not stack requests); a 90-s
+            // backstop covers any other hang. Only a run's own token clears the flag (a frozen promise may still settle later).
+            const _RF_STALE_MS = 90000;
+            window._rfHiddenAt = 0;
             const _rfGuard = (key, fn) => {
-                if (window._rfInflight[key]) return;
-                window._rfInflight[key] = true;
-                Promise.resolve().then(fn).catch(() => {}).finally(() => { window._rfInflight[key] = false; });
+                const _cur = window._rfInflight[key];
+                if (_cur && _cur.t >= window._rfHiddenAt && Date.now() - _cur.t < _RF_STALE_MS) return;
+                const _tok = { t: Date.now() };
+                window._rfInflight[key] = _tok;
+                Promise.resolve().then(fn).catch(() => {}).finally(() => { if (window._rfInflight[key] === _tok) window._rfInflight[key] = false; });
             };
+            // 📱 Nov-15: a trade just closed (open count fell / closed list changed) → the money cards refresh now, not on the next 10-s tick
+            window._refreshMoneyNow = () => _rfGuard('money', () => Promise.allSettled([loadBalance(), loadInvestors()]));
             window._rfGuard = _rfGuard;   // 🗓 (DL 500 review) the calendar loader is global — its redraw hooks (495 / 500) need the guard
             let _perfDirty = false;
 
@@ -8751,6 +8761,7 @@
                     if (!r.ok) throw new Error(r.status);
                     const sig = (await r.json()).sig;
                     if (sig === _lastClosedLiteSig) return;
+                    if (_lastClosedLiteSig != null) window._refreshMoneyNow();   // 📱 a close landed since the last probe
                     if (await loadClosedOrders()) _lastClosedLiteSig = sig;   // only after a successful full load
                 } catch (e) {
                     return loadClosedOrders();
@@ -8805,15 +8816,20 @@
                 _rfGuard('perf', loadPerformance);
             }, 300000);
 
-            document.addEventListener('visibilitychange', () => {
-                if (document.hidden) return;
+            let _pageBackAt = 0;
+            const _onPageBack = () => {
+                if (Date.now() - _pageBackAt < 1000) return;   // iOS can fire pageshow AND visibilitychange for one return
+                _pageBackAt = Date.now();
                 _rfGuard('oo', loadOpenOrders);
                 _rfGuard('batch10', async () => {
                     await Promise.allSettled([loadBalance(), loadPairs(), loadClosedOrders(), loadInvestors(), loadStatus()]);
                 });
                 const _calP = loadPnlCalendar();   // 🗓 (DECISION_LOG 500) the calendar was the one panel left on its 2-min timer
                 if (_perfDirty) { _perfDirty = false; _afterPnlCal(_calP, () => _rfGuard('perf', loadPerformance)); }
-            });
+            };
+            document.addEventListener('visibilitychange', () => { if (document.hidden) window._rfHiddenAt = Date.now(); else _onPageBack(); });
+            window.addEventListener('pagehide', () => { window._rfHiddenAt = Date.now(); });
+            window.addEventListener('pageshow', (ev) => { if (ev.persisted) _onPageBack(); });   // 📱 iOS restores a page from its back/forward cache without a visibilitychange
         });
 
         // ===== 🧹 (DL 346) Sleeve select: (off) for sleeves switched off in the live config =====
@@ -20146,6 +20162,12 @@
                 const data = await res.json();
                 
                 const tbody = document.getElementById('open-orders-table-body');
+                {   // 📱 Nov-15: an open trade disappeared (closed) → refresh the money cards now (phones poll this every 3 s, the balance every 10 s)
+                    const _ids = new Set((data || []).filter(o => o && o.id != null).map(o => o.id));
+                    const _prev = window._ooPrevIds;
+                    window._ooPrevIds = _ids;
+                    if (_prev && [..._prev].some(id => !_ids.has(id)) && window._refreshMoneyNow) window._refreshMoneyNow();
+                }
                 window._openOrdersById = {};   // ➕ (DECISION_LOG 324) the add pop-up reads the row it was opened from
                 (data || []).forEach(o => { if (o && o.id != null) window._openOrdersById[o.id] = o; });
                 try { renderManualBlockBanner(data || []); } catch (e) {}   // ⛔ (DECISION_LOG 343) the "bot trades blocked" banner

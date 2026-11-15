@@ -1778,6 +1778,11 @@ class SignalThresholds(BaseModel):
     watch_block_fade_late_weak: bool = False            # SPIKE_FADE OBS-F1: BTC 1 d EMA50 > EMA200 ∧ +DI ≤ 48.5 ∧ ≤ 1.80 % above EMA13 (DL 384)
     watch_block_ml_mkt_hot: bool = False                # MOMENTUM LONG: > 50 % of the rolling top-100 up over 4 h (DL 416 / 489)
     watch_block_ml_bull90: bool = False                 # MOMENTUM LONG: ≥ 90 % of the scanned coins bullish (DL 523)
+    # 🧱 (DECISION_LOG 555, operator "ship it" — DECLARED OVERRIDE): MOMENTUM LONG refused when its trend is weak (entry_gap ≤ 0.27) AND the
+    # market is quiet (global volume < 0.70 — the VOL_GATE's own long threshold, so only its big-coin rescue let these in). Master: 20 · 50 % ·
+    # −0.25 %/fill on 11 days / 17 pairs (both eras negative, gap cut robust 0.25–0.36), ML +0.24 → +0.34 %/fill, one-size DCR +0.66 → +0.79;
+    # day-boot P(mean<0) 0.92 (< 0.95 bar); backtest (Oct-13 stack) shows no separation. 🔒 Revert: first 8 priced blocked signals avg > 0 → off.
+    watch_block_ml_weak_rescue: bool = False
     # ⏪ Oct-6 FRENZY CATCH-UP (operator-approved build): FRENZY_LONG / FRENZY_WIDE get ONE chance per setup — the 5m bar it turns ON. When that
     # bar closed while no pass judged (bot paused, restarting after a deploy, an outage) the pair showed "ON (entry bar passed)" forever. Live case:
     # NMRUSDT 2026-10-06, fresh bar closed 13:40 UTC (streak 25, 2.0 h, vol 343×, ATR 2.1 %) while the bot was paused 13:25→13:53. NOTE (deep

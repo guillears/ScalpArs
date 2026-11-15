@@ -1244,7 +1244,8 @@ def main(allow_proxy=False):
         elif e == "SPIKE_FADE":
             lines = WF.fade_blocks(_WF_TH, _gap1d[i], _num(r, "entry_pos_di"), _num(r, "entry_dist_from_ema13_pct"))
         elif _mlm[i]:
-            lines = WF.ml_blocks(_WF_TH, _hot[i], _num(r, "entry_bull_pct"))
+            lines = WF.ml_blocks(_WF_TH, _hot[i], _num(r, "entry_bull_pct"), entry_gap=_num(r, "entry_gap"),
+                                 global_volume_ratio=_num(r, "entry_global_volume_ratio"))   # 🧱 (555) ML_WEAK_RESCUE — applied at the next master re-freeze
         else:
             continue
         if lines:

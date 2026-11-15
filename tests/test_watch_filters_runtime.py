@@ -110,3 +110,14 @@ def test_fade_stale_gap_fail_open(monkeypatch):
 def test_short_momentum_untouched(monkeypatch):
     _setup(monkeypatch, 0.7, 5.0)
     r, blocks, rows, opened = _e2e(monkeypatch, "FOOUSDT", direction="SHORT", entry_bull_pct=95.0, entry_pos_di=40.0, entry_dist_from_ema13_pct=1.0)
+
+
+def test_ml_weak_rescue_blocks_and_normal_volume_opens(monkeypatch):
+    """🧱 (555) the REAL open_position: a weak-trend momentum long in a quiet market is refused (counted); the same at normal volume opens."""
+    import services.trading_engine as TE
+    _setup(monkeypatch, 0.3, None)
+    monkeypatch.setattr(TE.config.trading_config.thresholds, "watch_block_ml_weak_rescue", True)
+    r, blocks, rows, opened = _e2e(monkeypatch, "FOOUSDT", entry_bull_pct=50.0, entry_gap=0.2, entry_global_volume_ratio=0.5)
+    assert r is None and "MOMENTUM_LONG_BLOCK_ML_WEAK_RESCUE" in blocks and ("FOOUSDT", "MOMENTUM") not in opened
+    r2, blocks2, rows2, opened2 = _e2e(monkeypatch, "FOOUSDT", entry_bull_pct=50.0, entry_gap=0.2, entry_global_volume_ratio=0.74)
+    assert "MOMENTUM_LONG_BLOCK_ML_WEAK_RESCUE" not in blocks2 and r2 is not None and ("FOOUSDT", "MOMENTUM") in opened2   # (review C) it opens

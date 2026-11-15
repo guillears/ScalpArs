@@ -19,6 +19,7 @@ Lines (sleeve → refuse when):
   SPIKE_FADE       OBS-F1 late weak spike  BTC 1 d EMA50 > EMA200 (late tape) ∧ pair +DI ≤ 48.5 ∧ price ≤ 1.80 % above the pair's EMA13  (DL 384)
   MOMENTUM LONG    ML_MKT_HOT          > 50 % of the rolling top-100 up over 4 h (services/mkt_up4h share > 0.50)   (DL 416 / 489)
                    ML_BULL90           ≥ 90 % of the scanned coins bullish (entry_bull_pct)   (DL 523)
+                   ML_WEAK_RESCUE      weak trend (entry_gap ≤ 0.27) let in by the volume-gate rescue (global volume < 0.70)   (DL 555, declared override)
 """
 import math
 
@@ -34,6 +35,9 @@ FADE_POS_DI_MAX = 48.5
 FADE_EXT_MAX = 1.80
 ML_HOT_SHARE_MIN = 0.50            # share > this = market hot (frozen DL 416 cut; services/mkt_up4h.HOT_CUT)
 ML_BULL_MIN = 90.0
+ML_WEAK_GAP_MAX = 0.27             # (DL 555) EMA gap ≤ this = weak trend (master bottom third; robust 0.25–0.36)
+ML_QUIET_GVOL_MAX = 0.70           # (DL 555) global volume < this = the VOL_GATE's long threshold AT SHIP (frozen — the rescue fires < 0.60, so the live band
+#                                    is < 0.60 today; if the VOL_GATE long threshold is ever lowered, longs at the new gate..0.70 would start being blocked — re-read)
 
 # config toggle per line (SignalThresholds field) — one place, read by every caller
 TOGGLES = {
@@ -47,6 +51,7 @@ TOGGLES = {
     "FADE_LATE_WEAK": "watch_block_fade_late_weak",
     "ML_MKT_HOT": "watch_block_ml_mkt_hot",
     "ML_BULL90": "watch_block_ml_bull90",
+    "ML_WEAK_RESCUE": "watch_block_ml_weak_rescue",
 }
 
 
@@ -109,13 +114,16 @@ def fade_blocks(th, btc_1d_ema50_200_gap_pct, pos_di, dist_from_ema13_pct):
     return ["FADE_LATE_WEAK"] if (g > FADE_LATE_GAP_MIN and p <= FADE_POS_DI_MAX and x <= FADE_EXT_MAX) else []
 
 
-def ml_blocks(th, mkt_hot_share, bull_pct):
+def ml_blocks(th, mkt_hot_share, bull_pct, entry_gap=None, global_volume_ratio=None):
     out = []
     s, b = _num(mkt_hot_share), _num(bull_pct)
     if _on(th, "ML_MKT_HOT") and s is not None and s > ML_HOT_SHARE_MIN:
         out.append("ML_MKT_HOT")
     if _on(th, "ML_BULL90") and b is not None and b >= ML_BULL_MIN:
         out.append("ML_BULL90")
+    g, v = _num(entry_gap), _num(global_volume_ratio)
+    if _on(th, "ML_WEAK_RESCUE") and g is not None and v is not None and g <= ML_WEAK_GAP_MAX and v < ML_QUIET_GVOL_MAX:
+        out.append("ML_WEAK_RESCUE")   # both legs readable — a missing reading never blocks
     return out
 
 

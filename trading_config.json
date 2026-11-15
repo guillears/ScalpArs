@@ -771,6 +771,7 @@
     "watch_block_fade_late_weak": true,
     "watch_block_ml_mkt_hot": true,
     "watch_block_ml_bull90": true,
+    "watch_block_ml_weak_rescue": true,
     "frenzy_trail_arm_pct": 5.0,
     "frenzy_trail_giveback_pct": 1.5,
     "frenzy_tp_pct": 1.5,

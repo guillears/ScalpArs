@@ -636,7 +636,7 @@ def _has_line(lines, line):
 
 # 🧱 (DECISION_LOG 554) a DECLARED-OVERRIDE line with a TIGHTER pre-committed gate: decided at its first TIGHT_N priced refusals (no day / kept
 # minimum) — REVERT if their average > 0 OR ≥ TIGHT_WINS of them won; else KEEP. Frozen once like every line.
-TIGHT = {"LITE_BTC_RSI_HOT": (5, 3)}
+TIGHT = {"LITE_BTC_RSI_HOT": (5, 3), "ML_WEAK_RESCUE": (8, None)}   # (555) first 8 priced: avg > 0 → revert (no winner-count leg)
 
 
 def gate_read(B, K, line):
@@ -646,14 +646,14 @@ def gate_read(B, K, line):
     if line in TIGHT:
         tn, tw = TIGHT[line]
         if len(g) < tn:
-            return "COLLECTING", f"{len(g)}/{tn} priced (tight gate, DL 554)", g
+            return "COLLECTING", f"{len(g)}/{tn} priced (tight gate, declared override)", g
         pre = g.iloc[:tn]
         pend = a[(a.status == "PENDING") & (a.te <= int(pre.te.max()))]
         if len(pend):
             return "COLLECTING", f"{tn} priced, but {len(pend)} earlier refusal(s) still pending", g
         ba, wins = float(pre.pct.mean()), int((pre.pct > 0).sum())
         det = f"blocked {tn} (tight gate) · {wins} winners · avg {ba:+.3f} %"
-        if ba > 0 or wins >= tw:
+        if ba > 0 or (tw is not None and wins >= tw):
             return "REVERT CANDIDATE (operator switches the line off — never automatic)", det, pre
         return "KEEP", det, pre
     seen, n, cut = set(), 0, None
@@ -691,7 +691,7 @@ ML_SLEEVES = ("MOMENTUM_LONG", ML_RISKCAP)
 KEPT_AS = {ML_RISKCAP: "MOMENTUM_LONG"}
 LINES = {"FRENZY_WILLY": ("WILLY_GAP", "WILLY_FAILED_SPIKE"), "FRENZY_WILLY_HT": ("WILLY_FAILED_SPIKE",), "FRENZY_LITE_RETRY": ("RETRY_BTC1H",),
          "FRENZY_LITE": ("LITE_BTC_EMA20_DOWN", "LITE_BTC_RSI_HOT"), "FRENZY_LONG": ("LONG_WEAK_FRENZY",), "SPIKE_FADE": ("FADE_LATE_WEAK",),
-         "MOMENTUM_LONG": ("ML_MKT_HOT", "ML_BULL90"),
+         "MOMENTUM_LONG": ("ML_MKT_HOT", "ML_BULL90", "ML_WEAK_RESCUE"),
          ML_RISKCAP: ("ML_RISK_CAP",)}   # 📈 (533) a RISK limiter, not an edge filter: its "REVERT CANDIDATE" reads as what the cap COST
 # (skipped trades still profitable) — weigh it against the drawdown it avoided; never an automatic revert
 

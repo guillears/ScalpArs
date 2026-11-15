@@ -51,7 +51,8 @@ def test_long_stop4_missing_rewalk_stops(tmp_path, monkeypatch):
 
 def test_long_stop4_real_master_pinned():
     """the real master (STACK 2026-11-11a: B25 archived + the armed LONG_WEAK_FRENZY refuses the weak-frenzy fills, DL 527): at a −4 live stop
-    4 −3-era stops move, FRENZY_LONG 24 · 83 % · +0.67; at today's −3 nothing moves, 24 · 75 % · +0.40 (B25's −4 fills already on −3 in the master) (a rebuild that changes the cohort fails here)."""
+    4 −3-era stops move, FRENZY_LONG 24 · 83 % · +0.67; at today's −3 nothing moves, 24 · 75 % · +0.40 (B25's −4 fills already on −3 in the master) (a rebuild that changes the cohort fails here).
+    STACK 2026-11-14a (DL 549): + B26's one FRENZY_LONG (BARD 11-13, +1.50) → 25 · 84 % · +0.70 at −4 · 25 · 76 % · +0.44 at −3."""
     M = pd.read_csv(os.path.join(ROOT, "reports", "MASTER_POOL_stacked.csv"), low_memory=False)
     M = M[(M.stack_keep == True) & (M.is_probe != True)].copy()   # noqa: E712
     M["o"] = pd.to_datetime(M.opened_at, format="mixed", utc=True).dt.tz_convert(None)
@@ -59,11 +60,11 @@ def test_long_stop4_real_master_pinned():
     M["sl"] = M.entry_strategy.astype(str)
     out, n = MX.reprice_long_stop4(M, live_stop=4.0)
     g = out[out.sl == "FRENZY_LONG"].pct
-    assert n == 4 and len(g) == 24
-    assert round((g > 0).mean(), 3) == 0.833 and round(g.mean(), 2) == 0.67
+    assert n == 4 and len(g) == 25
+    assert round((g > 0).mean(), 3) == 0.84 and round(g.mean(), 2) == 0.70
     out3, n3 = MX.reprice_long_stop4(M, live_stop=3.0)                     # (DL 524) live −3: the master keeps its traded −3 stops
     g3 = out3[out3.sl == "FRENZY_LONG"].pct
-    assert n3 == 0 and len(g3) == 24 and round((g3 > 0).mean(), 3) == 0.75 and round(g3.mean(), 2) == 0.40
+    assert n3 == 0 and len(g3) == 25 and round((g3 > 0).mean(), 3) == 0.76 and round(g3.mean(), 2) == 0.44
 
 
 def test_live_long_stop_reads_config(tmp_path):

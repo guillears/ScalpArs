@@ -150,7 +150,7 @@ def test_decisions_export_and_model():
 
 def test_master_builder_uses_the_same_rules():
     src = _src("scripts/build_master_pool.py")
-    assert 'STACK_VERSION = "2026-11-11a"' in src and "from services import watch_filters as WF" in src
+    assert 'STACK_VERSION = "2026-11-14a"' in src and "from services import watch_filters as WF" in src
     assert "WF.frenzy_blocks(" in src and "WF.fade_blocks(" in src and "WF.ml_blocks(" in src and "reason[n] = WF.block_code(" in src
 
 
@@ -165,14 +165,22 @@ def test_master_flatbase_confirm_and_long_minus3():
     cf = pd.read_csv(os.path.join(ROOT, "reports", "FLATBASE_CONFIRM_CF.csv"), comment="#")
     fb = M[M.entry_strategy == "FLATBASE_SHORT"]
     key = set(zip(cf.opened_at.astype(str).str[:19], cf.pair))
-    assert all((str(o)[:19], p) in key for o, p in zip(fb.opened_at, fb.pair))            # every master Flatbase fill is covered
+    pre = fb[fb.era.isin(["B24", "B25"])]                                                  # (DL 549) B26 fills ran FB_CONFIRM live → CONFIRMED_LIVE, no file row
+    assert all((str(o)[:19], p) in key for o, p in zip(pre.opened_at, pre.pair))          # every pre-confirm master Flatbase fill is covered
+    # (DL 549) 🔺 FLATBASE_HIGHER_HIGH on pre-540 fills (reports/FLATBASE_HH_CF.csv): ARK / LIGHT (B25) + BARD (B26) refused
+    hh = fb[fb.stack_block_reason == "FLATBASE_HIGHER_HIGH"]
+    hcf = pd.read_csv(os.path.join(ROOT, "reports", "FLATBASE_HH_CF.csv"), comment="#")
+    hkey = set(zip(hcf.opened_at.astype(str).str[:19], hcf.pair))
+    pre540 = fb[pd.to_datetime(fb.opened_at.astype(str).str[:19]) < pd.Timestamp("2026-11-13 14:20:08")]   # the DL 540 deploy + 10 min
+    assert all((str(o)[:19], p) in hkey for o, p in zip(pre540.opened_at, pre540.pair))   # every pre-filter Flatbase fill has a read
+    assert "FLATBASE_HH_CF.csv" in src and sorted(hh.pair) == ["ARKUSDT", "BARDUSDT", "LIGHTUSDT"] and not hh.stack_keep.astype(bool).any()
     skip = set(zip(cf[cf.cf_why == "SKIP"].opened_at.astype(str).str[:19], cf[cf.cf_why == "SKIP"].pair))
     for r in fb.itertuples():
         if (str(r.opened_at)[:19], r.pair) in skip:
             assert r.stack_block_reason == "FLATBASE_CONFIRM_SKIP" and not bool(r.stack_keep)
     b = fb[(fb.era == "B25") & (fb.stack_keep == True)]   # noqa: E712
     p = pd.to_numeric(b.stack_pct)
-    assert len(b) == 22 and round(p.sum(), 2) == 93.74
+    assert len(b) == 20 and round(p.sum(), 2) == 83.86                       # (DL 549) 22 · 93.74 before ARK / LIGHT (+4.94 each) were refused
     l4 = M[(M.entry_strategy == "FRENZY_LONG") & (pd.to_numeric(M.entry_frenzy_stop_pct, errors="coerce") >= 3.5) & (M.stack_keep == True)]   # noqa: E712
     assert len(l4) == 7 and (pd.to_numeric(l4.stack_pct) >= -3.05).all() and np.isclose(pd.to_numeric(l4.stack_pct).sum(), 1.48, atol=0.01)
 

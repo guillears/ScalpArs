@@ -1796,6 +1796,13 @@ class SignalThresholds(BaseModel):
     # signals average > 0 → off.
     watch_block_ml_weak_market: bool = False
     watch_block_ml_fading_quiet: bool = False
+    # 🧱 (DECISION_LOG 561, operator "ship rule A" — DECLARED OVERRIDE): MS_REGIME_ENDS — momentum SHORT refused while BTC's daily trend is up
+    # (1 d EMA50 > EMA200, last closed bar; the fade OBS-F1 read) AND its quality score is at an end: ≤ 2 (nothing on the coin confirms the
+    # drop) or ≥ 5 (already oversold / exhausted) — scores 3–4 trade in any regime. Master full-size 49 · 78 % · +0.20 → 40 · 88 % · +0.31,
+    # DCR +0.28 → +0.36 (blocked 9 · 33 % · −0.30 on 6 days, all in Sep–Nov; the 6 losers are one week, Sep 27–30); 2-year backtest blocked
+    # worse than kept in 3 / 3 seeds (P 0.95 / 1.00 / 0.98, 41–45 days); live 3 · −$638 → 0. Not refitted on the 3 October winners (rule B
+    # = observe only). 🔒 Revert: first 8 blocked signals priced on the momentum-short exit average > 0 → off (read at each batch review).
+    watch_block_ms_regime_ends: bool = False
     # ⏪ Oct-6 FRENZY CATCH-UP (operator-approved build): FRENZY_LONG / FRENZY_WIDE get ONE chance per setup — the 5m bar it turns ON. When that
     # bar closed while no pass judged (bot paused, restarting after a deploy, an outage) the pair showed "ON (entry bar passed)" forever. Live case:
     # NMRUSDT 2026-10-06, fresh bar closed 13:40 UTC (streak 25, 2.0 h, vol 343×, ATR 2.1 %) while the bot was paused 13:25→13:53. NOTE (deep

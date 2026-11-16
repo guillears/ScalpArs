@@ -1222,7 +1222,8 @@ def main(allow_proxy=False):
         _br = _MH.breadth_series(_closes) if len(_closes) else pd.Series(dtype=float)
         _sc = _MH.score(_hd, _br)
         _hot.loc[_hd.index] = pd.to_numeric(_sc.breadth, errors="coerce").values if "breadth" in _sc else np.nan
-    _fdm = _es.eq("SPIKE_FADE")
+    _msm = (_es.eq("MOMENTUM") & df.direction.astype(str).eq("SHORT") & ~_prb)   # 🧱 (561) momentum shorts (probes exempt live, like _mlm)
+    _fdm = _es.eq("SPIKE_FADE") | _msm
     _gap1d = pd.Series(np.nan, index=df.index)
     if _fdm.any():
         _k1d, _k1d_note = _LW.load_btc_1d(int(_wtime.time() * 1000), fetch=True)
@@ -1244,6 +1245,8 @@ def main(allow_proxy=False):
                                      above_share=_num(r, "entry_frenzy_above_share"))   # 🧱 (556) LITE_WEAK_HOLD — same
         elif e == "SPIKE_FADE":
             lines = WF.fade_blocks(_WF_TH, _gap1d[i], _num(r, "entry_pos_di"), _num(r, "entry_dist_from_ema13_pct"))
+        elif _msm[i]:
+            lines = WF.ms_blocks(_WF_TH, _gap1d[i], _num(r, "entry_quality_score"))   # 🧱 (561) MS_REGIME_ENDS — applied at the next master re-freeze
         elif _mlm[i]:
             lines = WF.ml_blocks(_WF_TH, _hot[i], _num(r, "entry_bull_pct"), entry_gap=_num(r, "entry_gap"),
                                  global_volume_ratio=_num(r, "entry_global_volume_ratio"),   # 🧱 (555) ML_WEAK_RESCUE — applied at the next master re-freeze
@@ -1251,7 +1254,7 @@ def main(allow_proxy=False):
         else:
             continue
         if lines:
-            _sl = "MOMENTUM_LONG" if _mlm[i] else e
+            _sl = "MOMENTUM_LONG" if _mlm[i] else ("MOMENTUM_SHORT" if _msm[i] else e)
             keep[n] = False; reason[n] = WF.block_code(_sl, lines); spnl[n] = 0.0
             _wb[_sl] = _wb.get(_sl, 0) + 1
     print(f"WATCH filters (DL 527): blocked {_wb}")

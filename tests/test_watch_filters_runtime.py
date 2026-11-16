@@ -138,3 +138,21 @@ def test_ml_weak_market_and_fading_quiet_block_and_healthy_opens(monkeypatch):
     assert r is None and "MOMENTUM_LONG_BLOCK_ML_FADING_QUIET" in blocks and ("FOOUSDT", "MOMENTUM") not in opened
     r, blocks, rows, opened = _e2e(monkeypatch, "FOOUSDT", entry_bull_pct=80.0, entry_btc_adx=15.0, entry_adx_delta=0.5, entry_atr_pct=0.25)
     assert not any("ML_WEAK_MARKET" in b or "ML_FADING_QUIET" in b for b in blocks) and r is not None and ("FOOUSDT", "MOMENTUM") in opened
+
+
+def test_ms_regime_ends_blocks_ends_and_keeps_middle(monkeypatch):
+    """🧱 (561) the REAL open_position: a score-5 and a score-2 momentum short in a BTC daily uptrend are refused; a score-4 opens; a
+    score-5 in a BTC daily downtrend opens."""
+    import services.trading_engine as TE
+    _setup(monkeypatch, 0.3, 1.34)                                   # BTC 1 d EMA50 / EMA200 gap +1.34 % (11-16), fresh
+    monkeypatch.setattr(TE.config.trading_config.thresholds, "watch_block_ms_regime_ends", True)
+    monkeypatch.setattr(TE.TradingEngine, "_lookup_pattern_cell_rule",
+                        lambda self, direction, c_flags, w_flags: (1.0, 1.0, "W1", None, None, False))   # a matched W1 short (UNMATCHED shorts are cell-blocked)
+    for qs in (5, 2):
+        r, blocks, rows, opened = _e2e(monkeypatch, "FOOUSDT", direction="SHORT", entry_bull_pct=20.0, entry_quality_score=qs)
+        assert r is None and "MOMENTUM_SHORT_BLOCK_MS_REGIME_ENDS" in blocks and ("FOOUSDT", "MOMENTUM") not in opened
+    r, blocks, rows, opened = _e2e(monkeypatch, "FOOUSDT", direction="SHORT", entry_bull_pct=20.0, entry_quality_score=4)
+    assert not any("MS_REGIME_ENDS" in b for b in blocks) and r is not None and ("FOOUSDT", "MOMENTUM") in opened
+    _setup(monkeypatch, 0.3, -11.6)
+    r, blocks, rows, opened = _e2e(monkeypatch, "FOOUSDT", direction="SHORT", entry_bull_pct=20.0, entry_quality_score=5)
+    assert not any("MS_REGIME_ENDS" in b for b in blocks) and r is not None

@@ -38,7 +38,7 @@ from services.frenzy import frenzy_stop_for   # 🛑 (DECISION_LOG 317) FRENZY_L
 from services.paper_costs import paper_exit_book_price, exit_slip_pct, accrue_funding, fold_funding, funding_topup_needed, live_income_foreign   # 💸 (DECISION_LOG 539) paper = live costs
 from sqlalchemy.orm.attributes import flag_modified   # 💸 (DECISION_LOG 539 review) force the funding write on every close attempt
 PAPER_EXIT_SLIP_SANE_PCT = 3.0   # 💸 (539) a paper exit book read further than this from the decision price is a bad read (booked at the decision price)
-from services.watch_filters import frenzy_blocks as watch_frenzy_blocks, ml_blocks as watch_ml_blocks, fade_blocks as watch_fade_blocks, block_code as watch_block_code   # 🧱 (DECISION_LOG 527) armed watch-line filters
+from services.watch_filters import frenzy_blocks as watch_frenzy_blocks, ml_blocks as watch_ml_blocks, fade_blocks as watch_fade_blocks, ms_blocks as watch_ms_blocks, block_code as watch_block_code   # 🧱 (DECISION_LOG 527 · 561 ms) armed watch-line filters
 from services.frenzy import FRENZY_WILLY_HT, WILLY_EXIT_CLASS, frenzy_willy_ht_frac   # 🎲¼ (DECISION_LOG 341) the quarter-size WILLY
 from services.flatbase import (FLATBASE_SHORT, FLATBASE_CLASS, flatbase_enabled, flatbase_params, flatbase_exit_for,   # 🩳 (DECISION_LOG 348)
                                flat14_from_bars, flat_ok, s4_scan, is_boundary_close, turnover_route, base_close_ms, max_hold_minutes as flatbase_max_hold_minutes,
@@ -14279,6 +14279,15 @@ class TradingEngine:
                 _wf_lines = watch_ml_blocks(_wf_th, mkt_up4h_stamp().get('entry_mkt_up4h_pct'), entry_bull_pct,
                                             entry_gap=entry_gap, global_volume_ratio=entry_global_volume_ratio,   # 🧱 (555) ML_WEAK_RESCUE
                                             btc_adx=entry_btc_adx, adx_delta=entry_adx_delta, atr_pct=entry_atr_pct); _wf_sleeve = "MOMENTUM_LONG"   # 🧱 (559)
+            elif (direction == "SHORT" and not flip_source and not spike_fade and not bearrun_short and not _surge
+                    and not spike_chase_probe and not spike_bounce
+                    and not (gap_probe or gapmin_probe or slopegate_probe or rsiadx_probe or deadband_probe or rsiceil_probe
+                             or gminflat_probe or adxmax_probe or dbdown_probe or adxmax2_probe or deepgap_probe or majors_probe)):   # 🧱 (561) MOMENTUM SHORT (flips / fades / Bear-Run / SURGE / FRENZY / Flatbase pass)
+                _g1 = globals()
+                _gat = (_g1.get('_btc_1d_gap_at') or 0)
+                _gap1d = (_g1.get('_current_btc_1d_ema50_200_gap_pct')
+                          if ((time.time() - _gat) <= 7200 and int(time.time() // 86400) == int(_gat // 86400)) else None)   # same UTC day only
+                _wf_lines = watch_ms_blocks(_wf_th, _gap1d, entry_quality_score); _wf_sleeve = "MOMENTUM_SHORT"
             elif spike_fade and direction == "SHORT":
                 _g1 = globals()
                 _gat = (_g1.get('_btc_1d_gap_at') or 0)
@@ -14291,7 +14300,7 @@ class TradingEngine:
         if _wf_lines:
             _wf_code = watch_block_code(_wf_sleeve, _wf_lines)
             logger.info(f"[WATCH_FILTER] {pair}: {_wf_sleeve} {direction} blocked by {' + '.join(_wf_lines)} ({_wf_code}) px={current_price} "
-                        f"bull={entry_bull_pct} btc_adx={entry_btc_adx} adx_d={entry_adx_delta} atr={entry_atr_pct} gap={entry_gap} gvol={entry_global_volume_ratio} pos_di={entry_pos_di} ext13={entry_dist_from_ema13_pct}")
+                        f"qs={entry_quality_score} bull={entry_bull_pct} btc_adx={entry_btc_adx} adx_d={entry_adx_delta} atr={entry_atr_pct} gap={entry_gap} gvol={entry_global_volume_ratio} pos_di={entry_pos_di} ext13={entry_dist_from_ema13_pct}")
             try:
                 self._record_filter_block(_wf_code, direction)
             except Exception:
@@ -14299,7 +14308,7 @@ class TradingEngine:
             try:
                 _wf_ef = {k: v for k, v in locals().items() if k.startswith('entry_') and not callable(v)}
                 _wf_ef.update(mkt_up4h_stamp())
-                if _wf_sleeve == "SPIKE_FADE":
+                if _wf_sleeve in ("SPIKE_FADE", "MOMENTUM_SHORT"):
                     _wf_ef['entry_btc_1d_ema50_200_gap_pct'] = globals().get('_current_btc_1d_ema50_200_gap_pct')
                 self._blocked_record(_wf_sleeve, direction, pair, current_price, _wf_lines, _wf_ef)
             except Exception:
@@ -21805,7 +21814,9 @@ class TradingEngine:
                 _current_btc_4h_ema50_200_gap_pct = None; logger.debug(f'[FADE_LAGGARD] BTC 4h fetch failed: {_e}')
             _btc_4h_gap_at = time.time() if _current_btc_4h_ema50_200_gap_pct is not None else 0.0
         global _current_btc_1d_ema50_200_gap_pct, _btc_1d_gap_at, _btc_1d_try_at   # 🧱 (527) the fade OBS-F1 late-tape leg
-        if (bool(getattr(config.trading_config.thresholds, 'watch_block_fade_late_weak', False)) and (time.time() - _btc_1d_try_at) > 300
+        if ((bool(getattr(config.trading_config.thresholds, 'watch_block_fade_late_weak', False))
+                or bool(getattr(config.trading_config.thresholds, 'watch_block_ms_regime_ends', False)))   # 🧱 (561) the momentum-short line reads it too
+                and (time.time() - _btc_1d_try_at) > 300
                 and ((time.time() - _btc_1d_gap_at) > 1800 or int(time.time() // 86400) != int(_btc_1d_gap_at // 86400))):   # review: re-read when the UTC day rolls · ≥ 5 min between attempts
             _btc_1d_try_at = time.time()
             try:

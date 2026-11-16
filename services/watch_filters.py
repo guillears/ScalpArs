@@ -23,6 +23,7 @@ Lines (sleeve → refuse when):
                    ML_WEAK_RESCUE      weak trend (entry_gap ≤ 0.27) let in by the volume-gate rescue (global volume < 0.70)   (DL 555, declared override)
                    ML_WEAK_MARKET      market breadth weak (entry_bull_pct ≤ 64.1) ∧ BTC trend weak (entry_btc_adx ≤ 21.71)        (DL 559, declared override)
                    ML_FADING_QUIET     the coin's ADX falling at entry (entry_adx_delta < 0) ∧ a quiet coin (entry_atr_pct ≤ 0.38)  (DL 559, declared override)
+  MOMENTUM SHORT   MS_REGIME_ENDS      BTC daily uptrend (1 d EMA50 > EMA200, closed bars) ∧ entry_quality_score ≤ 2 or ≥ 5            (DL 561, declared override)
 """
 import math
 
@@ -42,6 +43,7 @@ ML_BULL_MIN = 90.0
 ML_WEAK_GAP_MAX = 0.27             # (DL 555) EMA gap ≤ this = weak trend (master bottom third; robust 0.25–0.36)
 ML_WEAK_BULL_MAX, ML_WEAK_BTC_ADX_MAX = 64.1, 21.71   # (DL 559) master full-size terciles, frozen
 ML_FADING_ADX_DELTA_MAX, ML_QUIET_ATR_MAX = 0.0, 0.38  # (DL 559) ADX falling (< 0) · ATR % bottom tercile, frozen
+MS_QS_WEAK_MAX, MS_QS_LATE_MIN = 2, 5   # (DL 561) momentum short: score ≤ 2 = unconfirmed, ≥ 5 = exhausted (scores 3–4 trade in any regime)
 ML_QUIET_GVOL_MAX = 0.70           # (DL 555) global volume < this = the VOL_GATE's long threshold AT SHIP (frozen — the rescue fires < 0.60, so the live band
 #                                    is < 0.60 today; if the VOL_GATE long threshold is ever lowered, longs at the new gate..0.70 would start being blocked — re-read)
 
@@ -61,6 +63,7 @@ TOGGLES = {
     "ML_WEAK_RESCUE": "watch_block_ml_weak_rescue",
     "ML_WEAK_MARKET": "watch_block_ml_weak_market",
     "ML_FADING_QUIET": "watch_block_ml_fading_quiet",
+    "MS_REGIME_ENDS": "watch_block_ms_regime_ends",
 }
 
 
@@ -124,6 +127,18 @@ def fade_blocks(th, btc_1d_ema50_200_gap_pct, pos_di, dist_from_ema13_pct):
     if g is None or p is None or x is None:
         return []
     return ["FADE_LATE_WEAK"] if (g > FADE_LATE_GAP_MIN and p <= FADE_POS_DI_MAX and x <= FADE_EXT_MAX) else []
+
+
+def ms_blocks(th, btc_1d_ema50_200_gap_pct, quality_score):
+    """(DL 561) MOMENTUM SHORT in a BTC daily uptrend (gap > 0) whose quality score is at an end: ≤ 2 (no confirmation on the coin) or ≥ 5
+    (already oversold / exhausted). An unreadable gap or score never blocks. Note: the engine's quality score is always an int — a missing
+    input scores 0 on its leg (the same function stamped every analysed fill, so live and master agree)."""
+    if not _on(th, "MS_REGIME_ENDS"):
+        return []
+    g, q = _num(btc_1d_ema50_200_gap_pct), _num(quality_score)
+    if g is None or q is None:
+        return []
+    return ["MS_REGIME_ENDS"] if (g > 0 and (q <= MS_QS_WEAK_MAX or q >= MS_QS_LATE_MIN)) else []
 
 
 def ml_blocks(th, mkt_hot_share, bull_pct, entry_gap=None, global_volume_ratio=None, btc_adx=None, adx_delta=None, atr_pct=None):

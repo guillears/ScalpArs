@@ -8747,6 +8747,10 @@
             // Fix: document.hidden gates every interval + per-key in-flight guards; a
             // visibilitychange listener does one full refresh when the tab returns.
             window._rfInflight = {};
+            // 📱 Nov-16 (deep review: the likely real cause of "card says 1 open, list empty until reload") — a request hung on a dead
+            // mobile connection (wifi ↔ cell switch, radio sleep) never settles while the page stays visible, so its guard held every
+            // later list load for up to 90 s. The hot dashboard reads now give up after `ms` (abort → the guard clears → the next tick runs).
+            // (the helper is the global _fetchT, declared with loadBalance)
             // 📱 Nov-15 (operator: the phone's total needed a reload after a close): a request frozen while the phone slept never settles,
             // so its in-flight flag blocked every later refresh until a reload. A run that started BEFORE the page last went to the
             // background no longer blocks (deep review: never on age alone — a merely slow server must not stack requests); a 90-s
@@ -8755,10 +8759,11 @@
             window._rfHiddenAt = 0;
             const _rfGuard = (key, fn) => {
                 const _cur = window._rfInflight[key];
-                if (_cur && _cur.t >= window._rfHiddenAt && Date.now() - _cur.t < _RF_STALE_MS) return;
+                if (_cur && _cur.t >= window._rfHiddenAt && Date.now() - _cur.t < _RF_STALE_MS) return false;
                 const _tok = { t: Date.now() };
                 window._rfInflight[key] = _tok;
                 Promise.resolve().then(fn).catch(() => {}).finally(() => { if (window._rfInflight[key] === _tok) window._rfInflight[key] = false; });
+                return true;   // (Nov-16 review) a run actually started
             };
             // 📱 Nov-15: a trade just closed (open count fell / closed list changed) → the money cards refresh now, not on the next 10-s tick
             window._refreshMoneyNow = () => _rfGuard('money', () => Promise.allSettled([loadBalance(), loadInvestors()]));
@@ -8786,10 +8791,17 @@
             setInterval(() => {
                 if (document.hidden) return;
                 _rfGuard('batch10', async () => {
-                    await Promise.allSettled([loadBalance(), loadPairs(), checkClosedOrders(), loadInvestors(), loadStatus()]);
+                    await Promise.allSettled([loadPairs(), checkClosedOrders(), loadStatus()]);   // 📱 Nov-16: the money cards live on the 5-s 'money' key
                     if (currentTab === 'transactions') await loadTransactions();
                 });
             }, 10000);
+
+            // 📱 Nov-16 (operator: "the 4 boxes should update better"): the money cards (balance · BNB · in orders · portfolio value)
+            // refresh every 5 s while the page is visible (the batch above keeps its 10-s rhythm for the rest); same in-flight guard.
+            setInterval(() => {
+                if (document.hidden) return;
+                if (window._refreshMoneyNow) window._refreshMoneyNow();
+            }, 5000);
 
             // Open orders: every 1 s while the Open tab is showing; every 15 s behind other tabs (⚡ Oct-5 refresh fix 1,
             // DECISION_LOG 212 — was 86,400 calls/day regardless). switchOrdersTab('open') loads at once, so the tab is never stale.
@@ -8801,8 +8813,7 @@
                 const _now = Date.now();
                 const _ooEvery = currentTab !== 'open' ? 15000 : (_isCoarsePointer() ? 3000 : 0);
                 if (_now - _ooLast < _ooEvery - 50) return;
-                _ooLast = _now;
-                _rfGuard('oo', loadOpenOrders);
+                if (_rfGuard('oo', loadOpenOrders)) _ooLast = _now;   // (Nov-16 review) a refused tick retries next second
             }, 1000);
             // ⏱ (DL 388) the Open Orders duration ticks every second between loads — phones reload every 3 s, so it jumped 3 s at a
             // time. Local text-only update: server seconds (with fraction) at render + time since render (no request, no table rebuild, no clock skew).
@@ -8820,7 +8831,7 @@
                 } catch (e) {}
             }, 250);   // sampled 4×/s so timer jitter never shows a second twice or skips one; the text changes once a second
             // 👆 Oct-7: the tab-switch load goes through the same in-flight guard + cadence stamp (no duplicate fetch).
-            window._ooRefreshNow = () => { _ooLast = Date.now(); _rfGuard('oo', loadOpenOrders); };
+            window._ooRefreshNow = () => { if (_rfGuard('oo', loadOpenOrders)) _ooLast = Date.now(); };   // (Nov-16 review) stamp only a real start
 
             // Jul 22: analytics safety net — loadPerformance() is event-driven (fires when the
             // newest-closed-order signature changes, see loadClosedOrders), but recompute every
@@ -8834,9 +8845,11 @@
             const _onPageBack = () => {
                 if (Date.now() - _pageBackAt < 1000) return;   // iOS can fire pageshow AND visibilitychange for one return
                 _pageBackAt = Date.now();
+                try { if (_pendingHTML.size) { if (_touchGate.timer) { clearTimeout(_touchGate.timer); _touchGate.timer = null; } _flushPendingHTML(); } } catch (e) {}   // 📱 Nov-16: queued table writes land on return
                 _rfGuard('oo', loadOpenOrders);
+                if (window._refreshMoneyNow) window._refreshMoneyNow();   // 📱 Nov-16: one owner for the money cards
                 _rfGuard('batch10', async () => {
-                    await Promise.allSettled([loadBalance(), loadPairs(), loadClosedOrders(), loadInvestors(), loadStatus()]);
+                    await Promise.allSettled([loadPairs(), loadClosedOrders(), loadStatus()]);
                 });
                 const _calP = loadPnlCalendar();   // 🗓 (DECISION_LOG 500) the calendar was the one panel left on its 2-min timer
                 if (_perfDirty) { _perfDirty = false; _afterPnlCal(_calP, () => _rfGuard('perf', loadPerformance)); }
@@ -10645,10 +10658,17 @@
             }
         });
 
+        // 📱 Nov-16: fetch that gives up after `ms` (a hung mobile request otherwise holds its in-flight guard) — global, hoisted
+        function _fetchT(url, ms) {
+            if (typeof AbortController === 'undefined') return fetch(url);
+            const c = new AbortController(); const t = setTimeout(() => c.abort(), ms || 10000);
+            return fetch(url, { signal: c.signal }).finally(() => clearTimeout(t));
+        }
+
         // Load balance
         async function loadBalance() {
             try {
-                const res = await fetch(`${API_BASE}/api/balance`);
+                const res = await _fetchT(`${API_BASE}/api/balance`, 15000);   // 📱 Nov-16
                 const data = await res.json();
                 
                 document.getElementById('usdt-balance').textContent = formatUSD(data.usdt_balance);
@@ -10705,6 +10725,11 @@
                 if (ordCountEl && data.open_orders_count != null) {
                     // 🩳 (DECISION_LOG 362, operator) the TOTAL open first; the lanes underneath — manual holds no bot slot; FLATBASE holds one when shared (515), else its own lane (348)
                     const _bo = Number(data.open_orders_count || 0), _mo = Number(data.manual_open_count || 0), _fo = Number(data.flatbase_open_count || 0);
+                    try {   // 📱 Nov-16 (operator: the card showed 1 open but the Open Orders list stayed empty until a reload) — the
+                        // server's open count disagrees with the rows the list last loaded → reload the list now (not on its 15-s tick)
+                        const _tot = _bo + _mo + ((data.flatbase_shares_slots !== false) ? 0 : _fo);
+                        if (window._ooPrevIds && _tot !== window._ooPrevIds.size && window._ooRefreshNow) window._ooRefreshNow();
+                    } catch (e) {}
                     const _fcap = Number(data.flatbase_max_open || 0);
                     const _fsh = data.flatbase_shares_slots !== false;   // 🧺 (DECISION_LOG 515) FLATBASE holds a bot slot → already inside _bo
                     const _rdp = Number(data.max_open_positions_redeploy || 0);   // (362 review) the redeploy band can open past the normal cap
@@ -20115,6 +20140,7 @@
             let delay = h === Infinity ? 500 : Math.max(20, h + 20);      // finger down: light poll covers a lost touchend
             if (h !== Infinity) delay = Math.max(20, Math.min(delay, oldest + 2000 - now + 20));   // max-defer deadline
             const due = now + delay;
+            if (_touchGate.timer && _touchGate.due < now - 1000) { clearTimeout(_touchGate.timer); _touchGate.timer = null; }   // 📱 Nov-16: a flush timer frozen while the phone slept never blocks a new one
             if (_touchGate.timer && _touchGate.due <= due) return;          // never push an earlier flush later (no starvation)
             if (_touchGate.timer) clearTimeout(_touchGate.timer);
             _touchGate.due = due;
@@ -20172,7 +20198,7 @@
         async function loadOpenOrders() {
             try {
                 try { loadImportCandidates().catch(() => {}); } catch (e) {}   // 📥 (DECISION_LOG 328) the untracked-position banner, ≥ 5 s apart (never blocks the table)
-                const res = await fetch(`${API_BASE}/api/orders/open`);
+                const res = await _fetchT(`${API_BASE}/api/orders/open`, 10000);   // 📱 Nov-16: a hung request gives up
                 const data = await res.json();
                 
                 const tbody = document.getElementById('open-orders-table-body');
@@ -20180,7 +20206,7 @@
                     const _ids = new Set((data || []).filter(o => o && o.id != null).map(o => o.id));
                     const _prev = window._ooPrevIds;
                     window._ooPrevIds = _ids;
-                    if (_prev && [..._prev].some(id => !_ids.has(id)) && window._refreshMoneyNow) window._refreshMoneyNow();
+                    if (_prev && ([..._prev].some(id => !_ids.has(id)) || [..._ids].some(id => !_prev.has(id))) && window._refreshMoneyNow) window._refreshMoneyNow();   // 📱 Nov-16: an open too (the 4 cards)
                 }
                 window._openOrdersById = {};   // ➕ (DECISION_LOG 324) the add pop-up reads the row it was opened from
                 (data || []).forEach(o => { if (o && o.id != null) window._openOrdersById[o.id] = o; });
@@ -22378,7 +22404,7 @@
 
         async function loadInvestors() {
             try {
-                const res = await fetch(`${API_BASE}/api/investors`);
+                const res = await _fetchT(`${API_BASE}/api/investors`, 15000);   // 📱 Nov-16
                 const data = await res.json();
                 _investorsCache = data.investors || [];
 

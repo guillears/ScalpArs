@@ -7,7 +7,7 @@ HTML = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file_
 
 
 def test_open_row_badge_is_in_pnl_terms():
-    assert ">🩳 TP +${_fbTp}% · SL −${_fbSl}% · ${_fbMh}h</span>" in HTML
+    assert ">🎯 +${_fbTp} · −${_fbSl}</span>" in HTML   # 📱 Nov-16: short, P&L terms
     assert ">🩳 −${_fbTp}% / +${_fbSl}%" not in HTML
     assert "take profit at −${_fbTp}%" in HTML and "stop at +${_fbSl}%" in HTML     # the hover keeps the price levels
 

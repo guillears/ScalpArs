@@ -1669,6 +1669,7 @@ class SignalThresholds(BaseModel):
     resting_tp_override_enabled: bool = True      # a bot trade whose exit the operator overrode with a TP > 0 (OVERRIDE_TP; an override with no TP = none)
     resting_tp_frenzy_long_enabled: bool = True   # FRENZY_LONG (fixed frenzy_tp_pct; none while frenzy_lock_arm_pct > 0) — never FRENZY_WIDE (off)
     resting_tp_flatbase_enabled: bool = True      # 🩳 FLATBASE_SHORT (DECISION_LOG 348): its −8 % price TP rests as a maker limit (the study's TP level; own switch)
+    resting_tp_flip_fan_enabled: bool = False     # 🎯 FAN flip fixed TP (DECISION_LOG 563): the row's flip_fan_tp_pct rests as a reduce-only post-only maker limit; off → the software TP closes at market
     resting_tp_grace_s: float = 3.0               # safety net: seconds the price must stay through the limit (0–60)
     resting_tp_through_ticks: int = 2             # safety net: ticks THROUGH the limit (1–50)
     # ⏰ 2026-10-15 WILLY LATE TAKE-PROFIT (DECISION_LOG 297, operator-armed DECLARED EXCEPTION — reports/WILLY_DURATION_30MIN_RESTUDY_2026-10-15.md
@@ -2257,6 +2258,16 @@ class SignalThresholds(BaseModel):
     # >=3-sample direction-consistent bar; mirrors the already-live fan_ratio_block_long 5.0-99.
     # Threshold is specifically >=5 (the 2-5 band CONTRADICTS cross-batch). 0 = off.
     flip_fan_spike_max: float = 5.0           # block any flip when pair fan ratio >= this (0 = off). TIGHT REVERT: re-open if fan>=5 flips >=40% WR on N>=5 fresh
+    # 🎯 (DECISION_LOG 563, operator "ship it" / "B, go with 0.5" — DECLARED OVERRIDE): FAN flips (FLIP:FAN_RATIO_GATE SHORT) exit at a FIXED net take
+    # profit of this % (resting maker limit when resting_tp_flip_fan_enabled) instead of the strpk runner trail + the short HARD_TP ladder; today's
+    # ATR-widened stop, the exchange backstop, NO_EXPANSION 180 min and MAX_HOLD stay. Stamped once per row at the open (Order.flip_fan_tp_pct,
+    # restart-proof); 0 = off (rows keep the trail). Evidence (reports/FAN_FLIP_EXIT_STUDY_2026-11-16.md, 1m re-walk vs the same walker's trail):
+    # ALL 56 trail 71 % · +0.07 → TP +0.5 79 % · +0.15 (DCR +0.05 → +0.11 %/day) · Aug → live 36: 67 % · −0.04 → 69 % · +0.01 · B25 + B26 + live 21:
+    # 67 % · −0.04 → 76 % · +0.15; live INIT +0.50 vs −0.10 booked, PEPE +0.50 vs +0.23; live trail exits pay market-close slippage (INIT 0.37 %),
+    # the resting TP none + the maker fee. Chosen over +0.7 for the higher WR in every recent window. Against: Aug–Oct reverses (−0.18 vs −0.05),
+    # best of 16 variants, backtest +0.01…+0.03. 🔒 Tight revert: first 10 FAN flips on the TP re-walked under the old trail
+    # (scripts/flip_exit_replica.py) with the measured live market-close slippage — trail Σ beats the TP's booked Σ → 0.
+    flip_fan_fixed_tp_pct: float = 0.0
     flip_fan_runner_strpk: bool = True        # exit FAN flips via the SHORT runner stretch-trail (strpk, arm 0.45/K0.5) instead of trailing-like-a-long. Reuses runner_trail_short_* params
     flip_runner_strpk_shorts: bool = True     # Jun 16: extend the SHORT runner stretch-trail (strpk) to the NON-FAN flip short sleeves too (PAIR_RSI_OB, LONG_UNMATCHED_ONLY). A flip short runs strpk if FAN+flip_fan_runner_strpk OR non-FAN+this. = strpk for ALL flip shorts
     flip_fan_qs_cell: str = "3:70:60-90:1.0:1.0"  # qs_min : bear_min : range_lo-range_hi : size_mult : lev_mult — the FAN flip-SHORT "winner cell" (quality_score ≥ qs_min AND entry_bear_pct ≥ bear_min AND range_lo ≤ entry_range_position ≤ range_hi). Jun 26: REPLACED the old BTC-RSI×ADX mult cell (flip_fan_mult_rule, retired — it was never used at 1×). Code default 1.0:1.0 = INERT; json SHIPPED 2.0:1.0 on 2026-06-27 = 2× SIZE / 1× LEV (double margin at the SAME 20× — liquidation distance unchanged; lev was NOT touched, since 2× lev → 40× halves the gap-to-SL distance). Cell evidence: current-stack (pADX≥21) winner cell = N=6/6W-0L/100%WR/+0.69%/+$433 (the 2 "BE-compat-fail" gap-losers HUSDT/HMSTR are PRE-pADX-floor GHOSTS, blocked live → BE-compat objection RETRACTED, 0 losers to amplify). ⚠ DISCIPLINE-OVERRIDE: forward-N=1 (INJ +$36) << N≥30 gate, operator-directed; carries a TIGHT revert. SHORT flips only (a flip-LONG ignores it, sizes 1×). Empty = off. TIGHT REVERT: set size→1.0 if the cell runs WR<70% OR avg≤+0.05% OR Total$ negative on N≥5 fresh fires, OR any single 2× cell trade gaps the SL past ~−1.0%. ✅ REVERTED 2.0→1.0 on 2026-06-28: the INSTANT gate FIRED — WIF flip-short (winner-cell 2×) gapped the −0.70 SL to −1.16% close (−$321 at 2×, would've been −$160 at 1×) in the 7:30-11am chop-whipsaw. Forward record N=2 = INJ +$36 / WIF −$321 = −$285. Pre-committed gate, non-discretionary. Cell now INERT (1×), back to track-only. → DECISION_LOG/CURRENT_STATE 2026-06-28.

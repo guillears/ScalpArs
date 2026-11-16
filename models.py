@@ -659,6 +659,9 @@ class Order(Base):
     # 🏃 (DECISION_LOG 541) WILLY RUNNER: k (× entry_atr_pct below the peak) when this FRENZY_WILLY fill runs the trailing runner after its target
     # (coin 1h EMA20 < EMA200 at the fill, switch on) — decided ONCE at the open; NULL = today's exit (and a resting TP as before).
     frenzy_willy_runner_k = Column(Float, nullable=True)
+    # 🎯 (DECISION_LOG 563) FAN flip (FLIP:FAN_RATIO_GATE SHORT) only: the NET fixed take profit this order runs (flip_fan_fixed_tp_pct at the open,
+    # resting maker limit when resting_tp_flip_fan_enabled) — the strpk runner trail + short HARD_TP ladder are off for the row. NULL = the trail (a pre-563 row / switch 0).
+    flip_fan_tp_pct = Column(Float, nullable=True)
     # 📈 (DECISION_LOG 365) FRENZY_WILLY_HT only: the size fraction of WILLY's margin this HT order opened at (frenzy_willy_ht_frac at entry) —
     # the HT re-size ladder counts each rung on the fills actually opened at it. NULL on every other fill and on HT fills before 365 (all 0.25).
     entry_willy_ht_size_frac = Column(Float, nullable=True)

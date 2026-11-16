@@ -28,7 +28,9 @@ RTP_SLEEVES = {"FRENZY_WILLY": "resting_tp_willy_enabled", "FRENZY_LITE": "resti
                "FRENZY_LONG": "resting_tp_frenzy_long_enabled",   # 🎯 310: + FRENZY_LONG (fixed frenzy_tp_pct) · never FRENZY_WIDE (off)
                "FRENZY_LITE_RETRY": "resting_tp_lite_retry_enabled",   # 🔁 316: LITE's resting TP, own switch (attribution)
                "FRENZY_WILLY_HT": "resting_tp_willy_enabled",   # 🎲¼ 341: the quarter-size WILLY runs WILLY's exit — WILLY's switch
-               "FLATBASE_SHORT": "resting_tp_flatbase_enabled"}   # 🩳 348: the −8 % PRICE take profit (net target derived per row, rtp_row_target)
+               "FLATBASE_SHORT": "resting_tp_flatbase_enabled",   # 🩳 348: the −8 % PRICE take profit (net target derived per row, rtp_row_target)
+               "FLIP:FAN_RATIO_GATE": "resting_tp_flip_fan_enabled"}   # 🎯 563: the FAN flip's fixed net TP (row-derived: Order.flip_fan_tp_pct)
+FLIP_FAN_ES, FLIP_FAN_TP_REASON = "FLIP:FAN_RATIO_GATE", "FLIP_FAN_TP"   # 🎯 (563) the close reason (already FLIP_-prefixed for the close funnel)
 RTP_MANUAL_KEY, RTP_OVERRIDE_KEY = "resting_tp_manual_enabled", "resting_tp_override_enabled"   # 🎯 (310) the operator's own fixed TPs
 RTP_SWITCHES = tuple(dict.fromkeys(RTP_SLEEVES.values())) + (RTP_MANUAL_KEY, RTP_OVERRIDE_KEY)   # unique (341: HT shares WILLY's switch)
 RTP_MANUAL_TP_MODES = ("FIXED", "FLOOR", "NOSTOP")   # 🎯 (310) the MANUAL exit modes whose TP is a fixed line (📥 343: + NOSTOP — typed or adopted from the app)
@@ -94,6 +96,8 @@ def rtp_row_target(th, row, held_minutes=None) -> Optional[Tuple[float, str]]:
     no TP → None (the sleeve's own TP is replaced, never kept). Otherwise the sleeve rule (rtp_target, incl. the LITE C stored TP). Never raises."""
     try:
         why = rtp_fixed_reason(row)
+        if why is None and str(getattr(row, 'entry_strategy', None) or "") == FLIP_FAN_ES:
+            return flip_fan_row_target(th, row)   # 🎯 (563) only a row stamped with its fixed TP at the open; NULL → the trail (no limit)
         if why is None and str(getattr(row, 'entry_strategy', None) or "") == "FLATBASE_SHORT":
             return _flatbase_row_target(th, row)   # 🩳 (348) the PRICE TP → the row's own net target (its entry fee)
         if why is None and str(getattr(row, 'entry_strategy', None) or "") in ("FRENZY_WILLY", "FRENZY_WILLY_HT"):
@@ -111,6 +115,23 @@ def rtp_row_target(th, row, held_minutes=None) -> Optional[Tuple[float, str]]:
         return (tp, why) if tp and tp > 0 else None
     except Exception:
         return None
+
+
+def flip_fan_row_tp(row) -> Optional[float]:
+    """🎯 (DECISION_LOG 563) the NET fixed TP a FAN flip row runs (Order.flip_fan_tp_pct stamped at the open) or None (= today's trail). Total."""
+    try:
+        if str(getattr(row, 'entry_strategy', None) or "") != FLIP_FAN_ES or str(getattr(row, 'direction', None) or "").upper() != "SHORT":
+            return None
+        tp = _f(getattr(row, 'flip_fan_tp_pct', None))
+        return tp if tp and tp > 0 else None
+    except Exception:
+        return None
+
+
+def flip_fan_row_target(th, row) -> Optional[Tuple[float, str]]:
+    """🎯 (563) the resting limit a FAN flip row carries: (its stamped net TP, FLIP_FAN_TP) while resting_tp_flip_fan_enabled, else None."""
+    tp = flip_fan_row_tp(row)
+    return (tp, FLIP_FAN_TP_REASON) if (tp is not None and rtp_enabled(th, FLIP_FAN_ES)) else None
 
 
 def _flatbase_row_target(th, row) -> Optional[Tuple[float, str]]:
@@ -148,7 +169,7 @@ def rtp_target(th, entry_strategy, held_minutes=None, lite_tp=None, willy_tp=Non
     willy_tp (🎲² DECISION_LOG 356): a WILLY row's stored take profit (None → the config TP). 🎲²ᵇ (DECISION_LOG 358) the late re-price
     applies to every WILLY row (the V2 armed-floor exception was removed with the floor)."""
     es = str(entry_strategy or "")
-    if not rtp_enabled(th, es):
+    if not rtp_enabled(th, es) or es == FLIP_FAN_ES:   # 🎯 (563) the FAN flip TP is row-derived only (flip_fan_row_target)
         return None
     try:
         from services.frenzy import frenzy_willy_tp_at, frenzy_tp_for
@@ -176,6 +197,8 @@ def rtp_reason_for_limit(th, entry_strategy, direction, entry_px, entry_fee_pct,
     """Which take profit a RECORDED limit books (restart-proof, from the price alone): WILLY_LATE_TP when the WILLY late TP is on and the
     limit's net % sits nearer the late target than the WILLY TP, else FRENZY_TP. willy_tp (🎲² 356): the row's stored TP (None = config)."""
     try:
+        if str(entry_strategy or "") == FLIP_FAN_ES:   # 🎯 (563)
+            return FLIP_FAN_TP_REASON
         if str(entry_strategy or "") not in ("FRENZY_WILLY", "FRENZY_WILLY_HT"):   # 🎲¼ (341)
             return "FRENZY_TP"
         from services.frenzy import frenzy_willy_late_tp, frenzy_willy_tp_value

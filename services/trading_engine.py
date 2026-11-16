@@ -120,7 +120,8 @@ from services.resting_tp import (RTP_SLEEVES, RTP_QUERY_MIN_S, RTP_HEAL_RETRY_S,
                                   rtp_target, rtp_reason_for_limit, rtp_grace_s, rtp_through_ticks, at_or_through, paper_filled, safety_net,
                                   is_full, remaining_qty, blend_exit, order_fill, cancel_view, stop_class as rtp_stop_class, ts_key, RTP_IO_TIMEOUT_S,
                                   RTP_STRAY_MAX_PER_PASS, RTP_BUSY_WATCHDOG_S, rtp_enabled,
-                                  RTP_SWITCHES, RTP_ROW_STRATEGIES, rtp_row_target, rtp_row_enabled, rtp_row_reason, rtp_fixed_reason)   # 🎯 (310) every fixed TP
+                                  RTP_SWITCHES, RTP_ROW_STRATEGIES, rtp_row_target, rtp_row_enabled, rtp_row_reason, rtp_fixed_reason,   # 🎯 (310) every fixed TP
+                                  FLIP_FAN_ES, FLIP_FAN_TP_REASON, flip_fan_row_tp)   # 🎯 (563) FAN flip fixed TP
 from services import decision_journal as _djournal  # Sep-18 📓 decision journal (file-only, never raises)
 from services.alt_corr import AltCorrTracker   # 📈 (DECISION_LOG 383) alt-correlation regime stamp (observe-only)
 # 📈 (DECISION_LOG 383) ONE process-wide tracker: refreshed once per 5m close by main.alt_corr_loop (own task, own public client); read at every
@@ -15460,6 +15461,15 @@ class TradingEngine:
             _z_pair_gap = None
         # 🏃 (DECISION_LOG 541) WILLY RUNNER — decided ONCE here from the fill's own stamps (the coin's 1h EMA20−200 gap just read + the entry
         # ATR %), stored on the row: k = trail past the target (no resting TP on that row); None = today's exit. FRENZY_WILLY only.
+        # 🎯 (DECISION_LOG 563) FAN flip FIXED TP — decided ONCE here (restart-proof on the row): a FLIP:FAN_RATIO_GATE SHORT runs the net TP
+        # flip_fan_fixed_tp_pct (resting maker limit when resting_tp_flip_fan_enabled) instead of the strpk trail + short ladder; 0 = the trail.
+        _ff_tp = None
+        try:
+            if flip_source == "FAN_RATIO_GATE" and direction == "SHORT":
+                _ff_v = float(getattr(config.trading_config.thresholds, 'flip_fan_fixed_tp_pct', 0.0) or 0.0)
+                _ff_tp = round(_ff_v, 4) if (math.isfinite(_ff_v) and 0 < _ff_v <= 5.0) else None
+        except Exception:
+            _ff_tp = None
         _wrun_k = None
         if _frenzy and _fz_es == "FRENZY_WILLY":
             _wrun_k = frenzy_willy_runner_k_for(config.trading_config.thresholds, _fz_es, _z_pair_gap, entry_atr_pct)
@@ -15646,6 +15656,7 @@ class TradingEngine:
             entry_frenzy_willy_spike_high=(entry_frenzy_willy_spike_high if (_frenzy and _fz_es in WILLY_EXIT_CLASS) else None),   # 🎲² (356) WILLY exit V2 stamps
             frenzy_willy_tp_target_pct=_wv2_tp,   # 🎲² (356) the WILLY TP decided at entry (NULL = pre-V2 row → config TP)
             frenzy_willy_runner_k=_wrun_k,   # 🏃 (541) WILLY runner k (NULL = today's exit)
+            flip_fan_tp_pct=_ff_tp,   # 🎯 (563) FAN flip fixed TP (NULL = the trail)
             entry_willy_ht_size_frac=_ht_frac_stamp,   # 📈 (365) HT only: the size fraction it opened at (the HT re-size ladder)
             entry_alt_corr24=_ac_stamp.get('entry_alt_corr24'), entry_alt_beta24=_ac_stamp.get('entry_alt_beta24'),   # 📈 (DECISION_LOG 383) OBS-R1 / R1b
             entry_mkt_up4h_pct=_mb_stamp.get('entry_mkt_up4h_pct'), entry_mkt_up4h_n=_mb_stamp.get('entry_mkt_up4h_n'),   # 🌡 (489)
@@ -15737,7 +15748,7 @@ class TradingEngine:
         # lock → both wait forever (every paper close + the monitor freeze). Paper arms AFTER its book release, as the manual open
         # does; live already released the book at the commit and arms here, unchanged.
         _rtp_arm_after_release = False
-        if (_frenzy and (_fz_es in RTP_SLEEVES)) or _fbs:   # 🩳 (348) FLATBASE_SHORT's −8 % price TP rests too (resting_tp_flatbase_enabled)
+        if (_frenzy and (_fz_es in RTP_SLEEVES)) or _fbs or _ff_tp is not None:   # 🩳 (348) FLATBASE_SHORT's −8 % price TP rests too · 🎯 (563) a FAN flip with its fixed TP
             if self.is_paper_mode:
                 _rtp_arm_after_release = True
             else:
@@ -15975,6 +15986,7 @@ class TradingEngine:
                 'frenzy_lite_tp_used': _lc_tp_used,   # 🎯 (DECISION_LOG 301) LITE C stored TP (NULL = config TP)
                 'frenzy_willy_tp_target_pct': _wv2_tp,   # 🎲² (356) WILLY exit V2 (row-derived exit)
                 'frenzy_willy_runner_k': _wrun_k,   # 🏃 (541) WILLY runner (row-derived exit)
+                'flip_fan_tp_pct': _ff_tp,   # 🎯 (563) FAN flip fixed TP (row-derived exit)
             }
             if pair not in _open_orders_cache:
                 _open_orders_cache[pair] = []
@@ -24670,6 +24682,51 @@ class TradingEngine:
                     continue  # Trade closed; skip remaining checks
 
             # ════════════════════════════════════════════════════════════════
+            # 🎯 (DECISION_LOG 563) FAN FLIP FIXED TP — a FLIP:FAN_RATIO_GATE SHORT stamped with flip_fan_tp_pct takes profit at that NET %:
+            # a resting maker limit alive → _rtp_gate (fill detection / paper ≥ 1 tick through / safety net); none alive → the software TP at
+            # the touch. The strpk trail and the short HARD_TP ladder are skipped for the row below; the stop, the backstop, NO_EXPANSION and
+            # MAX_HOLD run unchanged (no `continue` unless this closes).
+            # ════════════════════════════════════════════════════════════════
+            _ff_tp_rt = order_info.get('flip_fan_tp_pct') if (order_info.get('entry_strategy') or '') == FLIP_FAN_ES and direction == "SHORT" else None
+            try:
+                _ff_tp_rt = float(_ff_tp_rt) if _ff_tp_rt is not None and float(_ff_tp_rt) > 0 else None
+            except (TypeError, ValueError):
+                _ff_tp_rt = None
+            if _ff_tp_rt is not None and not order_info.get('_closing_in_progress'):
+                _ff_reason = None
+                try:
+                    if self._rtp_state(order_id, pair=pair, opened_at=order_info.get('opened_at')) is not None:
+                        _ff_g = await self._rtp_gate(order_id, current_price, background=True)   # never awaits REST in the price callback
+                        if _ff_g:
+                            _ff_reason = _ff_g[1]
+                            logger.warning(f"[RESTING_TP] {pair} #{order_id}: {_ff_g[0]} → close {_ff_g[1]} (realtime, FAN flip)")
+                    elif pnl_pct >= _ff_tp_rt:
+                        _ff_reason = FLIP_FAN_TP_REASON
+                        logger.warning(f"[FLIP_FAN_TP] {pair} SHORT: pnl={pnl_pct:.4f}% >= tp={_ff_tp_rt}% (software TP, no resting limit alive) — CLOSING NOW!")
+                except Exception as _ff_e:
+                    logger.error(f"[FLIP_FAN_TP] {pair}: check failed ({_ff_e!r})")
+                    _ff_reason = None
+                if _ff_reason is not None:
+                    order_info['_closing_in_progress'] = True
+                    try:
+                        async with AsyncSessionLocal() as db:
+                            result = await db.execute(select(Order).where(and_(Order.id == order_id, Order.status == "OPEN")))
+                            order = result.scalar_one_or_none()
+                            if order:
+                                closed = await self.close_position(db, order, current_price, _ff_reason)
+                                if closed:
+                                    async with _cache_lock:
+                                        _open_orders_cache[pair] = [o for o in _open_orders_cache.get(pair, []) if o['id'] != order_id]
+                                else:
+                                    order_info['_closing_in_progress'] = False
+                            else:
+                                order_info['_closing_in_progress'] = False
+                    except Exception as e:
+                        logger.error(f"[FLIP_FAN_TP] Error closing {pair}: {e}")
+                        order_info['_closing_in_progress'] = False
+                    continue  # closed (or the close is retried next tick)
+
+            # ════════════════════════════════════════════════════════════════
             # 🚀 Jul 27 SPIKE_CHASE option-D realtime layers (L1 fixed SL + L3
             # state-dependent floors). REPLACES the entire normal long exit
             # stack for spike longs (hard-tp / trailing / runner / EMA13 / fast
@@ -24799,7 +24856,7 @@ class TradingEngine:
             # goes negative.
             # ════════════════════════════════════════════════════════════════
             _hard_tp_enabled = getattr(config.trading_config.thresholds, 'hard_tp_enabled', False)
-            if _hard_tp_enabled and not order_info.get('_closing_in_progress'):
+            if _hard_tp_enabled and not order_info.get('_closing_in_progress') and _ff_tp_rt is None:   # 🎯 (563) a FAN flip on its fixed TP runs no ladder
                 # Jul 22 (operator-directed mechanism swap): LADDER mode replaces the flat cap
                 # when a per-side rung list is configured. Rungs = "trigger:offset,..." — once
                 # the trade's PEAK crosses a trigger, a profit FLOOR locks at trigger-offset
@@ -25960,6 +26017,8 @@ class TradingEngine:
                     _sp_src = (order_info.get('entry_strategy') or "")[5:]
                     _sp_on = ((_sp_src == "FAN_RATIO_GATE" and getattr(_sp_th, 'flip_fan_runner_strpk', False))
                               or (_sp_src != "FAN_RATIO_GATE" and getattr(_sp_th, 'flip_runner_strpk_shorts', False)))
+                    if _ff_tp_rt is not None:   # 🎯 (DECISION_LOG 563) a FAN flip on its fixed TP: no strpk trail (the TP block above owns the profit side)
+                        _sp_on = False
                     if _sp_on:
                         _sp_pk = order_info.get('runner_peak_stretch')
                         if _sp_pk is None or _ls_stretch > _sp_pk:
@@ -26242,6 +26301,8 @@ class TradingEngine:
                             _handoff_suppress = True
             except Exception:
                 pass
+            if _ff_tp_rt is not None:   # 🎯 (563 review) a FAN flip on its fixed TP never gets the tier trailing stop back, whatever the strpk toggles say
+                _handoff_suppress = True
 
             if trailing_stop_would_be_active and order_info.get('tp_trailing_enabled', False) and not _handoff_suppress:
                 should_close_trailing = False
@@ -26643,6 +26704,7 @@ class TradingEngine:
                 'frenzy_lite_tp_used': getattr(order, 'frenzy_lite_tp_used', None),   # 🎯 (DECISION_LOG 301) LITE C stored TP (restart-proof)
                 'frenzy_willy_tp_target_pct': getattr(order, 'frenzy_willy_tp_target_pct', None),   # 🎲² (356) WILLY exit V2 — restart-proof
                 'frenzy_willy_runner_k': getattr(order, 'frenzy_willy_runner_k', None),   # 🏃 (541) WILLY runner — restart-proof
+                'flip_fan_tp_pct': getattr(order, 'flip_fan_tp_pct', None),   # 🎯 (563) FAN flip fixed TP — restart-proof
             }
 
             if order.pair not in new_cache:

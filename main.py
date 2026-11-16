@@ -2346,6 +2346,7 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
             "entry_frenzy_willy_wait_bars": getattr(o, 'entry_frenzy_willy_wait_bars', None), "entry_vol_mcap_ratio": getattr(o, 'entry_vol_mcap_ratio', None),   # 🟥🔄 (251)
             "entry_frenzy_willy_nomiss": getattr(o, 'entry_frenzy_willy_nomiss', None),   # 🧭 (350) R_NOMISS entry A
             "frenzy_willy_tp_target_pct": getattr(o, 'frenzy_willy_tp_target_pct', None), "entry_frenzy_willy_spike_high": getattr(o, 'entry_frenzy_willy_spike_high', None), "frenzy_willy_runner_k": getattr(o, 'frenzy_willy_runner_k', None),   # 🎲² (356) WILLY exit V2: the row's own TP / spike high
+            "flip_fan_tp_pct": getattr(o, 'flip_fan_tp_pct', None),   # 🎯 (563) FAN flip fixed TP (NULL = the trail)
             "willy_floor_armed_at": (o.willy_floor_armed_at.isoformat() if getattr(o, 'willy_floor_armed_at', None) else None),   # historical (V2 floor, removed DL 358)
             "exit_override_at": (o.exit_override_at.isoformat() if getattr(o, 'exit_override_at', None) else None),   # ✎ Oct-2 operator exit override
             # ➕ (DECISION_LOG 324) add to position: the badge (count / Σ margin / last add) + whether the ➕ button is enabled (a fixed-level exit
@@ -3011,6 +3012,7 @@ async def get_closed_orders(db: AsyncSession = Depends(get_db)):
             "entry_frenzy_willy_wait_bars": getattr(o, 'entry_frenzy_willy_wait_bars', None), "entry_vol_mcap_ratio": getattr(o, 'entry_vol_mcap_ratio', None),   # 🟥🔄 (251)
             "entry_frenzy_willy_nomiss": getattr(o, 'entry_frenzy_willy_nomiss', None),   # 🧭 (350) R_NOMISS entry A
             "frenzy_willy_tp_target_pct": getattr(o, 'frenzy_willy_tp_target_pct', None), "entry_frenzy_willy_spike_high": getattr(o, 'entry_frenzy_willy_spike_high', None), "frenzy_willy_runner_k": getattr(o, 'frenzy_willy_runner_k', None),   # 🎲² (356) WILLY exit V2: the row's own TP / spike high
+            "flip_fan_tp_pct": getattr(o, 'flip_fan_tp_pct', None),   # 🎯 (563) FAN flip fixed TP (NULL = the trail)
             "willy_floor_armed_at": (o.willy_floor_armed_at.isoformat() if getattr(o, 'willy_floor_armed_at', None) else None),   # historical (V2 floor, removed DL 358)
             "exit_override_at": (o.exit_override_at.isoformat() if getattr(o, 'exit_override_at', None) else None),   # ✎ Oct-2 operator exit override
             # ➕ (DECISION_LOG 324) size added by the operator (the row's qty / avg entry / invested already include it)

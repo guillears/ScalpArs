@@ -631,7 +631,7 @@ def test_exit_and_protection_sites_wired():
     # cached stops (open + every cache rebuild after a restart), resting TP armed at the open, backstop per order at open
     assert "else -flatbase_params(config.trading_config.thresholds)['stop'] if _fbs" in eng
     assert "else -flatbase_params(config.trading_config.thresholds)['stop'] if (order.entry_strategy or '') in FLATBASE_CLASS" in eng
-    assert "if (_frenzy and (_fz_es in RTP_SLEEVES)) or _fbs:" in eng
+    assert "if (_frenzy and (_fz_es in RTP_SLEEVES)) or _fbs or _ff_tp is not None:" in eng   # (563) + the FAN flip fixed TP
     assert eng.count("(_fz_es if _frenzy else (FLATBASE_SHORT if _fbs else None))") == 2
     # restart re-arm / heal / re-price / reconcile read the ROW: row_backstop_pct + rtp_row_target cover FLATBASE (tested above)
     assert "_flatbase_follow_seed(db)" in eng and "await self._flatbase_sweep(bar_open, seen | _fbs_seen)" in eng

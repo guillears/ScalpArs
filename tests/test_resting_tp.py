@@ -139,7 +139,8 @@ def _setup(monkeypatch, paper=False, rows=(), place=None, fetch=None, cancel="ca
                resting_tp_through_ticks=2, frenzy_willy_late_tp_minutes=30.0, frenzy_willy_late_tp_pct=0.25, broker_backstop_enabled=True,
                resting_tp_frenzy_long_enabled=False, resting_tp_manual_enabled=False, resting_tp_override_enabled=False,   # 🎯 (310) the 296 scope; the 310 switches: tests/test_resting_tp_fixed_all.py
                resting_tp_lite_retry_enabled=False,   # 🔁 (316) its own switch: tests/test_frenzy_lite_retry.py
-               resting_tp_flatbase_enabled=False)   # 🩳 (348) its own switch: tests/test_flatbase_short.py
+               resting_tp_flatbase_enabled=False,   # 🩳 (348) its own switch: tests/test_flatbase_short.py
+               resting_tp_flip_fan_enabled=False)   # 🎯 (563) its own switch: tests/test_flip_fan_fixed_tp.py
     _kw.update(th_kw or {})
     for k, v in _kw.items():
         monkeypatch.setattr(th, k, v, raising=False)
@@ -637,7 +638,7 @@ def test_every_exit_path_cancels_first_source_pins():
     assert eng.count("_held_minutes(order.opened_at), None, resting_tp=_rtp_on_m, row=order)") == 1   # 🎲² (356) + the row (own TP / floor)
     assert eng.count("_held_minutes(order_info.get('opened_at')), None, resting_tp=_rtp_on_rt, row=order_info)") == 1
     # 🎯 (310) + the operator-TP branch (MANUAL FIXED / override) of each path: the same gate, monitor awaits, realtime in the background
-    assert eng.count("await self._rtp_gate(order.id, current_price)") == 2 and eng.count("await self._rtp_gate(order_id, current_price, background=True)") == 2
+    assert eng.count("await self._rtp_gate(order.id, current_price)") == 2 and eng.count("await self._rtp_gate(order_id, current_price, background=True)") == 3   # (563) + the FAN flip fixed TP
     assert "await self.resting_tp_sweep()" in eng
     assert "FRENZY_LATE_TP" not in eng and "FRENZY_LATE_TP" not in main                     # deep E: renamed WILLY_LATE_TP everywhere
     assert "self.rtp_clear_all()" in inspect.getsource(T.TradingEngine._set_paper_mode_locked) and main.count("trading_engine.rtp_clear_all()") == 2   # #7

@@ -49,7 +49,7 @@ def test_longs_unchanged_by_the_short_knob():
 
 def test_d11_wiring():
     assert config.SignalThresholds().momentum_short_lev_mult == 1.0
-    assert json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]["momentum_short_lev_mult"] == 0.75
+    assert json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]["momentum_short_lev_mult"] == 0.5   # DL 562: 10×
     assert "base_lev_multiplier=_ml_lev * _ms_lev" in ENG
     assert "_ms_lev = momentum_short_lev_factor(config.trading_config.thresholds, _wh_es, direction)" in ENG
     assert HTML.count("config-momentum-short-lev-mult") >= 4                # input + loader + save + sizing-table preview

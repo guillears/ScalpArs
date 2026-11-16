@@ -2608,7 +2608,7 @@ class SignalThresholds(BaseModel):
     # Bear-Run / manual) on top of the cell lev: leverage = round(20 × cell lev × this), before the pair bracket / balance ceilings. Live 0.75
     # = 15× (was 20×): live 3 · 33 % · −$638 (each stop ≈ 2.9 % of the account); master full-size 49 · 78 % · +0.20 but Sep–Nov (BTC daily
     # uptrend) 23 · 65 % · −0.00 → 95 % WR floor below breakeven (DL 547 size by edge). De-lever only: ≤ 0 / blank = 1 (off), clamped 0.05–1.
-    # Restore 1.0 if the sleeve re-proves (Jun–Aug level) at a batch review.
+    # Restore 1.0 if the sleeve re-proves (Jun–Aug level) at a batch review. DL 562 (operator 11-16 "change Momentum Long and Short to 10x"): live 0.5 = 10×.
     momentum_short_lev_mult: float = 1.0
     momentum_long_lev_mult: float = 1.0
     # ⚖️ 2026-10-15 (DECISION_LOG 298, operator-approved "go with 5x"): momentum_long_invest_mult — the MARGIN share of every MOMENTUM LONG

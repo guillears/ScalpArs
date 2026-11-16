@@ -99,8 +99,8 @@ def test_config_json_d11():
     import config as C
     assert C.SignalThresholds.model_fields["momentum_long_invest_mult"].default == 1.0
     cfg = json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
-    assert cfg["momentum_long_invest_mult"] == 1.0 and cfg["momentum_long_lev_mult"] == 0.4         # DL 571 (8×) · DL 528 C5 → DL 533 (15×) → DL 562 (10×)
-    assert math.isclose(cfg["momentum_long_invest_mult"] * cfg["momentum_long_lev_mult"], 0.4)       # ×10 DL 289's 1× notional
+    assert cfg["momentum_long_invest_mult"] == 1.0 and cfg["momentum_long_lev_mult"] == 0.05   # DL 573: 1× ticket         # DL 571 (8×) · DL 528 C5 → DL 533 (15×) → DL 562 (10×)
+    assert math.isclose(cfg["momentum_long_invest_mult"] * cfg["momentum_long_lev_mult"], 0.05)       # ×10 DL 289's 1× notional
     assert "DECISION_LOG 298" in open(os.path.join(ROOT, "config.py"), encoding="utf-8").read()
 
 

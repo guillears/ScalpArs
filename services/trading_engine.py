@@ -15328,7 +15328,9 @@ class TradingEngine:
                 _dg_msg = (f"the book holds {_dg_sides} within {getattr(_dg_inv, 'entry_depth_guard_max_sweep_pct', 0.15)}% of the best "
                            f"price vs ${notional_value:,.0f} planned (min {getattr(_dg_inv, 'entry_depth_guard_min_frac', 0.5)}×){_dg_min_note}")
                 if _frenzy or _fbs:   # (551 deep review) FLATBASE too: its caller reads the refusal text (no double FLATBASE_OPEN_REFUSED)
-                    self._frenzy_open_refusal = _dg_msg
+                    _k = lambda v: (f"${v / 1000:,.1f}k" if v is not None else "?")   # (dashboard) the short form — the full line stays in the log
+                    self._frenzy_open_refusal = (f"thin book {_k(_dg_fill)}" + (f" / {_k(_dg_xfill)}" if _dg_exit_on else "")
+                                                 + f" vs {_k(notional_value)}" + (" · below min margin" if _dg_min_note else ""))
                 logger.warning(f"[DEPTH_GUARD_SKIP] {pair} {direction} {_wh_es}: {_dg_msg} — skipped")
                 try:
                     _dg_ef = {k: v for k, v in locals().items() if k.startswith('entry_') and not callable(v)}

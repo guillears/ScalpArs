@@ -15,6 +15,9 @@ CASES = [
     ({"lite": True}, dict(vol_mult=40.0), {"_btc_ema20_slope_pct_raw": None}, None),
     ({"lite": True}, dict(vol_mult=40.0), {"_current_btc_rsi": 70.0}, "FRENZY_LITE_BLOCK_LITE_BTC_RSI_HOT"),        # 🧱 (554) BTC overbought
     ({"lite": True}, dict(vol_mult=40.0), {"_current_btc_rsi": 69.94}, None),                                       # 69.9 on the stamp's 1 dp
+    ({"lite": True}, dict(vol_mult=40.0, above_share=40.0), {}, "FRENZY_LITE_BLOCK_LITE_WEAK_HOLD"),                    # 🧱 (556) weak hold
+    ({"lite": True}, dict(vol_mult=40.0, above_share=50.01), {}, None),
+    ({"lite_retry": dict(green=BAR_OPEN - 300_000, ret=0.4, exp=BAR_OPEN + 600_000)}, dict(above_share=10.0), {}, None),   # RETRY untouched
     ({"lite": True}, dict(vol_mult=40.0), {"_current_btc_rsi": 79.3, "_btc_ema20_slope_pct_raw": -0.01},
      "FRENZY_LITE_BLOCK_LITE_BTC_EMA20_DOWN+LITE_BTC_RSI_HOT"),
     ({"lite_retry": dict(green=BAR_OPEN - 300_000, ret=0.4, exp=BAR_OPEN + 600_000)}, {}, {"_current_btc_rsi": 80.0}, None),   # RETRY untouched
@@ -38,7 +41,7 @@ def test_frenzy_block(monkeypatch, kw, fx, gl, expect):
     for k, v in gl.items(): monkeypatch.setattr(TE, k, v)
     th = TE.config.trading_config.thresholds
     for k in ("watch_block_willy_gap","watch_block_willy_failed_spike","watch_block_willy_ht_failed_spike","watch_block_retry_btc1h",
-              "watch_block_lite_btc_ema20_down","watch_block_long_weak_frenzy","watch_block_lite_btc_rsi_hot"):
+              "watch_block_lite_btc_ema20_down","watch_block_long_weak_frenzy","watch_block_lite_btc_rsi_hot","watch_block_lite_weak_hold"):
         monkeypatch.setattr(th, k, True)
     async def go():
         eng, SL = await _hold_db(monkeypatch, open_willy=False)()

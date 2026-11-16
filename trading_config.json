@@ -767,6 +767,7 @@
     "watch_block_retry_btc1h": true,
     "watch_block_lite_btc_ema20_down": true,
     "watch_block_lite_btc_rsi_hot": true,
+    "watch_block_lite_weak_hold": true,
     "watch_block_long_weak_frenzy": true,
     "watch_block_fade_late_weak": true,
     "watch_block_ml_mkt_hot": true,

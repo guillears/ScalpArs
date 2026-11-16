@@ -636,7 +636,7 @@ def _has_line(lines, line):
 
 # 🧱 (DECISION_LOG 554) a DECLARED-OVERRIDE line with a TIGHTER pre-committed gate: decided at its first TIGHT_N priced refusals (no day / kept
 # minimum) — REVERT if their average > 0 OR ≥ TIGHT_WINS of them won; else KEEP. Frozen once like every line.
-TIGHT = {"LITE_BTC_RSI_HOT": (5, 3), "ML_WEAK_RESCUE": (8, None)}   # (555) first 8 priced: avg > 0 → revert (no winner-count leg)
+TIGHT = {"LITE_BTC_RSI_HOT": (5, 3), "ML_WEAK_RESCUE": (8, None), "LITE_WEAK_HOLD": (8, None)}   # (555) first 8 priced: avg > 0 → revert (no winner-count leg)
 
 
 def gate_read(B, K, line):
@@ -690,7 +690,7 @@ ML_RISKCAP = "MOMENTUM_LONG_RISKCAP"
 ML_SLEEVES = ("MOMENTUM_LONG", ML_RISKCAP)
 KEPT_AS = {ML_RISKCAP: "MOMENTUM_LONG"}
 LINES = {"FRENZY_WILLY": ("WILLY_GAP", "WILLY_FAILED_SPIKE"), "FRENZY_WILLY_HT": ("WILLY_FAILED_SPIKE",), "FRENZY_LITE_RETRY": ("RETRY_BTC1H",),
-         "FRENZY_LITE": ("LITE_BTC_EMA20_DOWN", "LITE_BTC_RSI_HOT"), "FRENZY_LONG": ("LONG_WEAK_FRENZY",), "SPIKE_FADE": ("FADE_LATE_WEAK",),
+         "FRENZY_LITE": ("LITE_BTC_EMA20_DOWN", "LITE_BTC_RSI_HOT", "LITE_WEAK_HOLD"), "FRENZY_LONG": ("LONG_WEAK_FRENZY",), "SPIKE_FADE": ("FADE_LATE_WEAK",),
          "MOMENTUM_LONG": ("ML_MKT_HOT", "ML_BULL90", "ML_WEAK_RESCUE"),
          ML_RISKCAP: ("ML_RISK_CAP",)}   # 📈 (533) a RISK limiter, not an edge filter: its "REVERT CANDIDATE" reads as what the cap COST
 # (skipped trades still profitable) — weigh it against the drawdown it avoided; never an automatic revert

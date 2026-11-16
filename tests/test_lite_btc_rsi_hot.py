@@ -32,7 +32,7 @@ def test_wiring():
     assert html.count("config-wb-lite-rsi-hot") == 3
     eng = (ROOT / "services/trading_engine.py").read_text()
     assert "btc_rsi=(_ef.get('entry_btc_rsi') if _ef.get('entry_btc_rsi') is not None else _g.get('_current_btc_rsi'))" in eng
-    assert 'btc_rsi=_num(r, "entry_btc_rsi"))' in (ROOT / "scripts/build_master_pool.py").read_text()
+    assert 'btc_rsi=_num(r, "entry_btc_rsi"),' in (ROOT / "scripts/build_master_pool.py").read_text()
 
 
 def test_tight_gate():

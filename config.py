@@ -1774,6 +1774,11 @@ class SignalThresholds(BaseModel):
     # by BTC RSI: < 70 ≈ +1 %/fill · 70–75 2 · 50 % · −0.85 · ≥ 75 2 · 0 % · −1.59 + live SHELL −3.31 (3 market windows, far below the 15 / 8
     # bar); other long sleeves win there (WILLY / FRENZY_LONG / Bull-Run). 🔒 Revert: first 5 priced blocked signals avg > 0 OR ≥ 3 winners → off.
     watch_block_lite_btc_rsi_hot: bool = False
+    # 🧱 (DECISION_LOG 556, operator "ship it" — DECLARED OVERRIDE): FRENZY_LITE refused when the price spent ≤ 50 % of the episode's 5m
+    # closes above the spike VWAP (entry_frenzy_above_share — no defended base, the "second push" bet fails). Master + live 16 · 50 % · −0.01
+    # (−0.15 at live stop cost) vs kept 32 · 75 % · +1.51; backtest (3 seeds, today's LITE filters) −0.11 / −0.08 / −0.05 vs +0.21 / +0.23 / +0.21.
+    # 🔒 Revert: first 8 priced blocked signals avg > 0 → off.
+    watch_block_lite_weak_hold: bool = False
     watch_block_long_weak_frenzy: bool = False          # FRENZY_LONG: frenzy volume ≤ 119× normal (DL 525)
     watch_block_fade_late_weak: bool = False            # SPIKE_FADE OBS-F1: BTC 1 d EMA50 > EMA200 ∧ +DI ≤ 48.5 ∧ ≤ 1.80 % above EMA13 (DL 384)
     watch_block_ml_mkt_hot: bool = False                # MOMENTUM LONG: > 50 % of the rolling top-100 up over 4 h (DL 416 / 489)

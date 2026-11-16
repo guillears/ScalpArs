@@ -12236,20 +12236,23 @@ class TradingEngine:
                 btc_1h_slope=(_ef.get('entry_btc_1h_slope') if _ef.get('entry_btc_1h_slope') is not None else _g.get('_current_btc_1h_slope')),
                 btc_ema20_slope_raw=_g.get('_btc_ema20_slope_pct_raw'),
                 frenzy_vol_mult=(round(flag['vol_mult'], 1) if flag.get('vol_mult') is not None else None),
-                btc_rsi=(_ef.get('entry_btc_rsi') if _ef.get('entry_btc_rsi') is not None else _g.get('_current_btc_rsi')))   # 🧱 (554) LITE_BTC_RSI_HOT
+                btc_rsi=(_ef.get('entry_btc_rsi') if _ef.get('entry_btc_rsi') is not None else _g.get('_current_btc_rsi')),   # 🧱 (554) LITE_BTC_RSI_HOT
+                above_share=(round(flag['above_share'], 2) if flag.get('above_share') is not None else None))   # 🧱 (556) LITE_WEAK_HOLD — the stamp's value
             if _wfl:
                 _wcode = watch_block_code(_es, _wfl)
                 self._record_filter_block(_wcode, "LONG")
                 flag[_lfk] = f"{_bar_dt:%m-%d %H:%M} {_tg}refused: armed filter {' + '.join(_wfl)}"
                 logger.info(f"[{_es}] {pair}: {_sig} but armed filter {' + '.join(_wfl)} — skipped ({_wcode}; adx={(indicators or {}).get('adx')} "
                             f"gap8_13={_ef.get('entry_ema_gap_8_13')} vs_vwap={flag.get('vs_vwap_pct')} vol={flag.get('vol_mult')} "
-                            f"btc1h={_ef.get('entry_btc_1h_slope')} btc_ema20_raw={_g.get('_btc_ema20_slope_pct_raw')} btc_rsi={_ef.get('entry_btc_rsi')})")
+                            f"btc1h={_ef.get('entry_btc_1h_slope')} btc_ema20_raw={_g.get('_btc_ema20_slope_pct_raw')} btc_rsi={_ef.get('entry_btc_rsi')} "
+                            f"above_share={flag.get('above_share')})")
                 _wef = dict(_ef)
                 _wef.update(entry_adx=(indicators or {}).get('adx'), entry_rsi=(indicators or {}).get('rsi'), entry_atr_pct=atr,
                             entry_frenzy_vs_vwap_pct=flag.get('vs_vwap_pct'), entry_frenzy_vol_mult=flag.get('vol_mult'),
                             entry_frenzy_hours=flag.get('hours'), entry_frenzy_spike_at=flag.get('spike_ts'), entry_frenzy_stop_pct=_stop,
                             entry_btc_ema20_slope_raw=_g.get('_btc_ema20_slope_pct_raw'), entry_pair_volume_24h_usd=flag.get('volume_24h'),
-                            entry_bull_pct=_g.get('_market_bull_pct'), entry_bear_pct=_g.get('_market_bear_pct'))
+                            entry_bull_pct=_g.get('_market_bull_pct'), entry_bear_pct=_g.get('_market_bear_pct'),
+                            entry_frenzy_above_share=(round(flag['above_share'], 2) if flag.get('above_share') is not None else None))   # (556 review a)
                 self._blocked_record(_es, "LONG", pair, price, _wfl, _wef, bar_ms=(int(catchup_now) if _cu else int(bar_open)))
                 return
             _pvr = ((indicators.get('volume') or 0) / indicators['avg_volume']) if (indicators and indicators.get('avg_volume')) else None

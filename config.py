@@ -1788,6 +1788,14 @@ class SignalThresholds(BaseModel):
     # −0.25 %/fill on 11 days / 17 pairs (both eras negative, gap cut robust 0.25–0.36), ML +0.24 → +0.34 %/fill, one-size DCR +0.66 → +0.79;
     # day-boot P(mean<0) 0.92 (< 0.95 bar); backtest (Oct-13 stack) shows no separation. 🔒 Revert: first 8 priced blocked signals avg > 0 → off.
     watch_block_ml_weak_rescue: bool = False
+    # 🧱 (DECISION_LOG 559, operator "ship it" after −$1,310 on 8 live momentum longs — DECLARED OVERRIDE): two momentum-LONG lines.
+    # ML_WEAK_MARKET: market breadth weak (bull % ≤ 64.1) ∧ BTC trend weak (BTC ADX ≤ 21.71) — master full-size 8 · 38 % · −0.15 (6 days; with
+    # the probe fills 34 · 38 % · −0.28 on 15 days); live: AVAX / ARB / INJ (Sunday 13:23 cluster). ML_FADING_QUIET: the coin's ADX falling at
+    # entry ∧ quiet coin (ATR ≤ 0.38 %) — master 11 · 64 % · −0.08 (weak); live: XRP / AVAX / DOGE (Monday 07:54 cluster). Both: master 124 · 77 %
+    # · +0.24 → 107 · 79 % · +0.29, DCR +0.66 → +0.69; live 8 · 25 % · −$1,310 → 2 · 50 % · −$235. 🔒 Revert per line: first 8 priced blocked
+    # signals average > 0 → off.
+    watch_block_ml_weak_market: bool = False
+    watch_block_ml_fading_quiet: bool = False
     # ⏪ Oct-6 FRENZY CATCH-UP (operator-approved build): FRENZY_LONG / FRENZY_WIDE get ONE chance per setup — the 5m bar it turns ON. When that
     # bar closed while no pass judged (bot paused, restarting after a deploy, an outage) the pair showed "ON (entry bar passed)" forever. Live case:
     # NMRUSDT 2026-10-06, fresh bar closed 13:40 UTC (streak 25, 2.0 h, vol 343×, ATR 2.1 %) while the bot was paused 13:25→13:53. NOTE (deep

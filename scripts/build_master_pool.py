@@ -1246,7 +1246,8 @@ def main(allow_proxy=False):
             lines = WF.fade_blocks(_WF_TH, _gap1d[i], _num(r, "entry_pos_di"), _num(r, "entry_dist_from_ema13_pct"))
         elif _mlm[i]:
             lines = WF.ml_blocks(_WF_TH, _hot[i], _num(r, "entry_bull_pct"), entry_gap=_num(r, "entry_gap"),
-                                 global_volume_ratio=_num(r, "entry_global_volume_ratio"))   # 🧱 (555) ML_WEAK_RESCUE — applied at the next master re-freeze
+                                 global_volume_ratio=_num(r, "entry_global_volume_ratio"),   # 🧱 (555) ML_WEAK_RESCUE — applied at the next master re-freeze
+                                 btc_adx=_num(r, "entry_btc_adx"), adx_delta=_num(r, "entry_adx_delta"), atr_pct=_num(r, "entry_atr_pct"))   # 🧱 (559)
         else:
             continue
         if lines:

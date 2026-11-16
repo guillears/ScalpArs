@@ -40,8 +40,8 @@ def test_wiring():
     assert json.loads((ROOT / "trading_config.json").read_text())["thresholds"]["watch_block_ml_weak_rescue"] is True
     assert (ROOT / "templates/index.html").read_text().count("config-wb-ml-weak-rescue") == 3
     eng = (ROOT / "services/trading_engine.py").read_text()
-    assert "entry_gap=entry_gap, global_volume_ratio=entry_global_volume_ratio); _wf_sleeve = \"MOMENTUM_LONG\"" in eng
-    assert 'global_volume_ratio=_num(r, "entry_global_volume_ratio"))' in (ROOT / "scripts/build_master_pool.py").read_text()
+    assert "entry_gap=entry_gap, global_volume_ratio=entry_global_volume_ratio,   # 🧱 (555) ML_WEAK_RESCUE" in eng
+    assert 'global_volume_ratio=_num(r, "entry_global_volume_ratio"),   # 🧱 (555)' in (ROOT / "scripts/build_master_pool.py").read_text()
     import sys
     sys.path.insert(0, str(ROOT / "scripts"))
     import scout_blocked_filters as S
@@ -53,4 +53,4 @@ def test_wiring():
     assert S.gate_read(B([0.5] * 5 + [-0.7] * 3), K, "ML_WEAK_RESCUE")[0].startswith("REVERT")
     assert S.gate_read(B([0.5] * 6 + [-0.7] * 2), K, "ML_WEAK_RESCUE")[0].startswith("REVERT")
     eng = (ROOT / "services/trading_engine.py").read_text()
-    assert "global_volume_ratio=(entry_fields or {}).get('entry_global_volume_ratio'))   # (555 review A)" in eng   # refusal recorder
+    assert "global_volume_ratio=(entry_fields or {}).get('entry_global_volume_ratio'),   # (555 review A)" in eng   # refusal recorder

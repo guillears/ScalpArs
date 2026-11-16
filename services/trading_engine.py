@@ -11501,7 +11501,9 @@ class TradingEngine:
                 try:   # 🧱 (DECISION_LOG 527) the armed ML filters refuse later in open_position too
                     _wml = watch_ml_blocks(th, mkt_up4h_stamp(now_ms).get('entry_mkt_up4h_pct'), bull_pct,
                                            entry_gap=(entry_fields or {}).get('entry_gap'),
-                                           global_volume_ratio=(entry_fields or {}).get('entry_global_volume_ratio'))   # (555 review A)
+                                           global_volume_ratio=(entry_fields or {}).get('entry_global_volume_ratio'),   # (555 review A)
+                                           btc_adx=(entry_fields or {}).get('entry_btc_adx'), adx_delta=(entry_fields or {}).get('entry_adx_delta'),
+                                           atr_pct=(entry_fields or {}).get('entry_atr_pct'))   # (559)
                     if not post and _wml:
                         post = watch_block_code("MOMENTUM_LONG", _wml)[:40]
                 except Exception:
@@ -14260,7 +14262,8 @@ class TradingEngine:
                     and not (gap_probe or gapmin_probe or slopegate_probe or rsiadx_probe or deadband_probe or rsiceil_probe
                              or gminflat_probe or adxmax_probe or dbdown_probe or adxmax2_probe or deepgap_probe or majors_probe)):
                 _wf_lines = watch_ml_blocks(_wf_th, mkt_up4h_stamp().get('entry_mkt_up4h_pct'), entry_bull_pct,
-                                            entry_gap=entry_gap, global_volume_ratio=entry_global_volume_ratio); _wf_sleeve = "MOMENTUM_LONG"   # 🧱 (555) ML_WEAK_RESCUE
+                                            entry_gap=entry_gap, global_volume_ratio=entry_global_volume_ratio,   # 🧱 (555) ML_WEAK_RESCUE
+                                            btc_adx=entry_btc_adx, adx_delta=entry_adx_delta, atr_pct=entry_atr_pct); _wf_sleeve = "MOMENTUM_LONG"   # 🧱 (559)
             elif spike_fade and direction == "SHORT":
                 _g1 = globals()
                 _gat = (_g1.get('_btc_1d_gap_at') or 0)
@@ -14273,7 +14276,7 @@ class TradingEngine:
         if _wf_lines:
             _wf_code = watch_block_code(_wf_sleeve, _wf_lines)
             logger.info(f"[WATCH_FILTER] {pair}: {_wf_sleeve} {direction} blocked by {' + '.join(_wf_lines)} ({_wf_code}) px={current_price} "
-                        f"bull={entry_bull_pct} gap={entry_gap} gvol={entry_global_volume_ratio} pos_di={entry_pos_di} ext13={entry_dist_from_ema13_pct}")
+                        f"bull={entry_bull_pct} btc_adx={entry_btc_adx} adx_d={entry_adx_delta} atr={entry_atr_pct} gap={entry_gap} gvol={entry_global_volume_ratio} pos_di={entry_pos_di} ext13={entry_dist_from_ema13_pct}")
             try:
                 self._record_filter_block(_wf_code, direction)
             except Exception:

@@ -21,6 +21,8 @@ Lines (sleeve → refuse when):
   MOMENTUM LONG    ML_MKT_HOT          > 50 % of the rolling top-100 up over 4 h (services/mkt_up4h share > 0.50)   (DL 416 / 489)
                    ML_BULL90           ≥ 90 % of the scanned coins bullish (entry_bull_pct)   (DL 523)
                    ML_WEAK_RESCUE      weak trend (entry_gap ≤ 0.27) let in by the volume-gate rescue (global volume < 0.70)   (DL 555, declared override)
+                   ML_WEAK_MARKET      market breadth weak (entry_bull_pct ≤ 64.1) ∧ BTC trend weak (entry_btc_adx ≤ 21.71)        (DL 559, declared override)
+                   ML_FADING_QUIET     the coin's ADX falling at entry (entry_adx_delta < 0) ∧ a quiet coin (entry_atr_pct ≤ 0.38)  (DL 559, declared override)
 """
 import math
 
@@ -38,6 +40,8 @@ FADE_EXT_MAX = 1.80
 ML_HOT_SHARE_MIN = 0.50            # share > this = market hot (frozen DL 416 cut; services/mkt_up4h.HOT_CUT)
 ML_BULL_MIN = 90.0
 ML_WEAK_GAP_MAX = 0.27             # (DL 555) EMA gap ≤ this = weak trend (master bottom third; robust 0.25–0.36)
+ML_WEAK_BULL_MAX, ML_WEAK_BTC_ADX_MAX = 64.1, 21.71   # (DL 559) master full-size terciles, frozen
+ML_FADING_ADX_DELTA_MAX, ML_QUIET_ATR_MAX = 0.0, 0.38  # (DL 559) ADX falling (< 0) · ATR % bottom tercile, frozen
 ML_QUIET_GVOL_MAX = 0.70           # (DL 555) global volume < this = the VOL_GATE's long threshold AT SHIP (frozen — the rescue fires < 0.60, so the live band
 #                                    is < 0.60 today; if the VOL_GATE long threshold is ever lowered, longs at the new gate..0.70 would start being blocked — re-read)
 
@@ -55,6 +59,8 @@ TOGGLES = {
     "ML_MKT_HOT": "watch_block_ml_mkt_hot",
     "ML_BULL90": "watch_block_ml_bull90",
     "ML_WEAK_RESCUE": "watch_block_ml_weak_rescue",
+    "ML_WEAK_MARKET": "watch_block_ml_weak_market",
+    "ML_FADING_QUIET": "watch_block_ml_fading_quiet",
 }
 
 
@@ -120,7 +126,7 @@ def fade_blocks(th, btc_1d_ema50_200_gap_pct, pos_di, dist_from_ema13_pct):
     return ["FADE_LATE_WEAK"] if (g > FADE_LATE_GAP_MIN and p <= FADE_POS_DI_MAX and x <= FADE_EXT_MAX) else []
 
 
-def ml_blocks(th, mkt_hot_share, bull_pct, entry_gap=None, global_volume_ratio=None):
+def ml_blocks(th, mkt_hot_share, bull_pct, entry_gap=None, global_volume_ratio=None, btc_adx=None, adx_delta=None, atr_pct=None):
     out = []
     s, b = _num(mkt_hot_share), _num(bull_pct)
     if _on(th, "ML_MKT_HOT") and s is not None and s > ML_HOT_SHARE_MIN:
@@ -130,6 +136,13 @@ def ml_blocks(th, mkt_hot_share, bull_pct, entry_gap=None, global_volume_ratio=N
     g, v = _num(entry_gap), _num(global_volume_ratio)
     if _on(th, "ML_WEAK_RESCUE") and g is not None and v is not None and g <= ML_WEAK_GAP_MAX and v < ML_QUIET_GVOL_MAX:
         out.append("ML_WEAK_RESCUE")   # both legs readable — a missing reading never blocks
+    ba = _num(btc_adx)
+    # (559 review) bull % 0.0 is the engine's "no pairs scanned" fallback, not a reading → fail open
+    if _on(th, "ML_WEAK_MARKET") and b is not None and b > 0 and ba is not None and b <= ML_WEAK_BULL_MAX and ba <= ML_WEAK_BTC_ADX_MAX:
+        out.append("ML_WEAK_MARKET")
+    ad, at = _num(adx_delta), _num(atr_pct)
+    if _on(th, "ML_FADING_QUIET") and ad is not None and at is not None and ad < ML_FADING_ADX_DELTA_MAX and at <= ML_QUIET_ATR_MAX:
+        out.append("ML_FADING_QUIET")
     return out
 
 

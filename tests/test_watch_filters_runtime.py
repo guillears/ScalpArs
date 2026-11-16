@@ -124,3 +124,17 @@ def test_ml_weak_rescue_blocks_and_normal_volume_opens(monkeypatch):
     assert r is None and "MOMENTUM_LONG_BLOCK_ML_WEAK_RESCUE" in blocks and ("FOOUSDT", "MOMENTUM") not in opened
     r2, blocks2, rows2, opened2 = _e2e(monkeypatch, "FOOUSDT", entry_bull_pct=50.0, entry_gap=0.2, entry_global_volume_ratio=0.74)
     assert "MOMENTUM_LONG_BLOCK_ML_WEAK_RESCUE" not in blocks2 and r2 is not None and ("FOOUSDT", "MOMENTUM") in opened2   # (review C) it opens
+
+
+def test_ml_weak_market_and_fading_quiet_block_and_healthy_opens(monkeypatch):
+    """🧱 (559) the REAL open_position: weak breadth + weak BTC trend is refused; a fading quiet coin is refused; healthy opens."""
+    import services.trading_engine as TE
+    _setup(monkeypatch, 0.3, None)
+    monkeypatch.setattr(TE.config.trading_config.thresholds, "watch_block_ml_weak_market", True)
+    monkeypatch.setattr(TE.config.trading_config.thresholds, "watch_block_ml_fading_quiet", True)
+    r, blocks, rows, opened = _e2e(monkeypatch, "FOOUSDT", entry_bull_pct=50.0, entry_btc_adx=15.0)
+    assert r is None and "MOMENTUM_LONG_BLOCK_ML_WEAK_MARKET" in blocks and ("FOOUSDT", "MOMENTUM") not in opened
+    r, blocks, rows, opened = _e2e(monkeypatch, "FOOUSDT", entry_bull_pct=80.0, entry_adx_delta=-0.5, entry_atr_pct=0.25)
+    assert r is None and "MOMENTUM_LONG_BLOCK_ML_FADING_QUIET" in blocks and ("FOOUSDT", "MOMENTUM") not in opened
+    r, blocks, rows, opened = _e2e(monkeypatch, "FOOUSDT", entry_bull_pct=80.0, entry_btc_adx=15.0, entry_adx_delta=0.5, entry_atr_pct=0.25)
+    assert not any("ML_WEAK_MARKET" in b or "ML_FADING_QUIET" in b for b in blocks) and r is not None and ("FOOUSDT", "MOMENTUM") in opened

@@ -837,3 +837,9 @@ Both are tick-first: re-run once the batch's aggTrades archives are published (�
 
 ### 👁 WILLY_MKTDIP (DECISION_LOG 305) + WILLY tracker comparator (DECISION_LOG 304) + WILLY_AVGDOWN (DECISION_LOG 313)
 `venv/bin/python scripts/scout_willy_mktdip.py` (zone vs rest +2 rates, verdict) and `scripts/scout_willy_timecap.py` (post-297 fills now vs the LIVE exit incl. the late TP; check the split line). Also verify the first post-296 WILLY win booked ≈ +1.25 as a MAKER resting fill (pre-296 wins booked +1.08–1.18 by taker). Run `venv/bin/python scripts/scout_willy_avgdown.py` (averaging-down shadow: adds / add-leg Σ$ / worst % acct / parity flags, frozen verdict).
+
+### 🔂 MOMENTUM LONG EXIT — operator 2026-11-15 (live): "the momentum longs new exit, i think is costing us money"
+Review the ML SECOND CHANCE exit (DL 532, armed 11-11) on every ML fill since its deploy (B26 paper + B27 live): per fill, the booked SC exit vs the
+shadow of the exit it replaced (`sc_base_pnl` = what RUNNER_TRAIL / HARD_TP_LADDER would have booked; `sc_armed_at`, `sc_high_pct`), Σ Δ, WR, one-size DCR
+before → after, LOO, per-day; plus its pre-committed revert gate (scripts/scout_* for DL 532). Path decomposition (path_labels) first, ENTRY × EXIT joint
+check, master over backtest. Also the 3 live ML longs of 11-15 13:23 (AVAX / INJ / ARB).

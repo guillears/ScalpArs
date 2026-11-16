@@ -2596,6 +2596,13 @@ class SignalThresholds(BaseModel):
     #   if a line passes its bar → arm it and restore 0.5 (10×).
     #   ⚠ Code default 1.0 (= 20×, "off") is LARGER than the live 0.05: a missing JSON key would size momentum longs at 20×. Kept as-is (the
     #   engine reads ≤ 0 / blank as 1.0 too; the JSON always carries the key) — reported in DL 289, change both together if wanted.
+    # ⏬ 2026-11-16 MOMENTUM SHORT LEVERAGE (DECISION_LOG 560, operator "ship the lower momentum shorts to 15x … while we define if we apply any
+    # filter"): multiplies the leverage of every MOMENTUM SHORT open (the base row and every SHORT pattern cell — never flips / fades / SURGE /
+    # Bear-Run / manual) on top of the cell lev: leverage = round(20 × cell lev × this), before the pair bracket / balance ceilings. Live 0.75
+    # = 15× (was 20×): live 3 · 33 % · −$638 (each stop ≈ 2.9 % of the account); master full-size 49 · 78 % · +0.20 but Sep–Nov (BTC daily
+    # uptrend) 23 · 65 % · −0.00 → 95 % WR floor below breakeven (DL 547 size by edge). De-lever only: ≤ 0 / blank = 1 (off), clamped 0.05–1.
+    # Restore 1.0 if the sleeve re-proves (Jun–Aug level) at a batch review.
+    momentum_short_lev_mult: float = 1.0
     momentum_long_lev_mult: float = 1.0
     # ⚖️ 2026-10-15 (DECISION_LOG 298, operator-approved "go with 5x"): momentum_long_invest_mult — the MARGIN share of every MOMENTUM LONG
     # open (same scope as momentum_long_lev_mult). The NOTIONAL never changes: the open keeps the notional of the PAIRED leverage

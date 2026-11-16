@@ -527,6 +527,7 @@
     "long_unmatched_quiet_pvr_max": 0.68,
     "momentum_long_lev_mult": 0.75,
     "momentum_long_invest_mult": 1.0,
+    "momentum_short_lev_mult": 0.75,
     "flip_short_negdi_mult": 1.0,
     "flip_short_negdi_min": 15.0,
     "flip_short_negdi_lev_mult": 1.0,

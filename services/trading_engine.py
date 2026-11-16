@@ -777,6 +777,21 @@ def momentum_long_lev_factor(th, entry_strategy, direction) -> float:
     return min(1.0, max(MOMENTUM_LONG_LEV_MULT_MIN, v))
 
 
+def momentum_short_lev_factor(th, entry_strategy, direction) -> float:
+    """⏬ 2026-11-16 (DECISION_LOG 560): the leverage factor of a MOMENTUM SHORT open (base row + every SHORT pattern cell) —
+    th.momentum_short_lev_mult when entry_strategy == "MOMENTUM" and direction == "SHORT", else 1.0 (longs, flips, fades, SURGE, Bear-Run,
+    manual). De-lever only: ≤ 0 / blank / unreadable → 1.0; clamped to [MOMENTUM_LONG_LEV_MULT_MIN, 1.0]. Pure."""
+    if (entry_strategy or "") != "MOMENTUM" or str(direction or "").upper() != "SHORT":
+        return 1.0
+    try:
+        v = float(getattr(th, 'momentum_short_lev_mult', 1.0))
+    except (TypeError, ValueError):
+        return 1.0
+    if not math.isfinite(v) or v <= 0:
+        return 1.0
+    return min(1.0, max(MOMENTUM_LONG_LEV_MULT_MIN, v))
+
+
 MOMENTUM_LONG_INV_MULT_MIN = 0.05   # ⚖️ (DECISION_LOG 298) the floor of momentum_long_invest_mult
 
 
@@ -14633,11 +14648,14 @@ class TradingEngine:
         # (DECISION_LOG 283): the momentum-long leverage factor keys on it (entry_strategy MOMENTUM ∧ LONG → momentum_long_lev_mult).
         _wh_es = (_fz_es if _frenzy else FLATBASE_SHORT if _fbs else f"SURGE_{direction}" if _surge else "BEARRUN_SHORT" if bearrun_short else ("BULLRUN_LONG" if bullrun_long else ("SPIKE_BOUNCE" if spike_bounce else ("SPIKE_FADE" if spike_fade else ("SPIKE_CHASE" if spike_chase_probe else ("BOUNCE_LONG" if bounce_long else ("BULL_LONG" if bull_long else (f"FLIP:{flip_source}" if flip_source else "MOMENTUM"))))))))
         _ml_lev = momentum_long_lev_factor(config.trading_config.thresholds, _wh_es, direction)
+        _ms_lev = momentum_short_lev_factor(config.trading_config.thresholds, _wh_es, direction)   # ⏬ (560) 1.0 for everything but a MOMENTUM SHORT
         investment, leverage, cell_capped = self.calculate_position_size(
             available, confidence, total_portfolio=total_portfolio,
             cell_multiplier=cell_mult, cell_lev_multiplier=cell_lev_mult,
-            multiplier_target=_mult_target, base_lev_multiplier=_ml_lev,
+            multiplier_target=_mult_target, base_lev_multiplier=_ml_lev * _ms_lev,
         )
+        if _ms_lev != 1.0 and investment > 0:
+            logger.info(f"[MOMENTUM_SHORT_LEV] {pair} SHORT: momentum_short_lev_mult {_ms_lev:g} × cell lev {cell_lev_mult:g} ({cell_src}) → {leverage}x")
         _bk_tradeable = getattr(self, '_last_sizing_tradeable', None)   # 🪜📈 (535 review) read right after THIS sizing, passed explicitly below
         if _ml_lev != 1.0 and investment > 0:
             logger.info(f"[MOMENTUM_LONG_LEV] {pair} LONG: momentum_long_lev_mult {_ml_lev:g} × cell lev {cell_lev_mult:g} ({cell_src}) → {leverage}x")

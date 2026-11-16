@@ -77,7 +77,7 @@ def test_open_position_wiring():
     body = ENG[i:j]
     k = body.index("_ml_lev = momentum_long_lev_factor(config.trading_config.thresholds, _wh_es, direction)")
     c = body.index("investment, leverage, cell_capped = self.calculate_position_size(")
-    assert body.index("_wh_es = (") < k < c and "multiplier_target=_mult_target, base_lev_multiplier=_ml_lev," in body[c:c + 400]
+    assert body.index("_wh_es = (") < k < c and "multiplier_target=_mult_target, base_lev_multiplier=_ml_lev * _ms_lev," in body[c:c + 400]   # (560) × the momentum-short factor (1.0 on longs)
     # every sizing override (flip / bull / bounce / bull-run / bear-run / probes / spikes / doors / SURGE-FRENZY) sits BEFORE the factor
     for marker in ("if flip_source:\n            cell_mult, cell_lev_mult, cell_src = _flip_size_mult", "if _surge:\n            _th_sg",
                    "if _adx_surge_admit:", "if spike_chase_probe or spike_fade or spike_bounce or nonexp_calm3d:",

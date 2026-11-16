@@ -668,6 +668,18 @@ class Order(Base):
     size_adopted_at = Column(DateTime, nullable=True)
     size_adopted_from_qty = Column(Float, nullable=True)
     resting_tp_pinned_price = Column(Float, nullable=True)
+    # 💥 (DECISION_LOG 574) the realised part of size REDUCTIONS made outside the bot (Binance liquidation / ADL, or the operator's partial close
+    # in the app), priced from Binance's own fills (userTrades realizedPnl − commission) and classified via forceOrders. Accumulated while OPEN;
+    # the FINAL close folds partial_realized_pnl_usd − partial_fee_usd into pnl and computes pnl_percentage on the ORIGINAL notional
+    # (entry × (quantity + partial_closed_qty)). partial_unpriced_qty = reduced quantity not priced yet (fills unreadable → retried);
+    # partial_priced_until_ms = the newest fill time already priced (the next pricing reads strictly after it).
+    partial_realized_pnl_usd = Column(Float, nullable=True)
+    partial_fee_usd = Column(Float, nullable=True)
+    partial_closed_qty = Column(Float, nullable=True)
+    liquidated_qty = Column(Float, nullable=True)
+    partial_unpriced_qty = Column(Float, nullable=True)
+    partial_priced_until_ms = Column(BigInteger, nullable=True)
+    partial_close_note = Column(String(200), nullable=True)
     # 📈 (DECISION_LOG 365) FRENZY_WILLY_HT only: the size fraction of WILLY's margin this HT order opened at (frenzy_willy_ht_frac at entry) —
     # the HT re-size ladder counts each rung on the fills actually opened at it. NULL on every other fill and on HT fills before 365 (all 0.25).
     entry_willy_ht_size_frac = Column(Float, nullable=True)

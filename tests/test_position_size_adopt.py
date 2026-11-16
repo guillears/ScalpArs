@@ -53,9 +53,26 @@ def _pos(contracts, entry=9.8, side="SHORT", sym="HUMA/USDT:USDT"):
     return [{"symbol": sym, "side": side, "contracts": contracts, "entry_price": entry}]
 
 
-def _run(monkeypatch, row, passes, paper=False, gap_s=20.0, fund=None, fetch=None):
+def _run(monkeypatch, row, passes, paper=False, gap_s=20.0, fund=None, fetch=None, fills=None, forced=None, fills_error=False):
     import services.trading_engine as TE_
     clock = {"t": 1000.0}
+    calls = {"fills": 0}
+
+    async def _fills(sym, a, b):   # 💥 (574) Binance userTrades stub — offline
+        calls["fills"] += 1
+        if fills_error:
+            raise RuntimeError("read failed")
+        now = int(__import__("time").time() * 1000)
+        return [dict(r, time=(now - 15_000 if r.get("time") is None else r["time"])) for r in (fills or [])]
+
+    async def _force(sym, a, b):
+        return [{"orderId": i} for i in (forced or [])]
+
+    async def _bnb():
+        return 600.0
+    monkeypatch.setattr(TE_.binance_service, "fetch_reduce_fills", _fills)
+    monkeypatch.setattr(TE_.binance_service, "fetch_force_orders", _force)
+    monkeypatch.setattr(TE_.binance_service, "get_bnb_price", _bnb)
     def _mono():
         return clock["t"]   # advanced by gap_s between reconcile passes only
     monkeypatch.setattr(TE_.time, "monotonic", _mono)
@@ -75,6 +92,7 @@ def _run(monkeypatch, row, passes, paper=False, gap_s=20.0, fund=None, fetch=Non
             clock["t"] += gap_s
             async with S() as s:
                 out.append(await eng.adopt_position_sizes(s, p))
+            await asyncio.gather(*list(eng.__dict__.get('_pricing_tasks', {}).values()), return_exceptions=True)   # 💥 (574) background pricing
         r = await read(); await engine.dispose(); return out, r
     out, r = asyncio.run(go())
     return out, r[1], log, blocks
@@ -172,3 +190,114 @@ def test_lite_row_pins_and_rederives_its_stored_target(monkeypatch):
 def test_bot_add_drops_the_pin():
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
     assert "resting_tp_pinned_price=None)   # 📐 (572 review 5) the add re-bases the target" in eng
+
+
+
+# ─────────────────────────── 💥 (DECISION_LOG 574) a reduction's realised part ───────────────────────────
+import datetime as _dt
+_OPEN = _dt.datetime.utcnow() - _dt.timedelta(hours=2)   # the row opened before the reduction's fills
+from services.position_size_adopt import summarize_reduction, fold_partial, reduce_side, PARTIAL_KIND_LIQ, PARTIAL_KIND_OPERATOR, PARTIAL_KIND_MIXED
+
+
+def _fill(side, qty, rp, fee, oid, t=None, asset="USDT"):
+    return {"side": side, "qty": str(qty), "realizedPnl": str(rp), "commission": str(fee), "commissionAsset": asset, "orderId": oid, "time": t}
+
+
+def test_classification_and_sums():
+    assert reduce_side("SHORT") == "BUY" and reduce_side("LONG") == "SELL" and reduce_side("x") is None
+    f = [_fill("BUY", 300, -120.0, 1.2, 9), _fill("BUY", 200, -80.0, 0.8, 9), _fill("SELL", 999, 0, 0, 1)]   # the SELL opened it: never counted
+    s = summarize_reduction(f, "SHORT", force_order_ids=[9])
+    assert s["qty"] == 500 and s["realised"] == -200.0 and abs(s["fee_usd"] - 2.0) < 1e-9 and s["liq_qty"] == 500 and s["kind"] == PARTIAL_KIND_LIQ
+    s = summarize_reduction(f, "SHORT", force_order_ids=[])
+    assert s["kind"] == PARTIAL_KIND_OPERATOR and s["liq_qty"] == 0
+    s = summarize_reduction([_fill("BUY", 300, -1, 0, 9), _fill("BUY", 300, -1, 0, 7)], "SHORT", force_order_ids=[9])
+    assert s["kind"] == PARTIAL_KIND_MIXED and s["liq_qty"] == 300
+    s = summarize_reduction([_fill("BUY", 10, -1, 0.01, 5, asset="BNB")], "SHORT", bnb_usdt=600)
+    assert abs(s["fee_usd"] - 6.0) < 1e-9
+    assert summarize_reduction([_fill("BUY", 10, -1, 0.01, 5, asset="BNB")], "SHORT")["fee_estimated"] is True
+    s = summarize_reduction([_fill("BUY", 10, -1, 0, 5, t=50), _fill("BUY", 10, -1, 0, 5, t=150)], "SHORT", since_ms=100, until_ms=200)   # explicit times
+    assert s["qty"] == 10 and s["last_ms"] == 150                                     # the window is (since, until]
+    assert summarize_reduction(f, "x") is None
+
+
+def test_fold_partial_on_the_original_notional():
+    p, pc = fold_partial(-100.0, 600.0, 10.0, -250.0, 400.0)               # 600 left + 400 closed earlier, entry 10 → base 10,000
+    assert p == -350.0 and pc == -3.5
+    assert fold_partial(-100.0, 600.0, 10.0, 0, 0) == (-100.0, None)         # nothing partial → unchanged
+
+
+def test_liquidation_priced_and_badged_on_adoption(monkeypatch):
+    f = [_fill("BUY", 400, -400.0, 2.0, 77)]
+    out, o, log, blocks = _run(monkeypatch, _manual_row(opened_at=_OPEN), [_pos(600.0, entry=10.0), _pos(600.0, entry=10.0)], fills=f, forced=[77])
+    assert out == [[], [1]] and o.quantity == 600.0
+    assert o.partial_closed_qty == 400.0 and o.liquidated_qty == 400.0 and o.partial_realized_pnl_usd == -400.0 and o.partial_fee_usd == 2.0
+    assert (o.partial_unpriced_qty or 0) == 0 and o.partial_priced_until_ms is not None and "LIQUIDATION" in (o.partial_close_note or "")
+    assert "POSITION_LIQUIDATED" in blocks and "POSITION_PARTIAL_CLOSED" not in blocks
+
+
+def test_operator_partial_close_priced(monkeypatch):
+    f = [_fill("BUY", 400, 300.0, 1.5, 55)]
+    out, o, log, blocks = _run(monkeypatch, _manual_row(opened_at=_OPEN), [_pos(600.0, entry=10.0), _pos(600.0, entry=10.0)], fills=f, forced=[])
+    assert o.partial_closed_qty == 400.0 and (o.liquidated_qty or 0) == 0 and o.partial_realized_pnl_usd == 300.0
+    assert "POSITION_PARTIAL_CLOSED" in blocks and "POSITION_LIQUIDATED" not in blocks
+
+
+def test_unpriced_then_retried_never_double_counted(monkeypatch):
+    out, o, log, blocks = _run(monkeypatch, _manual_row(opened_at=_OPEN), [_pos(600.0, entry=10.0), _pos(600.0, entry=10.0)], fills_error=True)
+    assert o.quantity == 600.0 and o.partial_unpriced_qty == 400.0 and o.partial_closed_qty in (None, 0) and "POSITION_PARTIAL_UNPRICED" in blocks
+    # the retry prices it once; further passes (> 60 s apart) find nothing new after the marker → no second booking
+    f = [_fill("BUY", 400, -400.0, 2.0, 77)]
+    out, o, log, blocks = _run(monkeypatch, _manual_row(opened_at=_OPEN, quantity=600.0, partial_unpriced_qty=400.0, size_adopted_at=__import__("datetime").datetime.utcnow(),
+                                                        size_adopted_from_qty=1000.0),
+                               [_pos(600.0, entry=10.0)] * 3, gap_s=70.0, fills=f, forced=[77])
+    assert o.partial_closed_qty == 400.0 and o.partial_realized_pnl_usd == -400.0 and (o.partial_unpriced_qty or 0) == 0
+
+
+def test_final_close_includes_the_partial_and_wiring():
+    import services.trading_engine as TE_
+    from types import SimpleNamespace as NS
+    row = NS(quantity=600.0, entry_price=10.0, partial_realized_pnl_usd=-400.0, partial_fee_usd=2.0, partial_closed_qty=400.0)
+    p, pc = TE_.TradingEngine._fold_partial_close(row, -100.0, -1.67)
+    assert p == -502.0 and pc == -5.02                                         # −100 − 400 − 2 on 10,000
+    assert TE_.TradingEngine._fold_partial_close(NS(quantity=600.0, entry_price=10.0), -100.0, -1.67) == (-100.0, -1.67)
+    eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
+    assert eng.count("self._fold_partial_close(") >= 2   # the main close + the fallback external close
+    assert "trading_engine._fold_partial_close(order" in open(os.path.join(ROOT, "main.py"), encoding="utf-8").read()   # reconciled close
+    import models
+    for c in ("partial_realized_pnl_usd", "partial_fee_usd", "partial_closed_qty", "liquidated_qty", "partial_unpriced_qty",
+              "partial_priced_until_ms", "partial_close_note"):
+        assert c in models.Order.__table__.columns and c in open(os.path.join(ROOT, "database.py"), encoding="utf-8").read()
+    html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
+    assert "function partialCloseBadgeHtml(o)" in html and "💥 liquidated" in html
+
+
+
+def test_row_closed_before_pricing_is_folded_exactly_once(monkeypatch):
+    """(574 review I3 / B1) a HUMA #25-like row: reduced by a liquidation, adopted (572-era: never priced), then CLOSED by hand before the
+    deploy — the bot's close leaves closing_in_progress set. With the account FLAT (no Binance position, review I2) the closed-row sweep
+    prices (opened_at, size_adopted_at] and folds it into the booked pnl ONCE."""
+    now = _dt.datetime.utcnow()
+    row = _manual_row(opened_at=_OPEN, quantity=600.0, status="CLOSED", closing_in_progress=True, closed_at=now, pnl=-100.0,
+                      pnl_percentage=-1.6667, total_fee=10.0, size_adopted_at=now, size_adopted_from_qty=1000.0,
+                      protective_tp_order_id=None, resting_tp_price=None)
+    f = [_fill("BUY", 400, -400.0, 2.0, 77)]
+    out, o, log, blocks = _run(monkeypatch, row, [[], [], []], gap_s=70.0, fills=f, forced=[77])
+    assert o.status == "CLOSED" and o.partial_closed_qty == 400.0 and o.liquidated_qty == 400.0
+    assert o.pnl == -502.0 and o.pnl_percentage == -5.02 and abs(o.total_fee - 12.0) < 1e-9   # −100 − 400 − 2 on the original 10,000
+    assert "POSITION_LIQUIDATED" in blocks and blocks.count("POSITION_LIQUIDATED") == 1        # three sweeps, folded exactly once
+
+
+def test_resting_tp_fills_excluded_not_skipped(monkeypatch):
+    f = [_fill("BUY", 100, 50.0, 0.1, "T1"), _fill("BUY", 300, -300.0, 1.0, 88)]   # T1 = the bot's own resting TP — excluded
+    row = _manual_row(opened_at=_OPEN, quantity=600.0, resting_tp_filled_qty=100.0, protective_tp_order_id="T1",
+                      size_adopted_at=_dt.datetime.utcnow(), size_adopted_from_qty=1000.0, partial_unpriced_qty=300.0)
+    out, o, log, blocks = _run(monkeypatch, row, [_pos(600.0, entry=10.0)], fills=f, forced=[])
+    assert o.partial_closed_qty == 300.0 and o.partial_realized_pnl_usd == -300.0 and "POSITION_PARTIAL_CLOSED" in blocks
+
+
+def test_force_window_over_7_days_is_unclassified_but_priced(monkeypatch):
+    old_open = _dt.datetime.utcnow() - _dt.timedelta(days=9)
+    f = [_fill("BUY", 400, -400.0, 2.0, 77)]
+    out, o, log, blocks = _run(monkeypatch, _manual_row(opened_at=old_open), [_pos(600.0, entry=10.0), _pos(600.0, entry=10.0)], fills=f, forced=[77])
+    assert o.partial_closed_qty == 400.0 and o.partial_realized_pnl_usd == -400.0           # P&L still booked
+    assert "unclassified" in (o.partial_close_note or "")                                   # forceOrders covers ≤ 7 days → UNCLASSIFIED

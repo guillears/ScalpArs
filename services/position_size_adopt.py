@@ -90,3 +90,74 @@ def adopt_values(row_qty, row_entry, row_leverage, binance_qty, binance_entry) -
     notional = b * entry
     return dict(quantity=b, entry_price=entry, notional_value=notional, investment=notional / lev,
                 delta_qty=b - q, from_qty=q, from_entry=e)
+
+
+# ─────────────────────────── 💥 (DECISION_LOG 574) a REDUCTION's realised part ───────────────────────────
+# DL 572 adopted a smaller Binance size without booking the closed part. HUMA SHORT #25 (11-16 21:04–21:05) was PARTIALLY LIQUIDATED by
+# Binance (≈ 574k HUMA) — the trade's P&L / history understated the loss and the log called it an operator reduction. Now every adopted
+# reduction is PRICED from Binance's own fills (userTrades: realizedPnl + commission of the reduce-side fills since the row's last priced
+# mark) and CLASSIFIED: fills whose order id is a Binance forced order (forceOrders: liquidation / ADL) → LIQUIDATION, else the operator's
+# partial close in the app. The realised part accumulates on the row (partial_* columns) and the FINAL close folds it into the booked pnl.
+PARTIAL_KIND_LIQ, PARTIAL_KIND_OPERATOR, PARTIAL_KIND_MIXED = "LIQUIDATION", "OPERATOR_PARTIAL_CLOSE", "LIQUIDATION+OPERATOR"
+
+
+def reduce_side(direction) -> Optional[str]:
+    """The fill side that REDUCES a position: a SHORT is reduced by BUY fills, a LONG by SELL fills."""
+    d = str(direction or "").upper()
+    return "BUY" if d == "SHORT" else ("SELL" if d == "LONG" else None)
+
+
+def summarize_reduction(fills, direction, force_order_ids=(), since_ms=None, until_ms=None, bnb_usdt=None) -> Optional[Dict]:
+    """Binance userTrades rows → the reduce-side summary of (since_ms, until_ms]: qty, realised (Σ realizedPnl, USDT), fee_usd (Σ commission
+    in USDT; a BNB commission × bnb_usdt — unknown price → that fee counted as 0 and fee_estimated True), liq_qty (fills of a forced order),
+    n, last_ms, kind. Fills on the opening side never count. None on unreadable input."""
+    side = reduce_side(direction)
+    if side is None:
+        return None
+    forced = {str(i) for i in (force_order_ids or ())}
+    qty = realised = fee = liq = 0.0
+    n, last, est = 0, None, False
+    try:
+        for r in (fills or ()):
+            if str(r.get('side') or '').upper() != side:
+                continue
+            t = int(float(r.get('time') or 0))
+            if since_ms is not None and t <= int(since_ms):
+                continue
+            if until_ms is not None and t > int(until_ms):
+                continue
+            q = abs(_f(r.get('qty')) or 0.0)
+            if q <= 0:
+                continue
+            qty += q
+            realised += _f(r.get('realizedPnl')) or 0.0
+            c = _f(r.get('commission')) or 0.0
+            a = str(r.get('commissionAsset') or 'USDT').upper()
+            if a == 'USDT':
+                fee += c
+            elif a == 'BNB' and _f(bnb_usdt):
+                fee += c * float(bnb_usdt)
+            else:
+                est = True
+            if str(r.get('orderId')) in forced:
+                liq += q
+            n += 1
+            last = t if last is None else max(last, t)
+    except (TypeError, ValueError, AttributeError):
+        return None
+    kind = None
+    if qty > 0:
+        kind = PARTIAL_KIND_LIQ if liq >= 0.99 * qty else (PARTIAL_KIND_OPERATOR if liq <= 0 else PARTIAL_KIND_MIXED)
+    return dict(qty=qty, realised=realised, fee_usd=fee, liq_qty=liq, n=n, last_ms=last, kind=kind, fee_estimated=est)
+
+
+def fold_partial(pnl, quantity, entry_price, partial_net_usd, partial_qty):
+    """(pnl, pnl %) of a CLOSED row with its earlier realised partial closes included: pnl + partial_net_usd, and the % on the ORIGINAL
+    notional (entry × (quantity left at the close + quantity closed earlier)) — pnl_percentage = total pnl / (entry × (qty + partial_qty))
+    × 100. Nothing partial (0 / None) → unchanged. Bad input → unchanged."""
+    p, pn, pq, q, e = _f(pnl), _f(partial_net_usd), _f(partial_qty) or 0.0, _f(quantity) or 0.0, _f(entry_price)
+    if p is None or pn is None or (pn == 0 and pq == 0):
+        return pnl, None
+    tot = round(p + pn, 4)
+    base = (e or 0.0) * (q + pq)
+    return tot, (round(tot / base * 100.0, 4) if base > 0 else None)

@@ -2086,6 +2086,58 @@ class BinanceService:
         rows = await self._recorder_client().fapiPrivateGetUserTrades(q)
         return list(rows or [])
 
+    async def _pricing_spend(self, weight: int):
+        """💥 (574 review) the reduction-pricing reads share the app-trade recorder's budget size (services/app_trades.WeightBudget, its own
+        rolling 60 s window) and stop — never sleep in the caller — when the IP-wide X-MBX-USED-WEIGHT-1M of the last answer is high."""
+        from services.app_trades import WeightBudget, APP_HEADER_PAUSE
+        b = getattr(self, '_pricing_budget', None)
+        if b is None:
+            b = self._pricing_budget = WeightBudget()
+        await b.spend(int(weight))
+        uw = self.used_weight_1m()
+        if uw is not None and uw > APP_HEADER_PAUSE:
+            raise RuntimeError(f"X-MBX-USED-WEIGHT-1M {uw} > {APP_HEADER_PAUSE} — pricing deferred")
+
+    async def fetch_force_orders(self, symbol_id: str, start_ms: int, end_ms: int, limit: int = 100) -> List[Dict]:
+        """💥 (DECISION_LOG 574) GET /fapi/v1/forceOrders for ONE symbol id: the account's FORCED orders (liquidation / ADL auto-close) in
+        [start_ms, end_ms] (≤ 7 days; weight 20 with a symbol). Raw rows (orderId, side, executedQty, avgPrice, time, …). Raises on error
+        and during an active ban (never sleeps one out)."""
+        if _ban_until > time.time():
+            raise RuntimeError("Binance ban active")
+        if int(end_ms) - int(start_ms) > 7 * 86_400_000:
+            raise ValueError("forceOrders window > 7 days")   # (574 review) the caller books it UNCLASSIFIED (the P&L stays right)
+        q = {'symbol': str(symbol_id), 'startTime': int(start_ms), 'endTime': int(end_ms), 'limit': int(limit)}
+        try:
+            await self._pricing_spend(20)
+            rows = await self._recorder_client().fapiPrivateGetForceOrders(q)
+        except Exception as e:
+            self._detect_ban(e)
+            raise
+        return list(rows or [])
+
+    async def fetch_reduce_fills(self, symbol_id: str, start_ms: int, end_ms: int) -> List[Dict]:
+        """💥 (DECISION_LOG 574) every userTrades row of ONE symbol in [start_ms, end_ms] (≤ 7 days per page window, full pages continued
+        with fromId). Raises on error and during an active ban."""
+        if _ban_until > time.time():
+            raise RuntimeError("Binance ban active")
+        out, a = [], int(start_ms)
+        try:
+            while a <= int(end_ms):
+                b = min(int(end_ms), a + 7 * 86_400_000 - 1)
+                await self._pricing_spend(5)
+                page = await self.fetch_user_trades_page(symbol_id, start_ms=a, end_ms=b, limit=1000)
+                out.extend(page)
+                while len(page) >= 1000:
+                    await self._pricing_spend(5)
+                    page = await self.fetch_user_trades_page(symbol_id, from_id=int(page[-1]['id']) + 1, limit=1000)
+                    page = [r for r in page if int(float(r.get('time') or 0)) <= b]
+                    out.extend(page)
+                a = b + 1
+        except Exception as e:
+            self._detect_ban(e)
+            raise
+        return out
+
     async def get_symbol_leverages(self) -> Dict[str, int]:
         """(DECISION_LOG 329) {symbol id: CURRENT leverage setting} from GET /fapi/v1/symbolConfig (all symbols, one call). The setting at
         record time, not necessarily the one a past trade used — rows record it as approximate. Raises on error."""

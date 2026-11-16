@@ -3869,7 +3869,10 @@ class TradingEngine:
         sightings of the same Binance size ≥ 10 s apart, the row adopts Binance's size and average entry (_adopt_one_size). One adoption run at
         a time (two reconcile callers share the state). Skips: paper, a pair with ≠ 1 open row, a side mismatch (UNTRACKED's), a row closing /
         in the exit-retry queue / being added to / an open in flight on the pair, a partially filled resting TP. → [adopted ids]."""
-        if self.is_paper_mode or not binance_positions:
+        if self.is_paper_mode:
+            return []
+        if not binance_positions:   # (574 review I2) a flat account still prices rows that closed with a reduction unpriced
+            await self._sweep_closed_unpriced(db)
             return []
         lock = self.__dict__.get('_size_adopt_lock')
         if lock is None:
@@ -3897,6 +3900,12 @@ class TradingEngine:
                     continue   # no row (UNTRACKED handles it) · a side mismatch (UNTRACKED SIDE_MISMATCH) · several rows (never guessed)
                 o = rs[0]
                 live_ids.add(o.id)
+                if (o.size_adopted_at is not None and not o.closing_in_progress   # (574 review I3) a resting-TP fill is excluded by id inside, not skipped
+                        and (float(o.partial_unpriced_qty or 0) > 0 or o.partial_priced_until_ms is None)):
+                    _pt = self.__dict__.setdefault('_partial_price_at', {})   # 💥 (574) retry an unpriced reduction / backfill a 572-era row, ≤ 1 / min
+                    if time.monotonic() - _pt.get(o.id, -1e9) >= 60.0:
+                        _pt[o.id] = time.monotonic()
+                        self._spawn_pricing(o.id, pair, o.direction)
                 _step = self._add_market_limits(pair[:-4] + "/USDT:USDT")[0]
                 if not size_differs(o.quantity, bq, _step):
                     seen.pop(o.id, None)
@@ -3915,7 +3924,25 @@ class TradingEngine:
             for k in list(seen):
                 if k not in live_ids:
                     seen.pop(k, None)
+            await self._sweep_closed_unpriced(db)
             return out
+
+    async def _sweep_closed_unpriced(self, db):
+        """💥 (574) a LIVE row that CLOSED (≤ 7 days) with a size adoption whose reductions were never priced — still unpriced, or a 572-era
+        row never priced at all (no marker: e.g. HUMA #25 closed by hand before the deploy) — is priced over (opened_at, size_adopted_at]
+        (the bot's own close fill is after size_adopted_at → excluded) and folded into its booked pnl once. ≤ 1 / min per row, background."""
+        try:
+            _cut = datetime.utcnow() - timedelta(days=7)
+            _cl = (await db.execute(select(Order.id, Order.pair, Order.direction).where(and_(
+                Order.status == "CLOSED", Order.is_paper == False, Order.size_adopted_at.isnot(None), Order.closed_at >= _cut,  # noqa: E712
+                or_(Order.partial_unpriced_qty > 0, Order.partial_priced_until_ms.is_(None)))))).all()
+            _pt = self.__dict__.setdefault('_partial_price_at', {})
+            for _cid, _cp, _cd in _cl:
+                if time.monotonic() - _pt.get(_cid, -1e9) >= 60.0:
+                    _pt[_cid] = time.monotonic()
+                    self._spawn_pricing(_cid, _cp, _cd)
+        except Exception as _ce:
+            logger.error(f"[POSITION_PARTIAL] closed-row pricing sweep failed ({_ce!r})")
 
     async def _adopt_one_size(self, order_id, bq, be, mark, step) -> bool:
         """One adoption. Fresh row read (already at Binance's size → no-op, never a second cancel / re-place / overwrite). Funding is settled
@@ -3970,6 +3997,8 @@ class TradingEngine:
                 vals.update(funding_fee_usd=round(float(_fund[0]), 6))
                 if _fund[1] is not None:
                     vals.update(funding_accrued_ms=int(_fund[1]))
+            if v['delta_qty'] < 0:   # 💥 (574) a reduction: its realised part is priced from Binance's fills right after (unpriced until then)
+                vals.update(partial_unpriced_qty=float(o.partial_unpriced_qty or 0) + abs(v['delta_qty']))
             if v['delta_qty'] > 0:   # an app add counts as the operator's add (badge ➕, origin "touched by you")
                 vals.update(manual_add_count=int(o.manual_add_count or 0) + 1,
                             manual_add_investment=round(float(o.manual_add_investment or 0) + v['delta_qty'] * v['entry_price'] / lev, 6),
@@ -4019,8 +4048,152 @@ class TradingEngine:
                         f"({'added' if v['delta_qty'] > 0 else 'reduced'} {abs(v['delta_qty']):g} outside the bot) · entry {v['from_entry']} → "
                         f"{v['entry_price']} (Binance average) · margin ${v['investment']:,.2f} at {lev:g}× · resting TP "
                         f"{('kept at ' + format(pin, 'g') + ' for the full size') if pin else 'its own rule'}: {_tp}"
-                        + ("" if v['delta_qty'] > 0 else " · the reduced part's P&L is NOT booked by the bot (Binance's balance carries it)"))
+                        + ("" if v['delta_qty'] > 0 else " · the reduced part is priced from Binance's fills (liquidation or partial close)"))
+        if v['delta_qty'] < 0:   # 💥 (574) price + classify the reduction now, in the background (failure → UNPRICED, the next passes retry)
+            self._spawn_pricing(order_id, pair, direction)
         return True
+
+    @staticmethod
+    async def _fresh_partials(order):
+        """💥 (574 review I1) the row's partial_* columns re-read right before a close folds them (the closing instance may predate a
+        pricing commit). Applied onto `order` in place; any error → the instance's own values. Never raises."""
+        try:
+            if not getattr(order, 'id', None):
+                return order
+            async with AsyncSessionLocal() as _s:
+                _r = (await _s.execute(select(Order.partial_realized_pnl_usd, Order.partial_fee_usd, Order.partial_closed_qty)
+                                       .where(Order.id == order.id))).first()
+            if _r is not None:
+                order.partial_realized_pnl_usd, order.partial_fee_usd, order.partial_closed_qty = _r[0], _r[1], _r[2]
+        except Exception:
+            pass
+        return order
+
+    @staticmethod
+    def _fold_partial_close(order, pnl, pct):
+        """💥 (574) the FINAL close's (pnl, pnl %) with the row's earlier realised partial closes (liquidation / app partial close) folded in:
+        pnl + (partial_realized_pnl_usd − partial_fee_usd), % on the ORIGINAL notional entry × (quantity + partial_closed_qty). No partial
+        → unchanged. Never raises."""
+        try:
+            from services.position_size_adopt import fold_partial
+            _net = float(getattr(order, 'partial_realized_pnl_usd', None) or 0) - float(getattr(order, 'partial_fee_usd', None) or 0)
+            _pq = float(getattr(order, 'partial_closed_qty', None) or 0)
+            if _net == 0 and _pq == 0:
+                return pnl, pct
+            p2, pc2 = fold_partial(pnl, order.quantity, order.entry_price, _net, _pq)
+            return p2, (pc2 if pc2 is not None else pct)
+        except Exception:
+            return pnl, pct
+
+    def _spawn_pricing(self, order_id, pair, direction):
+        """💥 (574 review) run _price_reductions_safe as a tracked background task — the reconcile pass is never held by the Binance
+        reads; one in flight per row (a second request while one runs is dropped — the next pass re-tries)."""
+        inflight = self.__dict__.setdefault('_pricing_tasks', {})
+        t = inflight.get(order_id)
+        if t is not None and not t.done():
+            return t
+        t = asyncio.create_task(self._price_reductions_safe(order_id, pair, direction))
+        inflight[order_id] = t
+        bg = self.__dict__.setdefault('_bg_tasks', set())
+        bg.add(t)
+        t.add_done_callback(bg.discard)
+        return t
+
+    async def _price_reductions_safe(self, order_id, pair, direction):
+        """💥 (574) _price_reductions with its failure logged as UNPRICED (counter POSITION_PARTIAL_UNPRICED) — never raises."""
+        try:
+            return await self._price_reductions(order_id)
+        except Exception as _pe:
+            self._record_filter_block("POSITION_PARTIAL_UNPRICED", direction)
+            logger.error(f"[POSITION_PARTIAL_UNPRICED] {pair} #{order_id}: the reduction's fills could not be read ({str(_pe)[:100]}) — "
+                         f"retried on the next passes")
+            return None
+
+    async def _price_reductions(self, order_id) -> Optional[dict]:
+        """💥 (DECISION_LOG 574) price the size REDUCTIONS made outside the bot on this LIVE row from Binance's own fills: the reduce-side
+        userTrades in (partial_priced_until_ms or opened_at, size_adopted_at] (the reduction happened before its adoption — the 2-pass
+        confirm guarantees ≥ 10 s; nothing after the last adoption, so the bot's own later close is never counted), classified LIQUIDATION
+        when the fill's order is a forced order (forceOrders: liquidation / ADL) else the operator's partial close. Accumulates on the row
+        (partial_realized_pnl_usd = Σ realizedPnl, partial_fee_usd = Σ commission in USDT, partial_closed_qty, liquidated_qty), lowers
+        partial_unpriced_qty, advances partial_priced_until_ms. A CLOSED row (unpriced at its close) gets the delta folded into its booked
+        pnl too. Fills unreadable → raises (the caller logs UNPRICED and a later pass retries). A row with a resting-TP partial fill is never
+        priced (that fill is the bot's own, booked by the close). → the summary written, or None (nothing to price / not applicable)."""
+        from services.position_size_adopt import summarize_reduction, fold_partial, PARTIAL_KIND_LIQ, PARTIAL_KIND_MIXED
+        async with AsyncSessionLocal() as s:
+            o = (await s.execute(select(Order).where(Order.id == order_id))).scalar_one_or_none()
+            if o is None or o.is_paper or o.size_adopted_at is None:
+                return None
+            if o.status == "OPEN" and o.closing_in_progress:   # (574 review B1) a CLOSED row keeps the flag forever — only an OPEN one is mid-close
+                return None
+            _exclude = set()
+            if float(o.resting_tp_filled_qty or 0) > 0:   # (574 review I3) the bot's own resting-TP fills are excluded by order id, never skipped
+                if not o.protective_tp_order_id:
+                    logger.warning(f"[POSITION_PARTIAL] {o.pair} #{order_id}: a resting-TP fill without its order id — not priced (unsafe to "
+                                   f"separate the bot's own fills); the final close books what the bot booked")
+                    return None
+                _exclude.add(str(o.protective_tp_order_id))
+            pair, direction, status = o.pair, o.direction, o.status
+            _op = int(o.opened_at.replace(tzinfo=timezone.utc).timestamp() * 1000) if o.opened_at else None
+            since = int(o.partial_priced_until_ms) if o.partial_priced_until_ms is not None else _op
+            until = int(o.size_adopted_at.replace(tzinfo=timezone.utc).timestamp() * 1000)
+            if since is None or until <= since:
+                return None
+            marker = o.partial_priced_until_ms
+        fills = await asyncio.wait_for(binance_service.fetch_reduce_fills(pair, since + 1, until), 15.0)
+        force_ids, classified = (), True
+        try:
+            if until + 60_000 - since > 7 * 86_400_000:
+                raise ValueError("window > 7 days")   # (574 review) forceOrders covers ≤ 7 days → UNCLASSIFIED (the P&L stays right)
+            _fo = await asyncio.wait_for(binance_service.fetch_force_orders(pair, since, until + 60_000), 8.0)
+            force_ids = [r.get('orderId') for r in (_fo or ())]
+        except Exception as _fe:
+            classified = False
+            logger.warning(f"[POSITION_PARTIAL] {pair} #{order_id}: forced-order read failed ({str(_fe)[:80]}) — reduction booked UNCLASSIFIED")
+        _bnb = None
+        try:
+            _bnb = float(await asyncio.wait_for(binance_service.get_bnb_price(), 5.0) or 0) or None
+        except Exception:
+            _bnb = None
+        if _exclude:
+            fills = [f for f in (fills or ()) if str(f.get('orderId')) not in _exclude]
+        summ = summarize_reduction(fills, direction, force_ids, since, until, _bnb)
+        if summ is None:
+            raise ValueError("fills unreadable")
+        if summ['qty'] <= 0:
+            async with AsyncSessionLocal() as s:   # nothing reduced in the window: advance the marker (an add-only adoption) when nothing is pending
+                _r = (await s.execute(select(Order).where(Order.id == order_id))).scalar_one_or_none()
+                if _r is not None and float(_r.partial_unpriced_qty or 0) <= 0 and _r.partial_priced_until_ms == marker:
+                    _r.partial_priced_until_ms = until
+                    await locked_commit(s)
+            return None
+        kind = summ['kind'] if classified else "REDUCED (unclassified)"
+        net = summ['realised'] - summ['fee_usd']
+        async with AsyncSessionLocal() as s:
+            r = (await s.execute(select(Order).where(Order.id == order_id))).scalar_one_or_none()
+            if r is None or r.partial_priced_until_ms != marker or (r.status == "OPEN" and r.closing_in_progress):
+                return None   # priced by another run meanwhile / a close is booking right now (the next pass decides)
+            status = r.status   # (574 review B2) a close may have completed during the read → fold into its booked pnl below
+            r.partial_realized_pnl_usd = round(float(r.partial_realized_pnl_usd or 0) + summ['realised'], 6)
+            r.partial_fee_usd = round(float(r.partial_fee_usd or 0) + summ['fee_usd'], 6)
+            r.partial_closed_qty = float(r.partial_closed_qty or 0) + summ['qty']
+            r.liquidated_qty = float(r.liquidated_qty or 0) + summ['liq_qty']
+            r.partial_unpriced_qty = max(0.0, float(r.partial_unpriced_qty or 0) - summ['qty'])
+            r.partial_priced_until_ms = int(summ['last_ms'] or until)
+            r.partial_close_note = (f"{kind} {summ['qty']:g} @ {datetime.utcfromtimestamp((summ['last_ms'] or until) / 1000):%m-%d %H:%M} UTC "
+                                    f"realised {net:+.2f}" + (" · fee estimated" if summ['fee_estimated'] else ""))[:200]
+            if status == "CLOSED" and r.pnl is not None:   # unpriced at its close → the delta into the booked pnl now
+                r.pnl, _pct = fold_partial(r.pnl, r.quantity, r.entry_price, net, summ['qty'])
+                if _pct is not None:
+                    r.pnl_percentage = _pct
+                r.total_fee = round(float(r.total_fee or 0) + summ['fee_usd'], 4)
+            await locked_commit(s)
+        _liq = kind in (PARTIAL_KIND_LIQ, PARTIAL_KIND_MIXED)
+        self._record_filter_block("POSITION_LIQUIDATED" if _liq else "POSITION_PARTIAL_CLOSED", direction)
+        logger.critical(f"[{'POSITION_LIQUIDATED' if _liq else 'POSITION_PARTIAL_CLOSED'}] {pair} {direction} #{order_id}: {kind} · "
+                        f"{summ['qty']:g} closed outside the bot ({summ['liq_qty']:g} by Binance liquidation / ADL) in {summ['n']} fill(s) · "
+                        f"realised {summ['realised']:+.2f} · fees {summ['fee_usd']:.2f} → booked {net:+.2f} USDT on the trade"
+                        + (" (row already CLOSED — folded into its pnl)" if status == "CLOSED" else " (folded into the final close)"))
+        return dict(summ, kind=kind, net=net)
 
     async def check_untracked_positions(self, db, binance_positions) -> list:
         """🛡 (DECISION_LOG 292 ②, go-live audit P7) the INVERSE reconcile: a Binance position with no OPEN live row. Called by the 60 s
@@ -18402,7 +18575,7 @@ class TradingEngine:
                     _row.funding_fee_usd = round(float(_fund), 6)
                     if _row.funding_in_pnl:
                         _row.pnl, _row.pnl_percentage = fold_funding(_row.pnl, _row.pnl_percentage,
-                                                                     (_row.entry_price or 0) * (_row.quantity or 0), _d)
+                                                                     (_row.entry_price or 0) * ((_row.quantity or 0) + float(getattr(_row, 'partial_closed_qty', None) or 0)), _d)   # 💥 (574) the original notional
                     await locked_commit(_fdb)   # the paper balance picks the Δ up at its next recalculation (no unlocked recalc here)
                     logger.info(f"[FUNDING] {pair} #{order_id}: Σ funding {float(_fund):+.4f} USDT ({'paper, public rates' if is_paper else 'live income'})"
                                 f" · Δ {_d:+.4f} vs the close{' — folded into pnl' if _row.funding_in_pnl else ' (legacy row: not in pnl)'}")
@@ -19045,13 +19218,16 @@ class TradingEngine:
                         _notional = order.entry_price * order.quantity if order.quantity else 1
                         order.pnl_percentage = round(((raw_pnl - (order.entry_fee or 0) - exit_fee) / _notional) * 100, 4)
                         order.exit_fee = round(exit_fee, 4)
-                        order.total_fee = round((order.entry_fee or 0) + exit_fee, 4)
+                        order.total_fee = round((order.entry_fee or 0) + exit_fee + float(getattr(order, 'partial_fee_usd', None) or 0), 4)   # 💥 (574)
                         order.exit_order_type = "EXTERNAL"
                         self._touch_finalize(order, order.pnl_percentage, order.close_reason)   # 🛑👁 (317) observe-only touch outcome (price-only: before the fold)
                         try:   # 💸 (DECISION_LOG 539 review) the fallback close carries funding inside pnl too: accrued part now, the authoritative
                             _fu_fb = float(order.funding_fee_usd or 0.0)   # read in the post-close reconcile (spawned below)
                             if _fu_fb:
                                 order.pnl, order.pnl_percentage = fold_funding(order.pnl, order.pnl_percentage, _notional, _fu_fb)
+                            await self._fresh_partials(order)   # 💥 (574 review I1)
+                            order.pnl, order.pnl_percentage = self._fold_partial_close(order, order.pnl, order.pnl_percentage)   # 💥 (574)
+                            order.total_fee = round((order.entry_fee or 0) + exit_fee + float(getattr(order, 'partial_fee_usd', None) or 0), 4)
                             order.funding_fee_usd, order.funding_in_pnl = round(_fu_fb, 6), True
                             _fb_ft = asyncio.create_task(self._funding_reconcile_async(order.id, order.pair, order.opened_at,
                                                                                        order.closed_at or datetime.utcnow(), False))
@@ -19304,7 +19480,7 @@ class TradingEngine:
                 notional_at_close = order.quantity * actual_exit_price
                 exit_fee = notional_at_close * taker_fee_rate
 
-        total_fee = (order.entry_fee or 0) + exit_fee
+        total_fee = (order.entry_fee or 0) + exit_fee + float(getattr(order, 'partial_fee_usd', None) or 0)   # 💥 (574) + the earlier partial closes' fees
 
         # Apply FL_ prefix if trade was flagged (check cache before it can be wiped)
         # This ensures ALL close reasons get the flag, not just those in Phase 2
@@ -19331,6 +19507,8 @@ class TradingEngine:
         if _fund_usd:
             pnl_data['pnl'], pnl_data['pnl_percentage'] = fold_funding(pnl_data['pnl'], pnl_data['pnl_percentage'],
                                                                        (order.entry_price or 0) * (order.quantity or 0), _fund_usd)
+        await self._fresh_partials(order)   # 💥 (574 review I1)
+        pnl_data['pnl'], pnl_data['pnl_percentage'] = self._fold_partial_close(order, pnl_data['pnl'], pnl_data['pnl_percentage'])   # 💥 (574)
 
         # 📏 (DECISION_LOG 295) resting-TP shadow context — fixed-TP FRENZY sleeves only. NO await (this close holds the global close
         # lock): the tick comes from the already-loaded market cache, plausibility-guarded; unknown → the shadow stays NULL. Observe only.

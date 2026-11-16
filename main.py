@@ -2349,6 +2349,9 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
             "flip_fan_tp_pct": getattr(o, 'flip_fan_tp_pct', None),   # 🎯 (563) FAN flip fixed TP (NULL = the trail)
             "size_adopted_at": (o.size_adopted_at.isoformat() if getattr(o, 'size_adopted_at', None) else None),   # 📐 (572) size from Binance
             "size_adopted_from_qty": getattr(o, 'size_adopted_from_qty', None),
+            "partial_realized_pnl_usd": getattr(o, 'partial_realized_pnl_usd', None), "partial_fee_usd": getattr(o, 'partial_fee_usd', None),   # 💥 (574)
+            "partial_closed_qty": getattr(o, 'partial_closed_qty', None), "liquidated_qty": getattr(o, 'liquidated_qty', None),
+            "partial_unpriced_qty": getattr(o, 'partial_unpriced_qty', None), "partial_close_note": getattr(o, 'partial_close_note', None),
             "willy_floor_armed_at": (o.willy_floor_armed_at.isoformat() if getattr(o, 'willy_floor_armed_at', None) else None),   # historical (V2 floor, removed DL 358)
             "exit_override_at": (o.exit_override_at.isoformat() if getattr(o, 'exit_override_at', None) else None),   # ✎ Oct-2 operator exit override
             # ➕ (DECISION_LOG 324) add to position: the badge (count / Σ margin / last add) + whether the ➕ button is enabled (a fixed-level exit
@@ -3017,6 +3020,9 @@ async def get_closed_orders(db: AsyncSession = Depends(get_db)):
             "flip_fan_tp_pct": getattr(o, 'flip_fan_tp_pct', None),   # 🎯 (563) FAN flip fixed TP (NULL = the trail)
             "size_adopted_at": (o.size_adopted_at.isoformat() if getattr(o, 'size_adopted_at', None) else None),   # 📐 (572) size from Binance
             "size_adopted_from_qty": getattr(o, 'size_adopted_from_qty', None),
+            "partial_realized_pnl_usd": getattr(o, 'partial_realized_pnl_usd', None), "partial_fee_usd": getattr(o, 'partial_fee_usd', None),   # 💥 (574)
+            "partial_closed_qty": getattr(o, 'partial_closed_qty', None), "liquidated_qty": getattr(o, 'liquidated_qty', None),
+            "partial_unpriced_qty": getattr(o, 'partial_unpriced_qty', None), "partial_close_note": getattr(o, 'partial_close_note', None),
             "willy_floor_armed_at": (o.willy_floor_armed_at.isoformat() if getattr(o, 'willy_floor_armed_at', None) else None),   # historical (V2 floor, removed DL 358)
             "exit_override_at": (o.exit_override_at.isoformat() if getattr(o, 'exit_override_at', None) else None),   # ✎ Oct-2 operator exit override
             # ➕ (DECISION_LOG 324) size added by the operator (the row's qty / avg entry / invested already include it)
@@ -4145,6 +4151,9 @@ async def _close_orphan_orders(db: AsyncSession, binance_pairs: set) -> list:
                     _rc_ft.add_done_callback(trading_engine._bg_tasks.discard)
                 except Exception as _rc_fe:
                     logger.warning(f"[FUNDING] {order.pair} #{order.id}: reconciled-close funding fold skipped ({str(_rc_fe)[:80]})")
+                await trading_engine._fresh_partials(order)   # 💥 (574 review I1) the partial_* columns as committed now
+                order.pnl, order.pnl_percentage = trading_engine._fold_partial_close(order, order.pnl, order.pnl_percentage)   # 💥 (574) earlier liquidation / partial closes
+                order.total_fee = round(float(order.total_fee or 0) + float(getattr(order, 'partial_fee_usd', None) or 0), 4)
                 try:
                     trading_engine._register_post_exit_tracking(order, order.close_reason)   # (DECISION_LOG 419) every reconciled close (backstop, external, resting TP), once fully booked
                 except Exception as _pe_reg_err:

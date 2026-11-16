@@ -21560,7 +21560,18 @@
         function sizeAdoptBadgeHtml(o) {   // 📐 (DECISION_LOG 572) the size was changed in the Binance app and adopted by the bot
             if (!o || !o.size_adopted_at) return '';
             const t = `Size from Binance: changed in the app (was ${o.size_adopted_from_qty ?? '?'}) and adopted ${formatTime(o.size_adopted_at)} — quantity, average entry and margin follow Binance; the take profit keeps its price for the full size`;
-            return `<div class="text-[10px] text-sky-300 mt-0.5 whitespace-nowrap cursor-help" title="${_addEsc(t)}">📐 size from Binance</div>`;
+            return `<div class="text-[10px] text-sky-300 mt-0.5 whitespace-nowrap cursor-help" title="${_addEsc(t)}">📐 size from Binance</div>` + partialCloseBadgeHtml(o);
+        }
+        function partialCloseBadgeHtml(o) {   // 💥 (DECISION_LOG 574) the realised part of reductions made outside the bot (Binance liquidation / app partial close)
+            if (!o) return '';
+            const pq = Number(o.partial_closed_qty || 0), uq = Number(o.partial_unpriced_qty || 0), lq = Number(o.liquidated_qty || 0);
+            if (!(pq > 0) && !(uq > 0)) return '';
+            const net = Number(o.partial_realized_pnl_usd || 0) - Number(o.partial_fee_usd || 0);
+            const sgn = net >= 0 ? '+' : '-';
+            const t = `Closed outside the bot so far: ${pq} (${lq} by Binance liquidation / ADL) · realised ${sgn}$${Math.abs(net).toFixed(2)} incl. fees — booked into this trade's P&L at its final close`
+                      + (uq > 0 ? ` · ${uq} not priced yet (retrying)` : '') + (o.partial_close_note ? ` · ${o.partial_close_note}` : '');
+            const lbl = (lq > 0 ? '💥 liquidated · ' : '✂ partial · ') + `realised ${sgn}$${Math.abs(net).toFixed(0)}` + (uq > 0 ? ' · pricing…' : '');
+            return `<div class="text-[10px] ${lq > 0 ? 'text-red-400' : 'text-amber-300'} mt-0.5 whitespace-nowrap cursor-help" title="${_addEsc(t)}">${lbl}</div>`;
         }
         function addBadgeHtml(o) {
             const n = Number(o.manual_add_count || 0); if (!(n > 0)) return sizeAdoptBadgeHtml(o);

@@ -138,6 +138,8 @@ BOOKED = {   # booked P&L — `era` = drops fills by WILLY exit era (registered 
                           "frenzy_willy_stop_pct": 4.0, "flatbase_tp_pct": 5.0, "flatbase_stop_pct": 10.0},
     # (535) the keep-position gate reads BOOKED % × the added position (exit-agnostic: the same trade, the same exit, only the size differs)
     "scout_bracket_keep.py": None,
+    # (567) FAN_BTC_EMA13_DEEP judges BOOKED FAN-flip P&L under the DL 563 +0.5 % resting TP → pinned to that exit
+    "scout_fan_btc_ema13_watch.py": {"flip_fan_fixed_tp_pct": 0.5, "resting_tp_flip_fan_enabled": True},
     "scout_surge_wl_watch.py": {"surge_long_exit_no_lock": True, "surge_max_hold_minutes": 240, "sl_atr_multiplier": 1.5, "sl_atr_widen_floor_pct": -1.2, "bullrun_base_sl_pct": -0.7, "bullrun_be_arm_pct": 1.0, "surge_long_trail_atr_mult": 1.0},
     # (509) WILLY_FAILED_SPIKE + the WILLY OFF trigger judge booked WR against the same frozen V2b breakeven (69.0 %) → the same pins
     "scout_willy_failed_spike_watch.py": {"frenzy_willy_high_target_enabled": True, "frenzy_willy_stop_pct": 4.0, "frenzy_willy_high_k_pct": 1.0,

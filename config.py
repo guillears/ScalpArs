@@ -1804,6 +1804,15 @@ class SignalThresholds(BaseModel):
     # worse than kept in 3 / 3 seeds (P 0.95 / 1.00 / 0.98, 41–45 days); live 3 · −$638 → 0. Not refitted on the 3 October winners (rule B
     # = observe only). 🔒 Revert: first 8 blocked signals priced on the momentum-short exit average > 0 → off (read at each batch review).
     watch_block_ms_regime_ends: bool = False
+    # 💸 (DECISION_LOG 566, operator "ship it" — DECLARED OVERRIDE, a cost guard): FUNDING GUARD — every bot entry is skipped when the next
+    # funding payment is AGAINST it (short & rate < 0 · long & rate > 0), |rate| ≥ funding_guard_rate_min_pct % and it settles within
+    # funding_guard_minutes (Binance premiumIndex, cached ≤ 60 s; unreadable → no block). Live INIT 11-16: FAN flip opened 96 s before an
+    # HOURLY −0.183 % payment ($33.46). Study (reports/FUNDING_GUARD_EXIT_DEPTH_STUDY_2026-11-16.md): 0.05 % · 15 min blocks 1 of 564 master
+    # + live fills (INIT); extreme-funding fills are otherwise winners (58 · 86 % · +2.35 %) → narrow cut, frozen. 🔒 Revert: the first 5
+    # blocked signals priced by hand at batch review average > 0 → off.
+    funding_guard_enabled: bool = False
+    funding_guard_rate_min_pct: float = 0.05
+    funding_guard_minutes: float = 15.0
     # ⏪ Oct-6 FRENZY CATCH-UP (operator-approved build): FRENZY_LONG / FRENZY_WIDE get ONE chance per setup — the 5m bar it turns ON. When that
     # bar closed while no pass judged (bot paused, restarting after a deploy, an outage) the pair showed "ON (entry bar passed)" forever. Live case:
     # NMRUSDT 2026-10-06, fresh bar closed 13:40 UTC (streak 25, 2.0 h, vol 343×, ATR 2.1 %) while the bot was paused 13:25→13:53. NOTE (deep
@@ -3208,6 +3217,16 @@ class InvestmentConfig(BaseModel):
     # Code default OFF; the JSON arms it. Judged with the guard's 15-entry revert gate (cap-reduced size counts as guarded).
     entry_depth_cap_enabled: bool = False
     entry_depth_cap_wait_s: float = 15.0
+    # ⑦c 📖↔ Nov-16 DEPTH GUARD ON EVERY ENTRY + THE EXIT SIDE (DECISION_LOG 565, operator "we are losing tons of money, I consider this a
+    # BUG"): ⑦ guarded only FRENZY / SURGE / FLATBASE — momentum and flips ($18–48k tickets) never met a book check (INIT FAN flip 11-16:
+    # $18.3k, exit buy into a thin ask side → 0.37 % / $68 slippage). all_enabled: every other bot entry through open_position reads 50
+    # book levels before its order (momentum long / short, every flip source, Bull-Run, Bear-Run, spikes, bull / bounce longs; manual
+    # never) · exit_side_enabled: the exit side of the same book (a LONG exits into the bids, a SHORT into the asks) is measured too and
+    # the notional is kept to the THINNER side. Same max_sweep_pct / min_frac rules; unreadable side = not binding (fail-open). Stamps
+    # entry_depth_fillable_usd (entry side) · entry_depth_exit_fillable_usd · entry_depth_shrunk_from. Code default OFF; the JSON arms it.
+    # Revert gate: the DL 551 one (15 guarded live entries: full-size counterfactual vs guarded → off if it cost more), read per side.
+    entry_depth_guard_all_enabled: bool = False
+    entry_depth_guard_exit_side_enabled: bool = False
     max_open_positions_hard: int = 10  # absolute ceiling when redeploying
     # 🖐 Sep-29 MANUAL sleeve: its own slot lane — manual positions never consume a bot slot and are capped here (balance still binds)
     manual_max_open_positions: int = 8

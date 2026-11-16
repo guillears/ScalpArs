@@ -122,7 +122,8 @@ def _offline(monkeypatch, TE):
     async def _tick(*a, **k):
         return 0.0001
     for n, f in (("load_markets", _none), ("load_public_markets", _none), ("get_leverage_brackets", _empty), ("get_tick_size", _tick),
-                 ("get_ohlcv", _none), ("fetch_orderbook", _none), ("fetch_orderbook_depth", _none), ("get_current_price", _none)):
+                 ("get_ohlcv", _none), ("fetch_orderbook", _none), ("fetch_orderbook_depth", _none), ("get_current_price", _none),
+                 ("fetch_funding_next", _none)):   # 💸 (566) the funding guard's premiumIndex read
         monkeypatch.setattr(bs, n, f, raising=False)
 
     net = []

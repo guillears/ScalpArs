@@ -2162,6 +2162,46 @@ class BinanceService:
             logger.warning(f"[BINANCE] Error fetching funding rate for {symbol}: {e}")
             return None
 
+    async def fetch_funding_next(self, symbol: str, max_age_s: float = 60.0):
+        """💸 (DECISION_LOG 566) → (rate decimal, next settlement ms) from the public premiumIndex (lastFundingRate + nextFundingTime), cached
+        per symbol ≤ max_age_s (one request per pair per minute at most; weight 1). None on any error / missing field (the guard fails open)."""
+        try:
+            now = time.time()
+            cache = getattr(self, '_funding_next_cache', None)
+            if cache is None:
+                cache = self._funding_next_cache = {}
+            hit = cache.get(symbol)
+            if hit and hit[0] is None and (now - hit[2]) < 30.0:   # (565 review) a recent failure is cached 30 s — never a request per open
+                return None
+            if hit and hit[0] is not None and (now - hit[2]) < max_age_s and (hit[1] is None or hit[1] > now * 1000):
+                return hit[0], hit[1]
+            if _ban_until > now:   # (565 review) an active 418 / 429 ban → no request (fail-open)
+                return None
+            await self.load_public_markets()
+            raw_sym = symbol.replace('/USDT:USDT', 'USDT').replace('/', '')
+            data = await self.public_exchange.fapiPublicGetPremiumIndex({'symbol': raw_sym})
+            if isinstance(data, list):
+                data = data[0] if data else None
+            if not data:
+                return None
+            rate, nxt = data.get('lastFundingRate'), data.get('nextFundingTime')
+            if rate is None or nxt is None:
+                return None
+            out = (float(rate), int(float(nxt)))
+            cache[symbol] = (out[0], out[1], now)
+            return out
+        except Exception as e:
+            try:
+                self._detect_ban(e)   # (565 review) a 418 / 429 here is recorded like every other request
+            except Exception:
+                pass
+            try:
+                self._funding_next_cache[symbol] = (None, None, time.time())
+            except Exception:
+                pass
+            logger.warning(f"[BINANCE] funding next read failed for {symbol}: {str(e)[:80]}")
+            return None
+
 
 # Global service instance
 binance_service = BinanceService()

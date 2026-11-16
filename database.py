@@ -272,6 +272,8 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_depth_fillable_usd FLOAT"))
                 if 'entry_depth_shrunk_from' not in columns:   # 📖 (DECISION_LOG 551) entry depth guard
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_depth_shrunk_from FLOAT"))
+                if 'entry_depth_exit_fillable_usd' not in columns:   # 📖↔ (DECISION_LOG 565) the exit side of the book at entry
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_depth_exit_fillable_usd FLOAT"))
                 if 'entry_cap_price' not in columns:   # 📖🧢 (DECISION_LOG 553) capped entry
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_cap_price FLOAT"))
                 if 'entry_cap_fill_frac' not in columns:   # 📖🧢 (DECISION_LOG 553) capped entry

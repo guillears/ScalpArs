@@ -37,7 +37,7 @@ def test_engine_wiring():
     assert 'self._record_filter_block("DEPTH_GUARD_SKIP", direction)' in src
     assert 'self._blocked_record(_wh_es, direction, pair, current_price, ["DEPTH_GUARD"], _dg_ef)' in src
     assert "entry_depth_fillable_usd=_dg_fill, entry_depth_shrunk_from=_dg_from" in src
-    i_guard = src.index("📖 (DECISION_LOG 551) ENTRY DEPTH GUARD")
+    i_guard = src.index("📖 (DECISION_LOG 551 → 565) ENTRY DEPTH GUARD")
     i_order = src.index("result = await binance_service.create_market_order(", i_guard)   # the open path's taker order (other paths use it too)
     assert src.index("notional_value = investment * leverage\n        _req_qty_snapshot = None") < i_guard < i_order   # sized after notional, before the order
     b = (ROOT / "services/binance_service.py").read_text()
@@ -123,4 +123,4 @@ def test_e2e_full_shrink_skip_and_unreadable(monkeypatch):
 def test_skip_refusal_text_reaches_flatbase_and_frenzy():
     src = (ROOT / "services/trading_engine.py").read_text()
     assert "if _frenzy or _fbs:   # (551 deep review) FLATBASE too" in src
-    assert "quantity = notional_value / (_sg_live_px or current_price)" in src
+    assert "quantity = notional_value / ((_sg_live_px if _surge else _dg_bpx) or current_price)" in src   # (565 review) the book price the depth was measured at

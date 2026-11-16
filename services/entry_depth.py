@@ -4,7 +4,10 @@ Operator 2026-11-15 (first live trade, SHELL FRENZY_LITE $16,575): the market or
 (11 earlier small live LITE fills: never above 0.11 %). The guard reads the book in the same call the dislocation guard already makes
 and keeps the position to what fills within `max_sweep_pct` of the best price: full size → unchanged · part fits (≥ min_frac) → shrink
 to what fits · less than min_frac fits → skip. It only ever shrinks or skips; a missing / unreadable book is fail-open (unchanged).
-Pure math here; the engine wiring lives in TradingEngine.open_position (the FRENZY / SURGE / FLATBASE taker path)."""
+Pure math here; the engine wiring lives in TradingEngine.open_position (the FRENZY / SURGE / FLATBASE taker path).
+📖↔ (DECISION_LOG 565) every bot entry (momentum, flips and every other open_position sleeve too, entry_depth_guard_all_enabled) and the
+EXIT side of the book (entry_depth_guard_exit_side_enabled): the notional is kept to the THINNER side — a thin exit side is where the
+INIT 11-16 flip lost 0.37 % on its market close."""
 
 FULL, SHRINK, SKIP = "FULL", "SHRINK", "SKIP"
 
@@ -44,6 +47,23 @@ def depth_guard_size(planned_notional, fillable_usd, min_frac):
     if f < max(0.0, float(min_frac or 0.0)) * n:
         return SKIP, f
     return SHRINK, f
+
+
+def exit_side_fillable_usd(book, direction, max_sweep_pct):
+    """📖↔ (DECISION_LOG 565) $ that the EXIT of this trade would fill within max_sweep_pct of the best price on the book read at entry: a LONG
+    exits by selling into the bids, a SHORT by buying the asks. book = {'bids': [...], 'asks': [...]} best first. None when unusable."""
+    try:
+        if not book:
+            return None
+        return depth_fillable_usd(book.get('bids') if direction == "LONG" else book.get('asks'), "SHORT" if direction == "LONG" else "LONG", max_sweep_pct)
+    except (AttributeError, TypeError):
+        return None
+
+
+def thinner_side_usd(entry_fill, exit_fill):
+    """the depth the guard sizes to: the thinner of the two readable sides; None when neither side is measured (fail-open)."""
+    v = [float(x) for x in (entry_fill, exit_fill) if x is not None]
+    return min(v) if v else None
 
 
 # ── 📖🧢 (DECISION_LOG 553) CAPPED ENTRY — the guarded order can never fill above the price the guard measured ─────────────────────────────

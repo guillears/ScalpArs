@@ -138,6 +138,8 @@ def test_screen_and_master_agree_on_kept_rows():
     for r in _rows("SCREENED_BASELINE.csv"):
         mm = m.get((r["opened_at"][:19], r["pair"], r["direction"]))
         assert mm is not None, f"screened row missing from the master: {r['pair']} {r['opened_at']}"
+        if "FAN_TP05" in str(mm.get("stack_block_reason") or ""):   # (568) the FAN exit CF re-prices in the builder only (SCREENED_BASELINE = entry screen)
+            continue
         if mm["stack_keep"] == "True" and abs(float(mm["stack_pnl"]) - float(r["pnl_current_sizing"])) > 0.011:
             diff.append((r["pair"], r["opened_at"], r["pnl_current_sizing"], mm["stack_pnl"]))
     assert not diff, f"screen vs master sizing drift: {diff[:5]}"

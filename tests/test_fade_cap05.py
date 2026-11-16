@@ -41,7 +41,7 @@ def test_master_csv_scale_invariants():
     # 10-06c: a path-CF momentum row re-sized by today_size_rule carries the size factor in its ticket scale (its pct is read back as
     # stack_pnl / scale / notional) — the only non-fade rows allowed a scale ≠ 1 (0 rows at 10-06c)
     nf = m[(m.stack_ticket_scale != 1.0) & (m.entry_strategy != "SPIKE_FADE")]
-    assert nf.stack_keep.all() and nf.stack_block_reason.astype(str).str.contains("ARM040|LATE_ARM|FADE_SL").all()
+    assert nf.stack_keep.all() and nf.stack_block_reason.astype(str).str.contains("ARM040|LATE_ARM|FADE_SL|FAN_TP05").all()
     s = m[(m.stack_ticket_scale != 1.0) & (m.entry_strategy == "SPIKE_FADE")]
     assert (s.stack_ticket_scale >= 1.0).all()
     _wb = s.stack_block_reason.astype(str).str.startswith("SPIKE_FADE_BLOCK_")   # (DL 527) refused by the armed fade filter, ticket scale kept

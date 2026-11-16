@@ -14,7 +14,7 @@ A = ap.parse_args()
 _a, sys.argv = sys.argv, [sys.argv[0]]
 import current_stack_ledger as LG, entry_feature_factory as EF
 M = LG.build(); sys.argv = _a
-M["pct"] = np.where(M.stack_block_reason.fillna("").str.contains("ARM040|LATE_ARM|FADE_SL"), M.stack_pnl / M.stack_ticket_scale.fillna(1) / pd.to_numeric(M.notional_value, errors="coerce") * 100, M.pnl_percentage)
+M["pct"] = np.where(M.stack_block_reason.fillna("").str.contains("ARM040|LATE_ARM|FADE_SL|FAN_TP05"), M.stack_pnl / M.stack_ticket_scale.fillna(1) / pd.to_numeric(M.notional_value, errors="coerce") * 100, M.pnl_percentage)
 def sleeve_of(strat, d):
     s = strat if isinstance(strat, str) and strat else "MOMENTUM"
     if s.startswith("FLIP"): return "FLIP-short"

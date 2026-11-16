@@ -26,11 +26,12 @@ def test_rule():
 
 def test_master_cohort_matches_the_study():
     m = pd.read_csv(ROOT / "reports/MASTER_POOL_stacked.csv", low_memory=False)
-    kept = (m.stack_keep.astype(str) == "True") | m.stack_block_reason.astype(str).str.contains("ML_WEAK_RESCUE")   # (review B) survives the re-freeze
+    # (review B / 568) survives the re-freeze: rows kept before STACK 2026-11-16a = kept now or blocked by the 555 / 559 lines only
+    kept = (m.stack_keep.astype(str) == "True") | m.stack_block_reason.astype(str).str.fullmatch(r"MOMENTUM_LONG_BLOCK_(ML_WEAK_RESCUE|ML_WEAK_MARKET|ML_FADING_QUIET)(\+(ML_WEAK_RESCUE|ML_WEAK_MARKET|ML_FADING_QUIET))*")
     k = m[(m.entry_strategy == "MOMENTUM") & (m.direction == "LONG") & kept
           & (m.is_probe.astype(str).isin(["False", "0", "false", "nan"]))]
     z = k[[bool(WF.ml_blocks(ON, None, None, entry_gap=g, global_volume_ratio=v)) for g, v in zip(k.entry_gap, k.entry_global_volume_ratio)]]
-    p = pd.to_numeric(z.stack_pct)
+    p = pd.to_numeric(z.stack_pct).fillna(pd.to_numeric(z.pnl_percentage))   # (568) a blocked row: its as-traded pct (= its pre-freeze stack_pct)
     assert len(z) == 20 and round(p.mean(), 2) == -0.25 and (p > 0).mean() == 0.5
 
 

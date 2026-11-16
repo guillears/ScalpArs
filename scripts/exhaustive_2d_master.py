@@ -15,7 +15,7 @@ _a, sys.argv = sys.argv, [sys.argv[0]]
 import current_stack_ledger as LG, entry_feature_factory as EF
 M = LG.build(); sys.argv = _a
 n = lambda d, c: pd.to_numeric(d[c], errors="coerce")
-M["pct"] = np.where(M.stack_block_reason.fillna("").str.contains("ARM040|LATE_ARM|FADE_SL"), M.stack_pnl / M.stack_ticket_scale.fillna(1) / pd.to_numeric(M.notional_value, errors="coerce") * 100, M.pnl_percentage)
+M["pct"] = np.where(M.stack_block_reason.fillna("").str.contains("ARM040|LATE_ARM|FADE_SL|FAN_TP05"), M.stack_pnl / M.stack_ticket_scale.fillna(1) / pd.to_numeric(M.notional_value, errors="coerce") * 100, M.pnl_percentage)
 M = M[(M.direction == "LONG") & (M.entry_strategy.fillna("MOMENTUM") == "MOMENTUM")]
 B = pd.read_csv(A.b14, low_memory=False); b = B[(B.status == "CLOSED") & (B.direction == "LONG") & (B.entry_strategy.fillna("MOMENTUM") == "MOMENTUM")].copy()
 b["pct"] = b.pnl_percentage; b["net"] = b.pnl; b["era"] = "B14"; b = b[~((n(b, "entry_adx") < 21) & (n(b, "entry_rsi") < n(b, "entry_rsi_prev")))]

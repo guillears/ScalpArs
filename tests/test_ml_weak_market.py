@@ -40,13 +40,15 @@ def test_rule_fading_quiet():
 
 def test_master_cohorts_match_the_study():
     m = pd.read_csv(ROOT / "reports/MASTER_POOL_stacked.csv", low_memory=False)
-    kept = (m.stack_keep.astype(str) == "True") | m.stack_block_reason.astype(str).str.contains("ML_WEAK_MARKET|ML_FADING_QUIET")
+    kept = (m.stack_keep.astype(str) == "True") | m.stack_block_reason.astype(str).str.fullmatch(r"MOMENTUM_LONG_BLOCK_(ML_WEAK_RESCUE|ML_WEAK_MARKET|ML_FADING_QUIET)(\+(ML_WEAK_RESCUE|ML_WEAK_MARKET|ML_FADING_QUIET))*")   # (568) blocked by these lines only
     k = m[(m.entry_strategy == "MOMENTUM") & (m.direction == "LONG") & kept & (m.is_probe.astype(str).isin(["False", "0", "false", "nan"]))]
+    # (568) LIT 07-10 17:02 was refused by LONG_CHOP_BURST at 11-14a (not in the study's 124); the 11-16a freeze judges ML_WEAK_MARKET first
+    k = k[~((k.pair == "LITUSDT") & (k.opened_at.astype(str).str[:19] == "2026-07-10T17:02:16"))]
     assert len(k) == 124
     def cohort(th):
         z = k[[bool(WF.ml_blocks(th, None, b, btc_adx=a, adx_delta=d, atr_pct=t))
                for b, a, d, t in zip(k.entry_bull_pct, k.entry_btc_adx, k.entry_adx_delta, k.entry_atr_pct)]]
-        p = pd.to_numeric(z.stack_pct)
+        p = pd.to_numeric(z.stack_pct).fillna(pd.to_numeric(z.pnl_percentage))   # (568) a blocked row: its as-traded pct (= its pre-freeze stack_pct)
         return len(z), round(p.mean(), 2)
     assert cohort(SimpleNamespace(watch_block_ml_weak_market=True)) == (8, -0.15)
     assert cohort(SimpleNamespace(watch_block_ml_fading_quiet=True)) == (11, -0.08)

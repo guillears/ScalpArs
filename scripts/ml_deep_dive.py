@@ -31,7 +31,7 @@ OUT = []
 def P(*s): OUT.append(" ".join(str(x) for x in s)); print(*s, flush=True)
 
 # ── data ──
-M["pct"] = np.where(M.stack_block_reason.fillna("").str.contains("ARM040|LATE_ARM|FADE_SL"), M.stack_pnl / M.stack_ticket_scale.fillna(1) / pd.to_numeric(M.notional_value, errors="coerce") * 100, M.pnl_percentage)
+M["pct"] = np.where(M.stack_block_reason.fillna("").str.contains("ARM040|LATE_ARM|FADE_SL|FAN_TP05"), M.stack_pnl / M.stack_ticket_scale.fillna(1) / pd.to_numeric(M.notional_value, errors="coerce") * 100, M.pnl_percentage)
 M = M[(M.direction == "LONG") & (M.entry_strategy.fillna("MOMENTUM") == "MOMENTUM")].reset_index(drop=True)
 F = pd.read_csv(A.fills, low_memory=False)
 F = F[F.cell_multiplier_source.astype(str) != "CROSS_OB_OPEN"]; _b = pd.to_numeric(F.entry_btc_atr_pct, errors="coerce")

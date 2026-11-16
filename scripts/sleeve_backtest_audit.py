@@ -50,7 +50,7 @@ base = C[(C.t >= W.loc["BASE", "min"]) & (C.t <= W.loc["BASE", "max"])].assign(e
 RAW = pd.concat([base, P[P.era != "BASE"]], ignore_index=True).drop_duplicates(["opened_at", "pair", "direction"])
 RAW["pct"] = pd.to_numeric(RAW.pnl_percentage, errors="coerce")
 # ── master ──
-M = prep(M); M["pct"] = np.where(M.stack_block_reason.fillna("").str.contains("ARM040|LATE_ARM|FADE_SL"),
+M = prep(M); M["pct"] = np.where(M.stack_block_reason.fillna("").str.contains("ARM040|LATE_ARM|FADE_SL|FAN_TP05"),
                                   M.stack_pnl / M.stack_ticket_scale.fillna(1) / pd.to_numeric(M.notional_value, errors="coerce") * 100, M.pnl_percentage)
 # ── backtest at live clock ──
 parts = []

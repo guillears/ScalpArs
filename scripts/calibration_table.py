@@ -34,7 +34,7 @@ def sleeve_of(strat, direction):
 
 M["t"] = pd.to_datetime(M.opened_at.astype(str).str[:19])
 M["sleeve"] = [sleeve_of(s, d) for s, d in zip(M.entry_strategy, M.direction)]
-M["pct"] = np.where(M.stack_block_reason.fillna("").str.contains("ARM040|LATE_ARM|FADE_SL"),
+M["pct"] = np.where(M.stack_block_reason.fillna("").str.contains("ARM040|LATE_ARM|FADE_SL|FAN_TP05"),
                     M.stack_pnl / M.stack_ticket_scale.fillna(1) / pd.to_numeric(M.notional_value, errors="coerce") * 100, M.pnl_percentage)
 parts = []
 for t in A.tags:

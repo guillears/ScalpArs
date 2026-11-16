@@ -42,7 +42,10 @@ def test_master_lite_rows_priced_at_plus_3():
     exp = np.array([cf.get((str(a)[:19], p), e) for a, p, e in zip(k.opened_at, k.pair, exp)])
     assert np.allclose(k.stack_pct.values, exp)
     b22 = k[k.era == "B22"].set_index("pair")
-    assert np.isclose(b22.loc["EPICUSDT", "stack_pct"], -3.43, atol=0.01) and np.isclose(b22.loc["DEEPUSDT", "stack_pct"], 3.0)
+    assert np.isclose(b22.loc["DEEPUSDT", "stack_pct"], 3.0)
+    e = M[(M.era == "B22") & (M.pair == "EPICUSDT") & (M.entry_strategy.astype(str) == "FRENZY_LITE")]
+    assert len(e) == 1 and (np.isclose(float(e.stack_pct.iloc[0]), -3.43, atol=0.01)
+                            or str(e.stack_block_reason.iloc[0]).startswith("FRENZY_LITE_BLOCK_"))   # (568) EPIC: watch-blocked since STACK 11-16a
 
 
 def test_b22_archived_live_batch():

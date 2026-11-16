@@ -153,7 +153,10 @@ def test_master_pool_refuses_exactly_lit_and_wld():
         pytest.skip("pool not built")
     d = pd.read_csv(p, low_memory=False, usecols=["pair", "opened_at", "stack_block_reason"])
     blk = d[d.stack_block_reason == "LONG_CHOP_BURST"]
-    assert sorted(zip(blk.pair, blk.opened_at.astype(str).str[:19])) == [("LITUSDT", "2026-07-10T17:02:16")]
+    # (568) STACK 2026-11-16a: LIT 07-10 17:02 is now refused EARLIER by the armed ML_WEAK_MARKET line (judged before the chop-burst pass)
+    assert sorted(zip(blk.pair, blk.opened_at.astype(str).str[:19])) == []
+    l = d[(d.pair == "LITUSDT") & (d.opened_at.astype(str).str[:19] == "2026-07-10T17:02:16")]
+    assert len(l) == 1 and str(l.stack_block_reason.iloc[0]).startswith("MOMENTUM_LONG_BLOCK_ML_WEAK_MARKET")
     # (DL 527) WLD 10-01 01:25 is now refused EARLIER by the armed ML_MKT_HOT filter (judged before the chop-burst pass)
     w = d[(d.pair == "WLDUSDT") & (d.opened_at.astype(str).str[:19] == "2026-10-01T01:25:05")]
     assert len(w) == 1 and str(w.stack_block_reason.iloc[0]).startswith("MOMENTUM_LONG_BLOCK_ML_MKT_HOT")

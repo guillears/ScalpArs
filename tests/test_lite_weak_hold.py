@@ -27,12 +27,17 @@ def test_rule():
 def test_master_cohort_matches_the_study():
     m = pd.read_csv(ROOT / "reports/MASTER_POOL_stacked.csv", low_memory=False)
     th = SimpleNamespace(**{v: True for v in WF.TOGGLES.values()})
-    kept = (m.stack_keep.astype(str) == "True") | m.stack_block_reason.astype(str).str.contains("LITE_WEAK_HOLD|LITE_BTC_RSI_HOT")
+    # (568) since STACK 2026-11-16a the lines block in the master: the study cohort = rows kept before the freeze (blocked by THESE lines only)
+    kept = (m.stack_keep.astype(str) == "True") | m.stack_block_reason.astype(str).str.fullmatch(r"FRENZY_LITE_BLOCK_(LITE_WEAK_HOLD|LITE_BTC_RSI_HOT)(\+LITE_WEAK_HOLD)?")
     k = m[kept & (m.entry_strategy == "FRENZY_LITE") & (pd.to_datetime(m.opened_at, format="mixed") < "2026-11-15")]   # (review c) frozen study window
     n = lambda r, c: pd.to_numeric(r.get(c), errors="coerce")
     k = k[[not WF.lite_blocks(th, n(r, "entry_btc_ema20_slope"), n(r, "entry_btc_rsi")) for _, r in k.iterrows()]]
     z = k[[bool(WF.lite_blocks(ON, None, None, n(r, "entry_frenzy_above_share"))) for _, r in k.iterrows()]]
-    p = pd.to_numeric(z.stack_pct)
+    import sys
+    sys.path.insert(0, str(ROOT / "scripts"))
+    from build_master_pool import frenzy_fixed_pct
+    p = pd.Series([float(s) if pd.notna(s) else frenzy_fixed_pct("FRENZY_LITE", pd.to_numeric(pk, errors="coerce"), float(pp), 3.0)
+                   for s, pk, pp in zip(pd.to_numeric(z.stack_pct), z.peak_pnl, z.pnl_percentage)])   # (568) a blocked row: its +3-TP price
     assert len(z) == 16 and (p > 0).sum() == 8
 
 

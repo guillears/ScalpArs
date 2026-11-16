@@ -44,7 +44,7 @@ def check(name, ok, detail):
 
 
 # M1 — the pct every analysis uses must agree in sign with the ledger's net $
-pct = np.where(M.stack_block_reason.fillna("").str.contains("ARM040|LATE_ARM|FADE_SL"),
+pct = np.where(M.stack_block_reason.fillna("").str.contains("ARM040|LATE_ARM|FADE_SL|FAN_TP05"),
                M.stack_pnl / M.stack_ticket_scale.fillna(1) / pd.to_numeric(M.notional_value, errors="coerce") * 100, M.pnl_percentage)
 if "stack_pct" in M:   # 10-06c (DECISION_LOG 233): the builder's today's-rules pct (path CFs + the FRENZY lock re-price) — the regex alone missed FRENZY
     pct = np.where(pd.to_numeric(M.stack_pct, errors="coerce").notna(), pd.to_numeric(M.stack_pct, errors="coerce"), pct)

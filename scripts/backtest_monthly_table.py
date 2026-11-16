@@ -50,7 +50,7 @@ def sleeve_of(strat, d):
     if s == "MOMENTUM": return "MOM-long" if d == "LONG" else "MOM-short"
     return {"SPIKE_FADE": "Spike-Fade", "BULLRUN_LONG": "BullRun-Long", "BEARRUN_SHORT": "BearRun-Short"}.get(s, s)
 M["sleeve"] = [sleeve_of(s, d) for s, d in zip(M.entry_strategy, M.direction)]
-M["pct"] = np.where(M.stack_block_reason.fillna("").str.contains("ARM040|LATE_ARM|FADE_SL"),
+M["pct"] = np.where(M.stack_block_reason.fillna("").str.contains("ARM040|LATE_ARM|FADE_SL|FAN_TP05"),
                     M.stack_pnl / M.stack_ticket_scale.fillna(1) / pd.to_numeric(M.notional_value, errors="coerce") * 100, M.pnl_percentage)
 M["mon"] = M.opened_at.astype(str).str[:7]
 # same-window rule (Sep-25 lesson): the master is cut at the backtest's last fill — never compare days one side did not cover

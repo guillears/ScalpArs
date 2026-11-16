@@ -15,7 +15,7 @@ def test_stack_pct_ignores_size_reprices():
     M = _master()
     k = M[M.stack_keep == True]
     assert "stack_pct" in M and k.stack_pct.notna().all() and M[M.stack_keep != True].stack_pct.isna().all()
-    path = k.stack_block_reason.fillna("").astype(str).str.contains("ARM040|LATE_ARM|FADE_SL")
+    path = k.stack_block_reason.fillna("").astype(str).str.contains("ARM040|LATE_ARM|FADE_SL|FAN_TP05")
     th = json.load(open(os.path.join(ROOT, "trading_config.json")))
     t_ = th.get("thresholds", th); tp = float(t_.get("frenzy_tp_pct", 0) or 0)
     assert float(t_.get("frenzy_lock_arm_pct", 0) or 0) == 0                     # 10-08a (250): the lock is off — the fixed TP prices FRENZY

@@ -70,7 +70,7 @@ def auc_cols(X, y):
 
 
 M["sleeve"] = [sleeve_of(s, x) for s, x in zip(M.entry_strategy, M.direction)]
-M["pct"] = np.where(M.stack_block_reason.fillna("").str.contains("ARM040|LATE_ARM|FADE_SL"),
+M["pct"] = np.where(M.stack_block_reason.fillna("").str.contains("ARM040|LATE_ARM|FADE_SL|FAN_TP05"),
                     M.stack_pnl / M.stack_ticket_scale.fillna(1) / pd.to_numeric(M.notional_value, errors="coerce") * 100, M.pnl_percentage)
 F = pd.read_csv(A.fills, low_memory=False)
 F = F[~F.sleeve.astype(str).str.contains("PROBE|Probe", na=False)].reset_index(drop=True)

@@ -63,22 +63,22 @@ def test_registry_value_parses_to_10x(monkeypatch, spec):
     s = {"json": _json_th()["flip_entry_sources"], "default": config.SignalThresholds().flip_entry_sources}.get(spec, spec)
     monkeypatch.setattr(TH, "flip_entry_enabled", True)
     monkeypatch.setattr(TH, "flip_entry_sources", s)
-    assert te._flip_registry()["FAN_RATIO_GATE"] == (1.0, 0.5)
+    assert te._flip_registry()["FAN_RATIO_GATE"] == (1.0, 0.25 if spec == "json" else 0.5)   # DL 571: live JSON 0.25 = 5× (code default stays 0.5)
 
 
 def test_registry_parse(live_registry):
-    assert te._flip_registry() == {"FAN_RATIO_GATE": (1.0, 0.5)}
-    assert te._flip_size_mult("FAN_RATIO_GATE") == 1.0 and te._flip_lev_mult("FAN_RATIO_GATE") == 0.5
+    assert te._flip_registry() == {"FAN_RATIO_GATE": (1.0, 0.25)}   # DL 571: FAN 10× → 5×
+    assert te._flip_size_mult("FAN_RATIO_GATE") == 1.0 and te._flip_lev_mult("FAN_RATIO_GATE") == 0.25
 
 
 def test_fan_flip_is_10x(live_registry):
-    assert _flip_lev("FAN_RATIO_GATE") == 10
+    assert _flip_lev("FAN_RATIO_GATE") == 5   # DL 571: 10× → 5×
 
 
 def test_fan_flip_stays_10x_when_cells_at_1_fire(live_registry):
     # TG_SHALLOW / NEGDI15 / the qs cell all at lev 1.0 today — firing them must not restore 20×
     assert float(_json_th()["flip_short_tg_shallow_lev_mult"]) == 1.0 and float(_json_th()["flip_short_negdi_lev_mult"]) == 1.0
-    assert _flip_lev("FAN_RATIO_GATE", (1.0, 1.0)) == 10
+    assert _flip_lev("FAN_RATIO_GATE", (1.0, 1.0)) == 5
     assert te._flip_cell_lev_bump(None, 1.0) is None and te._flip_cell_lev_bump(0.7, 1.0) == 0.7   # ≤ 1 = no change
     assert te._flip_cell_lev_bump(None, None) is None and te._flip_cell_lev_bump(None, "x") is None   # unreadable = no change
     assert te._flip_compose_lev(0.5, None) == 0.5 and te._flip_compose_lev(0.5, 0) == 0.5          # missing cell = ×1
@@ -86,8 +86,8 @@ def test_fan_flip_stays_10x_when_cells_at_1_fire(live_registry):
 
 def test_cell_at_2_doubles_the_source_lev(live_registry):
     # documented: relative to the source — FAN 10× → 20× (before 252: 20× → 40× requested, hard-capped at 2.0 = 40×)
-    assert _flip_lev("FAN_RATIO_GATE", (2.0,)) == 20
-    assert _flip_lev("FAN_RATIO_GATE", (1.0, 2.0)) == 20 and _flip_lev("FAN_RATIO_GATE", (2.0, 1.5)) == 20   # max of the bumps
+    assert _flip_lev("FAN_RATIO_GATE", (2.0,)) == 10   # DL 571: relative to the 5× source
+    assert _flip_lev("FAN_RATIO_GATE", (1.0, 2.0)) == 10 and _flip_lev("FAN_RATIO_GATE", (2.0, 1.5)) == 10   # max of the bumps
 
 
 def test_other_flip_sources_unchanged(monkeypatch):
@@ -123,7 +123,7 @@ def test_ui_round_trips():
     html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
     # flip registry: load parses the 3rd field, sync re-emits SOURCE:size:lev when lev ≠ 1, the lev input allows 0.5
     assert "lev: parseFloat(bits[2]) || 1.0" in html and "`${s.key}:${szv}:${lvv}`" in html
-    assert 'id="flip-lev-${s.key}" value="1.0" step="0.1" min="0.5"' in html
+    assert 'id="flip-lev-${s.key}" value="1.0" step="0.05" min="0.05"' in html   # DL 571: 0.25 = 5× must be enterable
     # BEARRUN: load shows the JSON value (0.05 fallback, never 1.0), save keeps 0.25 and floors blank / 0 at 0.05
     assert "['config-be-lev-mult', 'bearrun_lev_mult', 0.05]" in html
     assert 'id="config-be-lev-mult" step="0.05" min="0.05" max="2" value="0.05"' in html          # static value never 1.0 (= 20×)
@@ -153,7 +153,7 @@ def test_master_builder_frozen_sizing():
     from scripts import build_master_pool as B
     th = _json_th()
     reg = dict((p.split(":")[0], p.split(":")) for p in th["flip_entry_sources"].split(","))
-    assert B.FLIP_FAN_LEV_FROZEN == float(reg["FAN_RATIO_GATE"][2])
+    assert B.FLIP_FAN_LEV_FROZEN == 0.5 and float(reg["FAN_RATIO_GATE"][2]) == 0.25   # DL 571: live 5×, the master stays frozen at 10× until the $ re-freeze (declared NOT re-priced; % size-free)
     assert B.BEARRUN_LEV_FROZEN == 0.25 and th["bearrun_lev_mult"] == 0.05   # DL 545: live 1×, the master stays frozen at 5× (declared NOT re-priced; % size-free)
     bld = open(os.path.join(ROOT, "scripts", "build_master_pool.py"), encoding="utf-8").read()
     assert "bearrun_lev_mult=0.25," in bld and 'STACK_VERSION = "2026-11-16a"' in bld

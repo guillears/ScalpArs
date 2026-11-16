@@ -94,13 +94,16 @@ def test_watch_zones_agree_with_the_armed_rules():
         assert ("ML_BULL90" in WF.ml_blocks(ON, None, r.entry_bull_pct)) == bool(z["MOMENTUM_LONG"]["ML_BULL90"].iloc[i])
 
 
+SWITCHED_OFF = {"watch_block_lite_btc_rsi_hot"}   # DL 570: reversed on unseen data → off (code kept, re-arm = one switch)
+
+
 def test_config_ui_parity():
     import config
     tj = json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
     html = _src("templates/index.html")
     for line, key in WF.TOGGLES.items():
         assert config.SignalThresholds.model_fields[key].default is False, key            # default OFF in code
-        assert tj[key] is True, key                                                       # armed in the shipped config
+        assert tj[key] is (key not in SWITCHED_OFF), key                                  # armed in the shipped config (unless switched off)
         m = re.search(rf"{key}: document\.getElementById\('([a-z0-9-]+)'\)\?\.checked", html)
         assert m, f"no save handler for {key}"
         iid = m.group(1)

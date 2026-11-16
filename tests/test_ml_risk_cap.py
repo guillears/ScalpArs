@@ -51,7 +51,7 @@ def test_account_pct_and_fit():
 def test_live_values_and_wiring():
     th = json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
     assert (th["momentum_long_lev_mult"], th["frenzy_lite_retry_lev_mult"], th["frenzy_willy_lev_mult"], th["flatbase_lev_mult"],
-            th["frenzy_willy_ht_size_frac"], th["frenzy_lite_lev_mult"], th["ml_risk_cap_pct"]) == (0.5, 0.5, 0.4, 0.25, 1.0, 0.4, 10.0)   # Flatbase 0.25: DL 544 early revert
+            th["frenzy_willy_ht_size_frac"], th["frenzy_lite_lev_mult"], th["ml_risk_cap_pct"]) == (0.4, 0.5, 0.4, 0.25, 1.0, 0.4, 10.0)   # Flatbase 0.25: DL 544 early revert
     from config import SignalThresholds
     assert SignalThresholds().ml_risk_cap_pct == 0.0
     html = open(os.path.join(ROOT, "templates", "index.html")).read()

@@ -27,7 +27,7 @@ def test_wiring():
     import config
     assert config.SignalThresholds().watch_block_lite_btc_rsi_hot is False
     j = json.loads((ROOT / "trading_config.json").read_text())["thresholds"]
-    assert j["watch_block_lite_btc_rsi_hot"] is True
+    assert j["watch_block_lite_btc_rsi_hot"] is False   # DL 570: switched off (reversed on unseen backtest months, reports/FILTER_THEORY_AUDIT_2026-11-16.md)
     html = (ROOT / "templates/index.html").read_text()
     assert html.count("config-wb-lite-rsi-hot") == 3
     eng = (ROOT / "services/trading_engine.py").read_text()

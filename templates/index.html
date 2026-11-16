@@ -21557,11 +21557,16 @@
             const tip = why ? `➕ Add is off for this trade: ${why}` : '➕ Add to this position — same row, same leverage; the stop / target are re-based on the new average entry';
             return `<span class="inline-block ml-1" title="${_addEsc(tip)}"><button type="button" onclick="openAddModal(${Number(o.id)}, this)" ${why ? 'disabled' : ''} aria-label="Add to position" class="px-2 py-1 rounded text-xs font-medium transition ${why ? 'bg-white/5 text-gray-500 cursor-not-allowed' : 'bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-300'}">➕</button></span>`;
         }
+        function sizeAdoptBadgeHtml(o) {   // 📐 (DECISION_LOG 572) the size was changed in the Binance app and adopted by the bot
+            if (!o || !o.size_adopted_at) return '';
+            const t = `Size from Binance: changed in the app (was ${o.size_adopted_from_qty ?? '?'}) and adopted ${formatTime(o.size_adopted_at)} — quantity, average entry and margin follow Binance; the take profit keeps its price for the full size`;
+            return `<div class="text-[10px] text-sky-300 mt-0.5 whitespace-nowrap cursor-help" title="${_addEsc(t)}">📐 size from Binance</div>`;
+        }
         function addBadgeHtml(o) {
-            const n = Number(o.manual_add_count || 0); if (!(n > 0)) return '';
+            const n = Number(o.manual_add_count || 0); if (!(n > 0)) return sizeAdoptBadgeHtml(o);
             const tot = Number(o.manual_add_investment || 0);
             const t = `You added to this position ${n}× — $${tot.toFixed(2)} margin in total${o.manual_added_at ? ' · last ' + formatTime(o.manual_added_at) : ''} (size, average entry and invested include it)`;
-            return `<div class="text-[10px] text-emerald-300 mt-0.5 whitespace-nowrap cursor-help" title="${_addEsc(t)}">➕${n}</div>`;
+            return `<div class="text-[10px] text-emerald-300 mt-0.5 whitespace-nowrap cursor-help" title="${_addEsc(t)}">➕${n}</div>` + sizeAdoptBadgeHtml(o);
         }
         let _addModalOrderId = null, _addModalReturnFocus = null, _addBackdropDown = false, _addPreviewTimer = null, _addPreviewSeq = 0, _addLastPreview = null, _addBusy = false;
         function addModalIsOpen() { const m = document.getElementById('add-position-modal'); return !!(m && !m.classList.contains('hidden')); }

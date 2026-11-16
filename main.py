@@ -2347,6 +2347,8 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
             "entry_frenzy_willy_nomiss": getattr(o, 'entry_frenzy_willy_nomiss', None),   # 🧭 (350) R_NOMISS entry A
             "frenzy_willy_tp_target_pct": getattr(o, 'frenzy_willy_tp_target_pct', None), "entry_frenzy_willy_spike_high": getattr(o, 'entry_frenzy_willy_spike_high', None), "frenzy_willy_runner_k": getattr(o, 'frenzy_willy_runner_k', None),   # 🎲² (356) WILLY exit V2: the row's own TP / spike high
             "flip_fan_tp_pct": getattr(o, 'flip_fan_tp_pct', None),   # 🎯 (563) FAN flip fixed TP (NULL = the trail)
+            "size_adopted_at": (o.size_adopted_at.isoformat() if getattr(o, 'size_adopted_at', None) else None),   # 📐 (572) size from Binance
+            "size_adopted_from_qty": getattr(o, 'size_adopted_from_qty', None),
             "willy_floor_armed_at": (o.willy_floor_armed_at.isoformat() if getattr(o, 'willy_floor_armed_at', None) else None),   # historical (V2 floor, removed DL 358)
             "exit_override_at": (o.exit_override_at.isoformat() if getattr(o, 'exit_override_at', None) else None),   # ✎ Oct-2 operator exit override
             # ➕ (DECISION_LOG 324) add to position: the badge (count / Σ margin / last add) + whether the ➕ button is enabled (a fixed-level exit
@@ -3013,6 +3015,8 @@ async def get_closed_orders(db: AsyncSession = Depends(get_db)):
             "entry_frenzy_willy_nomiss": getattr(o, 'entry_frenzy_willy_nomiss', None),   # 🧭 (350) R_NOMISS entry A
             "frenzy_willy_tp_target_pct": getattr(o, 'frenzy_willy_tp_target_pct', None), "entry_frenzy_willy_spike_high": getattr(o, 'entry_frenzy_willy_spike_high', None), "frenzy_willy_runner_k": getattr(o, 'frenzy_willy_runner_k', None),   # 🎲² (356) WILLY exit V2: the row's own TP / spike high
             "flip_fan_tp_pct": getattr(o, 'flip_fan_tp_pct', None),   # 🎯 (563) FAN flip fixed TP (NULL = the trail)
+            "size_adopted_at": (o.size_adopted_at.isoformat() if getattr(o, 'size_adopted_at', None) else None),   # 📐 (572) size from Binance
+            "size_adopted_from_qty": getattr(o, 'size_adopted_from_qty', None),
             "willy_floor_armed_at": (o.willy_floor_armed_at.isoformat() if getattr(o, 'willy_floor_armed_at', None) else None),   # historical (V2 floor, removed DL 358)
             "exit_override_at": (o.exit_override_at.isoformat() if getattr(o, 'exit_override_at', None) else None),   # ✎ Oct-2 operator exit override
             # ➕ (DECISION_LOG 324) size added by the operator (the row's qty / avg entry / invested already include it)
@@ -3910,6 +3914,11 @@ async def _reconcile_open_orders(db: AsyncSession) -> list:
         await trading_engine.check_untracked_positions(db, binance_positions)
     except Exception as _ut_err:
         logger.error(f"[UNTRACKED_POSITION] check failed: {_ut_err}")
+    # 📐 (DECISION_LOG 572) a TRACKED position whose size was changed in the Binance app → the row adopts it (same snapshot, no extra read)
+    try:
+        await trading_engine.adopt_position_sizes(db, binance_positions)
+    except Exception as _sz_err:
+        logger.error(f"[POSITION_SIZE_ADOPT] check failed: {_sz_err}")
     # 🎯 (DECISION_LOG 296) a regular reduce-only order on a symbol with no OPEN live row (a stale resting TP) is cancelled — throttled 60 s
     try:
         await trading_engine.resting_tp_orphan_clean(db, positions=binance_positions)   # S6: symbols with a Binance position and no row are never touched

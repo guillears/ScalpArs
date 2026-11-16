@@ -300,7 +300,9 @@ async def init_db():
                                           ('willy_floor_armed_at', 'DATETIME'),
                                           ('entry_willy_ht_size_frac', 'FLOAT'),
                                           ('frenzy_willy_runner_k', 'FLOAT'),
-                                          ('flip_fan_tp_pct', 'FLOAT')):   # 🎯 (DECISION_LOG 563) FAN flip fixed TP   # 🎲² (DECISION_LOG 356) WILLY exit V2 · 📈 (365) HT size stamp · 🏃 (541) WILLY runner k
+                                          ('flip_fan_tp_pct', 'FLOAT'),
+                                          ('size_adopted_at', 'DATETIME'), ('size_adopted_from_qty', 'FLOAT'),
+                                          ('resting_tp_pinned_price', 'FLOAT')):   # 📐 (DECISION_LOG 572) size adopted from Binance   # 🎯 (DECISION_LOG 563) FAN flip fixed TP   # 🎲² (DECISION_LOG 356) WILLY exit V2 · 📈 (365) HT size stamp · 🏃 (541) WILLY runner k
                     if _wv_col not in columns:
                         connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_wv_col} {_wv_type}"))
                 for _ac_col in ('entry_alt_corr24', 'entry_alt_beta24'):   # 📈 (DECISION_LOG 383) alt-correlation regime stamp (observe-only)

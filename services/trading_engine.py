@@ -63,6 +63,7 @@ from services.golive_guards import (backstop_heal_skip_inflight, backstop_trigge
 from services.position_add import (add_exit_refusal, add_fill_math, add_preview_math, add_level_refusal, bracket_max_add_margin,  # ➕ (DECISION_LOG 324)
                                    pnl_pct_net, price_at_pnl, qty_matches, rederive_peak_trough, ADD_MIN_NOTIONAL_USD,
                                    add_fill_price_from_positions, binance_position_leverage, ADD_LEV_TOL, ADD_RECHECK_QTY_TOL)
+from services.position_size_adopt import size_differs, confirm_pass as size_confirm_pass, adopt_values as size_adopt_values   # 📐 (DECISION_LOG 572)
 from services.golive_guards import UNTRACKED_MIN_NOTIONAL_USD   # 📥 (DECISION_LOG 328) the import refuses dust like the reconciler ignores it
 from services.position_import import (import_pick_position, import_whole_leverage, import_position_unchanged, import_level_refusal,  # 📥 (DECISION_LOG 328)
                                       IMPORT_SOURCE_BINANCE_APP, IMPORT_SNAPSHOT_STALE_S, classify_app_orders, import_tp_pct_from_price, describe_open_orders,  # 📥 (343)
@@ -3860,6 +3861,167 @@ class TradingEngine:
         except Exception:
             return False
 
+    # 📐 (DECISION_LOG 572) SIZE ADOPTION — a TRACKED live position whose size was changed in the Binance app (operator 11-16: HUMA SHORT #25
+    # was added to in the app; the row, its resting TP, P&L and funding stayed on the old size, a bot close would have left the added part).
+    async def adopt_position_sizes(self, db, binance_positions) -> list:
+        """Called by the reconciler with ITS positions read (never on a failed read; live only). For each LIVE OPEN row whose pair AND side
+        match a Binance position of materially different size (services/position_size_adopt.size_differs), confirmed on 2 consecutive
+        sightings of the same Binance size ≥ 10 s apart, the row adopts Binance's size and average entry (_adopt_one_size). One adoption run at
+        a time (two reconcile callers share the state). Skips: paper, a pair with ≠ 1 open row, a side mismatch (UNTRACKED's), a row closing /
+        in the exit-retry queue / being added to / an open in flight on the pair, a partially filled resting TP. → [adopted ids]."""
+        if self.is_paper_mode or not binance_positions:
+            return []
+        lock = self.__dict__.get('_size_adopt_lock')
+        if lock is None:
+            lock = self.__dict__['_size_adopt_lock'] = asyncio.Lock()
+        if lock.locked():
+            return []   # (572 review 3) another reconcile run is adopting right now — it owns this moment
+        async with lock:
+            seen = self.__dict__.setdefault('_size_seen', {})
+            rows = (await db.execute(select(Order).where(and_(Order.status == "OPEN", Order.is_paper == False)))).scalars().all()  # noqa: E712
+            by_pair = {}
+            for r in rows:
+                by_pair.setdefault(r.pair, []).append(r)
+            live_ids, out = set(), []
+            for pos in binance_positions:
+                try:
+                    pair = str(pos.get('symbol') or '').replace('/USDT:USDT', 'USDT').upper()
+                    side = str(pos.get('side') or '').upper()
+                    bq = abs(float(pos.get('contracts') or 0))
+                    be = float(pos.get('entry_price') or 0)
+                    mark = float(pos.get('mark_price') or 0) or None
+                except (TypeError, ValueError):
+                    continue
+                rs = by_pair.get(pair) or []
+                if len(rs) != 1 or rs[0].direction != side or bq <= 0:
+                    continue   # no row (UNTRACKED handles it) · a side mismatch (UNTRACKED SIDE_MISMATCH) · several rows (never guessed)
+                o = rs[0]
+                live_ids.add(o.id)
+                _step = self._add_market_limits(pair[:-4] + "/USDT:USDT")[0]
+                if not size_differs(o.quantity, bq, _step):
+                    seen.pop(o.id, None)
+                    continue
+                if (o.closing_in_progress or o.id in _exit_retry_queue or o.id in (self.__dict__.get('_add_hold') or ())
+                        or self._pair_open_in_flight(pair) or float(o.resting_tp_filled_qty or 0) > 0):
+                    seen.pop(o.id, None)
+                    continue
+                if not size_confirm_pass(seen, o.id, bq, _step, o.quantity, time.monotonic()):
+                    continue
+                try:
+                    if await self._adopt_one_size(o.id, bq, be, mark, _step):
+                        out.append(o.id)
+                except Exception as _ae:
+                    logger.error(f"[POSITION_SIZE_ADOPT] {pair} #{o.id}: adoption failed ({_ae!r}) — the next passes retry")
+            for k in list(seen):
+                if k not in live_ids:
+                    seen.pop(k, None)
+            return out
+
+    async def _adopt_one_size(self, order_id, bq, be, mark, step) -> bool:
+        """One adoption. Fresh row read (already at Binance's size → no-op, never a second cancel / re-place / overwrite). Funding is settled
+        up to now at the OLD size (funding_fee_usd / funding_accrued_ms written with the adoption, so the accrual loop counts only later
+        periods at the new size). The resting TP comes off first; a fill — full OR partial — in the meantime → nothing adopted this pass. The
+        row is updated under a guarded UPDATE (still OPEN, not closing, same quantity as read): size, Binance average entry, notional, margin at
+        the row's leverage, peak / trough re-based to the new entry (rederive_peak_trough — a trail / ladder never fires off the old basis),
+        the size-change record and, for a row whose software TP reads a stored net % (services/position_size_adopt.pin_target_column), the
+        limit PRICE pinned and that net % re-derived at it (resting limit and software TP on the same price). The cache is re-based, then the
+        TP is re-placed at once. True when the row was updated."""
+        from services.exec_shadow import net_pct_at
+        from services.position_size_adopt import pin_target_column
+        async with AsyncSessionLocal() as s:
+            o = (await s.execute(select(Order).where(Order.id == order_id))).scalar_one_or_none()
+            if o is None or o.status != "OPEN" or o.closing_in_progress or not size_differs(o.quantity, bq, step):
+                return False
+            v = size_adopt_values(o.quantity, o.entry_price, o.leverage, bq, be)
+            if v is None:
+                return False
+            old_qty, old_tp_px = float(o.quantity), (float(o.resting_tp_price) if o.resting_tp_price is not None else None)
+            had_tp = bool(o.protective_tp_order_id) or o.resting_tp_price is not None
+            col = pin_target_column(o.entry_strategy, getattr(o, 'exit_override_at', None))
+            pin = old_tp_px if (had_tp and old_tp_px and col) else None
+            _fund = None
+            try:   # (572 review 6) the funding owed so far, at the OLD size
+                _fund = await self._funding_at_close(o, mark or float(o.current_price or o.entry_price))
+            except Exception as _fe:
+                logger.error(f"[POSITION_SIZE_ADOPT] {o.pair} #{o.id}: funding settle at the old size failed ({_fe!r}) — accrual continues from its last mark")
+        if had_tp:
+            _w = await self._rtp_withdraw(order_id, "size adopted from Binance — re-placed for the full size")
+            if _w in ('FILLED', 'blocked', 'failed'):
+                logger.warning(f"[POSITION_SIZE_ADOPT] #{order_id}: resting TP {_w} — no size change this pass")
+                return False
+        _tf = getattr(config.trading_config, 'taker_fee', config.trading_config.trading_fee)
+        async with AsyncSessionLocal() as s:
+            o = (await s.execute(select(Order).where(Order.id == order_id))).scalar_one_or_none()
+            if o is None or o.status != "OPEN" or o.closing_in_progress:
+                return False
+            if float(o.resting_tp_filled_qty or 0) > 0:   # (572 review 1) a PARTIAL fill was settled by the withdraw: never adopt over it
+                logger.warning(f"[POSITION_SIZE_ADOPT] {o.pair} #{o.id}: the resting TP partly filled ({o.resting_tp_filled_qty}) — no size change; "
+                               f"the close books the filled part")
+                return False
+            pair, direction, es, lev = o.pair, o.direction, o.entry_strategy, float(o.leverage or 1)
+            _px_now = mark or float(o.current_price or v['entry_price'])
+            _pnl_now = pnl_pct_net(direction, v['entry_price'], v['quantity'], float(o.entry_fee or 0), _px_now, _tf)
+            _pk, _tr = rederive_peak_trough(direction, v['entry_price'], v['quantity'], float(o.entry_fee or 0),
+                                            o.high_price_since_entry, o.low_price_since_entry, _pnl_now, _tf)   # (572 review 2)
+            vals = dict(quantity=v['quantity'], entry_price=v['entry_price'], notional_value=v['notional_value'], investment=v['investment'],
+                        peak_pnl=round(_pk, 4), trough_pnl=round(_tr, 4),
+                        size_adopted_at=datetime.utcnow(), size_adopted_from_qty=old_qty, resting_tp_pinned_price=pin)
+            if _fund is not None and _fund[0] is not None:
+                vals.update(funding_fee_usd=round(float(_fund[0]), 6))
+                if _fund[1] is not None:
+                    vals.update(funding_accrued_ms=int(_fund[1]))
+            if v['delta_qty'] > 0:   # an app add counts as the operator's add (badge ➕, origin "touched by you")
+                vals.update(manual_add_count=int(o.manual_add_count or 0) + 1,
+                            manual_add_investment=round(float(o.manual_add_investment or 0) + v['delta_qty'] * v['entry_price'] / lev, 6),
+                            manual_added_at=datetime.utcnow())
+            if pin and col:
+                try:   # (572 review 4) the net % the software TP reads, re-derived at the SAME price from the new average
+                    _ef = float(o.entry_fee or 0) / (v['entry_price'] * v['quantity']) * 100.0
+                    _n = net_pct_at(direction, v['entry_price'], pin, _ef, self._rtp_maker())
+                    if _n is not None and _n > 0:
+                        vals[col] = round(_n, 4)
+                        if col == "pattern_fixed_tp_pct":
+                            vals['dynamic_tp_target'] = round(_n, 4)
+                    else:
+                        vals['resting_tp_pinned_price'] = pin = None   # the price is no longer a profit on the new average → its own rule
+                except Exception as _ne:
+                    vals['resting_tp_pinned_price'] = pin = None
+                    logger.error(f"[POSITION_SIZE_ADOPT] {pair} #{order_id}: target re-derive failed ({_ne!r}) — re-placed at its own rule")
+            _conds = [Order.id == order_id, Order.status == "OPEN", Order.closing_in_progress == False, Order.quantity == old_qty]   # noqa: E712
+            if 'funding_fee_usd' in vals:   # (572 re-review) the accrual loop booked a settlement since the read → not adopted this pass (no roll-back)
+                _am = getattr(o, 'funding_accrued_ms', None)
+                _conds.append(Order.funding_accrued_ms.is_(None) if _am is None else Order.funding_accrued_ms == _am)
+            res = await s.execute(update(Order).where(and_(*_conds)).values(**vals).execution_options(synchronize_session=False))
+            await locked_commit(s)
+            if not (res.rowcount or 0):
+                logger.warning(f"[POSITION_SIZE_ADOPT] #{order_id}: row changed / closing meanwhile — not adopted")
+                if had_tp:
+                    await self._rtp_heal(order_id)
+                return False
+        try:
+            async with _cache_lock:
+                for _ci in _open_orders_cache.get(pair, []):
+                    if _ci.get('id') == order_id:
+                        _ci.update(entry_price=v['entry_price'], quantity=v['quantity'], peak_pnl=float(vals['peak_pnl']),
+                                   trough_pnl=float(vals['trough_pnl']))
+                        if col and col in vals:
+                            _ci[col] = vals[col]
+        except Exception as _ce:
+            logger.error(f"[POSITION_SIZE_ADOPT] {pair}: cache re-base failed ({_ce}) — the monitor loop rebuilds it")
+        _tp = "none"
+        if had_tp:
+            try:
+                _tp = await self._rtp_heal(order_id)
+            except Exception as _he:
+                _tp = f"failed ({_he!r}) — the sweep re-places it"
+        self._record_filter_block("POSITION_SIZE_ADOPTED", direction)
+        logger.critical(f"[POSITION_SIZE_ADOPTED] {pair} {direction} #{order_id} ({es}): size {old_qty:g} → {v['quantity']:g} "
+                        f"({'added' if v['delta_qty'] > 0 else 'reduced'} {abs(v['delta_qty']):g} outside the bot) · entry {v['from_entry']} → "
+                        f"{v['entry_price']} (Binance average) · margin ${v['investment']:,.2f} at {lev:g}× · resting TP "
+                        f"{('kept at ' + format(pin, 'g') + ' for the full size') if pin else 'its own rule'}: {_tp}"
+                        + ("" if v['delta_qty'] > 0 else " · the reduced part's P&L is NOT booked by the bot (Binance's balance carries it)"))
+        return True
+
     async def check_untracked_positions(self, db, binance_positions) -> list:
         """🛡 (DECISION_LOG 292 ②, go-live audit P7) the INVERSE reconcile: a Binance position with no OPEN live row. Called by the 60 s
         reconciler with its own positions read (never on a failed read). A candidate becomes untracked after UNTRACKED_CONFIRM_PASSES
@@ -4179,8 +4341,16 @@ class TradingEngine:
             return None
 
     async def _rtp_limit_for(self, o, tp):
-        """→ (limit, tick) that books NET +tp on this row with a maker exit fee, or (None, None)."""
+        """→ (limit, tick) that books NET +tp on this row with a maker exit fee, or (None, None). 📐 (DECISION_LOG 572) a row whose size was
+        adopted from Binance keeps the limit PRICE that rested before (resting_tp_pinned_price) — only its quantity follows the new size."""
         tick = await self._rtp_tick_for(o.pair, o.entry_price)
+        _pin = getattr(o, 'resting_tp_pinned_price', None)
+        try:
+            _pin = float(_pin) if _pin is not None else None
+        except (TypeError, ValueError):
+            _pin = None
+        if _pin is not None and math.isfinite(_pin) and _pin > 0:
+            return ((round(round(_pin / tick) * tick, 12), tick) if tick else (None, None))
         ef = self._rtp_entry_fee_pct(o)
         if not tick or ef is None:
             return None, None
@@ -16584,7 +16754,8 @@ class TradingEngine:
         # written ONLY if the row is still open and not closing (a close can commit while this request waits): never mark a
         # closed trade as overridden
         _vals = dict(exit_override_prev=_prev[:40], exit_override_at=datetime.utcnow(), pattern_fixed_sl_pct=round(sl, 4),
-                     pattern_fixed_tp_pct=(round(tp, 4) if tp is not None else None))
+                     pattern_fixed_tp_pct=(round(tp, 4) if tp is not None else None),
+                     resting_tp_pinned_price=None)   # 📐 (572) an operator edit sets a new target — the adopted price pin is dropped
         if is_manual:
             _vals['manual_exit_mode'] = "FIXED"
             if _nostop:
@@ -16650,7 +16821,8 @@ class TradingEngine:
             if _w == 'FILLED':
                 raise ValueError("the take profit already filled — the position is closing, nothing changed")
         _res = await db.execute(update(Order).where(and_(Order.id == order.id, Order.status == "OPEN", Order.closing_in_progress == False))  # noqa: E712
-                                .values(pattern_fixed_tp_pct=round(float(tp), 4), dynamic_tp_target=round(float(tp), 4))
+                                .values(pattern_fixed_tp_pct=round(float(tp), 4), dynamic_tp_target=round(float(tp), 4),
+                                        resting_tp_pinned_price=None)   # 📐 (572) the operator's new target replaces an adopted price pin
                                 .execution_options(synchronize_session=False))
         await locked_commit(db)
         if not (_res.rowcount or 0):
@@ -17213,7 +17385,8 @@ class TradingEngine:
             _vals = dict(quantity=m['quantity'], entry_price=m['entry_price'], investment=m['investment'], notional_value=m['notional_value'],
                          entry_fee=m['entry_fee'], peak_pnl=round(_pk, 4), trough_pnl=round(_tr, 4),
                          manual_add_count=before['count'] + 1, manual_add_investment=round(before['added'] + m['add_margin'], 6),
-                         manual_added_at=datetime.utcnow())
+                         manual_added_at=datetime.utcnow(),
+                         resting_tp_pinned_price=None)   # 📐 (572 review 5) the add re-bases the target — an adopted price pin is dropped
             if paper and bool(getattr(th, 'broker_backstop_enabled', False)):   # paper: the record of what live would re-place (292 ①)
                 _bkp = order_backstop_pct(th, before['es'], before['mode'], sl, lev)
                 _vals.update(backstop_pct=_bkp, backstop_trigger_price=backstop_trigger_price(m['entry_price'], direction, _bkp))

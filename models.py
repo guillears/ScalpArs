@@ -663,6 +663,11 @@ class Order(Base):
     # 🎯 (DECISION_LOG 563) FAN flip (FLIP:FAN_RATIO_GATE SHORT) only: the NET fixed take profit this order runs (flip_fan_fixed_tp_pct at the open,
     # resting maker limit when resting_tp_flip_fan_enabled) — the strpk runner trail + short HARD_TP ladder are off for the row. NULL = the trail (a pre-563 row / switch 0).
     flip_fan_tp_pct = Column(Float, nullable=True)
+    # 📐 (DECISION_LOG 572) a size change made in the Binance app on this TRACKED position, adopted by the reconciler: when (UTC), the row's
+    # quantity before, and the resting-TP limit price kept for the new size (NULL = the TP follows its own target rule)
+    size_adopted_at = Column(DateTime, nullable=True)
+    size_adopted_from_qty = Column(Float, nullable=True)
+    resting_tp_pinned_price = Column(Float, nullable=True)
     # 📈 (DECISION_LOG 365) FRENZY_WILLY_HT only: the size fraction of WILLY's margin this HT order opened at (frenzy_willy_ht_frac at entry) —
     # the HT re-size ladder counts each rung on the fills actually opened at it. NULL on every other fill and on HT fills before 365 (all 0.25).
     entry_willy_ht_size_frac = Column(Float, nullable=True)

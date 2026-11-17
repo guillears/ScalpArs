@@ -9916,8 +9916,26 @@
                 }
                 return 'ON';
             }
-            return frenzyLiteLocal(f, false) || f.text || '';
+            return frenzyShortReason(frenzyLiteLocal(f, false) || f.text || '');
         }
+        // 🧹 11-17 (operator: "i thought we had solved the shorten of the block reason"): the panel shows a short form, the full sentence
+        // stays in the hover title and in both text exports (frenzyReportStatus is untouched).
+        // "LITE: stretch judged at 15:10 (refused: bearish day (BTC day −0.69%, trend gap −0.52%)) · vol 51× · 7.4 h" → "LITE done 15:10 · bearish day · 51× · 7.4 h"
+        function frenzyShortReason(t) {
+            if (!t) return '';
+            try {
+                let s = String(t);
+                if (!/^LITE: stretch judged/.test(s)) return s;   // (review) only the LITE stretch sentence is shortened; any other text passes through untouched
+                s = s.replace(/^LITE: stretch judged at first signal bar not seen/, 'LITE done · first bar missed');
+                s = s.replace(/^LITE: stretch judged at /, 'LITE done ');
+                s = s.replace(/^LITE: stretch judged/, 'LITE done');
+                // "(refused: reason (details…))" → "· reason" — drops the nested detail, keeps the reason word(s)
+                s = s.replace(/\s*\(refused: ([^(]+?)\s*(\([^)]*\))?\)/, ' · $1');
+                s = s.replace(/ · vol (\d+×)/, ' · $1');
+                return s.replace(/\s{2,}/g, ' ').trim();
+            } catch (e) { return t; }
+        }
+        function frenzyFullReason(f) { return (f && f.code !== 'FRENZY_ON') ? (frenzyLiteLocal(f, false) || f.text || '') : ''; }
         // 🕒 Oct-7 (operator: "not my time"): the engine's last_fire starts "MM-DD HH:MM" in UTC (the bar time) → the app's clock, with date.
         // The engine string itself is unchanged (frenzyJustOpened parses it as UTC). Anything without that prefix passes through.
         function frenzyLastFireLocal(s) {
@@ -19390,7 +19408,7 @@
                             <td class="px-2 py-1.5 text-right text-gray-300">${f.vol_mult != null ? f.vol_mult.toFixed(0) + '×' : '—'}</td>
                             <td class="px-2 py-1.5 text-right ${(f.atr_pct != null && (!_maxAtr || f.atr_pct <= _maxAtr)) ? 'text-emerald-400' : 'text-red-400'}">${f.atr_pct != null ? f.atr_pct.toFixed(2) + '%' : '—'}</td>
                             <td class="px-2 py-1.5 text-right text-gray-400">${f.volume_24h != null ? '$' + (f.volume_24h / 1e6).toFixed(0) + 'M' : '—'}</td>
-                            <td class="px-2 py-1.5 ${(f.ready || f.lite_ready) ? 'text-emerald-400 font-semibold' : (f.in_state ? 'text-orange-300' : 'text-gray-400')}">${_fzE(frenzyStatusText(f))}${f.stale ? ' (not read this bar)' : ''}</td>
+                            <td class="px-2 py-1.5 ${(f.ready || f.lite_ready) ? 'text-emerald-400 font-semibold' : (f.in_state ? 'text-orange-300' : 'text-gray-400')}" title="${_fzE(frenzyFullReason(f))}">${_fzE(frenzyStatusText(f))}${f.stale ? ' (not read this bar)' : ''}</td>
                             <td class="px-2 py-1.5 text-gray-400">${_fzE(frenzyLastFireLocal(f.last_fire))}${f.willy_last ? '<br><span class="text-fuchsia-300">🎲 ' + _fzE(frenzyLastFireLocal(f.willy_last)) + '</span>' : ''}${f.willy_pending ? '<br><span class="text-red-300">🟥 ' + _fzE(frenzyWillyPendingText(f)) + '</span>' : ''}${f.lite_retry_last ? '<br><span class="text-sky-300">🔁 ' + _fzE(frenzyLastFireLocal(f.lite_retry_last)) + '</span>' : ''}${f.willy_ht_last ? '<br><span class="text-fuchsia-200">🎲¼ ' + _fzE(frenzyLastFireLocal(f.willy_ht_last)) + '</span>' : ''}</td>
                         </tr>`).join('') : '<tr><td colspan="11" class="px-3 py-3 text-center text-gray-500">No pair is flagged right now</td></tr>';
                     }
@@ -19833,7 +19851,7 @@
                     if (_fz) {
                         const _fzTip = `FRENZY — spike ${surgeTime(_fz.spike_ms, _fz.spike, true, true)} (${_fz.hours != null ? _fz.hours.toFixed(1) : '?'} h ago) · ${_fz.gain_pct != null ? (_fz.gain_pct >= 0 ? '+' : '') + _fz.gain_pct.toFixed(0) : '?'}% since the spike · ${_fz.vs_vwap_pct != null ? (_fz.vs_vwap_pct >= 0 ? '+' : '') + _fz.vs_vwap_pct.toFixed(1) : '?'}% vs its average price · volume ${_fz.vol_mult != null ? _fz.vol_mult.toFixed(0) : '?'}× normal · ★ = long setup ON · ⏳ = flagged ≥ 32 h${p.frenzy_only ? ' · outside the Top list: followed by FRENZY only' : ''}`;
                         _fzBadge = `<span class="mr-1 cursor-help" title="${_escAttr(_fzTip)}">${frenzyMark(_fz)}</span>`;
-                        blockReasonHtml = `<span class="text-xs whitespace-nowrap ${(_fz.ready || _fz.lite_ready) ? 'text-emerald-400 font-semibold' : 'text-orange-300'}" title="${_escAttr('FRENZY status. Momentum gate: ' + (p.block_reason || (p.frenzy_only ? 'not in the Top list' : 'none')) + (_fz.last_fire ? ' · last setup: ' + frenzyLastFireLocal(_fz.last_fire) : ''))}">${_escAttr(frenzyStatusText(_fz))}</span>`;
+                        blockReasonHtml = `<span class="text-xs whitespace-nowrap ${(_fz.ready || _fz.lite_ready) ? 'text-emerald-400 font-semibold' : 'text-orange-300'}" title="${_escAttr(((_fzFull => _fzFull ? _fzFull + ' · ' : '')(frenzyFullReason(_fz))) + 'FRENZY status. Momentum gate: ' + (p.block_reason || (p.frenzy_only ? 'not in the Top list' : 'none')) + (_fz.last_fire ? ' · last setup: ' + frenzyLastFireLocal(_fz.last_fire) : ''))}">${_escAttr(frenzyStatusText(_fz))}</span>`;
                     }
 
                     // 🔗 Oct-5 (operator): LINKUSDT row always shaded light grey, so it stands out in the list

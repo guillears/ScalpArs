@@ -41,7 +41,7 @@ def test_rule_fading_quiet():
 def test_master_cohorts_match_the_study():
     m = pd.read_csv(ROOT / "reports/MASTER_POOL_stacked.csv", low_memory=False)
     kept = (m.stack_keep.astype(str) == "True") | m.stack_block_reason.astype(str).str.fullmatch(r"MOMENTUM_LONG_BLOCK_(ML_WEAK_RESCUE|ML_WEAK_MARKET|ML_FADING_QUIET)(\+(ML_WEAK_RESCUE|ML_WEAK_MARKET|ML_FADING_QUIET))*")   # (568) blocked by these lines only
-    k = m[(m.entry_strategy == "MOMENTUM") & (m.direction == "LONG") & kept & (m.is_probe.astype(str).isin(["False", "0", "false", "nan"]))]
+    k = m[(m.entry_strategy == "MOMENTUM") & (m.direction == "LONG") & kept & (m.is_probe.astype(str).isin(["False", "0", "false", "nan"])) & (m.era.astype(str) != "B27")]   # (DL 576) the study = pre-B27
     # (568) LIT 07-10 17:02 was refused by LONG_CHOP_BURST at 11-14a (not in the study's 124); the 11-16a freeze judges ML_WEAK_MARKET first
     k = k[~((k.pair == "LITUSDT") & (k.opened_at.astype(str).str[:19] == "2026-07-10T17:02:16"))]
     assert len(k) == 124

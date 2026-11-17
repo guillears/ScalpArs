@@ -153,7 +153,7 @@ def test_decisions_export_and_model():
 
 def test_master_builder_uses_the_same_rules():
     src = _src("scripts/build_master_pool.py")
-    assert 'STACK_VERSION = "2026-11-16a"' in src and "from services import watch_filters as WF" in src
+    assert 'STACK_VERSION = "2026-11-17a"' in src and "from services import watch_filters as WF" in src
     assert "WF.frenzy_blocks(" in src and "WF.fade_blocks(" in src and "WF.ml_blocks(" in src and "reason[n] = WF.block_code(" in src
 
 

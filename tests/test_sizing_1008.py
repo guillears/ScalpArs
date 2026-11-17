@@ -156,7 +156,7 @@ def test_master_builder_frozen_sizing():
     assert B.FLIP_FAN_LEV_FROZEN == 0.5 and float(reg["FAN_RATIO_GATE"][2]) == 0.25   # DL 571: live 5×, the master stays frozen at 10× until the $ re-freeze (declared NOT re-priced; % size-free)
     assert B.BEARRUN_LEV_FROZEN == 0.25 and th["bearrun_lev_mult"] == 0.05   # DL 545: live 1×, the master stays frozen at 5× (declared NOT re-priced; % size-free)
     bld = open(os.path.join(ROOT, "scripts", "build_master_pool.py"), encoding="utf-8").read()
-    assert "bearrun_lev_mult=0.25," in bld and 'STACK_VERSION = "2026-11-16a"' in bld
+    assert "bearrun_lev_mult=0.25," in bld and 'STACK_VERSION = "2026-11-17a"' in bld
 
 
 def test_surge_bearrun_1x_545():

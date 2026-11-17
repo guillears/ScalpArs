@@ -54,7 +54,7 @@ def test_long_stop4_real_master_pinned():
     4 −3-era stops move, FRENZY_LONG 24 · 83 % · +0.67; at today's −3 nothing moves, 24 · 75 % · +0.40 (B25's −4 fills already on −3 in the master) (a rebuild that changes the cohort fails here).
     STACK 2026-11-14a (DL 549): + B26's one FRENZY_LONG (BARD 11-13, +1.50) → 25 · 84 % · +0.70 at −4 · 25 · 76 % · +0.44 at −3."""
     M = pd.read_csv(os.path.join(ROOT, "reports", "MASTER_POOL_stacked.csv"), low_memory=False)
-    M = M[(M.stack_keep == True) & (M.is_probe != True)].copy()   # noqa: E712
+    M = M[(M.stack_keep == True) & (M.is_probe != True) & (M.era.astype(str) != "B27")].copy()   # noqa: E712  (DL 576: the study pin = pre-B27 rows)
     M["o"] = pd.to_datetime(M.opened_at, format="mixed", utc=True).dt.tz_convert(None)
     M["pct"] = pd.to_numeric(M.stack_pct, errors="coerce")
     M["sl"] = M.entry_strategy.astype(str)

@@ -651,7 +651,7 @@ def test_exit_and_protection_sites_wired():
 
 FIELDS = {"flatbase_confirm_hours": 24.0, "flatbase_max_open": 0, "flatbase_shares_bot_slots": True, "flatbase_short_enabled": True, "flatbase_flat_max": 0.444, "flatbase_min_vol_usd": 20e6, "flatbase_turnover_min": 1.0,
           "flatbase_tp_pct": 5.0, "flatbase_stop_pct": 10.0, "flatbase_max_hold_hours": 72.0, "flatbase_min_hours_after_spike": 4.0,
-          "flatbase_max_hours_after_spike": 96.0, "flatbase_invest_mult": 0.4, "flatbase_lev_mult": 0.25, "resting_tp_flatbase_enabled": True}   # 0.4: DL 528 C5 · lev 0.25 = 5×: DL 544 (DL 533 8× reverted early)
+          "flatbase_max_hours_after_spike": 96.0, "flatbase_invest_mult": 0.5, "flatbase_lev_mult": 0.25, "resting_tp_flatbase_enabled": True, "flatbase_min_dist_above_base_pct": None}   # 0.5: DL 577 (was 0.4 DL 528 C5) · lev 0.25 = 5×: DL 544 (DL 533 8× reverted early)
 
 
 def test_config_defaults_json_ui_and_exports():
@@ -659,8 +659,11 @@ def test_config_defaults_json_ui_and_exports():
     mf = type(C.trading_config.thresholds).model_fields
     cfg = json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
     for k, v in FIELDS.items():
+        if v is None:   # 📏 (577) code default off (0), trading_config.json on (2.09)
+            assert mf[k].default == 0.0 and cfg[k] == 2.09, k
+            continue
         assert mf[k].default == v and cfg[k] == v, k
-    assert cfg["flatbase_invest_mult"] == 0.4 and cfg["momentum_long_invest_mult"] == 1.0   # DL 528 C5: Flatbase has its own size (no longer the momentum-long one)
+    assert cfg["flatbase_invest_mult"] == 0.5 and cfg["momentum_long_invest_mult"] == 1.0   # DL 528 C5: Flatbase has its own size (no longer the momentum-long one)
     src = open(os.path.join(ROOT, "config.py"), encoding="utf-8").read()
     assert "DECISION_LOG 348" in src and "DISCIPLINE OVERRIDE" in src
     html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
@@ -1324,3 +1327,55 @@ def test_engine_higher_high_fail_open_trades(monkeypatch):
     e, led, opens, blocks = _run_bars(monkeypatch, rows, on, range(on + 1, on + 121),
                                       th_kw=dict(flatbase_confirm_hours=24.0, flatbase_higher_high_block=True))
     assert len(opens) == 1 and led[0].status == "OPENED" and "FLATBASE_HIGHER_HIGH" not in blocks and "FLATBASE_HH_UNREAD" in blocks
+
+
+# ── 📏 (DECISION_LOG 577) FLATBASE_NEAR_BASE ─────────────────────────────────────────────────────────────────────────────────────────
+
+def test_near_base_read_pure():
+    assert FB.near_base_read(102.0, 100.0, 2.09) == (True, 2.0)            # 2 % above the base ≤ 2.09 → blocked
+    assert FB.near_base_read(102.09, 100.0, 2.09)[0] is True                # the cut itself is blocked (≤)
+    assert FB.near_base_read(103.0, 100.0, 2.09) == (False, 3.0)
+    assert FB.near_base_read(98.0, 100.0, 2.09)[0] is True                  # below the base → blocked
+    assert FB.near_base_read(102.0, 100.0, 0) == (False, 2.0)               # 0 = off
+    assert FB.near_base_read(None, 100.0, 2.09) == (None, None) and FB.near_base_read(1.0, 0, 2.09) == (None, None)
+    assert FB.near_base_read(float("nan"), 1.0, 2.09) == (None, None)
+    bars = [[i * FB.BAR_MS, 1, 1, 1, 1.0 + i, 1] for i in range(20)]
+    spike = 15 * FB.BAR_MS                                                   # the spike bar CLOSES at 15 × BAR_MS
+    assert FB.base_from_bars(bars, spike) == 1.0 + 8                         # the row closing 30 min earlier: open 8 × BAR_MS
+    assert FB.base_from_bars(bars[9:], spike) is None and FB.base_from_bars([], spike) is None and FB.base_from_bars(bars, None) is None
+
+
+def test_engine_near_base_skips_at_the_confirm(monkeypatch):
+    rows, on = _series()
+    e, led, opens, blocks = _run_bars(monkeypatch, rows, on, range(on + 1, on + 121),
+                                      th_kw=dict(flatbase_confirm_hours=24.0, flatbase_higher_high_block=False,
+                                                 flatbase_min_dist_above_base_pct=49.0))   # every confirm close counts as "near" → skipped
+    assert opens == [] and led[0].status == "SKIPPED" and led[0].reason.startswith(FB.NB_TAG)
+    assert blocks.count("FLATBASE_NEAR_BASE") == 1
+    e2, led2, opens2, _ = _run_bars(monkeypatch, rows, on, range(on + 1, on + 121),
+                                    th_kw=dict(flatbase_confirm_hours=24.0, flatbase_higher_high_block=False, flatbase_min_dist_above_base_pct=0.0))
+    assert len(opens2) == 1 and led2[0].status == "OPENED"                   # 0 = off → today's entry
+
+
+def test_near_base_config_ui_exports():
+    import config as C
+    mf = type(C.trading_config.thresholds).model_fields
+    assert mf["flatbase_min_dist_above_base_pct"].default == 0.0
+    assert json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]["flatbase_min_dist_above_base_pct"] == 2.09
+    html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
+    assert html.count('id="config-fbs-near-base"') == 1
+    assert "['config-fbs-near-base', 'flatbase_min_dist_above_base_pct', 2.09]" in html          # FLATBASE_NUM_FIELDS = load AND save
+    assert "% of the base (DL 577)" in html                                                   # the shared config line (both exports)
+    import config
+    th = config.trading_config.thresholds
+    bad = NS(**dict(th.model_dump(), flatbase_min_dist_above_base_pct=-1))
+    assert "flatbase_min_dist_above_base_pct" in " | ".join(FB.flatbase_config_errors(bad, 20.0))
+
+
+def test_near_base_scout_section():
+    sys.path.insert(0, os.path.join(ROOT, "scripts"))
+    import scout_flatbase_confirm_watch as W
+    assert W.NB_TAG == FB.NB_TAG
+    assert W.nb_verdict([]) [0] == "COLLECTING"
+    assert W.nb_verdict([20.0])[0] == "REVERT"                                   # Σ > +15 early → off
+    assert W.nb_verdict([-1.0] * 10)[0] == "KEEP" and W.nb_verdict([1.0] * 5 + [-0.5] * 5)[0] == "REVERT"

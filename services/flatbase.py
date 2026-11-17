@@ -98,6 +98,9 @@ def flatbase_config_errors(th, base_leverage=20.0) -> list:
     for k in ('flatbase_short_enabled', 'resting_tp_flatbase_enabled', 'flatbase_shares_bot_slots', 'flatbase_higher_high_block'):   # 🧺 (515) · 🔺 (540)
         if not isinstance(getattr(th, k, False), bool):
             errs.append(f"{k} must be true or false")
+    _nb = _fin(getattr(th, 'flatbase_min_dist_above_base_pct', 0.0))   # 📏 (DECISION_LOG 577) the near-base skip
+    if _nb is None or not 0 <= _nb <= 50:
+        errs.append("flatbase_min_dist_above_base_pct must be a number ≥ 0 and ≤ 50 (price %; 0 = off)")
     rng = dict(flat_max=("a fraction > 0 and ≤ 5 (0.444 = a 44.4 % 14-day range)", lambda x: 0 < x <= 5.0),
                min_vol=("a number ≥ 0 (USD)", lambda x: x >= 0), turnover_min=("a number ≥ 0", lambda x: x >= 0),
                tp=("a number > 0 and < 100 (price %)", lambda x: 0 < x < 100), stop=("a number > 0 and < 100 (price %)", lambda x: 0 < x < 100),
@@ -323,6 +326,42 @@ def higher_high_read(bars, s4_close_ms, confirm_bar_open) -> Tuple[Optional[bool
 def higher_high_check(bars, s4_close_ms, confirm_bar_open) -> Optional[bool]:
     """the flag of higher_high_read (True / False / None = fail-open)."""
     return higher_high_read(bars, s4_close_ms, confirm_bar_open)[0]
+
+
+NB_TAG = "NEAR_BASE"                     # 📏 (DECISION_LOG 577) the SKIPPED reason prefix of a near-base refusal
+
+
+def base_from_bars(bars, spike_ts) -> Optional[float]:
+    """📏 (577) the pre-pump base = the close of the 5m row that CLOSES at base_close_ms(spike_ts) (the s4_scan's c[on − 6]), read from
+    CLOSED rows [open_ms, o, h, l, c, …]. None when that exact row is absent or unreadable (no flat-fill guess). PURE, never raises."""
+    try:
+        bc = base_close_ms(spike_ts)
+        if bc is None:
+            return None
+        want = int(bc) - BAR_MS
+        for r in bars or ():
+            if int(r[0]) == want:
+                v = float(r[4])
+                return v if v > 0 and math.isfinite(v) else None
+        return None
+    except (TypeError, ValueError, IndexError):
+        return None
+
+
+def near_base_read(entry_px, base, min_pct) -> Tuple[Optional[bool], Optional[float]]:
+    """📏 (DECISION_LOG 577, operator 2026-11-17 "build it with piece 1") → (blocked, distance %): the entry price's distance ABOVE the
+    pre-pump base (the close 30 min before the spike bar's close, the scan's `base`), in price %. blocked True when distance ≤ min_pct —
+    the −5 % target would need the old floor to break. min_pct ≤ 0 → (False, distance) (off). (None, None) when the base or the entry
+    price is unreadable → fail-open: the caller trades as before and counts it. PURE, never raises."""
+    try:
+        e, b = float(entry_px), float(base)
+        if not (math.isfinite(e) and math.isfinite(b) and e > 0 and b > 0):
+            return None, None
+        d = (e / b - 1.0) * 100.0
+        m = float(min_pct or 0.0)
+        return (m > 0 and d <= m + 1e-9), round(d, 4)   # (float noise: the cut itself is blocked)
+    except (TypeError, ValueError):
+        return None, None
 
 
 def is_boundary_close(bar_open_ms) -> bool:

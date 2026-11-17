@@ -323,7 +323,7 @@ def test_resize_ladder_frozen_steps_and_step_down():
     assert "🛑 STEP-DOWN candidate to 0.2" in " ".join(S.resize_lines(mixed, inv_now=0.5))
     # the config-read path prints the cap note on a step-up
     t = " ".join(S.resize_lines(fills(30, 1.0, S.flatbase_params(S._frozen_th())["invest"], 10)))
-    assert "re-decide flatbase_max_open" in t or "OFF the ladder" in t
+    assert "re-decide flatbase_max_open" in t or "OFF the ladder" in t or "next step 0.5 → 1" in t   # 📏 (577) config now 0.5 = on the ladder: a fresh run collects
 
 
 # ── 🎯 DL 367: FLATBASE exit shadows on every real fill ─────────────────────────────────────────────────────────────────────────

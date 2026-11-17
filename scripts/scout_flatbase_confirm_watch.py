@@ -278,6 +278,7 @@ def run(now_ms=None, paths=None, state_path=STATE, since_ms=None, bars_fn=None, 
         for nm, fn in (("revert gate", lambda: revert_lines(post, newest, now_ms, st if ok else None, state_path if ok else None)),
                        ("skipped side line", lambda: skipped_lines(ship, now_ms, dec_paths, bars_fn)),
                        ("higher-high gate", lambda: hh_lines(now_ms, st if ok else None, state_path if ok else None, dec_paths, bars_fn)),
+                       ("near-base gate", lambda: nb_lines(now_ms, dec_paths, bars_fn)),
                        ("BANK-TYPE", lambda: bank_lines(post, now_ms, st if ok else None, state_path if ok else None, dec_paths, newest,
                                                         bars_fn=m1_bars_fn))):
             try:   # one section's failure never hides the others (the revert gate above all)
@@ -490,6 +491,8 @@ def revert_lines(c, newest, now_ms, st, state_path):
     return L + [""]
 
 
+NB_TAG = "NEAR_BASE"                # 📏 (DECISION_LOG 577) services.flatbase.NB_TAG — the SKIPPED reason prefix of a near-base refusal
+NB_N, NB_EARLY_SUM = 10, 15.0          # 📏 (577) frozen revert gate: the first 10 priced skips Σ ≥ 0 → OFF; Σ > +15 pts earlier → OFF early
 HH_TAG = "HIGHER_HIGH"              # 🔺 (DECISION_LOG 540) services.flatbase.HH_TAG — the SKIPPED reason prefix of a higher-high refusal
 HH_KEY, HH_N, HH_EARLY_SUM = "FLATBASE_HIGHER_HIGH_REVERT", 5, 10.0
 
@@ -567,6 +570,51 @@ def hh_lines(now_ms, st, state_path, dec_paths=None, bars_fn=None):
     return L + [""]
 
 
+def nb_verdict(vals):
+    """📏 (577) the frozen revert rule on the priced near-base skips, in skip order (positive = the skip cost money)."""
+    v = [x for x in vals if x == x]
+    for k in range(1, min(len(v), NB_N) + 1):
+        t = sum(v[:k])
+        if t > NB_EARLY_SUM:
+            return "REVERT", f"EARLY: the first {k} near-base skips would have made Σ {t:+.2f} pts > +{NB_EARLY_SUM:g} → set flatbase_min_dist_above_base_pct = 0 (operator)"
+        if k == NB_N:
+            return ("REVERT", f"the first {NB_N} skips would have made Σ {t:+.2f} pts ≥ 0 → set it to 0 (operator)") if t >= 0 else \
+                   ("KEEP", f"the first {NB_N} skips would have lost Σ {t:+.2f} pts → KEEP the filter")
+    return "COLLECTING", f"{len(v)}/{NB_N} skips priced (Σ {sum(v):+.2f})"
+
+
+def nb_lines(now_ms, dec_paths=None, bars_fn=None):
+    """📏 (577) every FLATBASE_NEAR_BASE refusal priced as if shorted at the confirm close (next 5m open, today's exit) + the frozen revert gate."""
+    L = ["### 📏 FLATBASE_NEAR_BASE (DECISION_LOG 577) — the skipped near-base confirms priced as if traded (positive = the skip cost money; "
+         "5m walk, no entry slippage / funding → tilt toward REVERT)", ""]
+    try:
+        import scout_flatbase_short as FS
+        led = FS.load_ledger(FS.read_decisions(dec_paths))
+        sk = led[(led.fb_status.astype(str) == "SKIPPED") & led.fb_reason.astype(str).str.startswith(NB_TAG) & led.s4_ms.notna()].sort_values("s4_ms")
+    except Exception as e:
+        return L + [f"  unreadable ({str(e)[:80]})", ""]
+    if not len(sk):
+        L.append("  none yet.")
+    bud, vals = LS.Budget(), []
+    for r in sk.itertuples():
+        te = int(r.s4_ms) + M5                                            # the confirm bar's close = the entry the filter refused
+        bars = bars_fn(r.pair, te, now_ms) if bars_fn else fetch_bars(r.pair, te, now_ms, bud)
+        v = walk_from(bars, te) if bars else np.nan
+        if v != v and now_ms > te + (MAX_H + 24) * HOUR:
+            L.append(f"  · {r.pair} confirm {pd.Timestamp(int(r.s4_ms), unit='ms'):%m-%d %H:%M} → NOT_EVALUABLE (no price path) — out of the gate")
+            continue
+        vals.append(v)
+        L.append(f"  · {r.pair} confirm {pd.Timestamp(int(r.s4_ms), unit='ms'):%m-%d %H:%M} at {r.px} → " + (f"{v:+.2f} %" if v == v else "pending / unpriced"))
+    done = []
+    for v in vals:
+        if v != v:
+            break
+        done.append(v)
+    state, detail = nb_verdict(done)
+    L.append(f"Now: {state} — {detail}")
+    return L + [""]
+
+
 def skipped_lines(ship, now_ms, dec_paths=None, bars_fn=None):
     """side line, no verdict: SKIPPED episodes (no 4-h close below the S4 close in the wait) priced as if entered at the S4 bar."""
     L = ["### FB_CONFIRM — what the skips gave up (no verdict): SKIPPED episodes priced as if shorted at the S4 bar (next 5m open, +5 / −10, 72 h)", ""]
@@ -574,7 +622,8 @@ def skipped_lines(ship, now_ms, dec_paths=None, bars_fn=None):
         import scout_flatbase_short as FS
         led = FS.load_ledger(FS.read_decisions(dec_paths))
         sk = led[(led.fb_status.astype(str) == "SKIPPED") & led.s4_ms.notna() & (led.s4_ms >= ship.value // 10**6 - 30 * 3_600_000)
-                 & ~led.fb_reason.astype(str).str.startswith(HH_TAG)]   # 🔺 (540) higher-high skips have their own section (their entry = the confirm bar)
+                 & ~led.fb_reason.astype(str).str.startswith(HH_TAG)     # 🔺 (540) higher-high skips have their own section (their entry = the confirm bar)
+                 & ~led.fb_reason.astype(str).str.startswith(NB_TAG)]    # 📏 (577) near-base skips too
     except Exception as e:
         return L + [f"  unreadable ({str(e)[:80]})", ""]
     if not len(sk):

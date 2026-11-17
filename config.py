@@ -1633,7 +1633,14 @@ class SignalThresholds(BaseModel):
     # Σ over every later skip as a watch line). Runs only on the FB_CONFIRM path (flatbase_confirm_hours > 0, TRADE-routed signals).
     # Code default off; trading_config.json on.
     flatbase_higher_high_block: bool = False
-    flatbase_invest_mult: float = 0.4             # DL 528 C5 (5 % cap: one −10 stop ≈ 4.8 % of the account) · was 0.2 = momentum_long_invest_mult (DL 298): the margin share
+    # 📏 FLATBASE_NEAR_BASE (DECISION_LOG 577, operator 2026-11-17 "build it with piece 1 at 0.5x 5x"): at the FB_CONFIRM close, no order when the
+    # confirm close sits ≤ this many % above the pre-pump base (the close 30 min before the spike bar's close) — the −5 % target would need the old
+    # floor to break. Two independent 2-year rebuilds (2024-07 → 2026-11, today's rules, 0.10 % slippage, real funding): kept 619 · 74 % · +0.97
+    # %/trade (Kelly at the Wilson floor +0.117) vs blocked 290 · 63 % · −0.30; master (B24–B27) 28 · 93 % · +3.87 → 20 · 95 % · +4.20 (skips 7 W
+    # / 1 L; one-size DCR +1.61 → +1.25 %/day). Unreadable base → fail-open, counted (FLATBASE_NEAR_BASE_UNREAD). Runs on the FB_CONFIRM path only.
+    # Code default 0 (off); trading_config.json 2.09.
+    flatbase_min_dist_above_base_pct: float = 0.0
+    flatbase_invest_mult: float = 0.5             # DL 577 (operator 2026-11-17 "piece 1 at 0.5x 5x": the full-history Kelly-after-clustering size, ≈ 0.45–0.5× notional) · was 0.4 DL 528 C5 (5 % cap: one −10 stop ≈ 4.8 % of the account) · was 0.2 = momentum_long_invest_mult (DL 298): the margin share
     flatbase_lev_mult: float = 0.25               # × the STRONG_BUY leverage (20 × 0.25 = 5×; DL 544 operator early revert of the DL 533 8× step: one −10 stop at 8× ≈ 7.8 % of the account > the 5 %-per-trade limit, at 5× ≈ 4.9 %) — its own field; 8× is its MAX (−10 stop, backstop 10.5 % ≤ the 11.04 % liquidation-share cap; liquidation ≈ 12.0 %)
     # its OWN optional open cap ON TOP of the shared bot slots (DL 515), 0 = no cap. Operator decided 10 on 2026-10-22 (the DL 348 no-slot lane): the study's bursts reached 24 open
     # (≈ $1.5k margin ≈ 46 % of the account at today's size) — a refusal at the cap ends that episode (FLATBASE_MAX_OPEN).

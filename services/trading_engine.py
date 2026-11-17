@@ -48,6 +48,7 @@ from services.flatbase import (FLATBASE_SHORT, FLATBASE_CLASS, flatbase_enabled,
                                ACT_ENTER, ACT_MISSED, ACT_EXPIRED, ACT_NO_DATA, ROUTE_SHADOW,
                                ST_SKIPPED, ACT_SKIP, CONFIRM_TAG, confirm_scan, BAR_MS as FLATBASE_BAR_MS)   # ✅ (DECISION_LOG 428) FB_CONFIRM
 from services.flatbase import higher_high_read, HH_TAG   # 🔺 (DECISION_LOG 540) FLATBASE_HIGHER_HIGH
+from services.flatbase import near_base_read, base_from_bars, NB_TAG, _fin as _fbs_fin   # 📏 (DECISION_LOG 577) FLATBASE_NEAR_BASE
 from services.touch_snapshot import TOUCH_LEVELS, touch_mark, touch_features, touch_snapshot, touch_outcome   # 🛑👁 (317) observe-only touch snapshots
 from services.frenzy import (FRENZY_LITE_RETRY, FRENZY_LITE_FAMILY, frenzy_lite_retry_enabled, frenzy_lite_retry_pending,  # 🔁 (DECISION_LOG 316)
                              frenzy_lite_retry_pending_clean, frenzy_lite_retry_step, LITE_RETRY_OPEN, LITE_RETRY_DROP)
@@ -10567,6 +10568,26 @@ class TradingEngine:
             if _hh[0] is None and bool(getattr(config.trading_config.thresholds, 'flatbase_higher_high_block', False)):
                 self._fbs_count("FLATBASE_HH_UNREAD", pair)   # (540 review) a fail-open is visible, never silent
                 logger.warning(f"[FLATBASE_SHORT] {pair}: FLATBASE_HIGHER_HIGH could not read both 4-h candles — traded as before (fail-open)")
+            # 📏 (DECISION_LOG 577, operator 2026-11-17) NEAR_BASE: no order when the confirm close sits ≤ min % above the pre-pump base — the
+            # −5 % target would need the old floor to break. 2-year rebuild (two independent builds): kept 619 · 74 % · +0.97 %/trade vs
+            # blocked 290 · 63 % · −0.30. Unreadable base → fail-open, counted.
+            _nb_min = min(max(_fbs_fin(getattr(config.trading_config.thresholds, 'flatbase_min_dist_above_base_pct', 0.0)) or 0.0, 0.0), 50.0)   # (577 review) clamped like the other fields
+            _nb_base = (cf.get('scan') or {}).get('base') or base_from_bars(closed, spike_ms)   # the S4 scan's base, else re-read (a restart drops it)
+            _nb, _nb_d = near_base_read(cs.get('close'), _nb_base, _nb_min)
+            if _nb_min > 0 and _nb is True:
+                logger.info(f"[FLATBASE_SHORT] {pair}: FLATBASE_NEAR_BASE — confirm close {cs['close']:g} is {_nb_d:+.2f} % above the base "
+                            f"(≤ {_nb_min:g} %) → no trade")
+                self._fbs_count("FLATBASE_NEAR_BASE", pair)
+                await self._flatbase_finalize(pair, spike_ms, ST_SKIPPED,
+                                              f"{NB_TAG}: the confirm close is {_nb_d:+.2f} % above the pre-pump base (≤ {_nb_min:g} %) → no trade "
+                                              f"(FLATBASE_NEAR_BASE, DECISION_LOG 577)",
+                                              entry_bar_at=datetime.utcfromtimestamp(int(cs['bar_open']) / 1000), entry_price=float(cs['close']))
+                return
+            if _nb_min > 0 and _nb is None:
+                self._fbs_count("FLATBASE_NEAR_BASE_UNREAD", pair)
+                logger.warning(f"[FLATBASE_SHORT] {pair}: FLATBASE_NEAR_BASE could not read the base — traded as before (fail-open)")
+            elif _nb_d is not None:
+                logger.info(f"[FLATBASE_SHORT] {pair}: confirm close {_nb_d:+.2f} % above the pre-pump base")
             self.__dict__.setdefault('_fbs_enter_q', []).append(
                 (pair, spike_ms, rec, dict(cf['scan'], confirm=dict(close=cs['close'], bar_open=cs['bar_open'])), closed, info, bar_open))
         elif st == ACT_MISSED:
@@ -10719,7 +10740,7 @@ class TradingEngine:
         if not _cfm and _cw > 0:   # ✅ (428) FB_CONFIRM: no order at the S4 bar — wait ≤ confirm_h for a 4-h close below the S4 close
             rec['confirm'] = dict(px=float(scan['close']), close_ms=int(scan['bar_open']) + FLATBASE_BAR_MS, hours=float(_cw), mcap=_mc, turnover=R,
                                   scan={k: scan.get(k) for k in ('bar_open', 'close', 'vwap', 'vs_vwap_pct', 'peak', 'off_peak_pct', 'peak_age_h',
-                                                                 'hours', 'vol24', 'run_pct')})
+                                                                 'hours', 'vol24', 'run_pct', 'base')})   # 📏 (577) + base
             self._fbs_count("FLATBASE_CONFIRM_WAIT", pair)
             if rec.get('id') is not None:
                 await self._flatbase_write(rec['id'], reason=(f"{CONFIRM_TAG}: S4 close {float(scan['close']):g} — waiting ≤ {_cw:g} h for a 4-h close "

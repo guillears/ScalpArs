@@ -35,7 +35,10 @@ from config import (
 )
 from services.binance_service import binance_service, set_ban_until, set_ban_persist_callback, get_ban_status, LIVE_CARD_TRANSFER_CACHE_S
 from services.trading_engine import trading_engine, realtime_stop_loss_callback, _open_orders_cache, _cache_lock
-from services.trading_engine import ManualLimitError, normalize_manual_pair
+from services.trading_engine import ManualLimitError, normalize_manual_pair, TradingEngine   # 📖📊 (584) DEPTH_CAP_JOURNAL_KEYS
+DEPTH_CAP_ORDER_FIELDS = ('entry_cap_planned_usd', 'entry_cap_entry_side_usd', 'entry_cap_exit_side_usd', 'entry_cap_binding_side', 'entry_cap_final_usd',
+                          'entry_cap_frac', 'entry_depth_walk_pct', 'entry_depth_mode', 'entry_slippage_pct', 'entry_book_usd_02', 'entry_book_usd_05',
+                          'entry_book_usd_1', 'entry_book_exit_usd_02', 'entry_book_exit_usd_05', 'entry_book_exit_usd_1')   # 📖📊 (584) order rows → the 📖 badge
 from services.position_add import add_exit_refusal as _add_exit_refusal   # ➕ (DECISION_LOG 324)
 from services.resting_tp import RTP_SLEEVES as _RTP_SLEEVES   # 🎯 (DECISION_LOG 296)
 from services.golive_guards import RECONCILE_INTERVAL_TICKS, RECONCILE_FALLBACK_AFTER_SKIPS, RECONCILE_FALLBACK_EVERY   # 🔎 (DECISION_LOG 321)
@@ -2359,6 +2362,7 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
             "entry_frenzy_willy_nomiss": getattr(o, 'entry_frenzy_willy_nomiss', None),   # 🧭 (350) R_NOMISS entry A
             "frenzy_willy_tp_target_pct": getattr(o, 'frenzy_willy_tp_target_pct', None), "entry_frenzy_willy_spike_high": getattr(o, 'entry_frenzy_willy_spike_high', None), "frenzy_willy_runner_k": getattr(o, 'frenzy_willy_runner_k', None),   # 🎲² (356) WILLY exit V2: the row's own TP / spike high
             "flip_fan_tp_pct": getattr(o, 'flip_fan_tp_pct', None),   # 🎯 (563) FAN flip fixed TP (NULL = the trail)
+            **{_k: getattr(o, _k, None) for _k in DEPTH_CAP_ORDER_FIELDS},   # 📖📊 (584) capacity at entry (the 📖 badge)
             "size_adopted_at": (o.size_adopted_at.isoformat() if getattr(o, 'size_adopted_at', None) else None),   # 📐 (572) size from Binance
             "size_adopted_from_qty": getattr(o, 'size_adopted_from_qty', None),
             "partial_realized_pnl_usd": getattr(o, 'partial_realized_pnl_usd', None), "partial_fee_usd": getattr(o, 'partial_fee_usd', None),   # 💥 (574)
@@ -3030,6 +3034,7 @@ async def get_closed_orders(db: AsyncSession = Depends(get_db)):
             "entry_frenzy_willy_nomiss": getattr(o, 'entry_frenzy_willy_nomiss', None),   # 🧭 (350) R_NOMISS entry A
             "frenzy_willy_tp_target_pct": getattr(o, 'frenzy_willy_tp_target_pct', None), "entry_frenzy_willy_spike_high": getattr(o, 'entry_frenzy_willy_spike_high', None), "frenzy_willy_runner_k": getattr(o, 'frenzy_willy_runner_k', None),   # 🎲² (356) WILLY exit V2: the row's own TP / spike high
             "flip_fan_tp_pct": getattr(o, 'flip_fan_tp_pct', None),   # 🎯 (563) FAN flip fixed TP (NULL = the trail)
+            **{_k: getattr(o, _k, None) for _k in DEPTH_CAP_ORDER_FIELDS},   # 📖📊 (584) capacity at entry (the 📖 badge)
             "size_adopted_at": (o.size_adopted_at.isoformat() if getattr(o, 'size_adopted_at', None) else None),   # 📐 (572) size from Binance
             "size_adopted_from_qty": getattr(o, 'size_adopted_from_qty', None),
             "partial_realized_pnl_usd": getattr(o, 'partial_realized_pnl_usd', None), "partial_fee_usd": getattr(o, 'partial_fee_usd', None),   # 💥 (574)
@@ -3410,7 +3415,7 @@ async def export_decisions_csv(days: Optional[int] = None, db: AsyncSession = De
     # 🩳 (DECISION_LOG 348) the FLATBASE_SHORT episode ledger rides this file as FLATBASE rows (one per episode followed in the window, any
     # status — SHADOW rows are the observe-only cohort scripts/scout_flatbase_short.py prices from klines).
     _fb_cols = ["fb_spike_at", "fb_status", "fb_reason", "fb_first_seen_at", "fb_flat14_pct", "fb_flat_cov_pct", "fb_entry_bar_at", "fb_vwap",
-                "fb_vs_vwap_pct", "fb_peak", "fb_off_peak_pct", "fb_peak_age_h", "fb_hours", "fb_vol24_usd", "fb_mcap_usd", "fb_turnover", "fb_funding_rate", "fb_order_id"]
+                "fb_vs_vwap_pct", "fb_peak", "fb_off_peak_pct", "fb_peak_age_h", "fb_hours", "fb_vol24_usd", "fb_mcap_usd", "fb_turnover", "fb_funding_rate", "fb_order_id"] + ["fb_" + _k for _k in TradingEngine.DEPTH_CAP_JOURNAL_KEYS]   # 📖📊 (584)
     try:
         _since_fb = _day0
         _fmt = lambda d: d.strftime('%Y-%m-%dT%H:%M:%S') if d else None
@@ -3422,7 +3427,8 @@ async def export_decisions_csv(days: Optional[int] = None, db: AsyncSession = De
                              fb_first_seen_at=_fmt(b.first_seen_at), fb_flat14_pct=b.flat14_pct, fb_flat_cov_pct=b.flat_cov_pct,
                              fb_entry_bar_at=_fmt(b.entry_bar_at), fb_vwap=b.vwap, fb_vs_vwap_pct=b.vs_vwap_pct, fb_peak=b.peak,
                              fb_off_peak_pct=b.off_peak_pct, fb_peak_age_h=b.peak_age_h, fb_hours=b.hours, fb_vol24_usd=b.vol24_usd, fb_mcap_usd=b.mcap_usd,
-                             fb_turnover=b.turnover, fb_funding_rate=b.funding_rate, fb_order_id=b.order_id))
+                             fb_turnover=b.turnover, fb_funding_rate=b.funding_rate, fb_order_id=b.order_id,
+                             **{"fb_" + _k: getattr(b, _k, None) for _k in TradingEngine.DEPTH_CAP_JOURNAL_KEYS}))   # 📖📊 (584) the guard's capacity read
     except Exception as _e:
         logger.warning(f"[DECISIONS_EXPORT] FLATBASE rows skipped: {_e}")
     # 🪫 (DECISION_LOG 578) the EXHAUSTION_SHORT decision journal rides this file as EXHAUSTION rows — one per evaluated signal (OPENED /
@@ -3430,7 +3436,7 @@ async def export_decisions_csv(days: Optional[int] = None, db: AsyncSession = De
     _exh_cols = ["exh_signal_at", "exh_spike_at", "exh_hours_after_spike", "exh_status", "exh_block", "exh_reason", "exh_decision_price",
                  "exh_rsi_prev", "exh_rsi", "exh_vol_decay", "exh_spot_share_chg", "exh_has_spot", "exh_atr_pct", "exh_tp_pct", "exh_sl_pct",
                  "exh_vol24_usd", "exh_q5_usd", "exh_funding_rate", "exh_order_id",
-                 "exh_oi_usd", "exh_oi_vol", "exh_model_slip_pct", "exh_shadow_notional_usd"]   # 🧯 (DECISION_LOG 582) EXH_SSC_OIVOL inputs + shadow pricing
+                 "exh_oi_usd", "exh_oi_vol", "exh_model_slip_pct", "exh_shadow_notional_usd"] + ["exh_" + _k for _k in TradingEngine.DEPTH_CAP_JOURNAL_KEYS]   # 📖📊 (584)   # 🧯 (DECISION_LOG 582) EXH_SSC_OIVOL inputs + shadow pricing
     try:
         _fmt = lambda d: d.strftime('%Y-%m-%dT%H:%M:%S') if d else None
         for b in (await db.execute(select(ExhaustionSignal).where(and_(ExhaustionSignal.is_paper == trading_engine.is_paper_mode,
@@ -3443,7 +3449,8 @@ async def export_decisions_csv(days: Optional[int] = None, db: AsyncSession = De
                              exh_spot_share_chg=b.spot_share_chg, exh_has_spot=b.has_spot, exh_atr_pct=b.atr_pct, exh_tp_pct=b.tp_pct,
                              exh_sl_pct=b.sl_pct, exh_vol24_usd=b.vol24_usd, exh_q5_usd=b.q5_usd, exh_funding_rate=b.funding_rate,
                              exh_order_id=b.order_id, exh_oi_usd=getattr(b, 'oi_usd', None), exh_oi_vol=getattr(b, 'oi_vol', None),
-                             exh_model_slip_pct=getattr(b, 'model_slip_pct', None), exh_shadow_notional_usd=getattr(b, 'shadow_notional_usd', None)))
+                             exh_model_slip_pct=getattr(b, 'model_slip_pct', None), exh_shadow_notional_usd=getattr(b, 'shadow_notional_usd', None),
+                             **{"exh_" + _k: getattr(b, _k, None) for _k in TradingEngine.DEPTH_CAP_JOURNAL_KEYS}))   # 📖📊 (584) the guard's capacity read
     except Exception as _e:
         logger.warning(f"[DECISIONS_EXPORT] EXHAUSTION rows skipped: {_e}")
     # 🧷 (DECISION_LOG 383) the matched momentum-long refusals (ml_matched_refusals) ride this file as ML_MATCHED rows — the last
@@ -4337,6 +4344,7 @@ async def get_performance(regime: str = None, window_hours: int = None,
             "surge_monitor": None,
             "frenzy_rows": [],
             "lite_c_rows": [],
+            "depth_capacity_rows": [],
             "frenzy_flags": [],
             "post_exit_regret_deep_dive": [], "post_exit_untracked": [],
             "frenzy_monitor": None,
@@ -6585,6 +6593,29 @@ def _sleeve_filter_status(th, orders) -> dict:
     return {k: {"enabled": _sleeve_enabled(th, k), "n": counts[k]} for k in SLEEVE_FILTER_SWITCHES}
 
 
+async def _depth_capacity_rows(db, orders, since, is_paper) -> list:
+    """📖📊 (DECISION_LOG 584) the Capacity at Entry rows: guarded bot fills of the view (entry_cap_planned_usd stamped, MANUAL out) →
+    services.entry_depth.capacity_rows, with skips = DEPTH_GUARD blocked records of this mode at / after `since` (None = every record).
+    Skips are a LOWER BOUND (blocked_signals keeps one row per pair / sleeve / 5m bar — the first refusal of the bar). Never raises."""
+    try:
+        from services.entry_depth import capacity_rows as _dc_rows
+        _g = [o for o in orders if getattr(o, 'entry_cap_planned_usd', None) is not None and (o.entry_strategy or '').upper() != 'MANUAL']
+        fills = [dict(sleeve=(o.entry_strategy or '?'), planned=o.entry_cap_planned_usd, final=getattr(o, 'entry_cap_final_usd', None),
+                      binding=getattr(o, 'entry_cap_binding_side', None), walk=getattr(o, 'entry_depth_walk_pct', None),
+                      slip=getattr(o, 'entry_slippage_pct', None)) for o in _g]
+        skips = {}
+        conds = [BlockedSignal.is_paper == bool(is_paper), BlockedSignal.lines.like('%DEPTH_GUARD%')]
+        if since is not None:
+            conds.append(BlockedSignal.at >= since)
+        for _sl, _n in (await db.execute(select(BlockedSignal.sleeve, func.count(BlockedSignal.id)).where(and_(*conds))
+                                         .group_by(BlockedSignal.sleeve))).all():
+            skips[str(_sl)] = int(_n or 0)
+        return _dc_rows(fills, skips)
+    except Exception as e:
+        logger.warning(f"[PERF] depth capacity table skipped: {e!r}")
+        return []
+
+
 async def _compute_performance(db: AsyncSession, regime: str = None, window_hours: int = None,
                                 from_date: str = None, to_date: str = None, flip_source: str = None,
                                 direction: str = None, cell_source: str = None, origin: str = None, alpha: str = None):
@@ -6910,6 +6941,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "surge_monitor": None,
             "frenzy_rows": [],
             "lite_c_rows": [],
+            "depth_capacity_rows": [],
             "frenzy_flags": [],
             "post_exit_regret_deep_dive": [], "post_exit_untracked": [],
             "frenzy_monitor": None,
@@ -10028,13 +10060,13 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 except Exception as _fbe:
                     logger.debug(f"[PERF] flatbase ledger tally skipped: {_fbe}")
             if _fz_es == "EXHAUSTION_SHORT":   # 🪫 (578) the frozen revert gate (re-priced with the modelled slippage; operator-closed out) + the journal tally
-                from services.exhaustion import exhaustion_gate as _exg, exit_era_579 as _exera
+                from services.exhaustion import exhaustion_gate as _exg, exit_era_579 as _exera, entry_leg_slip as _exels
                 _ex_q = select(Order.opened_at, Order.pnl_percentage, Order.close_reason, Order.entry_exh_model_slip_pct,
-                               Order.entry_exh_tp_pct, Order.entry_exh_atr_pct).where(and_(
+                               Order.entry_exh_tp_pct, Order.entry_exh_atr_pct, Order.entry_depth_mode, Order.entry_depth_walk_pct).where(and_(
                     Order.entry_strategy == "EXHAUSTION_SHORT", Order.status == 'CLOSED', Order.is_paper == trading_engine.is_paper_mode,
                     Order.pnl_percentage.isnot(None)))
                 # 🔁 (579) re-based on the exit override: only fills of that exit era count (the scout's rule, services.exhaustion.exit_era_579)
-                _ex_bot = [(a, p_, r, s_) for a, p_, r, s_, tp_, at_ in (await db.execute(_ex_q)).all()
+                _ex_bot = [(a, p_, r, s_, _exels(s_, dm_, wk_)) for a, p_, r, s_, tp_, at_, dm_, wk_ in (await db.execute(_ex_q)).all()   # 📖📐 (584 I2)
                            if _exera(tp_, at_)
                            and not (str(r or '').upper().split(' ')[0] in ('MANUAL', 'EXTERNAL_CLOSE') or str(r or '').upper().startswith('MANUAL_'))]
                 _fz_gate = _exg(_ex_bot)[1] + " · counts DL 579 exit-era fills only"
@@ -10180,6 +10212,18 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                             "gate": (f"avg bars late {_cu_b:.1f} · avg move {_cu_m:+.2f}% vs the ON close · " if _cu_rows and _cu_b is not None and _cu_m is not None else "") + _cu_gate})
     except Exception as _fz_tbl_err:
         logger.debug(f"[PERF] frenzy table skipped: {_fz_tbl_err}")
+
+    # 📖📊 (DECISION_LOG 584, operator) CAPACITY AT ENTRY — per sleeve (UI table + both text exports, depthCapacityReportLines). Skips are
+    # counted from the VIEW's window start (all records without a window), never from the first guarded fill (584 review). Never raises.
+    _dc_since = None
+    try:
+        if from_date and to_date:
+            _dc_since = datetime.strptime(from_date, "%Y-%m-%d")
+        elif window_hours and window_hours > 0:
+            _dc_since = datetime.utcnow() - timedelta(hours=window_hours)
+    except Exception:
+        _dc_since = None
+    depth_capacity_rows = await _depth_capacity_rows(db, orders, _dc_since, trading_engine.is_paper_mode)
 
     # Stop Loss Deep Dive + Winning Trades Drawdown
     stop_loss_deep_dive = {"total_sl_trades": 0, "be_was_active": {"count": 0}, "positive_no_be": {"count": 0}, "never_positive": {"count": 0}, "avg_peak_all_sl": 0}
@@ -11268,6 +11312,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "surge_monitor": _surge_monitor_payload(),
         "frenzy_rows": frenzy_rows,
         "lite_c_rows": lite_c_rows,   # 🎯 (DECISION_LOG 301) LITE C tally — UI + both text exports
+        "depth_capacity_rows": depth_capacity_rows,   # 📖📊 (DECISION_LOG 584) capacity at entry per sleeve — UI + both text exports
         "frenzy_flags": _frenzy_flag_rows(),
         "frenzy_monitor": _frenzy_monitor_payload(),
         "entry_conditions_by_strategy_outcome": entry_conditions_by_strategy_outcome,

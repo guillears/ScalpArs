@@ -64,6 +64,27 @@ class Order(Base):
     entry_cap_price = Column(Float, nullable=True)
     entry_cap_fill_frac = Column(Float, nullable=True)
     entry_cap_immediate_frac = Column(Float, nullable=True)
+    # 📖📐 (DECISION_LOG 584) the modelled average walk (%, VWAP vs best) of the final notional on the book the depth guard read · the guard
+    # mode that ran ("sweep" | "impact"). NULL = guard off / book unread.
+    entry_depth_walk_pct = Column(Float, nullable=True)
+    entry_depth_mode = Column(String(8), nullable=True)
+    # 📖📊 (DECISION_LOG 584, operator "record clearly in the trade the new capacity") every guarded bot fill: the pre-guard planned notional ·
+    # each side's fillable $ under the mode's rule (impact: the impact-capped $; sweep: the ±max_sweep $) · the side that bound (ENTRY / EXIT /
+    # NONE) · the notional after the guard · final ÷ planned · the book depth bands of the same read (cumulative $ within 0.2 / 0.5 / 1 % of
+    # the best price, entry side and exit side; a floor when the read ends inside the band). NULL = guard off / book unread.
+    entry_cap_planned_usd = Column(Float, nullable=True)
+    entry_cap_entry_side_usd = Column(Float, nullable=True)
+    entry_cap_exit_side_usd = Column(Float, nullable=True)
+    entry_cap_binding_side = Column(String(5), nullable=True)
+    entry_cap_final_usd = Column(Float, nullable=True)
+    entry_cap_frac = Column(Float, nullable=True)
+    entry_book_usd_02 = Column(Float, nullable=True)
+    entry_book_usd_05 = Column(Float, nullable=True)
+    entry_book_usd_1 = Column(Float, nullable=True)
+    entry_book_exit_usd_02 = Column(Float, nullable=True)
+    entry_book_exit_usd_05 = Column(Float, nullable=True)
+    entry_book_exit_usd_1 = Column(Float, nullable=True)
+    entry_book_bands_levels = Column(Integer, nullable=True)   # 📖📊 (584 review) the book read the bands came from: 50 or 500 levels
     shadow_rtp_price = Column(Float, nullable=True)
     shadow_rtp_filled = Column(Boolean, nullable=True)
     shadow_rtp_pnl_pct = Column(Float, nullable=True)
@@ -1459,6 +1480,16 @@ class FlatbaseEpisode(Base):
     turnover = Column(Float, nullable=True)                        # vol24_usd / mcap_usd (NULL = market cap unknown → traded)
     funding_rate = Column(Float, nullable=True)                    # premiumIndex lastFundingRate at the decision (observe)
     order_id = Column(Integer, nullable=True)                      # OPENED: the order row
+    # 📖📊 (DECISION_LOG 584) the depth guard's capacity read for this decision (NULL = the guard did not run: refused earlier / guard off)
+    cap_action = Column(String(8), nullable=True)                  # FULL · SHRINK · SKIP
+    cap_mode = Column(String(8), nullable=True)                    # sweep · impact
+    cap_planned_usd = Column(Float, nullable=True)
+    cap_entry_side_usd = Column(Float, nullable=True)
+    cap_exit_side_usd = Column(Float, nullable=True)
+    cap_binding_side = Column(String(5), nullable=True)            # ENTRY · EXIT · NONE
+    cap_final_usd = Column(Float, nullable=True)
+    cap_frac = Column(Float, nullable=True)
+    cap_walk_pct = Column(Float, nullable=True)
     created_at = Column(DateTime, nullable=True)
 
 
@@ -1514,6 +1545,16 @@ class ExhaustionSignal(Base):
     oi_vol = Column(Float, nullable=True)                          # 🧯 (582) oi_usd ÷ vol24_usd (EXH_SSC_OIVOL's input)
     model_slip_pct = Column(Float, nullable=True)                  # 🧯 (582) EXH_SSC_OIVOL blocks: the modelled taker slip at shadow_notional_usd (the shadow scout prices with it)
     shadow_notional_usd = Column(Float, nullable=True)             # 🧯 (582) EXH_SSC_OIVOL blocks: the notional the sleeve's sizing gave at the decision (estimate)
+    # 📖📊 (DECISION_LOG 584) the depth guard's capacity read for this decision (NULL = the guard did not run: refused earlier / guard off)
+    cap_action = Column(String(8), nullable=True)                  # FULL · SHRINK · SKIP
+    cap_mode = Column(String(8), nullable=True)                    # sweep · impact
+    cap_planned_usd = Column(Float, nullable=True)
+    cap_entry_side_usd = Column(Float, nullable=True)
+    cap_exit_side_usd = Column(Float, nullable=True)
+    cap_binding_side = Column(String(5), nullable=True)            # ENTRY · EXIT · NONE
+    cap_final_usd = Column(Float, nullable=True)
+    cap_frac = Column(Float, nullable=True)
+    cap_walk_pct = Column(Float, nullable=True)
     created_at = Column(DateTime, nullable=True)
 
 

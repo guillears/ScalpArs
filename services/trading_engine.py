@@ -30,6 +30,7 @@ from services.regime import classify_btc_regime
 from services.ml_second_chance import sc_params, sc_in_zone, sc_base_reason, sc_phase2_exit, net_pnl_pct as _sc_net_pnl_pct, SC_URGENT
 from services.funding_guard import funding_guard_block   # 💸 (DECISION_LOG 566)
 from services.entry_depth import cap_price, capped_fill_fee, depth_fillable_usd, depth_guard_size, exit_side_fillable_usd, thinner_side_usd, FULL as DEPTH_FULL, SHRINK as DEPTH_SHRINK, SKIP as DEPTH_SKIP   # 📖 (DECISION_LOG 551)
+from services.entry_depth import impact_fillable_detail, impact_limit_price, impact_cap_limit, walk_detail, book_bands, book_band_usd, binding_side as depth_binding_side   # 📖📐 (DECISION_LOG 584) impact-capped depth sizing + capacity stamps
 from services.ml_risk_cap import worst_stop_pct as _mlrc_worst_stop, open_trade_risk_pct as _mlrc_trade_risk, open_risk_pct_of_account as _mlrc_open_pct, fit_notional as _mlrc_fit
 from services.surge import surge_trigger, surge_entry_open, surge_pair_pick, surge_tripwire, surge_live_readings, wilder_atr_pct, surge_gvol_gate, surge_long_ema_gap_block, SURGE_LONG_EMA_GAP, SURGE_LONG_EMA_GAP_FAILOPEN
 from services.orderbook_stats import orderbook_metrics, OB_FIELDS
@@ -4788,8 +4789,31 @@ class TradingEngine:
     STAMP_SLEEVE_PREFIXES = ('entry_frenzy_', 'entry_flatbase_', 'entry_surge_', 'entry_br_', 'entry_bear_', 'entry_willy_', 'entry_book_', 'entry_exh_')   # 🪫 (578)
     STAMP_SLEEVE_ONLY = ('entry_order_lag_s', 'entry_fill_vs_book_pct', 'entry_chop_burst_prior_fill_s', 'entry_long_heat_flags',
                          'entry_pair_rank', 'entry_macro_trend', 'entry_ml_risk_open_pct', 'entry_ml_risk_shrunk_from',
-                         'entry_depth_fillable_usd', 'entry_depth_shrunk_from', 'entry_depth_exit_fillable_usd', 'entry_cap_price', 'entry_cap_fill_frac', 'entry_cap_immediate_frac')   # sleeve / path specific — NULL elsewhere is by design
+                         'entry_depth_fillable_usd', 'entry_depth_shrunk_from', 'entry_depth_exit_fillable_usd', 'entry_cap_price', 'entry_cap_fill_frac', 'entry_cap_immediate_frac',
+                         'entry_depth_walk_pct', 'entry_depth_mode', 'entry_cap_planned_usd', 'entry_cap_entry_side_usd', 'entry_cap_exit_side_usd',
+                         'entry_cap_binding_side', 'entry_cap_final_usd', 'entry_cap_frac')   # sleeve / path specific (entry_book_usd_* / entry_book_exit_usd_*: the entry_book_ prefix) — NULL elsewhere is by design
     STAMP_BOOKING = ('entry_price', 'entry_fee', 'entry_strategy', 'entry_order_type')
+    # 📖📊 (DECISION_LOG 584) the last depth-guard decision of open_position (the EXHAUSTION / FLATBASE journals copy it; callers reset it
+    # to None before their open_position call, so a refusal before the guard never inherits an older read)
+    _depth_cap_last = None
+    DEPTH_CAP_JOURNAL_KEYS = ('cap_action', 'cap_mode', 'cap_planned_usd', 'cap_entry_side_usd', 'cap_exit_side_usd', 'cap_binding_side',
+                              'cap_final_usd', 'cap_frac', 'cap_walk_pct')
+
+    @staticmethod
+    def _depth_cap_record(pair, action, mode, planned, entry_usd, exit_usd, binding, final, frac, walk):
+        """📖📊 (584) the depth guard's capacity decision as the journal columns (cap_*) + the pair it belongs to. Pure."""
+        return dict(pair=pair, cap_action=action, cap_mode=mode, cap_planned_usd=planned, cap_entry_side_usd=entry_usd, cap_exit_side_usd=exit_usd,
+                    cap_binding_side=binding, cap_final_usd=final, cap_frac=frac, cap_walk_pct=walk)
+
+    def _depth_cap_for(self, pair):
+        """📖📊 (584) the journal cap_* fields of the last guard decision for `pair` ({} when the guard did not run for it). Never raises."""
+        try:
+            d = self.__dict__.get('_depth_cap_last')
+            if not isinstance(d, dict) or d.get('pair') != pair:
+                return {}
+            return {k: d.get(k) for k in self.DEPTH_CAP_JOURNAL_KEYS}
+        except Exception:
+            return {}
     STAMP_LEGACY = ('entry_btc_regime_started_at',)   # no code path writes it (0 % on every sleeve) — kept for old CSVs, never required
     STAMP_BEST_EFFORT = ('entry_mcap_usd', 'entry_cmc_rank', 'entry_vol_mcap_ratio', 'entry_pair_1d_ndi', 'entry_funding_rate',
                          'entry_pair_1h_ema20_200_gap_pct',   # external source can be missing for a small / new coin: alert bar 60 %, not 90 %
@@ -10796,6 +10820,7 @@ class TradingEngine:
                        f"S4 — 4-h close {float(scan['close']):g} {scan.get('vs_vwap_pct') or 0:+.2f}% vs the spike VWAP, "
                        f"{scan.get('hours') or 0:.1f} h after the spike, base range {rec['flat'] * 100:.1f} %, turnover "
                        f"{('%.2f×' % R) if R is not None else 'unknown (mcap n/a)'} → opening SHORT")
+        self._depth_cap_last = None   # 📖📊 (584) the ledger row copies only THIS open's guard decision
         order = await self.open_position(
             db=db, pair=pair, direction="SHORT", confidence="STRONG_BUY", current_price=_p_close,
             entry_atr_pct=(round(atr, 4) if atr is not None else None), entry_pair_volume_24h_usd=scan.get('vol24'), entry_funding_rate=_fr,
@@ -10811,13 +10836,13 @@ class TradingEngine:
         if order:
             await self._flatbase_finalize(pair, spike_ms, ST_OPENED, f"opened #{order.id}" + (
                 f" after the FB_CONFIRM 4-h close {datetime.utcfromtimestamp((int(_cfm['bar_open']) + 300_000) / 1000):%m-%d %H:%M} UTC at {_p_close:g}"
-                if _cfm else ""), order_id=order.id, **feats)
+                if _cfm else ""), order_id=order.id, **feats, **self._depth_cap_for(pair))   # 📖📊 (584) the guard's capacity read
             return
         _why = getattr(self, '_frenzy_open_refusal', None)
         if not _why:   # a named refusal (late / manual block …) is counted where it happened
             self._fbs_count("FLATBASE_OPEN_REFUSED", pair)
         await self._flatbase_finalize(pair, spike_ms, ST_REFUSED, (_why or "refused by the open path (balance / cooldown / bracket / liquidity)") + f" {_at}",
-                                      **feats)
+                                      **feats, **self._depth_cap_for(pair))   # 📖📊 (584) a DEPTH_GUARD skip's capacity read
 
     # ── 🪫 EXHAUSTION_SHORT (DECISION_LOG 578 — operator-approved PAPER run, declared override) ───────────────────────────────────────────
     # Pure rules: services/exhaustion.py. A FRENZY episode is TRACKED (models.ExhaustionEpisode, restart-safe) the first time the pass sees it
@@ -11032,7 +11057,7 @@ class TradingEngine:
             logger.warning(f"[EXHAUSTION_SHORT] {pair}: read-cap note failed ({str(e)[:80]})")
 
     async def _exh_journal(self, pair, T, status, block, reason, sp, f=None, sig=None, tp=None, sl=None, order_id=None, funding=None,
-                           oi_usd=None, oi_vol=None, model_slip=None, shadow_notional=None) -> None:
+                           oi_usd=None, oi_vol=None, model_slip=None, shadow_notional=None, cap=None) -> None:
         """the decision journal: ONE row per evaluated signal (models.ExhaustionSignal) + a decision-journal line. Never raises.
         🧯 (582) oi_usd / oi_vol = the EXH_SSC_OIVOL inputs (every signal the rule passed) · model_slip / shadow_notional = what the shadow
         scout prices an EXH_SSC_OIVOL block with (scripts/scout_exh_ssc_oivol.py)."""
@@ -11051,6 +11076,7 @@ class TradingEngine:
                     has_spot=(bool(f['has_spot']) if f.get('has_spot') is not None else None), atr_pct=f.get('atr_pct'),
                     tp_pct=tp, sl_pct=sl, vol24_usd=f.get('vol24'), q5_usd=f.get('q5'), funding_rate=funding, order_id=order_id,
                     oi_usd=oi_usd, oi_vol=oi_vol, model_slip_pct=model_slip, shadow_notional_usd=shadow_notional,   # 🧯 (582)
+                    **{k: v for k, v in (cap or {}).items() if k in self.DEPTH_CAP_JOURNAL_KEYS},   # 📖📊 (584) the depth guard's capacity read
                     created_at=datetime.utcnow()))
                 await locked_commit(_s)
         except Exception as e:
@@ -11164,6 +11190,7 @@ class TradingEngine:
         except Exception:
             _atr5 = None
         self._frenzy_open_refusal = None
+        self._depth_cap_last = None   # 📖📊 (584) the journal row copies only THIS open's guard decision
         self._journal_pair = pair
         logger.warning(f"[EXHAUSTION_SHORT] {pair}: {why} · TP {tp:.2f} % / SL {sl:.2f} % / {exhaustion_params(th)['max_hold_h']:g} h → opening SHORT")
         order = await self.open_position(
@@ -11180,14 +11207,14 @@ class TradingEngine:
             entry_exh_oi_usd=_oi_usd, entry_exh_oi_vol=(round(_oi_vol, 6) if _oi_vol is not None else None))   # 🧯 (582) filter on or off
         if order:
             await self._exh_journal(pair, T, _exh_rules.ST_OPENED, None, f"opened #{order.id} — {why}", sp, f=f, sig=sig, tp=tp, sl=sl,
-                                    order_id=order.id, funding=_fr, oi_usd=_oi_usd, oi_vol=_oi_vol)
+                                    order_id=order.id, funding=_fr, oi_usd=_oi_usd, oi_vol=_oi_vol, cap=self._depth_cap_for(pair))
             return
         _ref = getattr(self, '_frenzy_open_refusal', None)
         if not _ref:   # a named refusal (book full / late / depth / funding …) is counted where it happened
             self._exh_count(_exh_rules.B_OPEN_REFUSED, pair)
         await self._exh_journal(pair, T, _exh_rules.ST_REFUSED, (None if _ref else _exh_rules.B_OPEN_REFUSED),
                                 (_ref or "refused by the open path (balance / cooldown / bracket / liquidity)"), sp, f=f, sig=sig, tp=tp, sl=sl,
-                                funding=_fr, oi_usd=_oi_usd, oi_vol=_oi_vol)
+                                funding=_fr, oi_usd=_oi_usd, oi_vol=_oi_vol, cap=self._depth_cap_for(pair))
 
     async def _exh_oi_read(self, pair, T) -> Optional[float]:
         """🧯 (DECISION_LOG 582) OI_usd at the decision time T: ONE openInterestHist read (5m, endTime T, the EXH perp client — a weight-0
@@ -15851,6 +15878,11 @@ class TradingEngine:
         _sg_live_px = None
         _sg_ob = None
         _dg_fill = _dg_from = None   # 📖 (DECISION_LOG 551) entry depth guard stamps
+        _dg_walk = _dg_mode_st = _dg_vwap = None   # 📖📐 (DECISION_LOG 584) the modelled walk at the final notional · the guard mode that ran · its VWAP
+        # 📖📊 (584, operator) capacity stamps of every guarded fill (named entry_* so a DEPTH_GUARD skip's blocked record carries them too)
+        entry_cap_planned_usd = entry_cap_entry_side_usd = entry_cap_exit_side_usd = entry_cap_binding_side = entry_cap_final_usd = entry_cap_frac = None
+        entry_book_usd_02 = entry_book_usd_05 = entry_book_usd_1 = entry_book_exit_usd_02 = entry_book_exit_usd_05 = entry_book_exit_usd_1 = None
+        _dg_ob2 = None
         _cap_on = False; _cap_px = None; _cap_tick = None; _cap_sym = None   # 📖🧢 (DECISION_LOG 553) capped entry
         _cap_stamp = {}
         _eb_bid = _eb_ask = _eb_lag = None   # 📏 (295) execution-quality shadow: the book read just before the order (FRENZY / SURGE only)
@@ -15981,6 +16013,19 @@ class TradingEngine:
         _dg_exit_on = bool(getattr(_dg_inv, 'entry_depth_guard_exit_side_enabled', False))
         _dg_xfill = None
         _dg_book = _sg_ob if _surge else None
+        _dg_mode = str(getattr(_dg_inv, 'entry_depth_guard_mode', 'sweep') or 'sweep').strip().lower()   # 📖📐 (DECISION_LOG 584)
+        _dg_impact = _dg_mode == 'impact'
+        try:
+            _dg_imp_cap = float(getattr(_dg_inv, 'entry_depth_guard_max_avg_impact_pct', 0.15) or 0.15)
+        except (TypeError, ValueError):
+            _dg_imp_cap = 0.15
+        if not (0 < _dg_imp_cap <= 1):
+            _dg_imp_cap = 0.15
+        _dg_elv = None
+        _dg_mb = 3.0 * _dg_imp_cap   # 📖📐 (584 deep review C1) the hard MARGINAL bound: no level beyond 3 × the average cap is ever bought / sold
+        entry_book_bands_levels = None   # 📖📊 (584 review) which book read the depth bands came from (50 / 500 levels)
+        _dg_band = (f"{getattr(_dg_inv, 'entry_depth_guard_max_sweep_pct', 0.15)}%" if not _dg_impact
+                    else f"an average walk of {_dg_imp_cap}%")   # the log / refusal wording per mode
         if not _surge and _dg_on2 and _dg_all and notional_value > 0 and leverage > 0:
             try:   # bounded: the bot open lane is held · 50 levels = request weight 2
                 _dg_book = await asyncio.wait_for(binance_service.fetch_orderbook(pair.replace('USDT', '/USDT:USDT'), limit=50), 1.5)   # (565 review) 1.5 s: the open lane is held
@@ -15991,15 +16036,59 @@ class TradingEngine:
                 _dg_sw = float(getattr(_dg_inv, 'entry_depth_guard_max_sweep_pct', 0.15) or 0.15)
                 _dg_side = _dg_book.get('asks') if direction == 'LONG' else _dg_book.get('bids')
                 _dg_xside = _dg_book.get('bids') if direction == 'LONG' else _dg_book.get('asks')
-                _dg_fill = depth_fillable_usd(_dg_side, direction, _dg_sw)
-                _dg_xfill = exit_side_fillable_usd(_dg_book, direction, _dg_sw) if _dg_exit_on else None
-                _dg_need = ((_dg_fill is None and _dg_side and len(_dg_side) >= 50)
-                            or (_dg_exit_on and _dg_xfill is None and _dg_xside and len(_dg_xside) >= 50))
+                _dg_elv = _dg_side   # 📖📐 (584) the entry-side levels the guard measured (the walk / limit price / paper fill read them)
+                _dg_mode_st = _dg_mode
+                if _dg_impact:   # 📖📐 (DECISION_LOG 584) the largest $ whose AVERAGE walk ≤ the cap, per side; the thinner binds below
+                    _dg_xd = 'SHORT' if direction == 'LONG' else 'LONG'
+                    _dg_fill, _, _dg_ex_e = impact_fillable_detail(_dg_side, direction, _dg_imp_cap)
+                    _dg_xfill, _, _dg_ex_x = (impact_fillable_detail(_dg_xside, _dg_xd, _dg_imp_cap) if _dg_exit_on else (None, None, False))
+                    # (584 review) a deeper read only when a 50-level side ran out under the cap AND what it showed is below the plan
+                    _dg_ne = bool(_dg_ex_e and _dg_side and len(_dg_side) >= 50 and (_dg_fill is None or _dg_fill < notional_value))
+                    _dg_nx = bool(_dg_exit_on and _dg_ex_x and _dg_xside and len(_dg_xside) >= 50 and (_dg_xfill is None or _dg_xfill < notional_value))
+                    if _dg_ne or _dg_nx:
+                        try:   # one deeper read (weight 10); still short → what the book shows (conservative)
+                            _dg_ob2 = await asyncio.wait_for(binance_service.fetch_orderbook(pair.replace('USDT', '/USDT:USDT'), limit=500), 1.5)
+                            _dg_s2 = (_dg_ob2 or {}).get('asks' if direction == 'LONG' else 'bids')
+                            _dg_x2 = (_dg_ob2 or {}).get('bids' if direction == 'LONG' else 'asks')
+                            if _dg_ne and _dg_s2:
+                                _f2, _, _dg_ex_e = impact_fillable_detail(_dg_s2, direction, _dg_imp_cap)
+                                if _f2 is not None:
+                                    _dg_fill, _dg_elv = _f2, _dg_s2
+                            if _dg_nx and _dg_x2:
+                                _x2, _, _dg_ex_x = impact_fillable_detail(_dg_x2, _dg_xd, _dg_imp_cap)
+                                if _x2 is not None:
+                                    _dg_xfill = _x2
+                        except Exception:
+                            pass
+                        if ((_dg_ne and _dg_ex_e and (_dg_fill is None or _dg_fill < notional_value))
+                                or (_dg_nx and _dg_ex_x and (_dg_xfill is None or _dg_xfill < notional_value))):
+                            self._record_filter_block("DEPTH_GUARD_TRUNCATED", direction)   # counted (not a block): sized to what the book showed (conservative)
+                    if _dg_fill is not None and _dg_elv:   # (584 deep review C1) the entry side never reaches past the marginal bound
+                        _dg_mbu = book_band_usd(_dg_elv, direction, _dg_mb)
+                        if _dg_mbu is not None:
+                            _dg_fill = min(_dg_fill, _dg_mbu)
+                    _dg_need = False
+                else:
+                    _dg_fill = depth_fillable_usd(_dg_side, direction, _dg_sw)
+                    _dg_xfill = exit_side_fillable_usd(_dg_book, direction, _dg_sw) if _dg_exit_on else None
+                    # (584 review) a truncated 50-level side that already shows the plan inside the band needs no deeper read: what it shows (≥ plan)
+                    if _dg_fill is None and _dg_side and len(_dg_side) >= 50:
+                        _dg_shw = book_band_usd(_dg_side, direction, _dg_sw)
+                        if _dg_shw is not None and _dg_shw >= notional_value:
+                            _dg_fill = _dg_shw
+                    if _dg_exit_on and _dg_xfill is None and _dg_xside and len(_dg_xside) >= 50:
+                        _dg_shw = book_band_usd(_dg_xside, 'SHORT' if direction == 'LONG' else 'LONG', _dg_sw)
+                        if _dg_shw is not None and _dg_shw >= notional_value:
+                            _dg_xfill = _dg_shw
+                    _dg_need = ((_dg_fill is None and _dg_side and len(_dg_side) >= 50)
+                                or (_dg_exit_on and _dg_xfill is None and _dg_xside and len(_dg_xside) >= 50))
                 if _dg_need:   # (551 deep review) a dense book cut at 50 levels: one deeper read (weight 10)
                     try:
                         _dg_ob2 = await asyncio.wait_for(binance_service.fetch_orderbook(pair.replace('USDT', '/USDT:USDT'), limit=500), 1.5)
                         if _dg_fill is None:
                             _dg_fill = depth_fillable_usd((_dg_ob2 or {}).get('asks' if direction == 'LONG' else 'bids'), direction, _dg_sw)
+                            if _dg_fill is not None:
+                                _dg_elv = (_dg_ob2 or {}).get('asks' if direction == 'LONG' else 'bids')
                         if _dg_exit_on and _dg_xfill is None:
                             _dg_xfill = exit_side_fillable_usd(_dg_ob2, direction, _dg_sw)
                     except Exception:
@@ -16010,9 +16099,22 @@ class TradingEngine:
                 _dg_xfill = round(_dg_xfill, 2) if _dg_xfill is not None else None
                 _dg_act, _dg_n = depth_guard_size(notional_value, thinner_side_usd(_dg_fill, _dg_xfill),
                                                   float(getattr(_dg_inv, 'entry_depth_guard_min_frac', 0.5) or 0.0))
+                try:   # 📖📊 (584) capacity stamps: the plan, each side's fillable $ (this mode's rule), the binding side, the book bands
+                    entry_cap_planned_usd = round(float(notional_value), 2)
+                    entry_cap_entry_side_usd, entry_cap_exit_side_usd = _dg_fill, _dg_xfill
+                    entry_cap_binding_side = depth_binding_side(notional_value, _dg_fill, _dg_xfill)
+                    _dg_deep_ok = isinstance(_dg_ob2, dict) and bool(_dg_ob2.get('asks')) and bool(_dg_ob2.get('bids'))
+                    _dg_bb = book_bands(_dg_ob2 if _dg_deep_ok else _dg_book, direction)
+                    entry_book_bands_levels = 500 if _dg_deep_ok else 50
+                    entry_book_usd_02, entry_book_usd_05, entry_book_usd_1 = _dg_bb['entry_book_usd_02'], _dg_bb['entry_book_usd_05'], _dg_bb['entry_book_usd_1']
+                    entry_book_exit_usd_02, entry_book_exit_usd_05, entry_book_exit_usd_1 = (_dg_bb['entry_book_exit_usd_02'], _dg_bb['entry_book_exit_usd_05'],
+                                                                                             _dg_bb['entry_book_exit_usd_1'])
+                except Exception:
+                    pass
             except Exception as _dge:
                 logger.warning(f"[DEPTH_GUARD] {pair}: guard failed ({str(_dge)[:80]}) — full size (fail-open)")
                 _dg_act, _dg_n, _dg_fill, _dg_xfill = DEPTH_FULL, notional_value, None, None
+                _dg_elv = None
             _dg_sides = (f"entry side ${_dg_fill:,.0f}" if _dg_fill is not None else "entry side unmeasured") + (
                 (f" · exit side ${_dg_xfill:,.0f}" if _dg_xfill is not None else " · exit side unmeasured") if _dg_exit_on else "")
             _dg_min_m = _dg_inv.min_investment_size * _ml_min_scale * _ht_min_scale
@@ -16021,8 +16123,11 @@ class TradingEngine:
                 _dg_act = DEPTH_SKIP
                 _dg_min_note = f" — shrunk margin ${_dg_n / leverage:.2f} < min ${_dg_min_m:.2f}"
             if _dg_act == DEPTH_SKIP:
+                entry_cap_final_usd, entry_cap_frac = 0.0, 0.0   # 📖📊 (584) skipped: nothing traded
+                self._depth_cap_last = self._depth_cap_record(pair, "SKIP", _dg_mode_st, entry_cap_planned_usd, entry_cap_entry_side_usd,
+                                                              entry_cap_exit_side_usd, entry_cap_binding_side, 0.0, 0.0, None)
                 self._record_filter_block("DEPTH_GUARD_SKIP", direction)
-                _dg_msg = (f"the book holds {_dg_sides} within {getattr(_dg_inv, 'entry_depth_guard_max_sweep_pct', 0.15)}% of the best "
+                _dg_msg = (f"the book holds {_dg_sides} within {_dg_band} of the best "
                            f"price vs ${notional_value:,.0f} planned (min {getattr(_dg_inv, 'entry_depth_guard_min_frac', 0.5)}×){_dg_min_note}")
                 if _frenzy or _fbs or _exh:   # (551 deep review) FLATBASE too: its caller reads the refusal text (no double FLATBASE_OPEN_REFUSED) · 🪫 (578) EXHAUSTION too
                     _k = lambda v: (f"${v / 1000:,.1f}k" if v is not None else "?")   # (dashboard) the short form — the full line stays in the log
@@ -16048,11 +16153,34 @@ class TradingEngine:
                         _dg_bpx = None
                 quantity = notional_value / ((_sg_live_px if _surge else _dg_bpx) or current_price)   # (551 deep review) at the book price the depth was measured at
                 logger.info(f"[DEPTH_GUARD] {pair} {direction} {_wh_es}: {_dg_sides} within "
-                            f"{getattr(_dg_inv, 'entry_depth_guard_max_sweep_pct', 0.15)}% → notional ${_dg_from:,.0f} → ${notional_value:,.0f} "
+                            f"{_dg_band} → notional ${_dg_from:,.0f} → ${notional_value:,.0f} "
                             f"(margin ${investment:.2f} at {leverage}×)")
             else:
                 logger.info(f"[DEPTH_GUARD] {pair} {direction} {_wh_es}: {_dg_sides} within "
-                            f"{getattr(_dg_inv, 'entry_depth_guard_max_sweep_pct', 0.15)}% → notional ${notional_value:,.0f} fits (full size)")
+                            f"{_dg_band} → notional ${notional_value:,.0f} fits (full size)")
+            # 📖📐 (DECISION_LOG 584) the modelled average walk of the FINAL notional on the entry-side levels the guard measured (stamped in both
+            # modes; None = book unusable / shallower than the notional). Impact mode: the live capped LIMIT goes to the deepest level that walk
+            # touches + 1 tick (was best ± max_sweep_pct) and a paper taker fill books at the walked VWAP below.
+            try:
+                _dg_walk, _dg_vwap, _dg_deep = walk_detail(_dg_elv, direction, notional_value) if _dg_elv else (None, None, None)
+                _dg_walk = round(_dg_walk, 5) if _dg_walk is not None else None
+                if _dg_impact and _cap_px and _dg_deep and _dg_elv:
+                    # 📖📐🧢 (584, deep review C1) the deepest walked level + 1 tick, clamped to the marginal bound (best ± 3 × the cap — the fillable
+                    # above never reaches past it, so the clamp never cuts the walked notional) and never tighter than the 553 sweep ceiling
+                    _cap_px_imp = impact_cap_limit(_dg_elv, direction, _dg_deep, _cap_tick, _dg_imp_cap, _cap_px)
+                    if _cap_px_imp:
+                        logger.info(f"[CAPPED_ENTRY] {pair} {direction}: impact mode — limit {_cap_px} → {_cap_px_imp} (deepest level {_dg_deep} + 1 tick, "
+                                    f"≤ best ± {_dg_mb:g}%, modelled walk {_dg_walk}%)")
+                        _cap_px = _cap_px_imp
+            except Exception as _dwe:
+                logger.warning(f"[DEPTH_GUARD] {pair}: walk model failed ({str(_dwe)[:80]}) — no walk stamp")
+                _dg_walk = _dg_vwap = None
+            if entry_cap_planned_usd is not None:   # 📖📊 (584) the notional after the guard (live capped orders may fill less: entry_cap_fill_frac)
+                entry_cap_final_usd = round(float(notional_value), 2)   # (review M) a fail-open guard (no capacity read) writes no record
+                entry_cap_frac = round(entry_cap_final_usd / entry_cap_planned_usd, 4) if entry_cap_planned_usd else None
+                self._depth_cap_last = self._depth_cap_record(pair, ("SHRINK" if _dg_act == DEPTH_SHRINK else "FULL"), _dg_mode_st, entry_cap_planned_usd,
+                                                              entry_cap_entry_side_usd, entry_cap_exit_side_usd, entry_cap_binding_side,
+                                                              entry_cap_final_usd, entry_cap_frac, _dg_walk)
 
         maker_fee_rate = getattr(tc, 'maker_fee', tc.trading_fee)
         taker_fee_rate = getattr(tc, 'taker_fee', tc.trading_fee)
@@ -16166,6 +16294,12 @@ class TradingEngine:
                         self._mark_untracked(pair, direction, 0.0, _cap_px, "CAP_ORDER_UNCONFIRMED", "CAPPED_ENTRY")
                         logger.critical(f"[CAPPED_ENTRY] {pair}: no fill booked but the cap order is NOT confirmed cancelled — pair blocked, CHECK BINANCE")
                     self._record_filter_block("DEPTH_CAP_NOFILL", direction)
+                    try:   # 📖📊 (584 review M3) the journal row shows the capped order filled nothing
+                        _dcl = self.__dict__.get('_depth_cap_last')
+                        if isinstance(_dcl, dict) and _dcl.get('pair') == pair:
+                            self._depth_cap_last = dict(_dcl, cap_action="NOFILL", cap_final_usd=0.0, cap_frac=0.0)
+                    except Exception:
+                        pass
                     if _frenzy or _fbs or _exh:
                         self._frenzy_open_refusal = f"nothing filled at or under the cap {_cap_px} within {_cap_wait:g}s"
                     logger.warning(f"[CAPPED_ENTRY] {pair} {direction} {_wh_es}: nothing filled at ≤ {_cap_px} in {result.get('wait_s')}s — no trade")
@@ -16275,6 +16409,10 @@ class TradingEngine:
                 entry_order_type = "TAKER"
                 if _surge and _sg_live_px:   # ⚡ SURGE paper taker fills at the live price the guard just checked
                     actual_price = _sg_live_px
+                    quantity = notional_value / actual_price
+                    entry_fee = notional_value * taker_fee_rate
+                if _dg_impact and _dg_vwap and _dg_vwap > 0:   # 📖📐 (DECISION_LOG 584) paper = live entry impact: the walked VWAP of the final notional
+                    actual_price = float(_dg_vwap)
                     quantity = notional_value / actual_price
                     entry_fee = notional_value * taker_fee_rate
         
@@ -16603,6 +16741,12 @@ class TradingEngine:
             entry_fill_vs_book_pct=_eb_m.get('entry_fill_vs_book_pct'), entry_order_lag_s=_eb_m.get('entry_order_lag_s'),
             entry_depth_fillable_usd=_dg_fill, entry_depth_shrunk_from=_dg_from,   # 📖 (551) entry depth guard
             entry_depth_exit_fillable_usd=_dg_xfill,   # 📖↔ (565) the exit side of the same book
+            entry_depth_walk_pct=_dg_walk, entry_depth_mode=_dg_mode_st,   # 📖📐 (584) modelled average walk at the final notional · the guard mode
+            entry_cap_planned_usd=entry_cap_planned_usd, entry_cap_entry_side_usd=entry_cap_entry_side_usd, entry_cap_exit_side_usd=entry_cap_exit_side_usd,
+            entry_cap_binding_side=entry_cap_binding_side, entry_cap_final_usd=entry_cap_final_usd, entry_cap_frac=entry_cap_frac,   # 📖📊 (584) capacity
+            entry_book_usd_02=entry_book_usd_02, entry_book_usd_05=entry_book_usd_05, entry_book_usd_1=entry_book_usd_1,
+            entry_book_exit_usd_02=entry_book_exit_usd_02, entry_book_exit_usd_05=entry_book_exit_usd_05, entry_book_exit_usd_1=entry_book_exit_usd_1,
+            entry_book_bands_levels=entry_book_bands_levels,   # 📖📊 (584 review) 50 / 500-level read the bands came from
             entry_cap_price=_cap_stamp.get('entry_cap_price'), entry_cap_fill_frac=_cap_stamp.get('entry_cap_fill_frac'),   # 📖🧢 (553)
             entry_cap_immediate_frac=_cap_stamp.get('entry_cap_immediate_frac'),
             entry_fee=entry_fee,

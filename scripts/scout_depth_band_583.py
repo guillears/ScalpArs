@@ -10,6 +10,10 @@ GATE        decided ONCE at the first 10 band fills (by open time): Σ booked pn
             slippage| > 0.15 % · or mean |exit slippage| > 0.15 % (the thin side is the exit — a squeeze stop buys into it; paper books no
             slippage inside 0.15 %, so the slippage legs are LIVE-only evidence) → flag · else KEEP. Before 10: COLLECTING. The old DL 551 / 565
             guard gate has no pricer — it is a by-hand read at the batch review (stated in DL 583).
+584 NOTE    (deep review I3) the slippage legs read LIVE rows only (is_paper false) — from DL 584 an impact-mode PAPER fill books its modelled
+            walk in its entry price, so a paper slip is the model, not evidence. The cohort is split by entry_depth_mode in the output: from
+            the DL 584 deploy the band mixes sweep-sized (pre-584) and impact-sized fills (confound — impact sizes on the average walk, so a
+            0.25–0.5 band fill is a different trade than under sweep); the frozen verdict reads all band fills as before.
 STATE       reports/SCOUT_DEPTH_BAND_583.json (gitignored) — the verdict frozen once.
 Usage: venv/bin/python -I scripts/scout_depth_band_583.py"""
 import json
@@ -31,7 +35,7 @@ DL = 583
 GATE_N, SLIP_MAX, BAND = 10, 0.15, 0.5
 PATTERNS = (os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv"), os.path.expanduser("~/Downloads/scalpars_orders_live_*.csv"))
 COLS = ("opened_at", "pair", "direction", "status", "entry_strategy", "pnl", "pnl_percentage", "close_reason", "notional_value",
-        "entry_depth_shrunk_from", "entry_slippage_pct", "exit_slippage_pct", "is_paper")
+        "entry_depth_shrunk_from", "entry_slippage_pct", "exit_slippage_pct", "is_paper", "entry_depth_mode")
 STATE = os.path.join(_R, "reports", "SCOUT_DEPTH_BAND_583.json")
 
 
@@ -92,9 +96,12 @@ def report(frame=None, since_ms=None, state_path=STATE, now_ms=None):
     if since_ms is None:
         return "\n".join(out + [f"⚠ NOT EVALUABLE — the DECISION_LOG {DL} commit is not in git yet; nothing is counted."])
     a = load() if frame is None else frame
+    if "entry_depth_mode" not in a.columns:   # (584) older frames / exports carry no mode stamp
+        a = a.assign(entry_depth_mode=None)
     a = a[a.o >= pd.Timestamp(int(since_ms), unit="ms")] if len(a) else a
     band = a[[in_band(n, p) for n, p in zip(a.notional_value, a.entry_depth_shrunk_from)]] if len(a) else a
-    rows = [(_f(r.pnl), _f(r.entry_slippage_pct), _f(r.exit_slippage_pct)) for r in band.itertuples()]
+    _live = lambda r: str(getattr(r, "is_paper", "")).strip().lower() in ("false", "0", "0.0", "no")   # (584 I3) slip legs: LIVE only
+    rows = [(_f(r.pnl), (_f(r.entry_slippage_pct) if _live(r) else None), (_f(r.exit_slippage_pct) if _live(r) else None)) for r in band.itertuples()]
     st = {}
     try:
         with open(state_path) as f:
@@ -115,6 +122,9 @@ def report(frame=None, since_ms=None, state_path=STATE, now_ms=None):
         out.append(f"FROZEN ({st.get('run_at')}): {st['verdict']} — {st.get('detail')}")
     v, txt = gate(rows)
     out.append(f"now: {v} — {txt}" + (" (information; the frozen read decides)" if st and st.get("verdict") else ""))
+    if len(band):   # (584 I3) the cohort by depth-guard mode (the impact deploy is a confound inside the band)
+        _m = band.entry_depth_mode.fillna("pre-584").astype(str).value_counts()
+        out.append("  by depth mode: " + " · ".join(f"{k} {v}" for k, v in _m.items()) + " (slippage legs: live rows only)")
     for r in band.itertuples():
         out.append(f"  {str(r.o)[:16]} {r.pair} {r.entry_strategy} {r.direction}: ${_f(r.notional_value) or 0:,.0f} of ${_f(r.entry_depth_shrunk_from) or 0:,.0f} "
                    f"planned · pnl ${_f(r.pnl) or 0:+,.2f} · slip in {r.entry_slippage_pct} / out {r.exit_slippage_pct}")

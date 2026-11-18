@@ -2,7 +2,7 @@
 SCALPARS Trading Platform - Configuration
 """
 from pydantic_settings import BaseSettings
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Dict, List, Optional
 from enum import Enum
 import json
@@ -3286,6 +3286,34 @@ class InvestmentConfig(BaseModel):
     # Revert gate: the DL 551 one (15 guarded live entries: full-size counterfactual vs guarded → off if it cost more), read per side.
     entry_depth_guard_all_enabled: bool = False
     entry_depth_guard_exit_side_enabled: bool = False
+    # ⑦d 📖📐 Nov-18 IMPACT-CAPPED DEPTH SIZING (DECISION_LOG 584, operator "build it now"): reports/CAPACITY_2026-11-18.md — on 123 live
+    # fills the real slippage ≈ −0.023 + 0.89 × walk (walk = the VWAP of the book levels the order consumes vs the best price); a fixed
+    # ±max_sweep_pct band ignores the depth just beyond it that still fills at an acceptable AVERAGE. mode "impact": fillable = the largest $
+    # whose average walk ≤ max_avg_impact_pct (0.15, = the sweep band → impact ⊇ sweep) and no level beyond 3 × it, on the entry side and (exit_side_enabled) the exit side, the thinner binds, then the SAME
+    # full / shrink ≥ min_frac / skip rule + the min-margin floor. Live capped LIMIT (553) = the deepest level that walk touches + 1 tick;
+    # PAPER taker fills that went through the guard book at the walked VWAP (paper = live entry impact; paper exits unchanged — known gap;
+    # ⚠ PAPER ERA BREAK: paper entry % from this deploy include spread + walk + drift → split batch comparisons at the deploy).
+    # Stamps entry_depth_walk_pct / entry_depth_mode. "sweep" = the 551 / 565 band rule exactly. Code default "sweep"; the JSON arms "impact".
+    # Revert gate (alert-only, scripts/scout_depth_impact_584.py): first 20 live impact fills — mean realised − modelled walk > +0.05 % or mean
+    # realised entry slippage > max_avg_impact + 0.05 → flag "revert to sweep".
+    entry_depth_guard_mode: str = "sweep"
+    entry_depth_guard_max_avg_impact_pct: float = 0.15   # (584 deep review I5) = max_sweep_pct: the average of every level within 0.15 % is
+    #   ≤ 0.15 %, so impact ⊇ sweep (never smaller on a measured book); a hard MARGINAL bound of 3 × this keeps any one level ≤ 0.45 % away.
+
+    @field_validator("entry_depth_guard_mode", mode="before")
+    @classmethod
+    def _dg_mode_ok(cls, v):   # 📖📐 (584) an unknown mode is the safe band rule, never a crash at load
+        m = str(v or "sweep").strip().lower()
+        return m if m in ("sweep", "impact") else "sweep"
+
+    @field_validator("entry_depth_guard_max_avg_impact_pct", mode="before")
+    @classmethod
+    def _dg_impact_ok(cls, v):   # 📖📐 (584) 0 < x ≤ 1 (%), else the default 0.15
+        try:
+            x = float(v)
+        except (TypeError, ValueError):
+            return 0.15
+        return x if (x == x and 0 < x <= 1) else 0.15
     max_open_positions_hard: int = 10  # absolute ceiling when redeploying
     # 🖐 Sep-29 MANUAL sleeve: its own slot lane — manual positions never consume a bot slot and are capped here (balance still binds)
     manual_max_open_positions: int = 8

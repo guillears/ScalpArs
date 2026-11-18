@@ -280,6 +280,17 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_cap_fill_frac FLOAT"))
                 if 'entry_cap_immediate_frac' not in columns:   # 📖🧢 (DECISION_LOG 553) capped entry
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_cap_immediate_frac FLOAT"))
+                if 'entry_depth_walk_pct' not in columns:   # 📖📐 (DECISION_LOG 584) impact-capped depth sizing
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_depth_walk_pct FLOAT"))
+                if 'entry_depth_mode' not in columns:   # 📖📐 (DECISION_LOG 584) impact-capped depth sizing
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_depth_mode VARCHAR(8)"))
+                for _c584, _t584 in (('entry_cap_planned_usd', 'FLOAT'), ('entry_cap_entry_side_usd', 'FLOAT'), ('entry_cap_exit_side_usd', 'FLOAT'),
+                                     ('entry_cap_binding_side', 'VARCHAR(5)'), ('entry_cap_final_usd', 'FLOAT'), ('entry_cap_frac', 'FLOAT'),
+                                     ('entry_book_usd_02', 'FLOAT'), ('entry_book_usd_05', 'FLOAT'), ('entry_book_usd_1', 'FLOAT'),
+                                     ('entry_book_exit_usd_02', 'FLOAT'), ('entry_book_exit_usd_05', 'FLOAT'), ('entry_book_exit_usd_1', 'FLOAT'),
+                                     ('entry_book_bands_levels', 'INTEGER')):
+                    if _c584 not in columns:   # 📖📊 (DECISION_LOG 584) capacity stamps
+                        connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_c584} {_t584}"))
                 if 'shadow_rtp_price' not in columns:   # 📏 (DECISION_LOG 295) execution-quality shadow
                     connection.execute(text("ALTER TABLE orders ADD COLUMN shadow_rtp_price FLOAT"))
                 if 'shadow_rtp_filled' not in columns:   # 📏 (DECISION_LOG 295) execution-quality shadow
@@ -892,6 +903,15 @@ async def init_db():
                 for _exs_c in ('oi_usd', 'oi_vol', 'model_slip_pct', 'shadow_notional_usd'):
                     if _exs_c not in _exs_cols:
                         connection.execute(text(f"ALTER TABLE exhaustion_signals ADD COLUMN {_exs_c} FLOAT"))
+            _cap584 = (('cap_action', 'VARCHAR(8)'), ('cap_mode', 'VARCHAR(8)'), ('cap_planned_usd', 'FLOAT'), ('cap_entry_side_usd', 'FLOAT'),
+                       ('cap_exit_side_usd', 'FLOAT'), ('cap_binding_side', 'VARCHAR(5)'), ('cap_final_usd', 'FLOAT'), ('cap_frac', 'FLOAT'),
+                       ('cap_walk_pct', 'FLOAT'))
+            for _t584 in ('exhaustion_signals', 'flatbase_episodes'):   # 📖📊 (DECISION_LOG 584) the depth guard's capacity read on both journals
+                if _t584 in inspector.get_table_names():
+                    _c584s = [c['name'] for c in inspector.get_columns(_t584)]
+                    for _c584, _ty584 in _cap584:
+                        if _c584 not in _c584s:
+                            connection.execute(text(f"ALTER TABLE {_t584} ADD COLUMN {_c584} {_ty584}"))
             if 'flatbase_episodes' in inspector.get_table_names():   # 🩳⏱ (DECISION_LOG 401) the ledger's hours since the peak
                 _fbe_cols = [c['name'] for c in inspector.get_columns('flatbase_episodes')]
                 if 'peak_age_h' not in _fbe_cols:

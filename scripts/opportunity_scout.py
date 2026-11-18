@@ -1584,6 +1584,14 @@ def run():
     except Exception as _db583_e:
         log(f"DL 583 depth band gate failed: {_db583_e}")
         _rg_sec += ["## 📖 DL 583 depth band", "", f"Unavailable this run ({str(_db583_e)[:120]}).", ""]
+    try:                                               # 📖📐 Nov-18 DL 584 impact-capped depth sizing revert gate (mode sweep → impact; forward, live fills)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_depth_impact_584 as _di584
+        _rg_sec += [_di584.report(now_ms=now_ms), ""]
+    except Exception as _di584_e:
+        log(f"DL 584 depth impact gate failed: {_di584_e}")
+        _rg_sec += ["## 📖📐 DL 584 depth impact", "", f"Unavailable this run ({str(_di584_e)[:120]}).", ""]
     try:                                               # 👁 Oct-30 FADE_NOSTRETCH — SPIKE_FADE with no overshoot to revert, frozen expectancy bar (DECISION_LOG 413; forward)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

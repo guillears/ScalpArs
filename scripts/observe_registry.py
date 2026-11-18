@@ -124,6 +124,8 @@ BOOKED = {   # booked P&L — `era` = drops fills by WILLY exit era (registered 
                                   "exhaustion_sl_cap_pct": 6.0, "exhaustion_max_hold_hours": 24.0},
     # 📖 (583) the depth-guard band gate reads booked $ and slippage of shrunk band fills (exit-agnostic: same trade, smaller size)
     "scout_depth_band_583.py": None,
+    # 📖📐 (584) the impact-mode gate reads the ENTRY cost only (realised entry slippage vs the stamped modelled walk) — exit-agnostic
+    "scout_depth_impact_584.py": None,
     "scout_b1h_negflank.py": None, "scout_fade_watch.py": None,
     # review M5: booked WR judged against TODAY's breakeven over FRENZY fills spanning exit eras (LONG −3 → −4, LITE pre-C)
     "scout_frenzy_entry_lines.py": {**_FZ_STOP3}, "scout_frenzy_wl_lines.py": {**_FZ_STOP3, **_NO_LITE_C}, "scout_lite_ob_thin.py": None, "scout_lite_off30.py": None,

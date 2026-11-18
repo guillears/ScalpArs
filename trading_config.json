@@ -66,6 +66,8 @@
     "entry_depth_cap_wait_s": 15.0,
     "entry_depth_guard_all_enabled": true,
     "entry_depth_guard_exit_side_enabled": true,
+    "entry_depth_guard_mode": "impact",
+    "entry_depth_guard_max_avg_impact_pct": 0.15,
     "bracket_keep_position_sleeves": "FRENZY_LITE,FRENZY_LITE_RETRY,FRENZY_WILLY,FRENZY_WILLY_HT,FLATBASE_SHORT",
     "max_open_positions_hard": 10,
     "manual_max_open_positions": 8,

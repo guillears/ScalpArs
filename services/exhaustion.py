@@ -551,37 +551,51 @@ def exit_era_579(tp_stamp, atr_stamp=None) -> bool:
 TAKER_EXIT_FREE = (TP_REASON,)              # a resting maker TP pays no slippage (the study's TP: maker strictly through by 1 tick)
 
 
-def gate_net_pct(pnl_pct, close_reason, slip_pct) -> Optional[float]:
-    """a paper fill re-priced with the modelled slippage: pnl % − slip (entry) − slip (exit, unless the maker TP booked it)."""
+def entry_leg_slip(model_slip, depth_mode=None, walk_pct=None) -> Optional[float]:
+    """📖📐 (DECISION_LOG 584, deep review I2) the ENTRY leg of the re-pricing: an impact-mode paper fill already booked its modelled book walk
+    (walk_pct) in its entry price → only max(0, model_slip − walk) is still owed; any other row (pre-584, sweep) → the full model_slip."""
+    s, w = _fin(model_slip), _fin(walk_pct)
+    if s is None:
+        return None
+    if str(depth_mode or '').strip().lower() == 'impact' and w is not None:
+        return max(0.0, s - w)
+    return s
+
+
+def gate_net_pct(pnl_pct, close_reason, slip_pct, entry_slip=None) -> Optional[float]:
+    """a paper fill re-priced with the modelled slippage: pnl % − slip (entry) − slip (exit, unless the maker TP booked it). entry_slip
+    (584): the entry leg when it differs (entry_leg_slip); None → slip_pct."""
     p, s = _fin(pnl_pct), _fin(slip_pct)
     if p is None:
         return None
     s = s or 0.0
+    e = _fin(entry_slip)
+    e = s if e is None else e
     taker_exit = str(close_reason or '').upper().split(' ')[0] not in TAKER_EXIT_FREE
-    return p - s - (s if taker_exit else 0.0)
+    return p - e - (s if taker_exit else 0.0)
 
 
 def exhaustion_gate(fills) -> Tuple[str, str]:
     """🔒 (DECISION_LOG 578) the EXHAUSTION_SHORT revert gate on CLOSED bot fills (operator-closed excluded by the caller): fills = iterable of
-    (opened_at, pnl_percentage, close_reason, model_slip_pct). FROZEN: the first 20 fills by OPEN time, each re-priced with the modelled
+    (opened_at, pnl_percentage, close_reason, model_slip_pct[, entry_leg_slip — DL 584: impact-mode fills owe only slip − walk at entry]). FROZEN: the first 20 fills by OPEN time, each re-priced with the modelled
     slippage (gate_net_pct) → avg ≤ 0 → OFF · mean modelled slippage > 0.25 % → OFF · else KEEP (paper; a live step is a new decision).
     COLLECTING before 20. Alert-only (the operator switches). Never raises."""
     try:
-        f = sorted([(a, float(p), str(r or ''), _fin(s)) for a, p, r, s in (fills or []) if a is not None and _fin(p) is not None],
-                   key=lambda x: x[0])
+        f = sorted([(t[0], float(t[1]), str(t[2] or ''), _fin(t[3]), (_fin(t[4]) if len(t) > 4 else None)) for t in (fills or [])
+                    if t[0] is not None and _fin(t[1]) is not None], key=lambda x: x[0])
         n = len(f)
         tail = " (alert-only · operator switches · DECISION_LOG 578)"
         rule = f"gate: first {GATE_N} fills re-priced with the modelled slippage avg ≤ 0 → OFF · mean modelled slippage > {GATE_SLIP_MAX:g} % → OFF"
-        nets = [gate_net_pct(p, r, s) for _, p, r, s in f]
-        sl = [s for *_, s in f if s is not None]
+        nets = [gate_net_pct(p, r, s, e) for _, p, r, s, e in f]
+        sl = [s for _, _, _, s, _ in f if s is not None]
         if n < GATE_N:
             run = (f" · so far avg {sum(nets) / n:+.3f}% re-priced · mean slip {(sum(sl) / len(sl)) if sl else 0:.3f}%" if n else "")
             return "COLLECTING", f"⏳ {n}/{GATE_N} closed{run} — {rule}{tail}"
         first = nets[:GATE_N]
-        fs = [s for *_, s in f[:GATE_N] if s is not None]
+        fs = [s for _, _, _, s, _ in f[:GATE_N] if s is not None]
         avg = sum(first) / GATE_N
         ms = (sum(fs) / len(fs)) if fs else 0.0
-        head = f"📋 first {GATE_N}: avg {avg:+.3f}% re-priced (raw {sum(p for _, p, _, _ in f[:GATE_N]) / GATE_N:+.3f}%) · mean modelled slip {ms:.3f}%"
+        head = f"📋 first {GATE_N}: avg {avg:+.3f}% re-priced (raw {sum(t[1] for t in f[:GATE_N]) / GATE_N:+.3f}%) · mean modelled slip {ms:.3f}%"
         if avg <= 0:
             return "OFF", head + " → avg ≤ 0: switch EXHAUSTION_SHORT off" + tail
         if ms > GATE_SLIP_MAX:

@@ -24,13 +24,14 @@ _D in sys.path or sys.path.insert(0, _D)
 _R = os.path.dirname(_D)
 _R in sys.path or sys.path.insert(0, _R)
 import export_glob as _EG                                    # noqa: E402  🗄 (DECISION_LOG 409) Downloads + exports_archive/
-from services.exhaustion import EXHAUSTION_SHORT, exhaustion_gate, model_slip_pct, gate_net_pct, GATE_N, exit_era_579   # noqa: E402
+from services.exhaustion import EXHAUSTION_SHORT, exhaustion_gate, model_slip_pct, gate_net_pct, entry_leg_slip, GATE_N, exit_era_579   # noqa: E402
 
 DL = 578
 ORDER_PATTERN = os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")
 DEC_PATTERNS = (os.path.expanduser("~/Downloads/scalpars_decisions_*.csv"), os.path.join(_R, "reports", "BASELINE*_decisions.csv"))
 ORDER_COLS = ("opened_at", "closed_at", "pair", "direction", "status", "entry_strategy", "pnl", "pnl_percentage", "close_reason",
-              "notional_value", "entry_exh_model_slip_pct", "entry_exh_q5_usd", "entry_exh_tp_pct", "entry_exh_sl_pct", "entry_slippage_pct", "entry_exh_atr_pct")
+              "notional_value", "entry_exh_model_slip_pct", "entry_exh_q5_usd", "entry_exh_tp_pct", "entry_exh_sl_pct", "entry_slippage_pct", "entry_exh_atr_pct",
+              "entry_depth_mode", "entry_depth_walk_pct")   # 📖📐 (584) an impact-mode paper fill already paid its modelled walk at entry
 DEC_COLS = ("e", "pair", "exh_signal_at", "exh_status", "exh_block", "exh_reason",
             # 🧯 (DECISION_LOG 582) what scripts/scout_exh_ssc_oivol.py prices an EXH_SSC_OIVOL block with
             "exh_decision_price", "exh_atr_pct", "exh_tp_pct", "exh_sl_pct", "exh_q5_usd", "exh_vol24_usd", "exh_spot_share_chg",
@@ -99,12 +100,13 @@ def report(fills: pd.DataFrame, journal: pd.DataFrame) -> str:
             tag = "shipped-exit era" if pd.notna(pd.to_numeric(r.entry_exh_tp_pct, errors="coerce")) else "unstamped"
             out.append(f"  ({tag}, not counted) {str(r.o)[:16]} {r.pair} {float(r.pnl_percentage):+.2f}% {r.close_reason}")
         fills = fills[era]
-    rows = [(r.o, float(r.pnl_percentage), r.close_reason, r.slip) for r in fills.itertuples()]
+    rows = [(r.o, float(r.pnl_percentage), r.close_reason, r.slip, entry_leg_slip(r.slip, r.entry_depth_mode, r.entry_depth_walk_pct))
+            for r in fills.itertuples()]   # 📖📐 (584, deep review I2) entry leg = slip − walk on impact-mode fills (no double count)
     v, txt = exhaustion_gate(rows)
     out.append(f"  verdict: {v} — {txt}")
     if rows:
-        nets = [gate_net_pct(p, r, s) for _, p, r, s in rows]
-        out.append(f"  fills {len(rows)} · raw avg {sum(p for _, p, _, _ in rows) / len(rows):+.3f}% · re-priced avg {sum(nets) / len(nets):+.3f}% · "
+        nets = [gate_net_pct(p, r, s, e) for _, p, r, s, e in rows]
+        out.append(f"  fills {len(rows)} · raw avg {sum(t[1] for t in rows) / len(rows):+.3f}% · re-priced avg {sum(nets) / len(nets):+.3f}% · "
                    f"WR {100.0 * sum(1 for x in nets if x > 0) / len(nets):.0f}% (re-priced) · first {GATE_N} frozen")
         for r, n in zip(fills.itertuples(), nets):
             out.append(f"    {str(r.o)[:16]} {r.pair:<14} {float(r.pnl_percentage):+6.2f}% → {n:+6.2f}% (slip {r.slip if r.slip is not None else float('nan'):.3f}) "

@@ -30,7 +30,8 @@ def _th(**kw):
              exhaustion_spot_share_chg_max=-0.0066, exhaustion_tp_atr_mult=3.0, exhaustion_tp_cap_pct=5.0, exhaustion_sl_atr_mult=1.5,
              exhaustion_sl_cap_pct=5.0, exhaustion_max_hold_hours=24.0, exhaustion_max_hours_after_spike=72.0, exhaustion_min_vol_usd=20e6,
              exhaustion_invest_mult=0.5, exhaustion_lev_mult=0.25, resting_tp_exhaustion_enabled=True, broker_backstop_pct=2.5,
-             exhaustion_ssc_oivol_block_enabled=False, exhaustion_ssc_oivol_ssc_min=-0.0366, exhaustion_ssc_oivol_oivol_min=0.128)   # 🧯 (582) off here: tests/test_exh_ssc_oivol.py drives it
+             exhaustion_ssc_oivol_block_enabled=False, exhaustion_ssc_oivol_ssc_min=-0.0366, exhaustion_ssc_oivol_oivol_min=0.128,
+             exhaustion_wide_enabled=False, distribution_short_enabled=False)   # 🌐 (585) / 📉 (586) off here: their own test files drive them   # 🧯 (582) off here: tests/test_exh_ssc_oivol.py drives it
     d.update(kw)
     return NS(**d)
 
@@ -473,7 +474,7 @@ def test_config_defaults_json_ui_and_exports():
     assert html.count("..._buildConfigLines(cfg, changelog, hr, hr2, status)") == 2 and "🪫 EXHAUSTION_SHORT (DECISION_LOG 578" in html
     assert "⛔ Momentum entries (DECISION_LOG 578)" in html and "+ exhaustionMonitorStr(m)" in html
     assert html.count("...frenzyReportLines(perf, hr2)") == 2
-    assert html.count("FRENZY_WILLY_HT · FLATBASE_SHORT · EXHAUSTION_SHORT)") == 2
+    assert html.count("FRENZY_WILLY_HT · FLATBASE_SHORT · EXHAUSTION_SHORT · DISTRIBUTION_SHORT)") == 2   # 📉 (586) appended
     main = open(os.path.join(ROOT, "main.py"), encoding="utf-8").read()
     assert '("EXHAUSTION_SHORT", "🪫 EXHAUSTION_SHORT (' in main and 'if _fz_es == "EXHAUSTION_SHORT":' in main
     assert "_exh_cfg_errors(new_config.thresholds, _sb_lev)" in main and "'EXHAUSTION_SHORT': ('exhaustion_short_enabled',)" in main
@@ -695,7 +696,7 @@ def test_weight_stop_waits_once_then_fails_closed(monkeypatch):
 def test_extra_reads_on_15m_passes_only_and_cap_is_journaled():
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
     p = eng.index("    async def _update_frenzy_pass(self, db):"); body = eng[p:eng.index("\n    def _frenzy_wide_off_note(", p)]
-    assert "if _exh and bar_open % 900_000 == 0:" in body and "_exh_follow_rot" not in eng                 # no rotation on 5m passes
+    assert "if _exh_trk and bar_open % 900_000 == 0:" in body and "_exh_follow_rot" not in eng                 # no rotation on 5m passes
     assert "await self._exh_read_cap_note(_xp, bar_open)" in body and '"EXH_READ_CAP"' in eng
 
 

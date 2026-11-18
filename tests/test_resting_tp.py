@@ -141,6 +141,7 @@ def _setup(monkeypatch, paper=False, rows=(), place=None, fetch=None, cancel="ca
                resting_tp_lite_retry_enabled=False,   # 🔁 (316) its own switch: tests/test_frenzy_lite_retry.py
                resting_tp_flatbase_enabled=False,   # 🩳 (348) its own switch: tests/test_flatbase_short.py
                resting_tp_exhaustion_enabled=False,   # 🪫 (DECISION_LOG 578) its own switch: tests/test_exhaustion_short.py
+               resting_tp_distribution_enabled=False,   # 📉 (DECISION_LOG 586) its own switch: tests/test_distribution_short.py
                resting_tp_flip_fan_enabled=False)   # 🎯 (563) its own switch: tests/test_flip_fan_fixed_tp.py
     _kw.update(th_kw or {})
     for k, v in _kw.items():

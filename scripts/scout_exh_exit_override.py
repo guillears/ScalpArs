@@ -306,7 +306,9 @@ def replica_check(pairs):
 
 
 def report(fills, now_ms=None, state_path=STATE):
-    out = [f"🎯 EXHAUSTION_SHORT exit-override revert gate (DECISION_LOG {DL}, paper, declared override)"]
+    out = [f"🎯 EXHAUSTION_SHORT exit-override revert gate (DECISION_LOG {DL}, paper, declared override) · 🌐 FRENZY universe only (WIDE: DL 585 gate)"]
+    import scout_exhaustion_short as _SC
+    fills = _SC.frenzy_universe(fills, "entry_exh_universe")   # 🌐 (585 review I2) WIDE fills out
     _weight_hit[0] = False
     cache = _load_cache()
     rows, lines, nodata, reps = [], [], [], []

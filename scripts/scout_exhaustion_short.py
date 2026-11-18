@@ -31,11 +31,20 @@ ORDER_PATTERN = os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")
 DEC_PATTERNS = (os.path.expanduser("~/Downloads/scalpars_decisions_*.csv"), os.path.join(_R, "reports", "BASELINE*_decisions.csv"))
 ORDER_COLS = ("opened_at", "closed_at", "pair", "direction", "status", "entry_strategy", "pnl", "pnl_percentage", "close_reason",
               "notional_value", "entry_exh_model_slip_pct", "entry_exh_q5_usd", "entry_exh_tp_pct", "entry_exh_sl_pct", "entry_slippage_pct", "entry_exh_atr_pct",
-              "entry_depth_mode", "entry_depth_walk_pct")   # 📖📐 (584) an impact-mode paper fill already paid its modelled walk at entry
+              "entry_depth_mode", "entry_depth_walk_pct",   # 📖📐 (584) an impact-mode paper fill already paid its modelled walk at entry
+              "entry_exh_universe")   # 🌐 (585) WIDE fills are OUT of the pre-585 gates (frenzy_universe)
 DEC_COLS = ("e", "pair", "exh_signal_at", "exh_status", "exh_block", "exh_reason",
             # 🧯 (DECISION_LOG 582) what scripts/scout_exh_ssc_oivol.py prices an EXH_SSC_OIVOL block with
             "exh_decision_price", "exh_atr_pct", "exh_tp_pct", "exh_sl_pct", "exh_q5_usd", "exh_vol24_usd", "exh_spot_share_chg",
-            "exh_oi_usd", "exh_oi_vol", "exh_model_slip_pct", "exh_shadow_notional_usd")
+            "exh_oi_usd", "exh_oi_vol", "exh_model_slip_pct", "exh_shadow_notional_usd", "exh_universe")   # 🌐 (585)
+
+
+def frenzy_universe(df, col):
+    """🌐 (DECISION_LOG 585 review I2) the pre-585 EXHAUSTION gates (578 / 579 / 582 + the dashboard row) count FRENZY-universe rows only
+    (universe FRENZY or NULL = pre-585); WIDE rows have their own gate (scripts/scout_exh_wide_585.py). A frame without the column passes. Pure."""
+    if df is None or not len(df) or col not in df.columns:
+        return df
+    return df[df[col].fillna("FRENZY").astype(str).str.upper() != "WIDE"]
 
 
 def _operator_closed(r) -> bool:
@@ -61,6 +70,7 @@ def load_fills(paths=None, extra=()) -> pd.DataFrame:
         if c not in a:
             a[c] = None
     a = a[a.entry_strategy.astype(str) == EXHAUSTION_SHORT]
+    a = frenzy_universe(a, "entry_exh_universe")   # 🌐 (585) WIDE fills out
     a = a.assign(_c=(a.status.astype(str) == "CLOSED").astype(int), _i=range(len(a))).sort_values(["_c", "_i"])
     a = a.drop_duplicates(["opened_at", "pair", "direction"], keep="last")
     a = a[(a.status.astype(str) == "CLOSED") & a.pnl_percentage.notna() & ~a.close_reason.map(_operator_closed).astype(bool)]
@@ -88,12 +98,14 @@ def load_journal(paths=None) -> pd.DataFrame:
             fr.append(x[x.e.astype(str) == "EXHAUSTION"])
     if not fr:
         return pd.DataFrame(columns=list(DEC_COLS))
-    return pd.concat(fr, ignore_index=True).drop_duplicates(["pair", "exh_signal_at"], keep="last")
+    return frenzy_universe(pd.concat(fr, ignore_index=True).drop_duplicates(["pair", "exh_signal_at"], keep="last"), "exh_universe")   # 🌐 (585)
 
 
 def report(fills: pd.DataFrame, journal: pd.DataFrame) -> str:
     out = [f"🪫 EXHAUSTION_SHORT revert gate (DECISION_LOG {DL}, paper, declared override) — 🔁 re-based 2026-11-18 on the DL 579 exit "
-           "(TP ≈ 10 % / SL ≤ 6 %): the count starts at the first fill of that exit"]
+           "(TP ≈ 10 % / SL ≤ 6 %): the count starts at the first fill of that exit · 🌐 FRENZY universe only (WIDE: DL 585 gate)"]
+    fills = frenzy_universe(fills, "entry_exh_universe")   # 🌐 (585 review I2)
+    journal = frenzy_universe(journal, "exh_universe")
     if len(fills):
         era = fills.apply(lambda r: exit_era_579(r.entry_exh_tp_pct, r.entry_exh_atr_pct), axis=1).astype(bool)
         for r in fills[~era].itertuples():

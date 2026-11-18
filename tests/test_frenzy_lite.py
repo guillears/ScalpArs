@@ -510,7 +510,7 @@ def test_ui_inputs_load_save_and_reports():
     assert "LITE ${_bt.frenzy_lite_enabled === true ? 'ON' : 'OFF'}" in html and "no ATR cap · no auto-off) · WILLY ${_bt.frenzy_willy_enabled === true" in html
     assert html.count("lines.push(..._buildConfigLines(cfg, changelog, hr, hr2, status));") == 2
     assert "LITE ${m.lite_enabled ? 'ON' : 'OFF'}" in html and html.count("lines.push(...frenzyReportLines(perf, hr2));") == 2
-    assert html.count("FRENZY Fills (FRENZY_LONG · FRENZY_LITE · FRENZY_LITE_RETRY · FRENZY_WILLY · FRENZY_WILLY_HT · FLATBASE_SHORT · EXHAUSTION_SHORT)") == 2            # UI header + the shared export block
+    assert html.count("FRENZY Fills (FRENZY_LONG · FRENZY_LITE · FRENZY_LITE_RETRY · FRENZY_WILLY · FRENZY_WILLY_HT · FLATBASE_SHORT · EXHAUSTION_SHORT · DISTRIBUTION_SHORT)") == 2            # UI header + the shared export block
     assert '<option value="FRENZY_LITE">' in html and "strat === 'FRENZY_LITE' || strat === 'FRENZY_WILLY') return tags" in html
     assert "['FRENZY_LONG', 'FRENZY_WIDE', 'FRENZY_LITE'].includes(o.entry_strategy" in html     # FRENZY exit badge
     assert "(?:WIDE |LITE |WILLY [AB] )?opened/" in html and "f.ready || f.lite_ready" in html
@@ -520,7 +520,7 @@ def test_engine_and_api_wiring():
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
     assert 'FRENZY_STRATEGIES = ("FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE", "FRENZY_WILLY")' in eng            # FRENZY exit / hold cap / urgent close
     assert "if _lite and not ep.get('in_state'):" in eng and "await self._frenzy_lite_eval(db, pair, ep, flag, ind, closed, bar_open, norm_hour=_nc[1])" in eng
-    assert "if not (_on or _obs or _wide or _lite or _willy or _fbs or _exh):" in eng and "if _on or _wide or _lite or _willy:" in eng
+    assert "if not (_on or _obs or _wide or _lite or _willy or _fbs or _exh_trk):" in eng and "if _on or _wide or _lite or _willy:" in eng
     assert '"FRENZY_LITE" if (_frenzy and frenzy_lite)' in eng                        # tag → frenzy_lite_* size fields
     i = eng.index("async def _frenzy_lite_eval("); body = eng[i:eng.index("@staticmethod", i)]
     assert "atr" not in re.sub(r'""".*?"""', "", body, flags=re.S).replace("ATR", "")          # no ATR filter in the LITE path

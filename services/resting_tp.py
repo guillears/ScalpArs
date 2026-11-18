@@ -29,7 +29,8 @@ RTP_SLEEVES = {"FRENZY_WILLY": "resting_tp_willy_enabled", "FRENZY_LITE": "resti
                "FRENZY_LITE_RETRY": "resting_tp_lite_retry_enabled",   # 🔁 316: LITE's resting TP, own switch (attribution)
                "FRENZY_WILLY_HT": "resting_tp_willy_enabled",   # 🎲¼ 341: the quarter-size WILLY runs WILLY's exit — WILLY's switch
                "FLATBASE_SHORT": "resting_tp_flatbase_enabled",   # 🩳 348: the −8 % PRICE take profit (net target derived per row, rtp_row_target)
-               "EXHAUSTION_SHORT": "resting_tp_exhaustion_enabled",   # 🪫 578: the row's min(3 × ATR, 5 %) PRICE take profit (net derived per row)
+               "EXHAUSTION_SHORT": "resting_tp_exhaustion_enabled",
+               "DISTRIBUTION_SHORT": "resting_tp_distribution_enabled",   # 📉 586: the row's min(20 × ATR, 10 %) PRICE take profit (net derived per row)   # 🪫 578: the row's min(3 × ATR, 5 %) PRICE take profit (net derived per row)
                "FLIP:FAN_RATIO_GATE": "resting_tp_flip_fan_enabled"}   # 🎯 563: the FAN flip's fixed net TP (row-derived: Order.flip_fan_tp_pct)
 FLIP_FAN_ES, FLIP_FAN_TP_REASON = "FLIP:FAN_RATIO_GATE", "FLIP_FAN_TP"   # 🎯 (563) the close reason (already FLIP_-prefixed for the close funnel)
 RTP_MANUAL_KEY, RTP_OVERRIDE_KEY = "resting_tp_manual_enabled", "resting_tp_override_enabled"   # 🎯 (310) the operator's own fixed TPs
@@ -101,6 +102,8 @@ def rtp_row_target(th, row, held_minutes=None) -> Optional[Tuple[float, str]]:
             return flip_fan_row_target(th, row)   # 🎯 (563) only a row stamped with its fixed TP at the open; NULL → the trail (no limit)
         if why is None and str(getattr(row, 'entry_strategy', None) or "") == "FLATBASE_SHORT":
             return _flatbase_row_target(th, row)   # 🩳 (348) the PRICE TP → the row's own net target (its entry fee)
+        if why is None and str(getattr(row, 'entry_strategy', None) or "") == "DISTRIBUTION_SHORT":
+            return _distribution_row_target(th, row)   # 📉 (586) the row's own PRICE TP (entry_dist_tp_pct) → its net target
         if why is None and str(getattr(row, 'entry_strategy', None) or "") == "EXHAUSTION_SHORT":
             return _exhaustion_row_target(th, row)   # 🪫 (578) the row's own PRICE TP (entry_exh_tp_pct) → its net target
         if why is None and str(getattr(row, 'entry_strategy', None) or "") in ("FRENZY_WILLY", "FRENZY_WILLY_HT"):
@@ -172,6 +175,24 @@ def _exhaustion_row_target(th, row) -> Optional[Tuple[float, str]]:
         return None
 
 
+def _distribution_row_target(th, row) -> Optional[Tuple[float, str]]:
+    """📉 (DECISION_LOG 586) DISTRIBUTION_SHORT's take profit = a PRICE level from the row (fill × (1 − entry_dist_tp_pct %)) → the net % whose
+    maker limit lands there (services.exhaustion.rtp_net_tp — the same short formula). None = switch off / bad row."""
+    try:
+        if not rtp_enabled(th, "DISTRIBUTION_SHORT"):
+            return None
+        e, q, f = _f(getattr(row, 'entry_price', None)), _f(getattr(row, 'quantity', None)), _f(getattr(row, 'entry_fee', None))
+        if not (e and e > 0 and q and q > 0) or f is None:
+            return None
+        import config as _cfg
+        from services.exhaustion import rtp_net_tp
+        from services.distribution import row_levels
+        net = rtp_net_tp(e, f / (e * q) * 100.0, float(getattr(_cfg.trading_config, 'maker_fee', 0.00018)), row_levels(row, th)[0])
+        return (net, "FRENZY_TP") if net and net > 0 else None
+    except Exception:
+        return None
+
+
 def rtp_row_reason(th, row, limit_px, maker_fee_rate, entry_fee_pct=None) -> str:
     """Which take profit a RECORDED limit on this row books: the operator's (MANUAL_TP / OVERRIDE_TP) or the sleeve's (rtp_reason_for_limit)."""
     why = rtp_fixed_reason(row)
@@ -198,6 +219,9 @@ def rtp_target(th, entry_strategy, held_minutes=None, lite_tp=None, willy_tp=Non
         elif es == "FLATBASE_SHORT":   # 🩳 (348) the nominal PRICE TP — the row-derived net (rtp_row_target) is what the engine places
             from services.flatbase import flatbase_params
             tp, why = flatbase_params(th)['tp'], "FRENZY_TP"
+        elif es == "DISTRIBUTION_SHORT":   # 📉 (586) the nominal = the TP cap — the row-derived net is placed
+            from services.distribution import distribution_params
+            tp, why = distribution_params(th)['tp_cap'], "FRENZY_TP"
         elif es == "EXHAUSTION_SHORT":   # 🪫 (578) the nominal = the TP cap — the row-derived net (rtp_row_target, the row's own level) is placed
             from services.exhaustion import exhaustion_params
             tp, why = exhaustion_params(th)['tp_cap'], "FRENZY_TP"

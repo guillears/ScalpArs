@@ -181,6 +181,8 @@ def cohort(journal, floor_ms):
     for r in journal.to_dict("records"):
         if str(r.get("exh_block") or "") != BLOCK:
             continue
+        if str(r.get("exh_universe") or "FRENZY").upper() == "WIDE":   # 🌐 (585 review I2) WIDE signals out (their own DL 585 gate)
+            continue
         t = _ms(r.get("exh_signal_at"))
         if t is None or t < floor_ms:
             continue

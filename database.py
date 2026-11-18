@@ -334,6 +334,14 @@ async def init_db():
                                 'entry_exh_q5_usd', 'entry_exh_oi_usd', 'entry_exh_oi_vol'):   # 🪫 (DECISION_LOG 578) EXHAUSTION_SHORT stamps (its exit reads tp / sl) · 🧯 (582) OI
                     if _ex_col not in columns:
                         connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_ex_col} FLOAT"))
+                if 'entry_exh_universe' not in columns:   # 🌐 (DECISION_LOG 585) the episode universe (FRENZY · WIDE)
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_exh_universe VARCHAR(8)"))
+                for _ds_col in ('entry_dist_bar_ret_pct', 'entry_dist_vsw_mult', 'entry_dist_pos_ratio', 'entry_dist_pos_chg_4h', 'entry_dist_atr_pct',
+                                'entry_dist_tp_pct', 'entry_dist_sl_pct', 'entry_dist_decision_price', 'entry_dist_q5_usd',
+                                'entry_dist_model_slip_pct', 'entry_dist_rsi1h', 'entry_dist_di_diff1h',
+                                'entry_dist_gap15', 'entry_dist_pos_lag_min', 'entry_dist_pos_span_min'):   # 📉 (DECISION_LOG 586) DISTRIBUTION_SHORT stamps (its exit reads tp / sl; rsi1h / di_diff1h / gap15 observe-only)
+                    if _ds_col not in columns:
+                        connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_ds_col} FLOAT"))
                 for _lr_col in ('entry_frenzy_retry_wait_min', 'entry_frenzy_retry_green_ret', 'entry_frenzy_stop_pct'):   # 🔁 (DECISION_LOG 316) FRENZY_LITE_RETRY stamps · 🛑 (317) stop at entry
                     if _lr_col not in columns:
                         connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_lr_col} FLOAT"))
@@ -906,6 +914,14 @@ async def init_db():
             _cap584 = (('cap_action', 'VARCHAR(8)'), ('cap_mode', 'VARCHAR(8)'), ('cap_planned_usd', 'FLOAT'), ('cap_entry_side_usd', 'FLOAT'),
                        ('cap_exit_side_usd', 'FLOAT'), ('cap_binding_side', 'VARCHAR(5)'), ('cap_final_usd', 'FLOAT'), ('cap_frac', 'FLOAT'),
                        ('cap_walk_pct', 'FLOAT'))
+            if 'distribution_signals' in inspector.get_table_names():   # 📉 (586 review M2) the position-ratio lags
+                _dsc = [c['name'] for c in inspector.get_columns('distribution_signals')]
+                for _dc_ in ('pos_lag_min', 'pos_span_min', 'rsi1h', 'di_diff1h', 'gap15'):
+                    if _dc_ not in _dsc:
+                        connection.execute(text(f"ALTER TABLE distribution_signals ADD COLUMN {_dc_} FLOAT"))
+            for _t585 in ('exhaustion_episodes', 'exhaustion_signals'):   # 🌐 (DECISION_LOG 585) the episode universe (NULL = FRENZY)
+                if _t585 in inspector.get_table_names() and 'universe' not in [c['name'] for c in inspector.get_columns(_t585)]:
+                    connection.execute(text(f"ALTER TABLE {_t585} ADD COLUMN universe VARCHAR(8)"))
             for _t584 in ('exhaustion_signals', 'flatbase_episodes'):   # 📖📊 (DECISION_LOG 584) the depth guard's capacity read on both journals
                 if _t584 in inspector.get_table_names():
                     _c584s = [c['name'] for c in inspector.get_columns(_t584)]

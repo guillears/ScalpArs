@@ -70,6 +70,7 @@ def sleeve(r):
     if (r.get('entry_strategy') or '').upper().startswith('SURGE_'): return None   # ⚡ Sep-30: own sleeve, never MOM/FLIP
     if (r.get('entry_strategy') or '').upper() == 'FRENZY_WILLY_HT': return None   # 🎲¼ (DECISION_LOG 341): quarter-size WILLY — own reduced-size line, never MOM/FLIP
     if (r.get('entry_strategy') or '').upper() == 'EXHAUSTION_SHORT': return None   # 🪫 (DECISION_LOG 578): its own SHORT sleeve — never MOM_SHORT / FLIP
+    if (r.get('entry_strategy') or '').upper() == 'DISTRIBUTION_SHORT': return None   # 📉 (DECISION_LOG 586): its own SHORT sleeve — never MOM_SHORT / FLIP
     if (r.get('entry_strategy') or '').upper() == 'FLATBASE_SHORT': return None   # 🩳 (DECISION_LOG 348): its own SHORT sleeve (FRENZY flat-base episode) — never MOM_SHORT / FLIP
     d = r['direction']
     # --- MOM-long: keep only unmatched longs (long_unmatched_only) ---

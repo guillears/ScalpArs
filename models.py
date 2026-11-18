@@ -401,6 +401,24 @@ class Order(Base):
     entry_exh_q5_usd = Column(Float, nullable=True)                # median 5m quote volume of the 12 bars ending at the signal bar (the slippage model's Q5)
     entry_exh_oi_usd = Column(Float, nullable=True)                # 🧯 (DECISION_LOG 582) open interest $ at the decision (openInterestHist sumOpenInterestValue, the row with T − 30 min ≤ timestamp ≤ T − 5 min)
     entry_exh_oi_vol = Column(Float, nullable=True)                # 🧯 (582) entry_exh_oi_usd ÷ the rule's 24 h quote volume — EXH_SSC_OIVOL blocks > 0.128 when spot_share_chg > −0.0366
+    entry_exh_universe = Column(String(8), nullable=True)          # 🌐 (DECISION_LOG 585) the episode's universe: FRENZY (the FRENZY flag, 20× / $20M) · WIDE (15× / $5M)
+    # 📉 (DECISION_LOG 586) DISTRIBUTION_SHORT entry stamps (services/distribution.py) — the episode rides entry_frenzy_spike_at / entry_frenzy_hours,
+    # the 24 h volume entry_pair_volume_24h_usd, the funding entry_funding_rate
+    entry_dist_bar_ret_pct = Column(Float, nullable=True)          # the red 15m signal candle's close vs open, % (< 0)
+    entry_dist_vsw_mult = Column(Float, nullable=True)             # its quote volume ÷ the mean of the 20 candles before it (≥ distribution_vsw_vol_mult)
+    entry_dist_pos_ratio = Column(Float, nullable=True)            # top-trader POSITION long/short ratio at the decision (row ≤ T − 5 min)
+    entry_dist_pos_chg_4h = Column(Float, nullable=True)           # … minus the ratio 4 h earlier (≤ distribution_pos_chg_4h_max)
+    entry_dist_atr_pct = Column(Float, nullable=True)              # Wilder ATR(14) on 15m at the signal candle, % of the decision price
+    entry_dist_tp_pct = Column(Float, nullable=True)               # the TP price distance this row runs = min(20 × ATR %, 10 %) — the exit reads it
+    entry_dist_sl_pct = Column(Float, nullable=True)               # the SL price distance this row runs = min(1.5 × ATR %, 6 %) — the exit reads it
+    entry_dist_decision_price = Column(Float, nullable=True)       # the signal 15m close
+    entry_dist_q5_usd = Column(Float, nullable=True)               # median 5m-equivalent quote volume (15m candle ÷ 3, last 4 candles) — the slip model's Q5
+    entry_dist_model_slip_pct = Column(Float, nullable=True)       # EXHAUSTION's fitted taker slippage at this notional (the revert gate prices with it)
+    entry_dist_rsi1h = Column(Float, nullable=True)                # OBSERVE-ONLY (DIST_WL line RSI1h ≥ 74.07): Wilder RSI(14) of the last CLOSED 1h bar at the signal
+    entry_dist_di_diff1h = Column(Float, nullable=True)            # OBSERVE-ONLY: +DI − −DI (Wilder 14) on the same 1h bars
+    entry_dist_pos_lag_min = Column(Float, nullable=True)          # (586 review M2) minutes from the position row km (create_time) to T (≥ 5, ≤ 30)
+    entry_dist_pos_span_min = Column(Float, nullable=True)         # (M2) minutes between rows km and k4 (≥ 240, ≤ 255)
+    entry_dist_gap15 = Column(Float, nullable=True)                # OBSERVE-ONLY: (EMA13 − EMA50) ÷ close × 100 on the 15m closes at the signal candle
     # 📖 Oct-3 (DECISION_LOG 192): the ORDER BOOK at a MANUAL click (services/orderbook_stats.orderbook_metrics) — OBSERVE-ONLY research stamps
     manual_ob_spread_pct = Column(Float, nullable=True)
     manual_ob_top_bid_usd = Column(Float, nullable=True)
@@ -1506,6 +1524,7 @@ class ExhaustionEpisode(Base):
     is_paper = Column(Boolean, nullable=False, default=True)
     first_seen_at = Column(DateTime, nullable=False)               # OPEN time of the first closed bar the engine saw the episode flagged on
     status = Column(String(12), nullable=False, default="TRACKING", index=True)
+    universe = Column(String(8), nullable=True)                    # 🌐 (DECISION_LOG 585) FRENZY (NULL = pre-585 = FRENZY) · WIDE (15× / $5M detector)
     ended_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, nullable=True)
 
@@ -1545,6 +1564,7 @@ class ExhaustionSignal(Base):
     oi_vol = Column(Float, nullable=True)                          # 🧯 (582) oi_usd ÷ vol24_usd (EXH_SSC_OIVOL's input)
     model_slip_pct = Column(Float, nullable=True)                  # 🧯 (582) EXH_SSC_OIVOL blocks: the modelled taker slip at shadow_notional_usd (the shadow scout prices with it)
     shadow_notional_usd = Column(Float, nullable=True)             # 🧯 (582) EXH_SSC_OIVOL blocks: the notional the sleeve's sizing gave at the decision (estimate)
+    universe = Column(String(8), nullable=True)                    # 🌐 (DECISION_LOG 585) the episode's universe (FRENZY · WIDE)
     # 📖📊 (DECISION_LOG 584) the depth guard's capacity read for this decision (NULL = the guard did not run: refused earlier / guard off)
     cap_action = Column(String(8), nullable=True)                  # FULL · SHRINK · SKIP
     cap_mode = Column(String(8), nullable=True)                    # sweep · impact
@@ -1552,6 +1572,53 @@ class ExhaustionSignal(Base):
     cap_entry_side_usd = Column(Float, nullable=True)
     cap_exit_side_usd = Column(Float, nullable=True)
     cap_binding_side = Column(String(5), nullable=True)            # ENTRY · EXIT · NONE
+    cap_final_usd = Column(Float, nullable=True)
+    cap_frac = Column(Float, nullable=True)
+    cap_walk_pct = Column(Float, nullable=True)
+    created_at = Column(DateTime, nullable=True)
+
+
+class DistributionSignal(Base):
+    """📉 2026-11-18 (DECISION_LOG 586) — the DISTRIBUTION_SHORT DECISION JOURNAL: one row per evaluated signal (a FRENZY-universe coin tracked
+    by EXHAUSTION whose closed 15m candle is a red volume candle — VSW15 — inside the episode's 72 h window), whatever happened: OPENED
+    (order_id) · BLOCKED (block = DIST_POS_CHG / DIST_VOL24_LOW / DIST_NO_DATA / DIST_POS_UNREAD / DIST_PAIR_HELD / DIST_NOT_VSW …) · REFUSED
+    (the open path refused: book full, depth, funding, lateness … — reason says which). Rides the decisions export as e=DISTRIBUTION rows."""
+    __tablename__ = "distribution_signals"
+    __table_args__ = (UniqueConstraint("pair", "signal_at", "is_paper", name="uq_distribution_signal"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    pair = Column(String(30), nullable=False, index=True)
+    signal_at = Column(DateTime, nullable=False, index=True)       # CLOSE time of the 15m signal candle (naive UTC) = the decision moment
+    is_paper = Column(Boolean, nullable=False, default=True)
+    spike_at = Column(DateTime, nullable=True)                     # the episode (spike bar close)
+    hours_after_spike = Column(Float, nullable=True)
+    status = Column(String(10), nullable=False)                    # OPENED · BLOCKED · REFUSED
+    block = Column(String(40), nullable=True)
+    reason = Column(String(240), nullable=True)
+    decision_price = Column(Float, nullable=True)                  # the signal 15m close
+    bar_ret_pct = Column(Float, nullable=True)
+    vsw_mult = Column(Float, nullable=True)
+    vol24_usd = Column(Float, nullable=True)
+    rsi1h = Column(Float, nullable=True)                           # observe-only stamps (as the fill's entry_dist_rsi1h / di_diff1h / gap15)
+    di_diff1h = Column(Float, nullable=True)
+    gap15 = Column(Float, nullable=True)
+    pos_ratio = Column(Float, nullable=True)
+    pos_chg_4h = Column(Float, nullable=True)
+    pos_lag_min = Column(Float, nullable=True)                     # (586 review M2) T − ts(km), minutes
+    pos_span_min = Column(Float, nullable=True)                    # (M2) ts(km) − ts(k4), minutes
+    atr_pct = Column(Float, nullable=True)
+    tp_pct = Column(Float, nullable=True)
+    sl_pct = Column(Float, nullable=True)
+    q5_usd = Column(Float, nullable=True)
+    funding_rate = Column(Float, nullable=True)
+    order_id = Column(Integer, nullable=True)
+    # 📖📊 (DECISION_LOG 584) the depth guard's capacity read for this decision (NULL = the guard did not run)
+    cap_action = Column(String(8), nullable=True)
+    cap_mode = Column(String(8), nullable=True)
+    cap_planned_usd = Column(Float, nullable=True)
+    cap_entry_side_usd = Column(Float, nullable=True)
+    cap_exit_side_usd = Column(Float, nullable=True)
+    cap_binding_side = Column(String(5), nullable=True)
     cap_final_usd = Column(Float, nullable=True)
     cap_frac = Column(Float, nullable=True)
     cap_walk_pct = Column(Float, nullable=True)

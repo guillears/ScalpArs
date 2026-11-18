@@ -124,7 +124,7 @@ def test_e2e_full_shrink_skip_and_unreadable(monkeypatch):
 
 def test_skip_refusal_text_reaches_flatbase_and_frenzy():
     src = (ROOT / "services/trading_engine.py").read_text()
-    assert "if _frenzy or _fbs or _exh:   # (551 deep review) FLATBASE too" in src   # 🪫 (DECISION_LOG 578) + EXHAUSTION
+    assert "if _frenzy or _fbs or _exh or _dsh:   # (551 deep review) FLATBASE too" in src   # 🪫 (DECISION_LOG 578) + EXHAUSTION
     assert "quantity = notional_value / ((_sg_live_px if _surge else _dg_bpx) or current_price)" in src   # (565 review) the book price the depth was measured at
 
 

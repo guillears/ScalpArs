@@ -53,12 +53,14 @@ SLIP_A, SLIP_B = -0.041640290342889685, 0.27612727721342023   # reports/SPOT_SHA
 
 DEFAULTS = dict(rsi_period=14, rsi_level=70.0, vol_decay_min=0.6366, ssc_max=-0.0066, tp_atr=3.0, tp_cap=5.0, sl_atr=1.5, sl_cap=5.0,
                 max_hold_h=24.0, max_h=72.0, min_vol=20e6, invest=0.5, lev=0.25,
-                oivol_ssc_min=-0.0366, oivol_min=0.128)   # 🧯 (DECISION_LOG 582) EXH_SSC_OIVOL block cuts
+                oivol_ssc_min=-0.0366, oivol_min=0.128,   # 🧯 (DECISION_LOG 582) EXH_SSC_OIVOL block cuts
+                wide_vol_mult=15.0, wide_min_vol=5e6)     # 🌐 (DECISION_LOG 585) the WIDE universe
 FIELDS = dict(rsi_period='exhaustion_rsi_period', rsi_level='exhaustion_rsi_level', vol_decay_min='exhaustion_vol_decay_min',
               ssc_max='exhaustion_spot_share_chg_max', tp_atr='exhaustion_tp_atr_mult', tp_cap='exhaustion_tp_cap_pct',
               sl_atr='exhaustion_sl_atr_mult', sl_cap='exhaustion_sl_cap_pct', max_hold_h='exhaustion_max_hold_hours',
               max_h='exhaustion_max_hours_after_spike', min_vol='exhaustion_min_vol_usd', invest='exhaustion_invest_mult',
-              lev='exhaustion_lev_mult', oivol_ssc_min='exhaustion_ssc_oivol_ssc_min', oivol_min='exhaustion_ssc_oivol_oivol_min')
+              lev='exhaustion_lev_mult', oivol_ssc_min='exhaustion_ssc_oivol_ssc_min', oivol_min='exhaustion_ssc_oivol_oivol_min',
+              wide_vol_mult='exhaustion_wide_spike_vol_mult', wide_min_vol='exhaustion_wide_min_vol_usd')
 MAX_H_CAP = 100.0                          # the 1,500-bar window must hold the spike bar, 25 h of volume and the RSI warm-up
 _RANGES = dict(rsi_period=("a whole number ≥ 2 and ≤ 50", lambda x: 2 <= x <= 50 and x == int(x)),
                rsi_level=("a number > 50 and < 100", lambda x: 50 < x < 100),
@@ -71,7 +73,9 @@ _RANGES = dict(rsi_period=("a whole number ≥ 2 and ≤ 50", lambda x: 2 <= x <
                min_vol=("a number ≥ 0 (USD)", lambda x: x >= 0), invest=("a number > 0 and ≤ 1", lambda x: 0 < x <= 1.0),
                lev=("a number > 0 and ≤ 1", lambda x: 0 < x <= 1.0),
                oivol_ssc_min=("a number ≥ −1 and ≤ 1 (spot-share change, a fraction)", lambda x: -1.0 <= x <= 1.0),
-               oivol_min=("a number ≥ 0 and ≤ 100 (open interest ÷ 24 h quote volume)", lambda x: 0 <= x <= 100.0))
+               oivol_min=("a number ≥ 0 and ≤ 100 (open interest ÷ 24 h quote volume)", lambda x: 0 <= x <= 100.0),
+               wide_vol_mult=("a number > 0 and ≤ 100 (× the normal hour)", lambda x: 0 < x <= 100.0),
+               wide_min_vol=("a number ≥ 0 (USD)", lambda x: x >= 0))
 
 # the journal's status (models.ExhaustionSignal) — one row per evaluated signal
 ST_OPENED, ST_BLOCKED, ST_REFUSED = "OPENED", "BLOCKED", "REFUSED"
@@ -112,7 +116,7 @@ def exhaustion_config_errors(th, base_leverage=20.0) -> list:
     (base_leverage × exhaustion_lev_mult) must sit ≥ MANUAL_BACKSTOP_MIN_GAP_PCT beyond the widest stop (exhaustion_sl_cap_pct)."""
     errs = []
     for k in ('exhaustion_short_enabled', 'resting_tp_exhaustion_enabled', 'momentum_long_entries_enabled', 'momentum_short_entries_enabled',
-              'exhaustion_ssc_oivol_block_enabled'):
+              'exhaustion_ssc_oivol_block_enabled', 'exhaustion_wide_enabled'):
         if not isinstance(getattr(th, k, True), bool):
             errs.append(f"{k} must be true or false")
     vals = {}
@@ -359,10 +363,13 @@ def features(rows_qv, spot_rows, T, on_ms, has_spot, th) -> Dict:
         return out
 
 
-def decide(f: Dict, th) -> Tuple[bool, Optional[str], str]:
+def decide(f: Dict, th, min_vol: Optional[float] = None) -> Tuple[bool, Optional[str], str]:
     """(trade, block code, reason) for a features() dict. Order: data → the signal (re-read on the quote-volume klines) → 24 h volume → spot
-    market → spot-share scorable → vol_decay → spot-share change. Fail-closed everywhere."""
-    p = exhaustion_params(th)
+    market → spot-share scorable → vol_decay → spot-share change. Fail-closed everywhere. 🌐 (585) min_vol = the episode universe's floor
+    (WIDE: exhaustion_wide_min_vol_usd); None → exhaustion_min_vol_usd."""
+    p = dict(exhaustion_params(th))
+    if min_vol is not None and _fin(min_vol) is not None:
+        p['min_vol'] = float(min_vol)
     if not f or not f.get('ok'):
         return False, B_NO_DATA, f"inputs unreadable: {(f or {}).get('why') or 'no data'} (fail-closed)"
     if not f.get('cross'):
@@ -603,3 +610,76 @@ def exhaustion_gate(fills) -> Tuple[str, str]:
         return "KEEP", head + " → keep (paper)" + tail
     except Exception:
         return "COLLECTING", "gate unreadable"
+
+
+# ── 🌐 the WIDE universe (DECISION_LOG 585 — operator-approved PAPER run, DECLARED OVERRIDE; reports/LEADS_DEEP_2026-11-18.md L4) ──────────
+# EXHAUSTION's own detector also tracks spikes by the SAME bar rule as the FRENZY flag (services.frenzy.frenzy_walk: 30-min return ≥
+# frenzy_spike_ret_pct ∧ last-hour quote volume ≥ X × the pair's normal hour ∧ ≥ frenzy_spike_min_hour_usd, verified, ≤ frenzy_max_hours old)
+# with X = exhaustion_wide_spike_vol_mult (15) instead of frenzy_spike_vol_mult (20), on coins whose 24 h quote volume is ≥
+# exhaustion_wide_min_vol_usd ($5M) at the signal. A FRENZY-flagged episode is always universe FRENZY (its $20M floor unchanged). Everything
+# else (RSI cross, vol_decay, spot market + spot share, DL 582, DL 579 exit, one position per pair, the 72 h window) is EXHAUSTION's.
+UNIV_FRENZY, UNIV_WIDE = "FRENZY", "WIDE"
+B_WIDE_READ_CAP = "EXH_WIDE_READ_CAP"      # WIDE shortlist coins not read on a 15m close (count only — no episode known yet)
+
+
+def wide_enabled(th) -> bool:
+    """the WIDE switch (exhaustion_wide_enabled); anything but True = off. Needs EXHAUSTION itself on (the caller checks both)."""
+    return getattr(th, 'exhaustion_wide_enabled', False) is True
+
+
+class _WideTh:
+    """a read-only view of the thresholds with frenzy_spike_vol_mult replaced by the WIDE multiple (every other walk field unchanged)."""
+    __slots__ = ('_th', '_vm')
+
+    def __init__(self, th, vm):
+        self._th, self._vm = th, vm
+
+    def __getattr__(self, k):
+        if k == 'frenzy_spike_vol_mult':
+            return self._vm
+        return getattr(self._th, k)
+
+
+def wide_walk_th(th):
+    """the thresholds services.frenzy.frenzy_walk reads for the WIDE detector (frenzy_spike_vol_mult → exhaustion_wide_spike_vol_mult)."""
+    return _WideTh(th, exhaustion_params(th)['wide_vol_mult'])
+
+
+def universe_min_vol(universe, th) -> float:
+    """the 24 h quote-volume floor of an episode's universe: WIDE → exhaustion_wide_min_vol_usd · anything else → exhaustion_min_vol_usd."""
+    p = exhaustion_params(th)
+    return p['wide_min_vol'] if universe == UNIV_WIDE else p['min_vol']
+
+
+def pick_episode(cands) -> Tuple[Optional[int], Optional[str]]:
+    """cands = [(spike_ms, universe)] of the pair's TRACKING episodes whose window holds the bar → (spike_ms, universe): a FRENZY episode
+    wins (always FRENZY when one is in its window — its later spike as the study's ep_of), else the latest WIDE one. (None, None) on none."""
+    fz = [sp for sp, u in cands or () if u != UNIV_WIDE]
+    if fz:
+        return max(fz), UNIV_FRENZY
+    wd = [sp for sp, u in cands or () if u == UNIV_WIDE]
+    return (max(wd), UNIV_WIDE) if wd else (None, None)
+
+
+def wide_shortlist(allp, skip, chg: float, vmin_wide: float, exclude=(), cap: int = 30) -> Tuple[List[str], int]:
+    """the coins the WIDE detector reads on a 15m close beyond the FRENZY read: the FRENZY shortlist rule (|24 h change| OR 24 h low→high
+    range ≥ chg — services.trading_engine.frenzy_shortlist) at the WIDE floor (24 h ticker quote volume ≥ vmin_wide), minus `exclude` (pairs
+    already read), biggest move first, at most `cap`. → (taken, n qualifying). Pure."""
+    def _mv(p):
+        try:
+            return max(abs(float(p.get('change_24h') or 0)), float(p.get('range_24h') or 0))
+        except (TypeError, ValueError):
+            return 0.0
+    ex = set(exclude or ())
+    q = []
+    for p in allp or []:
+        k = p.get('pair')
+        try:
+            v = float(p.get('volume_24h') or 0)
+        except (TypeError, ValueError):
+            v = 0.0
+        if not k or k in ex or str(k).upper() in skip or not str(k).isascii() or v < vmin_wide or _mv(p) < chg:
+            continue
+        q.append(p)
+    q.sort(key=lambda p: -_mv(p))
+    return [p['pair'] for p in q[:max(0, int(cap))]], len(q)

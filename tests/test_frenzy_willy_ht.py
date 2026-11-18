@@ -409,7 +409,7 @@ def test_gate_review_fixes_and_config_validation():
     assert html.count('data-ss="fzyht"') == 1 and "S.fzyht = { info:" in html
     main = open(os.path.join(ROOT, "main.py"), encoding="utf-8").read()
     assert "_cfg_errs.extend(_ht_cfg_errors(new_config.thresholds))" in main
-    assert "'Frenzy-Willy', 'Frenzy-Willy-HT', 'Flatbase-Short', 'Exhaustion-Short', 'Manual']" in main   # 🩳 (348)
+    assert "'Frenzy-Willy', 'Frenzy-Willy-HT', 'Flatbase-Short', 'Exhaustion-Short', 'Distribution-Short', 'Manual']" in main   # 🩳 (348)
 
 
 # ─────────────────────────── 📈 (DECISION_LOG 365) the HT re-size ladder in scripts/scout_willy_ht.py ───────────────────────────

@@ -573,7 +573,7 @@ def stack_pair_blacklist_reason(strat, pair):
     s = str(strat)
     if p in {x.upper() for x in PAIR_BLACKLIST_FROZEN}:
         return "PAIR_BLACKLIST"
-    key = "FRENZY" if (s.startswith("FRENZY_") or s in ("FLATBASE_SHORT", "EXHAUSTION_SHORT")) else s   # 🩳 10-22 (DECISION_LOG 348): FLATBASE reads the FRENZY pass's universe
+    key = "FRENZY" if (s.startswith("FRENZY_") or s in ("FLATBASE_SHORT", "EXHAUSTION_SHORT", "DISTRIBUTION_SHORT")) else s   # 🩳 10-22 (DECISION_LOG 348): FLATBASE reads the FRENZY pass's universe
     if key in NO_TRADE_SLEEVES and p in NO_TRADE_PAIRS_FROZEN:
         return "PAIR_NO_TRADE"
     if p in SLEEVE_BLACKLISTS_FROZEN.get(key, ()):
@@ -995,6 +995,8 @@ def main(allow_proxy=False):
                 k, why = False, 'FRENZY_WIDE_OFF'   # ⛔ 10-14b (DECISION_LOG 291): frenzy_wide_enabled = false → today's stack never opens it
             elif strat == 'EXHAUSTION_SHORT':
                 why = 'EXHAUSTION_SLEEVE'  # 🪫 11-18 (DECISION_LOG 578): its own SHORT sleeve (FRENZY coin RSI exhaustion) — never a momentum / flip row; priced as traded (no master fill at ship)
+            elif strat == 'DISTRIBUTION_SHORT':
+                why = 'DISTRIBUTION_SLEEVE'  # 📉 11-18 (DECISION_LOG 586): its own SHORT sleeve (FRENZY coin red volume candle + top traders cutting) — never a momentum / flip row; priced as traded
             elif strat == 'FLATBASE_SHORT':
                 why = 'FLATBASE_SLEEVE'  # 🩳 10-22 (DECISION_LOG 348): its own SHORT sleeve (FRENZY episode on a flat base) — never a momentum / flip row; priced as traded (first master fill B24)
             elif strat == 'FRENZY_LITE_RETRY':

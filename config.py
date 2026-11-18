@@ -1696,6 +1696,52 @@ class SignalThresholds(BaseModel):
     exhaustion_ssc_oivol_block_enabled: bool = False
     exhaustion_ssc_oivol_ssc_min: float = -0.0366   # block only when spot_share_chg is ABOVE this (a small spot-share fall)
     exhaustion_ssc_oivol_oivol_min: float = 0.128   # … and OI ÷ 24 h quote volume is ABOVE this (strict)
+    # 🪫🌐 2026-11-18 EXHAUSTION WIDE universe (DECISION_LOG 585 — operator-approved PAPER run, DECLARED OVERRIDE: reports/LEADS_DEEP_2026-11-18.md
+    # L4 stamped OBSERVE — it fails B1, 3 of 7 half-years < 0 after DL 582; the frozen cell is the plateau PEAK → 30–50 % haircut). An EXTENSION of
+    # EXHAUSTION_SHORT, not a new sleeve: its own detector also tracks spikes by the SAME bar rule at a volume multiple ≥ this (15×, not 20×) on
+    # coins with 24 h quote volume ≥ exhaustion_wide_min_vol_usd ($5M, not $20M); a FRENZY-flagged episode is always universe 'FRENZY'
+    # (entry_exh_universe). Everything else is EXHAUSTION's rule, filter (DL 582) and exit (DL 579). Evidence (L4, 2023-07 → 2026-11, the
+    # walk slip model): ADDED kept by DL 582 939 trades · 0.8/day · 38.7 % WR · +0.55 %/trade · +0.20 at 0.20 % slip · best-5 %-out +0.06 ·
+    # Kelly floor +0.028; plateau 9/9 cells > 0 with DL 582; union DCR +0.382 → +0.450 %/day, max DD −22.0 → −25.1 %; old data 2022+ +0.57 (111).
+    # 🔒 REVERT (scripts/scout_exh_wide_585.py, alert only, frozen once): the first 30 WIDE fills spanning ≥ 10 days → the one-sided 80 %
+    # UPPER bound of their mean net (day-block bootstrap) < 0 → flag "switch exhaustion_wide_enabled off". Code default OFF; JSON ON.
+    exhaustion_wide_enabled: bool = False
+    exhaustion_wide_spike_vol_mult: float = 15.0   # WIDE spike: last-hour quote volume ≥ this × the pair's normal hour (FRENZY: frenzy_spike_vol_mult 20)
+    exhaustion_wide_min_vol_usd: float = 5e6       # WIDE: 24 h quote volume floor at the signal (and for the WIDE read shortlist) — FRENZY: exhaustion_min_vol_usd
+    # 📉 2026-11-18 DISTRIBUTION_SHORT (DECISION_LOG 586 — operator-approved PAPER run, DECLARED OVERRIDE: reports/LEADS_DEEP_2026-11-18.md L1
+    # stamped OBSERVE — fails B1 (26-H1 −0.01), B2 best-5 %-out −0.08 and B4 Kelly −0.010 at T5A). Pure rules: services/distribution.py.
+    # On a FRENZY-universe coin tracked by EXHAUSTION (≤ 72 h after the spike, 24 h quote volume ≥ $20M): a CLOSED red 15m candle whose quote
+    # volume is ≥ distribution_vsw_vol_mult × the mean of the 20 candles before it (the study's VSW15) while the TOP-TRADER POSITION long/short
+    # ratio fell by ≥ 0.01097 over 4 h (metrics sum_toptrader_long_short_ratio = /futures/data/topLongShortPositionRatio, rows ≤ T − 5 min)
+    # → SHORT at market. Exit B (operator) = EXHAUSTION's live exit: TP min(20 × ATR15, 10 %) resting maker · SL min(1.5 × ATR15, 6 %) · 24 h.
+    # Evidence (L1, 2023-07 → 2026-11): 4,811 trades · 3.9/day · +0.17 %/trade at T5A; at Exit B 4,649 · 35.6 % WR · +0.30 · Kelly floor
+    # +0.0016; plateau 15/15 cells > 0; contrast VSW while positions RISE −0.36; 2023-H1 (new data) +0.36. 🔒 REVERT
+    # (scripts/scout_distribution_586.py, alert only, frozen once): first 30 fills spanning ≥ 10 days → the one-sided 80 % UPPER bound of the
+    # mean net (day-block bootstrap) < 0 → flag OFF. Code default OFF; trading_config.json ON.
+    distribution_short_enabled: bool = False
+    distribution_pos_chg_4h_max: float = -0.01097   # top-trader position L/S ratio change over 4 h must be ≤ this (the frozen L1 cell)
+    distribution_vsw_vol_mult: float = 5.0          # VSW15: the red 15m candle's quote volume ≥ this × the mean of the 20 candles before it
+    distribution_min_vol_usd: float = 20e6          # 24 h quote volume at the signal (the study's pool floor)
+    distribution_max_hours_after_spike: float = 72.0   # the signal candle closes ≤ this long after the spike candle (the study's window; ≤ 100)
+    distribution_tp_atr_mult: float = 20.0          # Exit B = EXHAUSTION's live exit (DL 579): TP min(this × ATR15 %, cap) below the fill
+    distribution_tp_cap_pct: float = 10.0
+    distribution_sl_atr_mult: float = 1.5           # SL min(this × ATR15 %, cap) above the fill
+    distribution_sl_cap_pct: float = 6.0
+    distribution_max_hold_hours: float = 24.0
+    # 📈 SIZE (OPERATOR-DECLARED 11-18): operator 11-18 chose 0.5 × 5× WITH the RSI1h filter (below); on the kept cohort at 0.61 × equity the
+    # history shows max DD −65 %, worst day −22 %, Kelly/day +0.056; in-sample Kelly notional 1.15 × / 0.71 × (30 % haircut) / 0.43 × (50 %
+    # haircut) (reports/DIST_WL_2026-11-18.md). Unfiltered L1 fills at Exit B: Kelly at the 95 % Wilson WR floor +0.0016; per-stop % equity =
+    # stop × 0.61 = 2.2 % at the median stop (3.67 %), 3.7 % at the 6 % cap.
+    distribution_invest_mult: float = 0.5
+    distribution_lev_mult: float = 0.25             # × the STRONG_BUY leverage (20 × 0.25 = 5×); a fill holds a bot slot (only the shared book binds)
+    # 🔒 RSI1h ENTRY FILTER (DECISION_LOG 586, operator 11-18, DECLARED OVERRIDE — reports/DIST_WL_2026-11-18.md): KEEP a DISTRIBUTION signal only
+    # when the 1h RSI(14) at entry (the last closed 1h bar; = entry_dist_rsi1h) ≥ this; unreadable → BLOCKED (DIST_RSI1H_UNREAD, fail-closed).
+    # Evidence: DESIGN +1.05 vs base +0.38 · HOLDOUT kept +0.79 vs blocked −0.00 (Δ +0.53, 95 % CI +0.20…+0.86) · 7/7 half-years · both BTC
+    # regimes · +0.63 at 0.20 % slip · mechanism = entry (NEVER_WORKED 6 % vs 14 %); ≈ 1.3 trades/day (1,548 of 4,649). FAILS: the family-wise
+    # null (t 3.24 vs 5.62) and the expectancy bar (the blocked side is breakeven, +0.01, upper bound +0.18 — not a loser). 🔒 REVERT (alert
+    # only, scripts/scout_distribution_586.py, frozen once): ≥ 60 kept fills over ≥ 10 days mean net ≤ +0.30 → flag disarm / review · ≥ 30
+    # blocked signals over ≥ 10 days priced with Exit B: one-sided 80 % lower bound > +0.30 → flag "blocks winners". Code + JSON 74.07 (review I1: a missing / invalid value keeps the cut); OFF only by an explicit 0.
+    distribution_rsi1h_min: float = 74.07
     # 🎯 2026-10-15 RESTING TAKE-PROFIT (DECISION_LOG 296, operator-armed DECLARED EXCEPTION — below the usual evidence bar): a reduce-only,
     # post-only (GTX) LIMIT rests on Binance at the price that books the SAME net TP with the MAKER exit fee (services/resting_tp.py +
     # exec_shadow.resting_tp_price). Evidence: live TP give-back 4/4 (WILLY ZK +1.12 / BLUR +1.09 / RLC +1.08 vs +1.25, LITE DEEP +2.80 vs
@@ -1719,6 +1765,7 @@ class SignalThresholds(BaseModel):
     resting_tp_frenzy_long_enabled: bool = True   # FRENZY_LONG (fixed frenzy_tp_pct; none while frenzy_lock_arm_pct > 0) — never FRENZY_WIDE (off)
     resting_tp_flatbase_enabled: bool = True      # 🩳 FLATBASE_SHORT (DECISION_LOG 348): its −8 % price TP rests as a maker limit (the study's TP level; own switch)
     resting_tp_exhaustion_enabled: bool = True    # 🪫 EXHAUSTION_SHORT (DECISION_LOG 578): its min(3 × ATR, 5 %) price TP rests as a maker limit (the study's maker TP)
+    resting_tp_distribution_enabled: bool = True  # 📉 DISTRIBUTION_SHORT (DECISION_LOG 586): its min(20 × ATR, 10 %) price TP rests as a maker limit (Exit B)
     resting_tp_flip_fan_enabled: bool = False     # 🎯 FAN flip fixed TP (DECISION_LOG 563): the row's flip_fan_tp_pct rests as a reduce-only post-only maker limit; off → the software TP closes at market
     resting_tp_grace_s: float = 3.0               # safety net: seconds the price must stay through the limit (0–60)
     resting_tp_through_ticks: int = 2             # safety net: ticks THROUGH the limit (1–50)

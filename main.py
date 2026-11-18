@@ -27,7 +27,7 @@ from sqlalchemy import select, and_, or_, func, desc, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import init_db, get_db, AsyncSessionLocal, locked_commit, locked_execute_commit
-from models import Order, Transaction, BotState, PairData, ConfigChangeLog, BnbSwapLog, Investor, InvestorLedger, FundExpense, PhantomFlip, NavSnapshot, MonitorPeriod, BearMonitorPeriod, SurgeTrigger, OrderbookSnap, WillyHoldBlock, FlatbaseEpisode, ExhaustionEpisode, ExhaustionSignal, MatchedLongRefusal, BlockedSignal, ExchangeDay, BackupRun, AltCorrUniverse
+from models import Order, Transaction, BotState, PairData, ConfigChangeLog, BnbSwapLog, Investor, InvestorLedger, FundExpense, PhantomFlip, NavSnapshot, MonitorPeriod, BearMonitorPeriod, SurgeTrigger, OrderbookSnap, WillyHoldBlock, FlatbaseEpisode, ExhaustionEpisode, ExhaustionSignal, DistributionSignal, MatchedLongRefusal, BlockedSignal, ExchangeDay, BackupRun, AltCorrUniverse
 import config
 from config import (
     trading_config, save_trading_config, load_trading_config,
@@ -1373,6 +1373,7 @@ async def _exhaustion_reset_state(db, is_paper):
     _keep = datetime.utcnow() - timedelta(hours=exhaustion_params(config.trading_config.thresholds)['max_h'] + 6)
     await db.execute(delete(ExhaustionEpisode).where(and_(ExhaustionEpisode.is_paper == is_paper, ExhaustionEpisode.spike_at < _keep)))
     await db.execute(delete(ExhaustionSignal).where(and_(ExhaustionSignal.is_paper == is_paper, ExhaustionSignal.signal_at < _keep)))
+    await db.execute(delete(DistributionSignal).where(and_(DistributionSignal.is_paper == is_paper, DistributionSignal.signal_at < _keep)))   # 📉 (586) its journal (SHORT-only too)
 
 
 async def _willy_reset_state(db, is_paper):
@@ -3436,7 +3437,7 @@ async def export_decisions_csv(days: Optional[int] = None, db: AsyncSession = De
     _exh_cols = ["exh_signal_at", "exh_spike_at", "exh_hours_after_spike", "exh_status", "exh_block", "exh_reason", "exh_decision_price",
                  "exh_rsi_prev", "exh_rsi", "exh_vol_decay", "exh_spot_share_chg", "exh_has_spot", "exh_atr_pct", "exh_tp_pct", "exh_sl_pct",
                  "exh_vol24_usd", "exh_q5_usd", "exh_funding_rate", "exh_order_id",
-                 "exh_oi_usd", "exh_oi_vol", "exh_model_slip_pct", "exh_shadow_notional_usd"] + ["exh_" + _k for _k in TradingEngine.DEPTH_CAP_JOURNAL_KEYS]   # 📖📊 (584)   # 🧯 (DECISION_LOG 582) EXH_SSC_OIVOL inputs + shadow pricing
+                 "exh_oi_usd", "exh_oi_vol", "exh_model_slip_pct", "exh_shadow_notional_usd", "exh_universe"] + ["exh_" + _k for _k in TradingEngine.DEPTH_CAP_JOURNAL_KEYS]   # 📖📊 (584)   # 🧯 (DECISION_LOG 582) EXH_SSC_OIVOL inputs + shadow pricing
     try:
         _fmt = lambda d: d.strftime('%Y-%m-%dT%H:%M:%S') if d else None
         for b in (await db.execute(select(ExhaustionSignal).where(and_(ExhaustionSignal.is_paper == trading_engine.is_paper_mode,
@@ -3450,9 +3451,31 @@ async def export_decisions_csv(days: Optional[int] = None, db: AsyncSession = De
                              exh_sl_pct=b.sl_pct, exh_vol24_usd=b.vol24_usd, exh_q5_usd=b.q5_usd, exh_funding_rate=b.funding_rate,
                              exh_order_id=b.order_id, exh_oi_usd=getattr(b, 'oi_usd', None), exh_oi_vol=getattr(b, 'oi_vol', None),
                              exh_model_slip_pct=getattr(b, 'model_slip_pct', None), exh_shadow_notional_usd=getattr(b, 'shadow_notional_usd', None),
+                             exh_universe=(getattr(b, 'universe', None) or 'FRENZY'),   # 🌐 (585)
                              **{"exh_" + _k: getattr(b, _k, None) for _k in TradingEngine.DEPTH_CAP_JOURNAL_KEYS}))   # 📖📊 (584) the guard's capacity read
     except Exception as _e:
         logger.warning(f"[DECISIONS_EXPORT] EXHAUSTION rows skipped: {_e}")
+    # 📉 (DECISION_LOG 586) the DISTRIBUTION_SHORT decision journal rides this file as DISTRIBUTION rows — one per evaluated signal (a red VSW
+    # candle on a tracked FRENZY coin: OPENED / BLOCKED / REFUSED + every reading): scripts/scout_distribution_586.py reads the revert gate.
+    _dist_cols = ["dist_signal_at", "dist_spike_at", "dist_hours_after_spike", "dist_status", "dist_block", "dist_reason", "dist_decision_price",
+                  "dist_bar_ret_pct", "dist_vsw_mult", "dist_vol24_usd", "dist_rsi1h", "dist_di_diff1h", "dist_gap15", "dist_pos_ratio", "dist_pos_lag_min", "dist_pos_span_min", "dist_pos_chg_4h", "dist_atr_pct", "dist_tp_pct",
+                  "dist_sl_pct", "dist_q5_usd", "dist_funding_rate", "dist_order_id"] + ["dist_" + _k for _k in TradingEngine.DEPTH_CAP_JOURNAL_KEYS]
+    try:
+        _fmt = lambda d: d.strftime('%Y-%m-%dT%H:%M:%S') if d else None
+        for b in (await db.execute(select(DistributionSignal).where(and_(DistributionSignal.is_paper == trading_engine.is_paper_mode,
+                                                                         DistributionSignal.signal_at >= _day0))
+                                   .order_by(DistributionSignal.signal_at))).scalars().all():
+            rows.append(dict(t=_fmt(b.signal_at), e="DISTRIBUTION", pair=b.pair, dir="SHORT", strategy="DISTRIBUTION_SHORT", price=b.decision_price,
+                             gate=(b.block or b.status), dist_signal_at=_fmt(b.signal_at), dist_spike_at=_fmt(b.spike_at),
+                             dist_hours_after_spike=b.hours_after_spike, dist_status=b.status, dist_block=b.block, dist_reason=b.reason,
+                             dist_decision_price=b.decision_price, dist_bar_ret_pct=b.bar_ret_pct, dist_vsw_mult=b.vsw_mult, dist_vol24_usd=b.vol24_usd,
+                             dist_rsi1h=getattr(b, 'rsi1h', None), dist_di_diff1h=getattr(b, 'di_diff1h', None), dist_gap15=getattr(b, 'gap15', None),
+                             dist_pos_lag_min=getattr(b, 'pos_lag_min', None), dist_pos_span_min=getattr(b, 'pos_span_min', None),
+                             dist_pos_ratio=b.pos_ratio, dist_pos_chg_4h=b.pos_chg_4h, dist_atr_pct=b.atr_pct, dist_tp_pct=b.tp_pct, dist_sl_pct=b.sl_pct,
+                             dist_q5_usd=b.q5_usd, dist_funding_rate=b.funding_rate, dist_order_id=b.order_id,
+                             **{"dist_" + _k: getattr(b, _k, None) for _k in TradingEngine.DEPTH_CAP_JOURNAL_KEYS}))
+    except Exception as _e:
+        logger.warning(f"[DECISIONS_EXPORT] DISTRIBUTION rows skipped: {_e}")
     # 🧷 (DECISION_LOG 383) the matched momentum-long refusals (ml_matched_refusals) ride this file as ML_MATCHED rows — the last
     # max(days, ML_MATCHED_EXPORT_DAYS) days of this mode, not only the `days` window: the EB log bundle is broken, so this file is their only
     # exit (a download gap < 30 days loses nothing; the table keeps 90) and scripts/scout_ml_matched_refusals.py merges every download.
@@ -3487,7 +3510,7 @@ async def export_decisions_csv(days: Optional[int] = None, db: AsyncSession = De
                              reason=_b.error, bk_day=_b.day, bk_bytes=_b.bytes, bk_s3_key=_b.s3_key, bk_code_version=_b.code_version))
     except Exception as _e:
         logger.warning(f"[DECISIONS_EXPORT] track-record rows skipped: {_e}")
-    _cols = list(_dj.EXPORT_COLS) + _ob_cols + _wh_cols + _fb_cols + _exh_cols + _mr_cols + _bl_cols + _xd_cols
+    _cols = list(_dj.EXPORT_COLS) + _ob_cols + _wh_cols + _fb_cols + _exh_cols + _dist_cols + _mr_cols + _bl_cols + _xd_cols
 
     def _write_csv():   # off the event loop: up to ~50k BOOK rows (deep review)
         buf = io.StringIO()
@@ -4963,6 +4986,7 @@ _SLEEVE_LABELS = {   # 🧭 Oct-5 (operator): open positions per sleeve under th
     ("FRENZY_LONG", "LONG"): "FRENZY Long", ("FRENZY_WIDE", "LONG"): "FRENZY WIDE Long", ("FRENZY_LITE", "LONG"): "FRENZY LITE Long", ("FRENZY_LITE_RETRY", "LONG"): "FRENZY LITE RETRY Long", ("FRENZY_WILLY", "LONG"): "FRENZY WILLY Long", ("FRENZY_WILLY_HT", "LONG"): "FRENZY WILLY HT Long (¼)",
     ("FLATBASE_SHORT", "SHORT"): "FLATBASE Short",   # 🩳 (DECISION_LOG 348)
     ("EXHAUSTION_SHORT", "SHORT"): "EXHAUSTION Short",   # 🪫 (DECISION_LOG 578)
+    ("DISTRIBUTION_SHORT", "SHORT"): "DISTRIBUTION Short",   # 📉 (DECISION_LOG 586)
     ("BULL_LONG", "LONG"): "Bull Long", ("BOUNCE_LONG", "LONG"): "Bounce Long",
 }
 
@@ -5116,7 +5140,11 @@ def _frenzy_monitor_payload():
                 "exhaustion_enabled": getattr(_th, 'exhaustion_short_enabled', False) is True,
                 "exhaustion_ssc_oivol_enabled": getattr(_th, 'exhaustion_ssc_oivol_block_enabled', False) is True,   # 🧯 (582)
                 "exhaustion": __import__('services.exhaustion', fromlist=['exhaustion_params']).exhaustion_params(_th),
-                "exhaustion_tracking": [dict(pair=k[0], spike_ms=k[1], first_seen_ms=v.get('first_seen_ms'))
+                "exhaustion_wide_enabled": getattr(_th, 'exhaustion_wide_enabled', False) is True,   # 🌐 (585)
+                # 📉 (586) DISTRIBUTION_SHORT: switch + the values the engine USES (it reads EXHAUSTION's tracked FRENZY episodes)
+                "distribution_enabled": getattr(_th, 'distribution_short_enabled', False) is True,
+                "distribution": __import__('services.distribution', fromlist=['distribution_params']).distribution_params(_th),
+                "exhaustion_tracking": [dict(pair=k[0], spike_ms=k[1], first_seen_ms=v.get('first_seen_ms'), universe=v.get('universe') or 'FRENZY')
                                         for k, v in sorted((getattr(trading_engine, '_exh_eps', None) or {}).items()) if v.get('status') == 'TRACKING'],
                 "momentum_long_entries_enabled": getattr(_th, 'momentum_long_entries_enabled', True) is not False,   # ⛔ (578)
                 "momentum_short_entries_enabled": getattr(_th, 'momentum_short_entries_enabled', True) is not False,
@@ -5305,6 +5333,8 @@ def _sleeve_label(entry_strategy, direction, import_source=None) -> str:
         return 'Frenzy-Lite'   # 🪶 Oct-7 (243): own row — held above, volume below FRENZY's, first ~17 h
     if (entry_strategy or '') == 'FRENZY_WILLY_HT':
         return 'Frenzy-Willy-HT'   # 🎲¼ (341): own row — quarter-size, turnover-blocked WILLY setups (a reduced-size line, never blended into Frenzy-Willy)
+    if (entry_strategy or '') == 'DISTRIBUTION_SHORT':
+        return 'Distribution-Short'   # 📉 (DECISION_LOG 586): own row — red VSW 15m candle + top-trader positions falling (paper, declared override)
     if (entry_strategy or '') == 'EXHAUSTION_SHORT':
         return 'Exhaustion-Short'   # 🪫 (DECISION_LOG 578): own row — FRENZY-coin 15m RSI cross below 70 + vol_decay + spot-share (paper, declared override)
     if (entry_strategy or '') == 'FLATBASE_SHORT':
@@ -5356,7 +5386,7 @@ def _compute_sleeve_performance(orders, start_balance=None, window_days=None):
                         if start_balance and start_balance > 0 and window_days and window_days >= 0.5
                         and sum(o.pnl or 0 for o in g) / start_balance > -1 else None),
         }
-    order = ['Mom-Long', 'Mom-Short', 'Flip-Short', 'Flip-Long', 'BullRun-Long', 'BearRun-Short', 'Surge-Long', 'Surge-Short', 'Frenzy-Long', 'Frenzy-Wide', 'Frenzy-Lite', 'Frenzy-Lite-Retry', 'Frenzy-Willy', 'Frenzy-Willy-HT', 'Flatbase-Short', 'Exhaustion-Short', 'Manual']   # 🩳 (348) Flatbase-Short   # 🖐 Sep-29: own row · 🔁 (316) Frenzy-Lite-Retry · 🎲¼ (341) HT
+    order = ['Mom-Long', 'Mom-Short', 'Flip-Short', 'Flip-Long', 'BullRun-Long', 'BearRun-Short', 'Surge-Long', 'Surge-Short', 'Frenzy-Long', 'Frenzy-Wide', 'Frenzy-Lite', 'Frenzy-Lite-Retry', 'Frenzy-Willy', 'Frenzy-Willy-HT', 'Flatbase-Short', 'Exhaustion-Short', 'Distribution-Short', 'Manual']   # 🩳 (348) Flatbase-Short   # 🖐 Sep-29: own row · 🔁 (316) Frenzy-Lite-Retry · 🎲¼ (341) HT
     order.append('App')   # 🧾 (DECISION_LOG 329) 📱 Binance-app trades, after 🖐 Manual
     order += sorted(k for k in groups if k not in order)   # (341 review) a sleeve missing from the list above still gets its row — rows always sum to Total
     rows = [s for name in order if (s := stats(name, groups.get(name, [])))]
@@ -5410,7 +5440,7 @@ def _compute_strategy_performance(orders, start_balance=None, window_days=None):
         }
 
     _pref = ['MOMENTUM', 'FAN_RATIO_GATE', 'BULL_LONG', 'PAIR_RSI_OB', 'BOUNCE_LONG',
-             'SPIKE_CHASE', 'SPIKE_FADE', 'SPIKE_BOUNCE', 'BULLRUN_LONG', 'BEARRUN_SHORT', 'SURGE_LONG', 'SURGE_SHORT', 'FRENZY_LONG', 'FRENZY_WIDE', 'FRENZY_LITE', 'FRENZY_LITE_RETRY', 'FRENZY_WILLY'] + ['FRENZY_WILLY_HT'] + ['FLATBASE_SHORT'] + ['EXHAUSTION_SHORT']   # 🩳 (348)   # 🔁 (316) after LITE · 🎲¼ (341) HT after WILLY
+             'SPIKE_CHASE', 'SPIKE_FADE', 'SPIKE_BOUNCE', 'BULLRUN_LONG', 'BEARRUN_SHORT', 'SURGE_LONG', 'SURGE_SHORT', 'FRENZY_LONG', 'FRENZY_WIDE', 'FRENZY_LITE', 'FRENZY_LITE_RETRY', 'FRENZY_WILLY'] + ['FRENZY_WILLY_HT'] + ['FLATBASE_SHORT'] + ['EXHAUSTION_SHORT'] + ['DISTRIBUTION_SHORT']   # 🩳 (348)   # 🔁 (316) after LITE · 🎲¼ (341) HT after WILLY
 
     def _rank(label):
         head = label.split(' · ')[0]
@@ -6556,6 +6586,7 @@ SLEEVE_FILTER_SWITCHES = {
     'FRENZY_WILLY_HT': ('frenzy_willy_enabled', 'frenzy_willy_ht_enabled'),    # HT tries only WILLY's refused red bars
     'FLATBASE_SHORT': ('flatbase_short_enabled',),                             # 🩳 (DECISION_LOG 348) its own master switch
     'EXHAUSTION_SHORT': ('exhaustion_short_enabled',),                         # 🪫 (DECISION_LOG 578) its own master switch
+    'DISTRIBUTION_SHORT': ('distribution_short_enabled',),                     # 📉 (DECISION_LOG 586) its own master switch
 }
 _SLEEVE_SWITCH_MISSING = object()
 
@@ -6776,7 +6807,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             # are their own program; blending full-size spikes would contaminate the
             # sleeve stats the locked gates read. (Probe-era spike rows carry MOMENTUM
             # labels and stay — cohort key for those = cell_multiplier_source.)
-            _SLEEVES = ('BULL_LONG', 'BOUNCE_LONG', 'SPIKE_CHASE', 'SPIKE_FADE', 'SPIKE_BOUNCE', 'BULLRUN_LONG', 'BEARRUN_SHORT', 'SURGE_LONG', 'SURGE_SHORT', 'FRENZY_LONG', 'FRENZY_WIDE', 'FRENZY_LITE', 'FRENZY_LITE_RETRY', 'FRENZY_WILLY', 'MANUAL') + ('FRENZY_WILLY_HT', 'FLATBASE_SHORT', 'EXHAUSTION_SHORT')   # 🖐 Sep-29: manual fills are never pure momentum  # Sep 15 (deep review): both regime sleeves excluded from pure momentum too
+            _SLEEVES = ('BULL_LONG', 'BOUNCE_LONG', 'SPIKE_CHASE', 'SPIKE_FADE', 'SPIKE_BOUNCE', 'BULLRUN_LONG', 'BEARRUN_SHORT', 'SURGE_LONG', 'SURGE_SHORT', 'FRENZY_LONG', 'FRENZY_WIDE', 'FRENZY_LITE', 'FRENZY_LITE_RETRY', 'FRENZY_WILLY', 'MANUAL') + ('FRENZY_WILLY_HT', 'FLATBASE_SHORT', 'EXHAUSTION_SHORT', 'DISTRIBUTION_SHORT')   # 🖐 Sep-29: manual fills are never pure momentum  # Sep 15 (deep review): both regime sleeves excluded from pure momentum too
             orders = [o for o in orders if not _es(o).startswith('FLIP:') and _es(o).upper() not in _SLEEVES]
             if _mom_dir:
                 orders = [o for o in orders if (getattr(o, 'direction', None) or '').upper() == _mom_dir]
@@ -9975,6 +10006,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         if es == "EXHAUSTION_SHORT":
             return (f" · TP min({_g('exhaustion_tp_atr_mult', 3.0):g}×ATR, {_g('exhaustion_tp_cap_pct', 5.0):g} %) / SL min({_g('exhaustion_sl_atr_mult', 1.5):g}×ATR, "
                     f"{_g('exhaustion_sl_cap_pct', 5.0):g} %) / {_g('exhaustion_max_hold_hours', 24.0):g} h")
+        if es == "DISTRIBUTION_SHORT":
+            return (f" · TP min({_g('distribution_tp_atr_mult', 20.0):g}×ATR, {_g('distribution_tp_cap_pct', 10.0):g} %) / SL min({_g('distribution_sl_atr_mult', 1.5):g}×ATR, "
+                    f"{_g('distribution_sl_cap_pct', 6.0):g} %) / {_g('distribution_max_hold_hours', 24.0):g} h")
         return ""
     lite_c_rows = []   # 🎯 (DECISION_LOG 301) LITE C tally (zone vs outside vs pre-301) — filled below, never raises
     try:
@@ -9994,7 +10028,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                                 ("FRENZY_WILLY", "FRENZY_WILLY (new flag + ON not taken · red-candle entry · turnover < 1× mcap · declared exception"),
                                 ("FRENZY_WILLY_HT", "FRENZY_WILLY_HT (¼ size · WILLY setups refused ONLY by turnover ≥ 1× mcap · own slot · alert-only gates"),
                                 ("FLATBASE_SHORT", "🩳 FLATBASE_SHORT (FLAT 14-d base · S4 4-h close < spike VWAP ≥ 4 h · turnover > 1 · shares the bot slots (DL 515) · discipline override"),
-                                ("EXHAUSTION_SHORT", "🪫 EXHAUSTION_SHORT (FRENZY coin ≤ 72 h · 15m RSI 70 → ≤ 70 · vol_decay ≥ 0.6366 · spot share falling · shares the bot slots · paper, declared override")):
+                                ("EXHAUSTION_SHORT", "🪫 EXHAUSTION_SHORT (FRENZY coin ≤ 72 h · 15m RSI 70 → ≤ 70 · vol_decay ≥ 0.6366 · spot share falling · shares the bot slots · paper, declared override"),
+                                ("DISTRIBUTION_SHORT", "📉 DISTRIBUTION_SHORT (tracked FRENZY coin ≤ 72 h · red 15m candle ≥ 5× volume · top-trader positions −0.011 over 4 h · shares the bot slots · paper, declared override")):
             _fz_all = [o for o in orders if (o.entry_strategy or '') == _fz_es and o.pnl_percentage is not None]
             if _fz_es == "FRENZY_WIDE" and not _fz_all:   # OFF since DL 291: a row only if a fill is in view
                 continue
@@ -10064,7 +10099,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 _ex_q = select(Order.opened_at, Order.pnl_percentage, Order.close_reason, Order.entry_exh_model_slip_pct,
                                Order.entry_exh_tp_pct, Order.entry_exh_atr_pct, Order.entry_depth_mode, Order.entry_depth_walk_pct).where(and_(
                     Order.entry_strategy == "EXHAUSTION_SHORT", Order.status == 'CLOSED', Order.is_paper == trading_engine.is_paper_mode,
-                    Order.pnl_percentage.isnot(None)))
+                    Order.pnl_percentage.isnot(None), or_(Order.entry_exh_universe.is_(None), Order.entry_exh_universe != "WIDE")))   # 🌐 (585 I2) WIDE out
                 # 🔁 (579) re-based on the exit override: only fills of that exit era count (the scout's rule, services.exhaustion.exit_era_579)
                 _ex_bot = [(a, p_, r, s_, _exels(s_, dm_, wk_)) for a, p_, r, s_, tp_, at_, dm_, wk_ in (await db.execute(_ex_q)).all()   # 📖📐 (584 I2)
                            if _exera(tp_, at_)
@@ -10077,6 +10112,33 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                         _fz_gate += " · signals: " + " · ".join(f"{k} {v}" for k, v in sorted(_ex_led, key=lambda kv: -kv[1]))
                 except Exception as _exe:
                     logger.debug(f"[PERF] exhaustion journal tally skipped: {_exe}")
+                try:   # 🌐 (DECISION_LOG 585) the WIDE universe's frozen gate (scripts/scout_exh_wide_585.py's rule) + WIDE vs FRENZY rows below
+                    from services.distribution import upper_bound_gate as _ubg
+                    _wq = select(Order.opened_at, Order.pnl_percentage, Order.close_reason, Order.entry_exh_model_slip_pct, Order.entry_depth_mode,
+                                 Order.entry_depth_walk_pct).where(and_(Order.entry_strategy == "EXHAUSTION_SHORT", Order.entry_exh_universe == "WIDE",
+                                 Order.status == 'CLOSED', Order.is_paper == trading_engine.is_paper_mode, Order.pnl_percentage.isnot(None)))
+                    from services.exhaustion import gate_net_pct as _gnp
+                    _wf = [(a, _gnp(p_, r, s_, _exels(s_, dm_, wk_))) for a, p_, r, s_, dm_, wk_ in (await db.execute(_wq)).all()
+                           if not (str(r or '').upper().split(' ')[0] in ('MANUAL', 'EXTERNAL_CLOSE') or str(r or '').upper().startswith('MANUAL_'))]
+                    _fz_gate += " · 🌐 WIDE gate (DL 585) — running (the scout's frozen read decides): " + _ubg(_wf, "WIDE universe", "exhaustion_wide_enabled", 585)[1]
+                except Exception as _wge:
+                    logger.debug(f"[PERF] WIDE gate skipped: {_wge}")
+            if _fz_es == "DISTRIBUTION_SHORT":   # 📉 (586) the frozen revert gate (re-priced with the modelled slippage; operator-closed out) + the journal tally
+                from services.distribution import upper_bound_gate as _ubg
+                from services.exhaustion import gate_net_pct as _gnp, entry_leg_slip as _dels
+                _dq = select(Order.opened_at, Order.pnl_percentage, Order.close_reason, Order.entry_dist_model_slip_pct, Order.entry_depth_mode,
+                             Order.entry_depth_walk_pct).where(and_(Order.entry_strategy == "DISTRIBUTION_SHORT", Order.status == 'CLOSED',
+                             Order.is_paper == trading_engine.is_paper_mode, Order.pnl_percentage.isnot(None)))
+                _df = [(a, _gnp(p_, r, s_, _dels(s_, dm_, wk_))) for a, p_, r, s_, dm_, wk_ in (await db.execute(_dq)).all()
+                       if not (str(r or '').upper().split(' ')[0] in ('MANUAL', 'EXTERNAL_CLOSE') or str(r or '').upper().startswith('MANUAL_'))]
+                _fz_gate = "running (the scout's frozen read decides): " + _ubg(_df, "DISTRIBUTION_SHORT", "distribution_short_enabled", 586)[1]
+                try:
+                    _dl = (await db.execute(select(func.coalesce(DistributionSignal.block, DistributionSignal.status), func.count(DistributionSignal.id)).where(
+                        DistributionSignal.is_paper == trading_engine.is_paper_mode).group_by(func.coalesce(DistributionSignal.block, DistributionSignal.status)))).all()
+                    if _dl:
+                        _fz_gate += " · signals: " + " · ".join(f"{k} {v}" for k, v in sorted(_dl, key=lambda kv: -kv[1]))
+                except Exception as _dle:
+                    logger.debug(f"[PERF] distribution journal tally skipped: {_dle}")
             if _fz_es == "FRENZY_WILLY":   # 🎲 Oct-8 (251) declared exception: BOTH frozen reads (operator decides — never auto-off)
                 # same cohort rule as the scout (services.frenzy.frenzy_willy_reads): EVERY lifetime WILLY fill of this mode, open ones included,
                 # ordered by OPEN time. Floor: no FRENZY_WILLY fill can predate the "(DECISION_LOG 251)" commit, which is the scout's floor too.
@@ -10091,6 +10153,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                     _fz_gate += f" · avg wait {sum(_wwb) / len(_wwb):.1f} bars to the red candle"
                 _fz_gate += " · same stop in paper and live (frenzy_willy_stop_pct)"
             frenzy_rows.append({"row": _fz_lbl + _fz_exit_label(_fz_es) + ")", **_fz_stats(_fz_all), "gate": _fz_gate})
+            if _fz_es == "EXHAUSTION_SHORT" and _fz_all:   # 🌐 (DECISION_LOG 585) one line per universe (WIDE = the 15× / $5M detector; NULL = FRENZY)
+                frenzy_rows.append({"row": "  🌐 universe FRENZY (20× / $20M)", **_fz_stats([o for o in _fz_all if (getattr(o, 'entry_exh_universe', None) or 'FRENZY') != 'WIDE']), "gate": ""})
+                frenzy_rows.append({"row": "  🌐 universe WIDE (15× / $5M, DL 585)", **_fz_stats([o for o in _fz_all if getattr(o, 'entry_exh_universe', None) == 'WIDE']), "gate": ""})
             if _fz_es == "FLATBASE_SHORT" and _fz_all:   # (DECISION_LOG 419) one line per exit: the totals above mix +8 / −15 with today's exit (DL 408)
                 _fb_new = [o for o in _fz_all if o.opened_at and o.opened_at >= FLATBASE_EXIT_408_AT]
                 _fb_old = [o for o in _fz_all if o.closed_at and o.closed_at < FLATBASE_EXIT_408_AT]
@@ -15712,6 +15777,8 @@ async def update_config(config_update: ConfigUpdate):
     _cfg_errs.extend(_fb_cfg_errors(new_config.thresholds, _sb_lev))
     from services.exhaustion import exhaustion_config_errors as _exh_cfg_errors   # 🪫 (DECISION_LOG 578) EXHAUSTION_SHORT + the momentum entry switches
     _cfg_errs.extend(_exh_cfg_errors(new_config.thresholds, _sb_lev))
+    from services.distribution import distribution_config_errors as _dist_cfg_errors   # 📉 (DECISION_LOG 586) DISTRIBUTION_SHORT
+    _cfg_errs.extend(_dist_cfg_errors(new_config.thresholds, _sb_lev))
     try:   # ⚖️ (DECISION_LOG 298) the momentum-long margin share: 0.05 – 1 (the UI saves a blank as 1.0 = off)
         _mli = float(getattr(new_config.thresholds, 'momentum_long_invest_mult', 1.0))
         if not (math.isfinite(_mli) and 0.05 - 1e-12 <= _mli <= 1.0 + 1e-12):

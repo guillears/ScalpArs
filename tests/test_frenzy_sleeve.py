@@ -179,7 +179,7 @@ def test_config_parity_and_every_surface():
     for _id in ("frenzy-monitor-line", "frenzy-flags-body", "frenzy-body"):
         assert html.count(f'id="{_id}"') == 1 and html.count(f"getElementById('{_id}')") == 1
     assert html.count("lines.push(...frenzyReportLines(perf, hr2));") == 2                # clipboard AND saved-file exports
-    for title in ("## 🔥 FRENZY Flagged Pairs (now)", "## 🔥 FRENZY Fills (FRENZY_LONG · FRENZY_LITE · FRENZY_LITE_RETRY · FRENZY_WILLY · FRENZY_WILLY_HT · FLATBASE_SHORT · EXHAUSTION_SHORT)"):
+    for title in ("## 🔥 FRENZY Flagged Pairs (now)", "## 🔥 FRENZY Fills (FRENZY_LONG · FRENZY_LITE · FRENZY_LITE_RETRY · FRENZY_WILLY · FRENZY_WILLY_HT · FLATBASE_SHORT · EXHAUSTION_SHORT · DISTRIBUTION_SHORT)"):
         assert html.count(title) == 1
     assert '<option value="FRENZY_LONG">' in html and "frenzyMark(_fz)" in html
 

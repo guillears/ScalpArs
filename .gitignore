@@ -133,3 +133,8 @@ reports/.exh_ssc_oivol_cache.json
 reports/SCOUT_EXH_SSC_OIVOL.json
 reports/SCOUT_DEPTH_BAND_583.json
 reports/SCOUT_DEPTH_IMPACT_584.json
+reports/SCOUT_EXH_WIDE_585.json
+reports/SCOUT_DISTRIBUTION_586.json
+reports/SCOUT_DIST_RSI1H_KEPT_586.json
+reports/SCOUT_DIST_RSI1H_BLOCKED_586.json
+reports/.dist_rsi1h_cache.json

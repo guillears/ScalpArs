@@ -122,6 +122,7 @@ class BinanceService:
         self.exh_exchange = None        # 🪫 (DECISION_LOG 578) EXHAUSTION_SHORT signal reads (perp 5m klines with quote volume): own public client (lazy)
         self.exh_spot_exchange = None   # 🪫 … spot 15m klines + spot exchangeInfo (the SPOT API's own weight budget): own public client (lazy)
         self.exh_limited_until = 0.0    # 🪫 a 429 / 418 on either EXH client → no EXH read until then (the signal fails closed: EXH_NO_DATA)
+        self.exh_pos_limited_until = 0.0  # 📉 (586 review I6) a 429 on topLongShortPositionRatio → only the DISTRIBUTION position read stands down
         self.exh_oi_limited_until = 0.0  # 🧯 (582) a 429 on the openInterestHist DATA endpoint (its own 1,000 / 5 min cap) → only the OI read stands down
         self.exh_used_weight = 0        # X-MBX-USED-WEIGHT-1M of the last perp answer (the engine stands down above EXH_WEIGHT_STOP)
         self.exh_spot_used_weight = 0   # X-MBX-USED-WEIGHT-1M of the last spot answer (spot budget 6,000 / min; stop above EXH_SPOT_WEIGHT_STOP)
@@ -1017,6 +1018,31 @@ class BinanceService:
                 if isinstance(e, (RateLimitExceeded, DDoSProtection)) or '429' in str(e) or 'Too many requests' in str(e):
                     self.exh_oi_limited_until = time.time() + 120.0
                 logger.warning(f"[BINANCE] EXHAUSTION openInterestHist {pair_id} failed: {str(e)[:120]}")
+            return None
+
+    async def fetch_exh_top_pos_ratio(self, pair_id: str, end_ms: int, limit: int = 60) -> Optional[List]:
+        """📉 (DECISION_LOG 586) the 5m TOP-TRADER POSITION long/short ratio history (GET /futures/data/topLongShortPositionRatio, period 5m,
+        endTime = end_ms) on the EXH perp client — rows {'symbol', 'longShortRatio', 'longAccount', 'shortAccount', 'timestamp' (= the metrics
+        create_time — checked live 2026-11-18 on BTCUSDT: identical ratios at identical stamps, API rounded to 4 decimals)}. A data endpoint:
+        weight 0 against the 1-min IP budget, its own 1,000 requests / 5 min IP cap; its OWN back-off (exh_pos_limited_until, review I6) — a 429 here never stops the EXH OI read — one call per DISTRIBUTION
+        signal (a red VSW candle on a tracked coin). None on any error / ban / back-off (never sleeps, never raises): the caller fails CLOSED."""
+        try:
+            if _ban_until > time.time() or time.time() < float(self.exh_limited_until or 0.0) or time.time() < float(self.exh_pos_limited_until or 0.0):
+                return None
+            if self.exh_exchange is None:
+                self.exh_exchange = ccxt.binanceusdm({'enableRateLimit': True, 'options': {'defaultType': 'future'}})
+            sym = str(pair_id).replace('/USDT:USDT', 'USDT').replace('/', '')
+            raw = await self.exh_exchange.fapiDataGetTopLongShortPositionRatio({'symbol': sym, 'period': '5m', 'endTime': int(end_ms),
+                                                                                 'limit': max(1, min(int(limit), 500))})
+            return list(raw or [])
+        except Exception as e:
+            if '418' in str(e) or '-1003' in str(e):
+                self._exh_error(e, f"topLongShortPositionRatio {pair_id}")
+            else:
+                self._detect_ban(e)
+                if isinstance(e, (RateLimitExceeded, DDoSProtection)) or '429' in str(e) or 'Too many requests' in str(e):
+                    self.exh_pos_limited_until = time.time() + 120.0
+                logger.warning(f"[BINANCE] DISTRIBUTION topLongShortPositionRatio {pair_id} failed: {str(e)[:120]}")
             return None
 
     async def fetch_exh_spot_symbols(self) -> Optional[set]:

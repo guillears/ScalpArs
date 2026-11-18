@@ -85,7 +85,7 @@ def test_capacity_helpers():
                             dict(sleeve="FLATBASE_SHORT", planned=300, final=300, binding="NONE", walk=0.03, slip=0.0),
                             dict(sleeve="MOMENTUM", planned=10, final=10, binding="NONE", walk=0.0, slip=0.0),
                             dict(sleeve="X", planned=None)], {"FLATBASE_SHORT": 2})
-    assert [r['sleeve'] for r in rows] == ["EXHAUSTION_SHORT", "FLATBASE_SHORT", "MOMENTUM"]
+    assert [r['sleeve'] for r in rows] == ["EXHAUSTION_SHORT", "FLATBASE_SHORT", "DISTRIBUTION_SHORT", "MOMENTUM"]   # 📉 (586) a focus sleeve
     fb = rows[1]
     assert fb['n'] == 2 and fb['skipped'] == 2 and fb['skipped_pct'] == 50.0 and fb['shrunk_pct'] == 50.0 and fb['med_planned'] == 200
     assert (fb['bind_entry'], fb['bind_exit'], fb['bind_none']) == (0, 1, 1) and fb['med_walk'] == pytest.approx(0.065)
@@ -213,7 +213,7 @@ def test_engine_wiring():
     assert i_lim < src.index("elif _cap_px:\n                # 📖🧢 (DECISION_LOG 553) CAPPED ENTRY")   # re-priced before the capped order is sent
     assert "if _dg_impact and _dg_vwap and _dg_vwap > 0:" in src                                        # paper books the walked VWAP
     assert "entry_depth_walk_pct=_dg_walk, entry_depth_mode=_dg_mode_st" in src
-    assert "self._depth_cap_last = None   # 📖📊 (584)" in src and src.count("self._depth_cap_for(pair)") == 4
+    assert "self._depth_cap_last = None   # 📖📊 (584)" in src and src.count("self._depth_cap_for(pair)") == 6   # 📉 (586) + DISTRIBUTION opened / refused
     assert 'cap_action="NOFILL"' in src
 
 

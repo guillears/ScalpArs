@@ -1592,6 +1592,22 @@ def run():
     except Exception as _di584_e:
         log(f"DL 584 depth impact gate failed: {_di584_e}")
         _rg_sec += ["## 📖📐 DL 584 depth impact", "", f"Unavailable this run ({str(_di584_e)[:120]}).", ""]
+    try:                                               # 🌐 Nov-18 DL 585 EXHAUSTION WIDE universe revert gate (forward, frozen once)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_exh_wide_585 as _xw585
+        _rg_sec += [_xw585.report(now_ms=now_ms), ""]
+    except Exception as _xw585_e:
+        log(f"DL 585 WIDE gate failed: {_xw585_e}")
+        _rg_sec += ["## 🌐 DL 585 EXHAUSTION WIDE", "", f"Unavailable this run ({str(_xw585_e)[:120]}).", ""]
+    try:                                               # 📉 Nov-18 DL 586 DISTRIBUTION_SHORT revert gate (forward, frozen once)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_distribution_586 as _ds586
+        _rg_sec += [_ds586.report(now_ms=now_ms), ""]
+    except Exception as _ds586_e:
+        log(f"DL 586 DISTRIBUTION gate failed: {_ds586_e}")
+        _rg_sec += ["## 📉 DL 586 DISTRIBUTION_SHORT", "", f"Unavailable this run ({str(_ds586_e)[:120]}).", ""]
     try:                                               # 👁 Oct-30 FADE_NOSTRETCH — SPIKE_FADE with no overshoot to revert, frozen expectancy bar (DECISION_LOG 413; forward)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

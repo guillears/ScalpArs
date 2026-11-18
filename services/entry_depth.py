@@ -321,7 +321,7 @@ def _median(v):
     return v[m] if len(v) % 2 else (v[m - 1] + v[m]) / 2
 
 
-CAPACITY_FOCUS = ("EXHAUSTION_SHORT", "FLATBASE_SHORT")
+CAPACITY_FOCUS = ("EXHAUSTION_SHORT", "FLATBASE_SHORT", "DISTRIBUTION_SHORT")   # 📉 (586)
 
 
 def capacity_rows(fills, skips=None, focus=CAPACITY_FOCUS):

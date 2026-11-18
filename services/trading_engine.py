@@ -11031,8 +11031,11 @@ class TradingEngine:
         except Exception as e:
             logger.warning(f"[EXHAUSTION_SHORT] {pair}: read-cap note failed ({str(e)[:80]})")
 
-    async def _exh_journal(self, pair, T, status, block, reason, sp, f=None, sig=None, tp=None, sl=None, order_id=None, funding=None) -> None:
-        """the decision journal: ONE row per evaluated signal (models.ExhaustionSignal) + a decision-journal line. Never raises."""
+    async def _exh_journal(self, pair, T, status, block, reason, sp, f=None, sig=None, tp=None, sl=None, order_id=None, funding=None,
+                           oi_usd=None, oi_vol=None, model_slip=None, shadow_notional=None) -> None:
+        """the decision journal: ONE row per evaluated signal (models.ExhaustionSignal) + a decision-journal line. Never raises.
+        🧯 (582) oi_usd / oi_vol = the EXH_SSC_OIVOL inputs (every signal the rule passed) · model_slip / shadow_notional = what the shadow
+        scout prices an EXH_SSC_OIVOL block with (scripts/scout_exh_ssc_oivol.py)."""
         f = f or {}
         sig = sig or {}
         try:
@@ -11047,6 +11050,7 @@ class TradingEngine:
                     vol_decay=f.get('vol_decay'), spot_share_chg=f.get('spot_share_chg'),
                     has_spot=(bool(f['has_spot']) if f.get('has_spot') is not None else None), atr_pct=f.get('atr_pct'),
                     tp_pct=tp, sl_pct=sl, vol24_usd=f.get('vol24'), q5_usd=f.get('q5'), funding_rate=funding, order_id=order_id,
+                    oi_usd=oi_usd, oi_vol=oi_vol, model_slip_pct=model_slip, shadow_notional_usd=shadow_notional,   # 🧯 (582)
                     created_at=datetime.utcnow()))
                 await locked_commit(_s)
         except Exception as e:
@@ -11130,6 +11134,26 @@ class TradingEngine:
             self._exh_count(code, pair)
             await self._exh_journal(pair, T, _exh_rules.ST_BLOCKED, code, why, sp, f=f, sig=sig, tp=tp, sl=sl)
             return
+        # 🧯 ③b (DECISION_LOG 582, DECLARED OVERRIDE) EXH_SSC_OIVOL — the open interest is read LAST (only for a signal every cheaper gate
+        # passed) and stamped on every fill, filter on or off. ON: spot_share_chg > exhaustion_ssc_oivol_ssc_min AND OI ÷ vol24 >
+        # exhaustion_ssc_oivol_oivol_min → BLOCKED (journaled with what the shadow scout prices it with). Unreadable OI → FAIL-OPEN (counted).
+        _oi_usd = await self._exh_oi_read(pair, T)
+        _oi_blk, _oi_unread, _oi_vol = _exh_rules.ssc_oivol_block(f.get('spot_share_chg'), _oi_usd, f.get('vol24'), th)
+        _oi_on = _exh_rules.ssc_oivol_enabled(th)
+        if _oi_on and _oi_unread:
+            self._exh_count(_exh_rules.B_SSC_OIVOL_UNREAD, pair)
+            logger.warning(f"[EXHAUSTION_SHORT] {pair}: open interest unreadable — EXH_SSC_OIVOL skipped (fail-open, counted)")
+        if _oi_on and _oi_blk:
+            _pp = exhaustion_params(th)
+            self._exh_count(_exh_rules.B_SSC_OIVOL, pair)
+            _sh_not = await self._exh_shadow_notional(db)
+            _sh_slip = _exh_rules.model_slip_pct(_sh_not, f.get('q5'))
+            await self._exh_journal(
+                pair, T, _exh_rules.ST_BLOCKED, _exh_rules.B_SSC_OIVOL,
+                (f"spot_share_chg {f['spot_share_chg']:+.4f} > {_pp['oivol_ssc_min']:+g} and OI/vol24 {_oi_vol:.4f} > {_pp['oivol_min']:g} "
+                 f"(OI ${_oi_usd / 1e6:.2f}M · vol24 ${f['vol24'] / 1e6:.1f}M) — DL 582 declared override, shadow-priced"),
+                sp, f=f, sig=sig, tp=tp, sl=sl, oi_usd=_oi_usd, oi_vol=_oi_vol, model_slip=_sh_slip, shadow_notional=_sh_not)
+            return
         _sym = (info or {}).get('symbol') or pair.replace('USDT', '/USDT:USDT')
         try:
             _fr = await asyncio.wait_for(binance_service.fetch_funding_rate(_sym, max_age_s=300), 4.0)   # public premiumIndex (observe stamp)
@@ -11152,17 +11176,52 @@ class TradingEngine:
             entry_exh_rsi=(round(f['rsi'], 4) if f.get('rsi') is not None else None),
             entry_exh_vol_decay=round(f['vol_decay'], 6), entry_exh_spot_share_chg=round(f['spot_share_chg'], 6),
             entry_exh_atr_pct=round(f['atr_pct'], 6), entry_exh_tp_pct=tp, entry_exh_sl_pct=sl,
-            entry_exh_decision_price=float(f['close']), entry_exh_q5_usd=f.get('q5'))
+            entry_exh_decision_price=float(f['close']), entry_exh_q5_usd=f.get('q5'),
+            entry_exh_oi_usd=_oi_usd, entry_exh_oi_vol=(round(_oi_vol, 6) if _oi_vol is not None else None))   # 🧯 (582) filter on or off
         if order:
             await self._exh_journal(pair, T, _exh_rules.ST_OPENED, None, f"opened #{order.id} — {why}", sp, f=f, sig=sig, tp=tp, sl=sl,
-                                    order_id=order.id, funding=_fr)
+                                    order_id=order.id, funding=_fr, oi_usd=_oi_usd, oi_vol=_oi_vol)
             return
         _ref = getattr(self, '_frenzy_open_refusal', None)
         if not _ref:   # a named refusal (book full / late / depth / funding …) is counted where it happened
             self._exh_count(_exh_rules.B_OPEN_REFUSED, pair)
         await self._exh_journal(pair, T, _exh_rules.ST_REFUSED, (None if _ref else _exh_rules.B_OPEN_REFUSED),
                                 (_ref or "refused by the open path (balance / cooldown / bracket / liquidity)"), sp, f=f, sig=sig, tp=tp, sl=sl,
-                                funding=_fr)
+                                funding=_fr, oi_usd=_oi_usd, oi_vol=_oi_vol)
+
+    async def _exh_oi_read(self, pair, T) -> Optional[float]:
+        """🧯 (DECISION_LOG 582) OI_usd at the decision time T: ONE openInterestHist read (5m, endTime T, the EXH perp client — a weight-0
+        data endpoint with its own 1,000 / 5 min cap; one call per signal that passed every other gate), the latest row with
+        T − 30 min ≤ timestamp ≤ T − 5 min (services.exhaustion.oi_pick; API timestamp = metrics create_time). None = unreadable (ban / error / empty / stale) → the caller fails OPEN. Never raises."""
+        try:
+            if _bs_ban_active():
+                return None
+            rows = await asyncio.wait_for(binance_service.fetch_exh_open_interest(pair, int(T), _exh_rules.OI_LIMIT), 6.0)
+            return _exh_rules.oi_pick(rows, int(T))[0]
+        except Exception:
+            return None
+
+    async def _exh_shadow_notional(self, db) -> Optional[float]:
+        """🧯 (582) the notional an EXH_SSC_OIVOL-blocked signal would have opened at — the sleeve's size through the SAME sizing call the
+        open path makes (calculate_position_size with exhaustion_invest_mult / exhaustion_lev_mult, absolute-assign, today's balance and
+        open margin). An ESTIMATE: the liquidity / depth / bracket caps of the open path are not applied (they only shrink it → the
+        modelled slip is an upper bound). None when unreadable (the scout then prices without slip and says so). Never raises."""
+        try:
+            p = exhaustion_params(config.trading_config.thresholds)
+            available = float(await asyncio.wait_for(self.get_available_balance(db), 5.0))
+            om = (await db.execute(select(func.coalesce(func.sum(Order.investment), 0)).where(
+                and_(Order.status == "OPEN", Order.is_paper == self.is_paper_mode)))).scalar() or 0
+            inv, lev, _ = self.calculate_position_size(available, "STRONG_BUY", total_portfolio=available + float(om),
+                                                       cell_multiplier=max(0.1, p['invest']), cell_lev_multiplier=max(0.05, p['lev']),
+                                                       multiplier_target="both", quiet=True)
+            n = float(inv) * float(lev)
+            return round(n, 2) if n > 0 else None
+        except Exception:
+            try:
+                await db.rollback()
+            except Exception:
+                pass
+            return None
 
     async def _exhaustion_sweep(self, bar_open) -> None:
         """end of a pass: an episode whose signal window ended more than 1 h ago → ENDED (ledger) and out of the read. Never raises."""
@@ -14139,6 +14198,8 @@ class TradingEngine:
         entry_exh_sl_pct: Optional[float] = None,
         entry_exh_decision_price: Optional[float] = None,
         entry_exh_q5_usd: Optional[float] = None,
+        entry_exh_oi_usd: Optional[float] = None,    # 🧯 (582) open interest $ at the decision (openInterestHist row with T − 30 min ≤ timestamp ≤ T − 5 min)
+        entry_exh_oi_vol: Optional[float] = None,    # 🧯 (582) entry_exh_oi_usd ÷ the rule's 24 h quote volume (EXH_SSC_OIVOL's input)
         # Jul 13: GAPFLAT probe — this LONG failed ONLY the gap-expanding check (passed the whole
         # rest of the ladder). Opens as a REAL order at ~1x effective leverage (invest_mult x
         # lev_mult from gap_probe_* config), tagged cell_src=GAPFLAT_PROBE (own analytics row;
@@ -16478,7 +16539,8 @@ class TradingEngine:
                 entry_exh_rsi_prev=entry_exh_rsi_prev, entry_exh_rsi=entry_exh_rsi, entry_exh_vol_decay=entry_exh_vol_decay,
                 entry_exh_spot_share_chg=entry_exh_spot_share_chg, entry_exh_atr_pct=entry_exh_atr_pct, entry_exh_tp_pct=entry_exh_tp_pct,
                 entry_exh_sl_pct=entry_exh_sl_pct, entry_exh_decision_price=entry_exh_decision_price, entry_exh_q5_usd=entry_exh_q5_usd,
-                entry_exh_model_slip_pct=_exh_rules.model_slip_pct(notional_value, entry_exh_q5_usd))),
+                entry_exh_model_slip_pct=_exh_rules.model_slip_pct(notional_value, entry_exh_q5_usd),
+                entry_exh_oi_usd=entry_exh_oi_usd, entry_exh_oi_vol=entry_exh_oi_vol)),   # 🧯 (582)
             entry_frenzy_stop_atr=(entry_frenzy_stop_atr if _frenzy else None),
             entry_frenzy_bar_ret_pct=(entry_frenzy_bar_ret_pct if _frenzy else None),
             entry_frenzy_di_spread=(entry_frenzy_di_spread if _frenzy else None),

@@ -31,7 +31,10 @@ ORDER_PATTERN = os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")
 DEC_PATTERNS = (os.path.expanduser("~/Downloads/scalpars_decisions_*.csv"), os.path.join(_R, "reports", "BASELINE*_decisions.csv"))
 ORDER_COLS = ("opened_at", "closed_at", "pair", "direction", "status", "entry_strategy", "pnl", "pnl_percentage", "close_reason",
               "notional_value", "entry_exh_model_slip_pct", "entry_exh_q5_usd", "entry_exh_tp_pct", "entry_exh_sl_pct", "entry_slippage_pct", "entry_exh_atr_pct")
-DEC_COLS = ("e", "pair", "exh_signal_at", "exh_status", "exh_block", "exh_reason")
+DEC_COLS = ("e", "pair", "exh_signal_at", "exh_status", "exh_block", "exh_reason",
+            # 🧯 (DECISION_LOG 582) what scripts/scout_exh_ssc_oivol.py prices an EXH_SSC_OIVOL block with
+            "exh_decision_price", "exh_atr_pct", "exh_tp_pct", "exh_sl_pct", "exh_q5_usd", "exh_vol24_usd", "exh_spot_share_chg",
+            "exh_oi_usd", "exh_oi_vol", "exh_model_slip_pct", "exh_shadow_notional_usd")
 
 
 def _operator_closed(r) -> bool:

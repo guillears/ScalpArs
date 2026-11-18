@@ -122,6 +122,7 @@ class BinanceService:
         self.exh_exchange = None        # 🪫 (DECISION_LOG 578) EXHAUSTION_SHORT signal reads (perp 5m klines with quote volume): own public client (lazy)
         self.exh_spot_exchange = None   # 🪫 … spot 15m klines + spot exchangeInfo (the SPOT API's own weight budget): own public client (lazy)
         self.exh_limited_until = 0.0    # 🪫 a 429 / 418 on either EXH client → no EXH read until then (the signal fails closed: EXH_NO_DATA)
+        self.exh_oi_limited_until = 0.0  # 🧯 (582) a 429 on the openInterestHist DATA endpoint (its own 1,000 / 5 min cap) → only the OI read stands down
         self.exh_used_weight = 0        # X-MBX-USED-WEIGHT-1M of the last perp answer (the engine stands down above EXH_WEIGHT_STOP)
         self.exh_spot_used_weight = 0   # X-MBX-USED-WEIGHT-1M of the last spot answer (spot budget 6,000 / min; stop above EXH_SPOT_WEIGHT_STOP)
         self.regime_exchange = None     # 📈 (DECISION_LOG 383) alt-correlation stamp reads (5m / 1d klines, ticker/24hr, exchangeInfo): own public client (lazy)
@@ -990,6 +991,32 @@ class BinanceService:
             return list(raw or [])
         except Exception as e:
             self._exh_error(e, f"klines {pair_id} {interval}{' spot' if spot else ''}")
+            return None
+
+    async def fetch_exh_open_interest(self, pair_id: str, end_ms: int, limit: int = 12) -> Optional[List]:
+        """🧯 (DECISION_LOG 582) the 5m open-interest history (GET /futures/data/openInterestHist, period 5m, endTime = end_ms) on the EXH perp
+        client — rows {'symbol', 'sumOpenInterest', 'sumOpenInterestValue', 'timestamp' (= the metrics create_time, checked live 11-18)}. A data endpoint: weight 0 against
+        the 1-min IP budget, its own 1,000 requests / 5 min cap — one call per EXHAUSTION signal the rule already passed. None on any error /
+        ban / the EXH back-off (never sleeps, never raises): the caller fails OPEN (the EXH_SSC_OIVOL filter is skipped, counted)."""
+        try:
+            if _ban_until > time.time() or time.time() < float(self.exh_limited_until or 0.0) or time.time() < float(self.exh_oi_limited_until or 0.0):
+                return None
+            if self.exh_exchange is None:
+                self.exh_exchange = ccxt.binanceusdm({'enableRateLimit': True, 'options': {'defaultType': 'future'}})
+            sym = str(pair_id).replace('/USDT:USDT', 'USDT').replace('/', '')
+            raw = await self.exh_exchange.fapiDataGetOpenInterestHist({'symbol': sym, 'period': '5m', 'endTime': int(end_ms),
+                                                                        'limit': max(1, min(int(limit), 500))})
+            return list(raw or [])
+        except Exception as e:
+            # (582 review) a 429 on this DATA endpoint has its own cap → only the OI read backs off (the filter fails OPEN); the kline clients
+            # keep working. A 418 / ban still goes through the shared EXH handler.
+            if '418' in str(e) or '-1003' in str(e):
+                self._exh_error(e, f"openInterestHist {pair_id}")
+            else:
+                self._detect_ban(e)
+                if isinstance(e, (RateLimitExceeded, DDoSProtection)) or '429' in str(e) or 'Too many requests' in str(e):
+                    self.exh_oi_limited_until = time.time() + 120.0
+                logger.warning(f"[BINANCE] EXHAUSTION openInterestHist {pair_id} failed: {str(e)[:120]}")
             return None
 
     async def fetch_exh_spot_symbols(self) -> Optional[set]:

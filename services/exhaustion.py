@@ -52,12 +52,13 @@ ENTRY_MAX_LATE_S = 300                     # the order must reach open_position 
 SLIP_A, SLIP_B = -0.041640290342889685, 0.27612727721342023   # reports/SPOT_SHARE_DEEP_data/slip_model.json (118 live fills)
 
 DEFAULTS = dict(rsi_period=14, rsi_level=70.0, vol_decay_min=0.6366, ssc_max=-0.0066, tp_atr=3.0, tp_cap=5.0, sl_atr=1.5, sl_cap=5.0,
-                max_hold_h=24.0, max_h=72.0, min_vol=20e6, invest=0.5, lev=0.25)
+                max_hold_h=24.0, max_h=72.0, min_vol=20e6, invest=0.5, lev=0.25,
+                oivol_ssc_min=-0.0366, oivol_min=0.128)   # 🧯 (DECISION_LOG 582) EXH_SSC_OIVOL block cuts
 FIELDS = dict(rsi_period='exhaustion_rsi_period', rsi_level='exhaustion_rsi_level', vol_decay_min='exhaustion_vol_decay_min',
               ssc_max='exhaustion_spot_share_chg_max', tp_atr='exhaustion_tp_atr_mult', tp_cap='exhaustion_tp_cap_pct',
               sl_atr='exhaustion_sl_atr_mult', sl_cap='exhaustion_sl_cap_pct', max_hold_h='exhaustion_max_hold_hours',
               max_h='exhaustion_max_hours_after_spike', min_vol='exhaustion_min_vol_usd', invest='exhaustion_invest_mult',
-              lev='exhaustion_lev_mult')
+              lev='exhaustion_lev_mult', oivol_ssc_min='exhaustion_ssc_oivol_ssc_min', oivol_min='exhaustion_ssc_oivol_oivol_min')
 MAX_H_CAP = 100.0                          # the 1,500-bar window must hold the spike bar, 25 h of volume and the RSI warm-up
 _RANGES = dict(rsi_period=("a whole number ≥ 2 and ≤ 50", lambda x: 2 <= x <= 50 and x == int(x)),
                rsi_level=("a number > 50 and < 100", lambda x: 50 < x < 100),
@@ -68,7 +69,9 @@ _RANGES = dict(rsi_period=("a whole number ≥ 2 and ≤ 50", lambda x: 2 <= x <
                max_hold_h=("a number > 0 and ≤ 240 (hours)", lambda x: 0 < x <= 240),
                max_h=(f"a number > 0 and ≤ {MAX_H_CAP:g} (hours — the 5m window must hold the spike bar)", lambda x: 0 < x <= MAX_H_CAP),
                min_vol=("a number ≥ 0 (USD)", lambda x: x >= 0), invest=("a number > 0 and ≤ 1", lambda x: 0 < x <= 1.0),
-               lev=("a number > 0 and ≤ 1", lambda x: 0 < x <= 1.0))
+               lev=("a number > 0 and ≤ 1", lambda x: 0 < x <= 1.0),
+               oivol_ssc_min=("a number ≥ −1 and ≤ 1 (spot-share change, a fraction)", lambda x: -1.0 <= x <= 1.0),
+               oivol_min=("a number ≥ 0 and ≤ 100 (open interest ÷ 24 h quote volume)", lambda x: 0 <= x <= 100.0))
 
 # the journal's status (models.ExhaustionSignal) — one row per evaluated signal
 ST_OPENED, ST_BLOCKED, ST_REFUSED = "OPENED", "BLOCKED", "REFUSED"
@@ -76,6 +79,7 @@ ST_OPENED, ST_BLOCKED, ST_REFUSED = "OPENED", "BLOCKED", "REFUSED"
 B_NO_DATA, B_NO_SPOT, B_VOL24, B_VOL_DECAY, B_SPOT_SHARE, B_NO_SIGNAL = ("EXH_NO_DATA", "EXH_NO_SPOT", "EXH_VOL24_LOW", "EXH_VOL_DECAY",
                                                                          "EXH_SPOT_SHARE", "EXH_NO_SIGNAL")
 B_PAIR_HELD, B_OPEN_REFUSED, B_FAILED, B_LATE = "EXH_PAIR_HELD", "EXH_OPEN_REFUSED", "EXH_FAILED", "EXH_LATE"
+B_SSC_OIVOL, B_SSC_OIVOL_UNREAD = "EXH_SSC_OIVOL", "EXH_SSC_OIVOL_UNREAD"   # 🧯 (DECISION_LOG 582) the block · the fail-open counter
 TP_REASON = "FRENZY_TP"                    # the resting-TP / software TP close reason (the FRENZY / FLATBASE label the close funnel knows)
 
 
@@ -107,7 +111,8 @@ def exhaustion_config_errors(th, base_leverage=20.0) -> list:
     """🪫 PUT /api/config refusals for the EXHAUSTION_SHORT fields (DECISION_LOG 578). The stop cap's exchange backstop at the sleeve's leverage
     (base_leverage × exhaustion_lev_mult) must sit ≥ MANUAL_BACKSTOP_MIN_GAP_PCT beyond the widest stop (exhaustion_sl_cap_pct)."""
     errs = []
-    for k in ('exhaustion_short_enabled', 'resting_tp_exhaustion_enabled', 'momentum_long_entries_enabled', 'momentum_short_entries_enabled'):
+    for k in ('exhaustion_short_enabled', 'resting_tp_exhaustion_enabled', 'momentum_long_entries_enabled', 'momentum_short_entries_enabled',
+              'exhaustion_ssc_oivol_block_enabled'):
         if not isinstance(getattr(th, k, True), bool):
             errs.append(f"{k} must be true or false")
     vals = {}
@@ -116,6 +121,9 @@ def exhaustion_config_errors(th, base_leverage=20.0) -> list:
         if v is None or not ok(v):
             errs.append(f"{FIELDS[k]} must be {txt}")
         vals[k] = v
+    if not errs and vals.get('oivol_ssc_min') is not None and vals.get('ssc_max') is not None and vals['oivol_ssc_min'] >= vals['ssc_max']:
+        errs.append(f"exhaustion_ssc_oivol_ssc_min {vals['oivol_ssc_min']:g} must be below exhaustion_spot_share_chg_max {vals['ssc_max']:g} "
+                    "(else the EXH_SSC_OIVOL filter can never block — DECISION_LOG 582)")
     if not errs:
         try:
             from services.trading_engine import order_backstop_pct, MANUAL_BACKSTOP_MIN_GAP_PCT
@@ -387,6 +395,68 @@ def in_window(spike_ms, T, th) -> bool:
         return int(spike_ms) <= int(T) <= int(spike_ms) + int(round(exhaustion_params(th)['max_h'] * HOUR_MS))
     except (TypeError, ValueError):
         return False
+
+
+# ── 🧯 EXH_SSC_OIVOL entry filter (DECISION_LOG 582 — operator, DECLARED OVERRIDE) ──────────────────────────────────────────────────
+# BLOCK a signal the rule passed when BOTH (a) spot_share_chg > exhaustion_ssc_oivol_ssc_min (−0.0366; the rule itself needs < −0.0066, so
+# the block band is −0.0366 < ssc < −0.0066 — the spot share falls only a little) AND (b) oi_vol = OI_usd ÷ vol24 > exhaustion_ssc_oivol_oivol_min
+# (0.128 — open interest is large against the day's turnover). Study reports/EXH_BADDAY_2026-11-18.md (builder sq/build.py L95-110, prep.py L21):
+#   OI_usd  Binance metrics sum_open_interest_value of the latest 5m row whose create_time (the period START) is ≤ T − 5 min and ≥ T − 30 min,
+#           T = the decision time (the signal 15m bar close). Live: GET /futures/data/openInterestHist (period 5m) → sumOpenInterestValue; the
+#           latest row with T − 30 min ≤ timestamp ≤ T − 5 min — the API `timestamp` EQUALS the metrics create_time (BTCUSDT 11-17 12:00 … 12:20: identical
+#           sumOpenInterestValue at identical stamps, checked live 2026-11-18), so this is the study's exact window (create_time ≤ T − 5 min, ≤ 30 min old).
+#   vol24   the rule's own 24 h quote volume (features()['vol24'] — the 288 closed 5m bars ending at the last closed bar = the study's vol24_k).
+# Unreadable OI (error, empty, stale, non-positive) → FAIL-OPEN (trade), counted EXH_SSC_OIVOL_UNREAD. Strict cuts (> / >), as in the study.
+OI_LAG_MS = 5 * 60_000                    # (582 review, checked live 11-18: openInterestHist `timestamp` == metrics create_time, the period START)
+OI_MAX_AGE_MS = 30 * 60_000
+OI_LIMIT = 12                              # rows asked for (1 h of 5m periods ending at T) — a weight-0 data endpoint
+
+
+def ssc_oivol_enabled(th) -> bool:
+    """the EXH_SSC_OIVOL switch (exhaustion_ssc_oivol_block_enabled); anything but True = off."""
+    return getattr(th, 'exhaustion_ssc_oivol_block_enabled', False) is True
+
+
+def oi_pick(rows, T) -> Tuple[Optional[float], Optional[int]]:
+    """(OI_usd, its timestamp ms) of the latest openInterestHist row with T − 30 min ≤ timestamp ≤ T − 5 min (the API timestamp = the metrics
+    create_time — the study's window). rows = [{'timestamp': ms, 'sumOpenInterestValue': '…'}, …] (any order). (None, None) when no usable row
+    (empty / stale / unreadable / non-positive). Never raises."""
+    best = None
+    try:
+        T = int(T)
+        for r in rows or []:
+            try:
+                ts = int(r.get('timestamp'))
+                v = _fin(r.get('sumOpenInterestValue'))
+            except (TypeError, ValueError, AttributeError):
+                continue
+            if v is None or v <= 0 or ts > T - OI_LAG_MS or ts < T - OI_MAX_AGE_MS:
+                continue
+            if best is None or ts > best[1]:
+                best = (v, ts)
+    except (TypeError, ValueError):
+        return None, None
+    return best if best is not None else (None, None)
+
+
+def oi_vol(oi_usd, vol24) -> Optional[float]:
+    """OI_usd ÷ the 24 h quote volume; None on a bad / non-positive input."""
+    o, v = _fin(oi_usd), _fin(vol24)
+    if o is None or v is None or o <= 0 or v <= 0:
+        return None
+    return o / v
+
+
+def ssc_oivol_block(ssc, oi_usd, vol24, th) -> Tuple[bool, bool, Optional[float]]:
+    """(block, unread, oi_vol) — block = spot_share_chg > oivol_ssc_min AND oi_vol > oivol_min (strict). unread = the OI ratio (or the
+    spot-share change) is unreadable → never a block (FAIL-OPEN; the caller counts EXH_SSC_OIVOL_UNREAD when the filter is on). The switch
+    is the caller's (the ratio is stamped whether or not the filter is on). Never raises."""
+    p = exhaustion_params(th)
+    ov = oi_vol(oi_usd, vol24)
+    s = _fin(ssc)
+    if ov is None or s is None:
+        return False, True, ov
+    return bool(s > p['oivol_ssc_min'] and ov > p['oivol_min']), False, ov
 
 
 # ── EXIT (paper = live) ────────────────────────────────────────────────────────────────────────────────────────────────────────────

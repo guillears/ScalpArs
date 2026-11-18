@@ -1568,6 +1568,14 @@ def run():
     except Exception as _exo_e:
         log(f"EXHAUSTION exit-override gate failed: {_exo_e}")
         _rg_sec += ["## 🎯 EXHAUSTION exit override (DL 579)", "", f"Unavailable this run ({str(_exo_e)[:120]}).", ""]
+    try:                                               # 🧯 Nov-18 EXH_SSC_OIVOL shadow revert gate (DECISION_LOG 582; blocked signals priced with the live exit)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_exh_ssc_oivol as _sso
+        _rg_sec += _sso.run(now_ms)
+    except Exception as _sso_e:
+        log(f"EXH_SSC_OIVOL gate failed: {_sso_e}")
+        _rg_sec += ["## 🧯 EXH_SSC_OIVOL (DL 582)", "", f"Unavailable this run ({str(_sso_e)[:120]}).", ""]
     try:                                               # 👁 Oct-30 FADE_NOSTRETCH — SPIKE_FADE with no overshoot to revert, frozen expectancy bar (DECISION_LOG 413; forward)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

@@ -29,7 +29,8 @@ def _th(**kw):
     d = dict(exhaustion_short_enabled=True, exhaustion_rsi_period=14, exhaustion_rsi_level=70.0, exhaustion_vol_decay_min=0.6366,
              exhaustion_spot_share_chg_max=-0.0066, exhaustion_tp_atr_mult=3.0, exhaustion_tp_cap_pct=5.0, exhaustion_sl_atr_mult=1.5,
              exhaustion_sl_cap_pct=5.0, exhaustion_max_hold_hours=24.0, exhaustion_max_hours_after_spike=72.0, exhaustion_min_vol_usd=20e6,
-             exhaustion_invest_mult=0.5, exhaustion_lev_mult=0.25, resting_tp_exhaustion_enabled=True, broker_backstop_pct=2.5)
+             exhaustion_invest_mult=0.5, exhaustion_lev_mult=0.25, resting_tp_exhaustion_enabled=True, broker_backstop_pct=2.5,
+             exhaustion_ssc_oivol_block_enabled=False, exhaustion_ssc_oivol_ssc_min=-0.0366, exhaustion_ssc_oivol_oivol_min=0.128)   # 🧯 (582) off here: tests/test_exh_ssc_oivol.py drives it
     d.update(kw)
     return NS(**d)
 
@@ -202,7 +203,7 @@ def _patch_th(monkeypatch, TE, **kw):
         monkeypatch.setattr(TE.config.trading_config.thresholds, k, v, raising=False)
 
 
-def _run(monkeypatch, k=1, *, spot_syms=None, held=False, open_ok=True, perp_ok=True, th_kw=None, fs_bars=0, T_shift=0):
+def _run(monkeypatch, k=1, *, spot_syms=None, held=False, open_ok=True, perp_ok=True, th_kw=None, fs_bars=0, T_shift=0, oi_rows=None, engine_hook=None):
     """drives the REAL _exhaustion_eval → _exhaustion_judge_queued on fixture row k (the FRENZY window = the study's closes up to T);
     exchange reads + open_position stubbed. → (engine, opens, journal rows, episode rows, read calls)."""
     import models
@@ -229,6 +230,11 @@ def _run(monkeypatch, k=1, *, spot_syms=None, held=False, open_ok=True, perp_ok=
     monkeypatch.setattr(TE.binance_service, "fetch_exh_spot_symbols", syms)
     monkeypatch.setattr(TE.binance_service, "fetch_funding_rate", fr)
     monkeypatch.setattr(TE.binance_service, "exh_used_weight", 0, raising=False)
+
+    async def oi(pid, end_ms, limit=12):   # 🧯 (582) the OI read (never the network in tests); no row → fail-open
+        calls.append(("oi", pid, end_ms))
+        return (oi_rows(T) if callable(oi_rows) else oi_rows)
+    monkeypatch.setattr(TE.binance_service, "fetch_exh_open_interest", oi)
     opens = []
 
     async def go():
@@ -244,6 +250,8 @@ def _run(monkeypatch, k=1, *, spot_syms=None, held=False, open_ok=True, perp_ok=
             opens.append(kw)
             return NS(id=88) if open_ok else None
         e.open_position = fake_open
+        if engine_hook:
+            engine_hook(e)
         closed = [r[:6] for r in rows if r[0] + BAR <= T]
         ep = dict(spike_ts=sp, verified=True, hours=(T - sp) / HOUR)
         async with SL() as db:
@@ -275,6 +283,7 @@ def test_engine_opens_on_a_study_row(monkeypatch):
     assert o['entry_frenzy_spike_at'] == dt.datetime.utcfromtimestamp(sp / 1000) and o['entry_exh_q5_usd'] == pytest.approx(m[6], rel=1e-5)
     perp = [c for c in calls if len(c) == 5 and not c[4]]; spt = [c for c in calls if len(c) == 5 and c[4]]
     assert perp == [(pair, '5m', 1500, T - 1, False)] and spt == [(pair, '15m', 104, T - 1, True)]   # one read each, only on the signal
+    assert [c for c in calls if c[0] == "oi"] == [("oi", pair, T)]                          # 🧯 (582) one OI read, after the rule passed
     assert e.blocks == []
 
 

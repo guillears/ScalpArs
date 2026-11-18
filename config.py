@@ -1684,6 +1684,18 @@ class SignalThresholds(BaseModel):
     exhaustion_min_vol_usd: float = 20e6          # 24 h quote volume (Σ of the 288 5m bars ending at the signal bar, exchange quote volume)
     exhaustion_invest_mult: float = 0.5           # absolute-assign margin share — the Flatbase size (DL 577)
     exhaustion_lev_mult: float = 0.25             # × the STRONG_BUY leverage (20 × 0.25 = 5×), the Flatbase leverage; a fill holds a bot slot
+    # 🧯 2026-11-18 EXH_SSC_OIVOL entry filter (DECISION_LOG 582 — operator "yes build it", DECLARED OVERRIDE: family-wise luck p 0.45).
+    # At a signal the rule passed, BLOCK when spot_share_chg > exhaustion_ssc_oivol_ssc_min (−0.0366; with the rule's < −0.0066 the band is
+    # −0.0366 < ssc < −0.0066) AND OI ÷ the 24 h quote volume > exhaustion_ssc_oivol_oivol_min (0.128). OI = openInterestHist
+    # sumOpenInterestValue of the latest row with T − 30 min ≤ timestamp ≤ T − 5 min (API timestamp = metrics create_time — the study's window); unreadable
+    # → FAIL-OPEN (EXH_SSC_OIVOL_UNREAD). Evidence reports/EXH_BADDAY_2026-11-18.md: blocked 630 of 3,998 (16 %), 31 % WR, −0.43 %/trade; DCR at
+    # 0.183 × equity +0.356 → +0.399 %/day (2023-07 → 2026-11); design 511 · −0.49, unseen 2026-H2 119 · −0.16 (P(avg<0) 0.63); blocked
+    # negative in 5 of 7 half-years (2023-H2 +0.66, 2024-H1 +0.26). 🔒 REVERT (scripts/scout_exh_ssc_oivol.py, alert only, frozen, read once):
+    # the first 30 priced blocked signals spanning ≥ 10 UTC days, each priced with the live exit → blocked mean > 0 → flag REVERT.
+    # Code default OFF; trading_config.json ON. The OI stamps (entry_exh_oi_usd / entry_exh_oi_vol) are written on every fill, on or off.
+    exhaustion_ssc_oivol_block_enabled: bool = False
+    exhaustion_ssc_oivol_ssc_min: float = -0.0366   # block only when spot_share_chg is ABOVE this (a small spot-share fall)
+    exhaustion_ssc_oivol_oivol_min: float = 0.128   # … and OI ÷ 24 h quote volume is ABOVE this (strict)
     # 🎯 2026-10-15 RESTING TAKE-PROFIT (DECISION_LOG 296, operator-armed DECLARED EXCEPTION — below the usual evidence bar): a reduce-only,
     # post-only (GTX) LIMIT rests on Binance at the price that books the SAME net TP with the MAKER exit fee (services/resting_tp.py +
     # exec_shadow.resting_tp_price). Evidence: live TP give-back 4/4 (WILLY ZK +1.12 / BLUR +1.09 / RLC +1.08 vs +1.25, LITE DEEP +2.80 vs

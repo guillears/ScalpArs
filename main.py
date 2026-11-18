@@ -3429,7 +3429,8 @@ async def export_decisions_csv(days: Optional[int] = None, db: AsyncSession = De
     # BLOCKED / REFUSED + every feature): scripts/scout_exhaustion_short.py prices the skipped ones and reads the revert gate.
     _exh_cols = ["exh_signal_at", "exh_spike_at", "exh_hours_after_spike", "exh_status", "exh_block", "exh_reason", "exh_decision_price",
                  "exh_rsi_prev", "exh_rsi", "exh_vol_decay", "exh_spot_share_chg", "exh_has_spot", "exh_atr_pct", "exh_tp_pct", "exh_sl_pct",
-                 "exh_vol24_usd", "exh_q5_usd", "exh_funding_rate", "exh_order_id"]
+                 "exh_vol24_usd", "exh_q5_usd", "exh_funding_rate", "exh_order_id",
+                 "exh_oi_usd", "exh_oi_vol", "exh_model_slip_pct", "exh_shadow_notional_usd"]   # 🧯 (DECISION_LOG 582) EXH_SSC_OIVOL inputs + shadow pricing
     try:
         _fmt = lambda d: d.strftime('%Y-%m-%dT%H:%M:%S') if d else None
         for b in (await db.execute(select(ExhaustionSignal).where(and_(ExhaustionSignal.is_paper == trading_engine.is_paper_mode,
@@ -3441,7 +3442,8 @@ async def export_decisions_csv(days: Optional[int] = None, db: AsyncSession = De
                              exh_decision_price=b.decision_price, exh_rsi_prev=b.rsi_prev, exh_rsi=b.rsi, exh_vol_decay=b.vol_decay,
                              exh_spot_share_chg=b.spot_share_chg, exh_has_spot=b.has_spot, exh_atr_pct=b.atr_pct, exh_tp_pct=b.tp_pct,
                              exh_sl_pct=b.sl_pct, exh_vol24_usd=b.vol24_usd, exh_q5_usd=b.q5_usd, exh_funding_rate=b.funding_rate,
-                             exh_order_id=b.order_id))
+                             exh_order_id=b.order_id, exh_oi_usd=getattr(b, 'oi_usd', None), exh_oi_vol=getattr(b, 'oi_vol', None),
+                             exh_model_slip_pct=getattr(b, 'model_slip_pct', None), exh_shadow_notional_usd=getattr(b, 'shadow_notional_usd', None)))
     except Exception as _e:
         logger.warning(f"[DECISIONS_EXPORT] EXHAUSTION rows skipped: {_e}")
     # 🧷 (DECISION_LOG 383) the matched momentum-long refusals (ml_matched_refusals) ride this file as ML_MATCHED rows — the last
@@ -5104,6 +5106,7 @@ def _frenzy_monitor_payload():
                 "flatbase": _fb_params(_th),
                 # 🪫 (578) EXHAUSTION_SHORT: switch, the values the engine USES, the episodes it is tracking now
                 "exhaustion_enabled": getattr(_th, 'exhaustion_short_enabled', False) is True,
+                "exhaustion_ssc_oivol_enabled": getattr(_th, 'exhaustion_ssc_oivol_block_enabled', False) is True,   # 🧯 (582)
                 "exhaustion": __import__('services.exhaustion', fromlist=['exhaustion_params']).exhaustion_params(_th),
                 "exhaustion_tracking": [dict(pair=k[0], spike_ms=k[1], first_seen_ms=v.get('first_seen_ms'))
                                         for k, v in sorted((getattr(trading_engine, '_exh_eps', None) or {}).items()) if v.get('status') == 'TRACKING'],

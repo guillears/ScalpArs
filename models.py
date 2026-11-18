@@ -378,6 +378,8 @@ class Order(Base):
     entry_exh_decision_price = Column(Float, nullable=True)        # the signal 15m close (the study's entry ≈ the next 5m open)
     entry_exh_model_slip_pct = Column(Float, nullable=True)        # the study's modelled taker slippage at this notional (the revert gate prices with it)
     entry_exh_q5_usd = Column(Float, nullable=True)                # median 5m quote volume of the 12 bars ending at the signal bar (the slippage model's Q5)
+    entry_exh_oi_usd = Column(Float, nullable=True)                # 🧯 (DECISION_LOG 582) open interest $ at the decision (openInterestHist sumOpenInterestValue, the row with T − 30 min ≤ timestamp ≤ T − 5 min)
+    entry_exh_oi_vol = Column(Float, nullable=True)                # 🧯 (582) entry_exh_oi_usd ÷ the rule's 24 h quote volume — EXH_SSC_OIVOL blocks > 0.128 when spot_share_chg > −0.0366
     # 📖 Oct-3 (DECISION_LOG 192): the ORDER BOOK at a MANUAL click (services/orderbook_stats.orderbook_metrics) — OBSERVE-ONLY research stamps
     manual_ob_spread_pct = Column(Float, nullable=True)
     manual_ob_top_bid_usd = Column(Float, nullable=True)
@@ -1480,7 +1482,7 @@ class ExhaustionEpisode(Base):
 class ExhaustionSignal(Base):
     """🪫 2026-11-18 (DECISION_LOG 578) — the EXHAUSTION_SHORT DECISION JOURNAL: one row per evaluated signal (a tracked FRENZY coin whose 15m
     RSI(14) crossed down through 70 on a closed bar), whatever happened: OPENED (order_id) · BLOCKED (a rule refused it: block = EXH_VOL_DECAY /
-    EXH_SPOT_SHARE / EXH_NO_SPOT / EXH_VOL24_LOW / EXH_NO_DATA / EXH_NO_SIGNAL / EXH_PAIR_HELD) · REFUSED (the open path refused: book full,
+    EXH_SPOT_SHARE / EXH_NO_SPOT / EXH_VOL24_LOW / EXH_NO_DATA / EXH_NO_SIGNAL / EXH_PAIR_HELD / 🧯 EXH_SSC_OIVOL, DL 582) · REFUSED (the open path refused: book full,
     depth, funding, lateness, manual block … — reason says which). Every feature is kept so the scout prices the skipped ones. Rides the
     decisions export as e=EXHAUSTION rows (exh_* columns)."""
     __tablename__ = "exhaustion_signals"
@@ -1508,6 +1510,10 @@ class ExhaustionSignal(Base):
     q5_usd = Column(Float, nullable=True)
     funding_rate = Column(Float, nullable=True)
     order_id = Column(Integer, nullable=True)
+    oi_usd = Column(Float, nullable=True)                          # 🧯 (DECISION_LOG 582) open interest $ at the decision (signals the rule passed)
+    oi_vol = Column(Float, nullable=True)                          # 🧯 (582) oi_usd ÷ vol24_usd (EXH_SSC_OIVOL's input)
+    model_slip_pct = Column(Float, nullable=True)                  # 🧯 (582) EXH_SSC_OIVOL blocks: the modelled taker slip at shadow_notional_usd (the shadow scout prices with it)
+    shadow_notional_usd = Column(Float, nullable=True)             # 🧯 (582) EXH_SSC_OIVOL blocks: the notional the sleeve's sizing gave at the decision (estimate)
     created_at = Column(DateTime, nullable=True)
 
 

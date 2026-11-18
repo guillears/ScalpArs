@@ -320,7 +320,7 @@ async def init_db():
                         connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_fb_col} FLOAT"))
                 for _ex_col in ('entry_exh_rsi_prev', 'entry_exh_rsi', 'entry_exh_vol_decay', 'entry_exh_spot_share_chg', 'entry_exh_atr_pct',
                                 'entry_exh_tp_pct', 'entry_exh_sl_pct', 'entry_exh_decision_price', 'entry_exh_model_slip_pct',
-                                'entry_exh_q5_usd'):   # 🪫 (DECISION_LOG 578) EXHAUSTION_SHORT stamps (its exit reads tp / sl)
+                                'entry_exh_q5_usd', 'entry_exh_oi_usd', 'entry_exh_oi_vol'):   # 🪫 (DECISION_LOG 578) EXHAUSTION_SHORT stamps (its exit reads tp / sl) · 🧯 (582) OI
                     if _ex_col not in columns:
                         connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_ex_col} FLOAT"))
                 for _lr_col in ('entry_frenzy_retry_wait_min', 'entry_frenzy_retry_green_ret', 'entry_frenzy_stop_pct'):   # 🔁 (DECISION_LOG 316) FRENZY_LITE_RETRY stamps · 🛑 (317) stop at entry
@@ -887,6 +887,11 @@ async def init_db():
                     connection.execute(text("ALTER TABLE monitor_periods ADD COLUMN blocked_breadth INTEGER DEFAULT 0"))
                 if 'blocked_age' not in _mp_cols:
                     connection.execute(text("ALTER TABLE monitor_periods ADD COLUMN blocked_age INTEGER DEFAULT 0"))
+            if 'exhaustion_signals' in inspector.get_table_names():   # 🧯 (DECISION_LOG 582) EXH_SSC_OIVOL inputs + the shadow-pricing fields
+                _exs_cols = [c['name'] for c in inspector.get_columns('exhaustion_signals')]
+                for _exs_c in ('oi_usd', 'oi_vol', 'model_slip_pct', 'shadow_notional_usd'):
+                    if _exs_c not in _exs_cols:
+                        connection.execute(text(f"ALTER TABLE exhaustion_signals ADD COLUMN {_exs_c} FLOAT"))
             if 'flatbase_episodes' in inspector.get_table_names():   # 🩳⏱ (DECISION_LOG 401) the ledger's hours since the peak
                 _fbe_cols = [c['name'] for c in inspector.get_columns('flatbase_episodes')]
                 if 'peak_age_h' not in _fbe_cols:

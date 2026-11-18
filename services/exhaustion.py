@@ -463,6 +463,21 @@ def model_slip_pct(notional, q5) -> Optional[float]:
 
 
 GATE_N, GATE_SLIP_MAX = 20, 0.25
+
+
+def exit_era_579(tp_stamp, atr_stamp=None) -> bool:
+    """🎯 (DECISION_LOG 579) True when the fill ran the exit override (TP min(20 × ATR, 10 %) / SL min(1.5 × ATR, 6 %)). The shipped exit
+    stamps TP = min(3 × ATR, 5 %): never above 5 % and never above 3 × ATR; the override stamps either > 5 % (ATR > 0.25 %) or 20 × ATR
+    (> 3 × ATR) — an exact split whenever both stamps are readable. Both stamps are rounded to 6 decimals, so the 3 × ATR test carries a
+    relative + absolute margin (shipped: tp ≤ 3a + 3e-6 after rounding; override: tp = 20a ≫ 3a). A missing TP stamp → False (not counted).
+    ⚠ Hard-codes the shipped 3× / 5 % exit: a FUTURE exit change must give this rule a new era (the scouts' registry pins go ⚠ STALE; the
+    dashboard gate in main.py reads this same rule). Pure."""
+    tp, a = _fin(tp_stamp), _fin(atr_stamp)
+    if tp is None or tp <= 0:
+        return False
+    if tp > 5.0 + 1e-4:
+        return True
+    return a is not None and a > 0 and tp > 3.0 * a * (1 + 1e-4) + 1e-4
 TAKER_EXIT_FREE = (TP_REASON,)              # a resting maker TP pays no slippage (the study's TP: maker strictly through by 1 tick)
 
 

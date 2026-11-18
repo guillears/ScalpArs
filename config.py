@@ -1662,7 +1662,7 @@ class SignalThresholds(BaseModel):
     # the 24 h before) < −0.0066. Exit TP min(3 × ATR14-15m, 5 %) (resting maker limit) · SL min(1.5 × ATR, 5 %) · 24 h. Evidence (study,
     # every period already seen, modelled $1k slippage): R4 C +0.53 / A +0.61 / DESIGN +0.66 / B +0.97 %/trade; the capped 5 / 5 / 24 h exit
     # pooled 3,862 trades · 52.1 % WR · +0.43 %/trade, every half-year +0.13 … +0.86, best-5 % removed +0.19, +0.28 at a flat 0.10 % slip.
-    # 🔒 REVERT (scripts/scout_exhaustion_short.py): the first 20 fills re-priced with the modelled slippage (−0.042 + 0.276 · √(notional ÷
+    # 🔒 REVERT (scripts/scout_exhaustion_short.py; 🔁 re-based by DL 579 — counts only override-era fills): the first 20 fills re-priced with the modelled slippage (−0.042 + 0.276 · √(notional ÷
     # 5m quote volume), floored at 0) average ≤ 0 → OFF · mean modelled slippage > 0.25 % → OFF. Code default OFF; trading_config.json ON.
     exhaustion_short_enabled: bool = False
     exhaustion_rsi_period: int = 14               # Wilder RSI on 15m closes (the study's RSI14X)
@@ -1674,6 +1674,12 @@ class SignalThresholds(BaseModel):
     exhaustion_sl_atr_mult: float = 1.5           # SL distance = min(this × ATR14-15m %, exhaustion_sl_cap_pct) above the fill (price %)
     exhaustion_sl_cap_pct: float = 5.0
     exhaustion_max_hold_hours: float = 24.0       # time exit
+    # 🎯 2026-11-18 EXIT OVERRIDE (DECISION_LOG 579 — operator-approved, PAPER, DECLARED OVERRIDE; the code defaults above stay the
+    # shipped study exit): trading_config.json runs TP min(20 × ATR, 10 %) ≈ 10 % (exactly 10 % for ATR ≥ 0.5 %) · SL min(1.5 × ATR, 6 %) · 24 h.
+    # Evidence reports/EXH_EXIT_GRID_2026-11-18.md (396 exits, 1m paths, entries frozen): +0.65 vs +0.46 %/trade, worst half-year +0.17,
+    # fresh holdout 2023-H1 +0.46 vs +0.11; after a 5 % TP fill price fell a median 7.1 % further within 24 h. It FAILS the family-wise null
+    # (p 0.37) → override. 🔒 REVERT (scripts/scout_exh_exit_override.py, alert only): read once at 40 · 80 · 120 fills → the 90 % upper
+    # bound of the paired Δ (this exit − the shipped exit re-priced on the same fills) < 0 → flag REVERT to 3 / 5 / 1.5 / 5 (on a flat book).
     exhaustion_max_hours_after_spike: float = 72.0   # the signal bar must close ≤ this long after the spike bar's close (≤ 100)
     exhaustion_min_vol_usd: float = 20e6          # 24 h quote volume (Σ of the 288 5m bars ending at the signal bar, exchange quote volume)
     exhaustion_invest_mult: float = 0.5           # absolute-assign margin share — the Flatbase size (DL 577)

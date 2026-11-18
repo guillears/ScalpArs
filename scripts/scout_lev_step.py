@@ -38,7 +38,9 @@ SLEEVES = {"Momentum Long": ("MOMENTUM", "LONG", 15, 0.611, "momentum_long_lev_m
            "Flatbase": ("FLATBASE_SHORT", "SHORT", 8, 0.667, "flatbase_lev_mult 0.4 → 0.25")}
 # sleeve label → (verdict, detail): reverted by the operator before the frozen gate decided (shown, never gated, never written to STATE)
 # ⚠ remove the entry if that sleeve is ever stepped up again, or the scout keeps printing REVERTED
-OPERATOR_DECIDED = {"Flatbase": ("REVERTED (operator)", "DECISION_LOG 544, 2026-11-13: back to 5× early at 3 of 15 fills (1 W · 2 −10 stops) — "
+OPERATOR_DECIDED = {"WILLY": ("RE-SIZED (operator)", "DECISION_LOG 578 → 581, 2026-11-18: WILLY at 0.5 × 5× — the 8× step is moot"),
+                    "WILLY HT": ("RE-SIZED (operator)", "DECISION_LOG 578 → 581, 2026-11-18: HT = WILLY's size, 0.5 × 5× — the 8× step is moot"),
+                    "Flatbase": ("REVERTED (operator)", "DECISION_LOG 544, 2026-11-13: back to 5× early at 3 of 15 fills (1 W · 2 −10 stops) — "
                                  "one −10 stop at 8× ≈ 7.8 % of the account > the 5 %-per-trade limit")}
 EXPORT_GLOB = os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")
 COLS = ("opened_at", "pair", "direction", "entry_strategy", "status", "pnl_percentage", "close_reason", "cell_multiplier_source", "leverage",

@@ -890,8 +890,8 @@ def test_sizing_1x_1_0():
 
 # ── config / UI / exports (D11 · D12) ──────────────────────────────────────────────────────────────────────────────────────────────
 
-FIELDS = {"frenzy_willy_enabled": True, "frenzy_willy_entry_a": True, "frenzy_willy_entry_b": False, "frenzy_willy_invest_mult": 0.2,   # DECISION_LOG 578 (operator: WILLY + HT sized like FRENZY_LONG, 0.2 / 0.05) · was 1.0 DL 528 C5 (0.5: DL 487)
-          "frenzy_willy_lev_mult": 0.05, "frenzy_willy_tp_pct": 1.25, "frenzy_willy_stop_pct": 4.0, "frenzy_willy_max_hold_minutes": 90,
+FIELDS = {"frenzy_willy_enabled": True, "frenzy_willy_entry_a": True, "frenzy_willy_entry_b": False, "frenzy_willy_invest_mult": 0.5,   # DECISION_LOG 581 (operator: WILLY + HT at 0.5 × 5×, the EXH / Flatbase size) · 0.2 DL 578 · 1.0 DL 528 C5 · 0.5 DL 487
+          "frenzy_willy_lev_mult": 0.25, "frenzy_willy_tp_pct": 1.25, "frenzy_willy_stop_pct": 4.0, "frenzy_willy_max_hold_minutes": 90,
           "frenzy_willy_max_slots": 10, "frenzy_willy_red_max_wait_minutes": 60, "frenzy_willy_a_cold_max_bars": 3}
 
 

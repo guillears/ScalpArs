@@ -1552,6 +1552,22 @@ def run():
     except Exception as _wvw_e:
         log(f"WILLY_FAILED_SPIKE line failed: {_wvw_e}")
         _rg_sec += ["## 👁 WILLY_FAILED_SPIKE", "", f"Unavailable this run ({str(_wvw_e)[:120]}).", ""]
+    try:                                               # 👁 Nov-18 WILLY / HT lines — CROWDED_LONGS · NEAR_SPIKE_HIGH · REANCHORED (DECISION_LOG 580; forward)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_willy_ht_lines as _whl
+        _rg_sec += _whl.run(now_ms)
+    except Exception as _whl_e:
+        log(f"WILLY / HT lines failed: {_whl_e}")
+        _rg_sec += ["## 👁 WILLY / HT lines", "", f"Unavailable this run ({str(_whl_e)[:120]}).", ""]
+    try:                                               # 🎯 Nov-18 EXHAUSTION exit override revert gate (DECISION_LOG 579; paired re-pricing)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_exh_exit_override as _exo
+        _rg_sec += ["## 🎯 EXHAUSTION exit override (DL 579)", "", "```", _exo.report(_exo.load(), now_ms=now_ms), "```", ""]
+    except Exception as _exo_e:
+        log(f"EXHAUSTION exit-override gate failed: {_exo_e}")
+        _rg_sec += ["## 🎯 EXHAUSTION exit override (DL 579)", "", f"Unavailable this run ({str(_exo_e)[:120]}).", ""]
     try:                                               # 👁 Oct-30 FADE_NOSTRETCH — SPIKE_FADE with no overshoot to revert, frozen expectancy bar (DECISION_LOG 413; forward)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

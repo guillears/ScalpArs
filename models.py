@@ -373,8 +373,8 @@ class Order(Base):
     entry_exh_vol_decay = Column(Float, nullable=True)             # last hour's quote volume ÷ the episode's peak hourly quote volume (≥ 0.6366)
     entry_exh_spot_share_chg = Column(Float, nullable=True)        # spot share of volume, last hour − the 24 h before (< −0.0066)
     entry_exh_atr_pct = Column(Float, nullable=True)               # Wilder ATR(14) on 15m at the signal bar, % of the decision price
-    entry_exh_tp_pct = Column(Float, nullable=True)                # the TP price distance this row runs = min(3 × ATR %, 5 %) — the exit reads it
-    entry_exh_sl_pct = Column(Float, nullable=True)                # the SL price distance this row runs = min(1.5 × ATR %, 5 %) — the exit reads it
+    entry_exh_tp_pct = Column(Float, nullable=True)                # the TP price distance this row runs = min(tp_atr × ATR %, tp_cap) — study 3 × / 5 %, DL 579 config 20 × / 10 % — the exit reads it
+    entry_exh_sl_pct = Column(Float, nullable=True)                # the SL price distance this row runs = min(1.5 × ATR %, sl_cap) — study 5 %, DL 579 config 6 % — the exit reads it
     entry_exh_decision_price = Column(Float, nullable=True)        # the signal 15m close (the study's entry ≈ the next 5m open)
     entry_exh_model_slip_pct = Column(Float, nullable=True)        # the study's modelled taker slippage at this notional (the revert gate prices with it)
     entry_exh_q5_usd = Column(Float, nullable=True)                # median 5m quote volume of the 12 bars ending at the signal bar (the slippage model's Q5)

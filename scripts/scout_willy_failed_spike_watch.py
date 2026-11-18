@@ -79,12 +79,14 @@ CANDIDATE = "FILTER CANDIDATE (operator decides; never automatic)"
 REGISTRATION = "in-sample at registration (NEVER counted): pooled zone 45 · 53 % · −1.05 vs kept 26 · 88 %; master 38 → 15 kept, +1.73 → +2.00 %/day; B25 33 → 11 kept, −1.52 → +0.07; luck search p 0.70 (NOT ABOVE LUCK); master alone does not separate · WILLY_HT (DL 511, B25 only, no master): zone 29 · 62 % · −0.31 vs rest 6 · 83 % · +3.00"
 
 
-def load(paths=None):
-    """→ (closed WILLY / WILLY_HT fills — dedup, CLOSED beats OPEN, newest export wins —, the newest read export's download time or None)."""
+def load(paths=None, extra=()):
+    """→ (closed WILLY / WILLY_HT fills — dedup, CLOSED beats OPEN, newest export wins —, the newest read export's download time or None).
+    `extra` = more order columns to keep (scout_willy_ht_lines, DECISION_LOG 580)."""
+    cols = tuple(COLS) + tuple(c for c in extra if c not in COLS)
     fr, read = [], []
     for f in (_EG.glob_exports(EXPORT_GLOB) if paths is None else paths):
         try:
-            d = pd.read_csv(f, low_memory=False, usecols=lambda c: c in COLS)
+            d = pd.read_csv(f, low_memory=False, usecols=lambda c: c in cols)
         except Exception:
             continue
         if {"opened_at", "pair", "direction", "entry_strategy", "status"} <= set(d.columns):
@@ -99,8 +101,8 @@ def load(paths=None):
             continue
         newest = t if newest is None or t > newest else newest
     if not fr:
-        return pd.DataFrame(columns=list(COLS) + ["o", "day", "zone", "pct"]), newest
-    d = pd.concat(fr, ignore_index=True).reindex(columns=list(COLS) + ["_m"])
+        return pd.DataFrame(columns=list(cols) + ["o", "day", "zone", "pct"]), newest
+    d = pd.concat(fr, ignore_index=True).reindex(columns=list(cols) + ["_m"])
     d = d[d.entry_strategy.astype(str).isin(SLEEVES) & (d.direction.astype(str) == "LONG")].copy()
     d["_k"] = d.opened_at.astype(str).str.replace(" ", "T").str[:19]
     d["_c"] = d.status.astype(str).str.upper().eq("CLOSED")

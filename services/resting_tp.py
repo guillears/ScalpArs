@@ -156,7 +156,7 @@ def _flatbase_row_target(th, row) -> Optional[Tuple[float, str]]:
 
 
 def _exhaustion_row_target(th, row) -> Optional[Tuple[float, str]]:
-    """🪫 (DECISION_LOG 578) EXHAUSTION_SHORT's take profit is a PRICE level from the row (fill × (1 − entry_exh_tp_pct %), min(3 × ATR, 5 %)) →
+    """🪫 (DECISION_LOG 578) EXHAUSTION_SHORT's take profit is a PRICE level from the row (fill × (1 − entry_exh_tp_pct %), min(tp_atr × ATR, tp_cap): study 3 × / 5 %, DL 579 config 20 × / 10 %) →
     the net % whose maker limit lands there (services.exhaustion.rtp_net_tp with the row's entry fee). None = switch off / bad row."""
     try:
         if not rtp_enabled(th, "EXHAUSTION_SHORT"):

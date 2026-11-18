@@ -125,3 +125,7 @@ reports/SCOUT_LEV_STEP.json
 reports/SCOUT_BRACKET_KEEP.json
 reports/SCOUT_WILLY_HT_EXIT_LINES.json
 reports/.blocked_topup_attempts.json
+reports/.exh_exit_override_cache.json
+reports/SCOUT_WILLY_HT_LINES.json
+reports/.willy_ht_lines_cache.json
+reports/SCOUT_EXH_EXIT_OVERRIDE.json

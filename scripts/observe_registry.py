@@ -27,6 +27,11 @@ _NO_LITE_C = {"frenzy_lite_c_enabled": False}                     # LITE walked 
 EXIT = {
     "scout_flatbase_confirm_watch.py": dict(dl="417 · 428", sleeves="FLATBASE_SHORT", walks={"flatbase_tp_pct": 5.0, "flatbase_stop_pct": 10.0, "flatbase_max_hold_hours": 72.0,
                                                                                          "flatbase_confirm_hours": 24.0}),   # ✅ (428) the revert gate reads confirmed fills
+    # 🎯 (579) the EXHAUSTION exit-override revert gate: prices the override vs the shipped exit on the same fills — valid only while the
+    # override runs (a revert or another exit change → ⚠ STALE → retire)
+    "scout_exh_exit_override.py": dict(dl="579", sleeves="EXHAUSTION_SHORT", walks={"exhaustion_tp_atr_mult": 20.0, "exhaustion_tp_cap_pct": 10.0,
+                                                                                   "exhaustion_sl_atr_mult": 1.5, "exhaustion_sl_cap_pct": 6.0,
+                                                                                   "exhaustion_max_hold_hours": 24.0}),
     "scout_willy_timecap.py": dict(dl="264 · 278 · 281 · 285 · 290 · 297", sleeves="FRENZY_WILLY", walks=_OLD_WILLY),
     # 🔁 (409) re-based 2026-10-29: every fill walked under today's V2b exit (the old +1.25 / −4 / 90 ruler printed as context only)
     "scout_willy_mktdip.py": dict(dl="305", sleeves="FRENZY_WILLY", walks=_OLD_WILLY),
@@ -110,8 +115,9 @@ PROXY = {"scout_bearrun_v2.py": "359", "scout_bearrun_r24.py": "369",
          "scout_g51_band1_watch.py": "463"}   # 👁 (463) refused band-① signals on the audit's +0.40 / −0.70 ruler, never the live exit
 BOOKED = {   # booked P&L — `era` = drops fills by WILLY exit era (registered on the old +1.25 exit)
     # 🪫 (578) the EXHAUSTION_SHORT revert gate reads booked fills (re-priced with the modelled slippage) → pinned to the exit the sleeve runs
-    "scout_exhaustion_short.py": {"exhaustion_tp_atr_mult": 3.0, "exhaustion_tp_cap_pct": 5.0, "exhaustion_sl_atr_mult": 1.5,
-                                  "exhaustion_sl_cap_pct": 5.0, "exhaustion_max_hold_hours": 24.0},
+    # 🔁 (579) re-based 2026-11-18 on the exit override (TP 10 % / SL ≤ 6 %): it counts only fills of that exit era
+    "scout_exhaustion_short.py": {"exhaustion_tp_atr_mult": 20.0, "exhaustion_tp_cap_pct": 10.0, "exhaustion_sl_atr_mult": 1.5,
+                                  "exhaustion_sl_cap_pct": 6.0, "exhaustion_max_hold_hours": 24.0},
     "scout_b1h_negflank.py": None, "scout_fade_watch.py": None,
     # review M5: booked WR judged against TODAY's breakeven over FRENZY fills spanning exit eras (LONG −3 → −4, LITE pre-C)
     "scout_frenzy_entry_lines.py": {**_FZ_STOP3}, "scout_frenzy_wl_lines.py": {**_FZ_STOP3, **_NO_LITE_C}, "scout_lite_ob_thin.py": None, "scout_lite_off30.py": None,
@@ -145,6 +151,10 @@ BOOKED = {   # booked P&L — `era` = drops fills by WILLY exit era (registered 
     "scout_fan_btc_ema13_watch.py": {"flip_fan_fixed_tp_pct": 0.5, "resting_tp_flip_fan_enabled": True},
     "scout_surge_wl_watch.py": {"surge_long_exit_no_lock": True, "surge_max_hold_minutes": 240, "sl_atr_multiplier": 1.5, "sl_atr_widen_floor_pct": -1.2, "bullrun_base_sl_pct": -0.7, "bullrun_be_arm_pct": 1.0, "surge_long_trail_atr_mult": 1.0},
     # (509) WILLY_FAILED_SPIKE + the WILLY OFF trigger judge booked WR against the same frozen V2b breakeven (69.0 %) → the same pins
+    # 👁 (580) CROWDED_LONGS · NEAR_SPIKE_HIGH · REANCHORED judge booked WILLY / HT P&L against frozen breakevens → the same V2b pins
+    "scout_willy_ht_lines.py": {"frenzy_willy_high_target_enabled": True, "frenzy_willy_stop_pct": 4.0, "frenzy_willy_high_k_pct": 1.0,
+                                "frenzy_willy_high_tp_max_pct": 8.0, "frenzy_willy_max_hold_minutes": 90, "frenzy_willy_ht_tp_pct": 2.0,
+                                "frenzy_willy_late_tp_minutes": 30.0, "frenzy_willy_late_tp_pct": 0.25},
     "scout_willy_failed_spike_watch.py": {"frenzy_willy_high_target_enabled": True, "frenzy_willy_stop_pct": 4.0, "frenzy_willy_high_k_pct": 1.0,
                                   "frenzy_willy_high_tp_max_pct": 8.0, "frenzy_willy_max_hold_minutes": 90,
                                   "frenzy_willy_late_tp_minutes": 30.0, "frenzy_willy_late_tp_pct": 0.25},

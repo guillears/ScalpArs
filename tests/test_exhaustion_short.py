@@ -175,14 +175,15 @@ def test_scout_reads_the_gate(tmp_path):
     import scout_exhaustion_short as SC
     rows = [dict(opened_at=f"2026-11-18 0{i}:00:00", closed_at="", pair=f"P{i}USDT", direction="SHORT", status="CLOSED",
                  entry_strategy="EXHAUSTION_SHORT", pnl=1, pnl_percentage=0.5, close_reason="FRENZY_TP", notional_value=500,
-                 entry_exh_model_slip_pct=0.0, entry_exh_q5_usd=1e6) for i in range(3)]
+                 entry_exh_model_slip_pct=0.0, entry_exh_q5_usd=1e6, entry_exh_tp_pct=10.0, entry_exh_sl_pct=5.5, entry_exh_atr_pct=3.7) for i in range(3)]
     rows.append(dict(rows[0], pair="MANUSDT", close_reason="MANUAL"))                         # operator-closed → out
+    rows.append(dict(rows[0], pair="OLDUSDT", entry_exh_tp_pct=5.0, entry_exh_sl_pct=5.0, entry_exh_atr_pct=3.7))     # 🔁 (579) shipped-exit era → listed, not counted
     f = tmp_path / "scalpars_orders_paper_x.csv"
     pd.DataFrame(rows).to_csv(f, index=False)
     fills = SC.load_fills([str(f)])
-    assert len(fills) == 3
+    assert len(fills) == 4
     out = SC.report(fills, pd.DataFrame())
-    assert "COLLECTING" in out and "3/20" in out
+    assert "COLLECTING" in out and "3/20" in out and "shipped-exit era, not counted" in out and "OLDUSDT" in out
     import observe_registry as OR
     assert "scout_exhaustion_short.py" in OR.classified()
 
@@ -427,8 +428,8 @@ def test_momentum_switch_defaults_and_json():
 # ── ⑧ config / UI / exports parity (D11 / D12) + the operator's sleeve set (DECISION_LOG 578) ──────────────────────────────────────
 
 FIELDS = {"exhaustion_short_enabled": (False, True), "exhaustion_rsi_period": (14, 14), "exhaustion_rsi_level": (70.0, 70.0),
-          "exhaustion_vol_decay_min": (0.6366, 0.6366), "exhaustion_spot_share_chg_max": (-0.0066, -0.0066), "exhaustion_tp_atr_mult": (3.0, 3.0),
-          "exhaustion_tp_cap_pct": (5.0, 5.0), "exhaustion_sl_atr_mult": (1.5, 1.5), "exhaustion_sl_cap_pct": (5.0, 5.0),
+          "exhaustion_vol_decay_min": (0.6366, 0.6366), "exhaustion_spot_share_chg_max": (-0.0066, -0.0066), "exhaustion_tp_atr_mult": (3.0, 20.0),
+          "exhaustion_tp_cap_pct": (5.0, 10.0), "exhaustion_sl_atr_mult": (1.5, 1.5), "exhaustion_sl_cap_pct": (5.0, 6.0),
           "exhaustion_max_hold_hours": (24.0, 24.0), "exhaustion_max_hours_after_spike": (72.0, 72.0), "exhaustion_min_vol_usd": (20e6, 20e6),
           "exhaustion_invest_mult": (0.5, 0.5), "exhaustion_lev_mult": (0.25, 0.25), "resting_tp_exhaustion_enabled": (True, True)}
 
@@ -472,7 +473,7 @@ def test_config_defaults_json_ui_and_exports():
 
 def test_operator_sleeve_set_dl578():
     """DECISION_LOG 578 (operator 2026-11-18): paper with FLATBASE + EXHAUSTION + FRENZY_LONG / WILLY / WILLY_HT; every other entry sleeve off;
-    WILLY + HT sized like FRENZY_LONG (0.2 / 0.05)."""
+    WILLY + HT sized like FRENZY_LONG (0.2 / 0.05) — re-sized to 0.5 × 0.25 (5×) by DECISION_LOG 581."""
     cfg = json.load(open(os.path.join(ROOT, "trading_config.json")))
     th = cfg["thresholds"]
     on = ("flatbase_short_enabled", "exhaustion_short_enabled", "frenzy_long_enabled", "frenzy_willy_enabled", "frenzy_willy_ht_enabled")
@@ -484,7 +485,8 @@ def test_operator_sleeve_set_dl578():
     for k in off:
         assert th[k] is False, k
     assert cfg["paper_trading"] is True
-    assert (th["frenzy_willy_invest_mult"], th["frenzy_willy_lev_mult"]) == (th["frenzy_long_invest_mult"], th["frenzy_long_lev_mult"]) == (0.2, 0.05)
+    assert (th["frenzy_long_invest_mult"], th["frenzy_long_lev_mult"]) == (0.2, 0.05)
+    assert (th["frenzy_willy_invest_mult"], th["frenzy_willy_lev_mult"]) == (0.5, 0.25)              # 📈 DECISION_LOG 581: WILLY + HT at the EXH / Flatbase size
     assert th["frenzy_willy_ht_size_frac"] == 1.0                                             # HT = WILLY's fields × this → the same size
 
 

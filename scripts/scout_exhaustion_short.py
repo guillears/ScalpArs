@@ -24,13 +24,13 @@ _D in sys.path or sys.path.insert(0, _D)
 _R = os.path.dirname(_D)
 _R in sys.path or sys.path.insert(0, _R)
 import export_glob as _EG                                    # noqa: E402  🗄 (DECISION_LOG 409) Downloads + exports_archive/
-from services.exhaustion import EXHAUSTION_SHORT, exhaustion_gate, model_slip_pct, gate_net_pct, GATE_N   # noqa: E402
+from services.exhaustion import EXHAUSTION_SHORT, exhaustion_gate, model_slip_pct, gate_net_pct, GATE_N, exit_era_579   # noqa: E402
 
 DL = 578
 ORDER_PATTERN = os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")
 DEC_PATTERNS = (os.path.expanduser("~/Downloads/scalpars_decisions_*.csv"), os.path.join(_R, "reports", "BASELINE*_decisions.csv"))
 ORDER_COLS = ("opened_at", "closed_at", "pair", "direction", "status", "entry_strategy", "pnl", "pnl_percentage", "close_reason",
-              "notional_value", "entry_exh_model_slip_pct", "entry_exh_q5_usd", "entry_exh_tp_pct", "entry_exh_sl_pct", "entry_slippage_pct")
+              "notional_value", "entry_exh_model_slip_pct", "entry_exh_q5_usd", "entry_exh_tp_pct", "entry_exh_sl_pct", "entry_slippage_pct", "entry_exh_atr_pct")
 DEC_COLS = ("e", "pair", "exh_signal_at", "exh_status", "exh_block", "exh_reason")
 
 
@@ -39,19 +39,21 @@ def _operator_closed(r) -> bool:
     return s.split(' ')[0] in ('MANUAL', 'EXTERNAL_CLOSE') or s.startswith('MANUAL_')
 
 
-def load_fills(paths=None) -> pd.DataFrame:
-    """CLOSED EXHAUSTION_SHORT fills, dedup (opened_at, pair, direction) — a CLOSED row wins, then the newest export."""
+def load_fills(paths=None, extra=()) -> pd.DataFrame:
+    """CLOSED EXHAUSTION_SHORT fills, dedup (opened_at, pair, direction) — a CLOSED row wins, then the newest export.
+    `extra` = more order columns to keep (the DL 579 exit-override scout reads entry_price / entry_exh_atr_pct)."""
     paths = paths if paths is not None else sorted(_EG.glob_exports(ORDER_PATTERN), key=os.path.getmtime)
+    cols = tuple(ORDER_COLS) + tuple(c for c in extra if c not in ORDER_COLS)
     fr = []
     for f in paths:
         try:
-            fr.append(pd.read_csv(f, low_memory=False, usecols=lambda c: c in ORDER_COLS))
+            fr.append(pd.read_csv(f, low_memory=False, usecols=lambda c: c in cols))
         except Exception:
             continue
     if not fr:
-        return pd.DataFrame(columns=list(ORDER_COLS))
+        return pd.DataFrame(columns=list(cols))
     a = pd.concat(fr, ignore_index=True)
-    for c in ORDER_COLS:
+    for c in cols:
         if c not in a:
             a[c] = None
     a = a[a.entry_strategy.astype(str) == EXHAUSTION_SHORT]
@@ -86,7 +88,14 @@ def load_journal(paths=None) -> pd.DataFrame:
 
 
 def report(fills: pd.DataFrame, journal: pd.DataFrame) -> str:
-    out = [f"🪫 EXHAUSTION_SHORT revert gate (DECISION_LOG {DL}, paper, declared override)"]
+    out = [f"🪫 EXHAUSTION_SHORT revert gate (DECISION_LOG {DL}, paper, declared override) — 🔁 re-based 2026-11-18 on the DL 579 exit "
+           "(TP ≈ 10 % / SL ≤ 6 %): the count starts at the first fill of that exit"]
+    if len(fills):
+        era = fills.apply(lambda r: exit_era_579(r.entry_exh_tp_pct, r.entry_exh_atr_pct), axis=1).astype(bool)
+        for r in fills[~era].itertuples():
+            tag = "shipped-exit era" if pd.notna(pd.to_numeric(r.entry_exh_tp_pct, errors="coerce")) else "unstamped"
+            out.append(f"  ({tag}, not counted) {str(r.o)[:16]} {r.pair} {float(r.pnl_percentage):+.2f}% {r.close_reason}")
+        fills = fills[era]
     rows = [(r.o, float(r.pnl_percentage), r.close_reason, r.slip) for r in fills.itertuples()]
     v, txt = exhaustion_gate(rows)
     out.append(f"  verdict: {v} — {txt}")

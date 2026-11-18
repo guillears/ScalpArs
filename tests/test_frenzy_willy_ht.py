@@ -375,7 +375,10 @@ def test_api_performance_has_the_ht_row_and_rows_sum_to_total():
 
 def test_bracket_cap_never_restores_ht_to_a_full_margin(monkeypatch):
     """(341 review) DL 298's bracket keep (full margin at a lower leverage) must never apply to HT: when the brackets bind, HT's margin
-    stays ≤ ¼ of WILLY's and its leverage ≤ WILLY's."""
+    stays ≤ ¼ of WILLY's and its leverage ≤ WILLY's. (DL 581: at 5× the lower tier is reachable — DL 535's bracket KEEP, a later design that
+    lets HT keep ≤ 1.6× its planned margin, is switched off here so this test keeps reading the DL 341 rule alone.)"""
+    import config as _cfg
+    monkeypatch.setattr(_cfg.trading_config.investment, "bracket_keep_position_enabled", False, raising=False)
     _pin_quarter(monkeypatch)
     _, _, w = _open(monkeypatch, "FOOUSDT", frenzy_willy=True)
     winv, wlev, wnot = w[0][2], w[0][3], w[0][4]

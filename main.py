@@ -10025,13 +10025,16 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 except Exception as _fbe:
                     logger.debug(f"[PERF] flatbase ledger tally skipped: {_fbe}")
             if _fz_es == "EXHAUSTION_SHORT":   # 🪫 (578) the frozen revert gate (re-priced with the modelled slippage; operator-closed out) + the journal tally
-                from services.exhaustion import exhaustion_gate as _exg
-                _ex_q = select(Order.opened_at, Order.pnl_percentage, Order.close_reason, Order.entry_exh_model_slip_pct).where(and_(
+                from services.exhaustion import exhaustion_gate as _exg, exit_era_579 as _exera
+                _ex_q = select(Order.opened_at, Order.pnl_percentage, Order.close_reason, Order.entry_exh_model_slip_pct,
+                               Order.entry_exh_tp_pct, Order.entry_exh_atr_pct).where(and_(
                     Order.entry_strategy == "EXHAUSTION_SHORT", Order.status == 'CLOSED', Order.is_paper == trading_engine.is_paper_mode,
                     Order.pnl_percentage.isnot(None)))
-                _ex_bot = [(a, p_, r, s_) for a, p_, r, s_ in (await db.execute(_ex_q)).all()
-                           if not (str(r or '').upper().split(' ')[0] in ('MANUAL', 'EXTERNAL_CLOSE') or str(r or '').upper().startswith('MANUAL_'))]
-                _fz_gate = _exg(_ex_bot)[1]
+                # 🔁 (579) re-based on the exit override: only fills of that exit era count (the scout's rule, services.exhaustion.exit_era_579)
+                _ex_bot = [(a, p_, r, s_) for a, p_, r, s_, tp_, at_ in (await db.execute(_ex_q)).all()
+                           if _exera(tp_, at_)
+                           and not (str(r or '').upper().split(' ')[0] in ('MANUAL', 'EXTERNAL_CLOSE') or str(r or '').upper().startswith('MANUAL_'))]
+                _fz_gate = _exg(_ex_bot)[1] + " · counts DL 579 exit-era fills only"
                 try:
                     _ex_led = (await db.execute(select(func.coalesce(ExhaustionSignal.block, ExhaustionSignal.status), func.count(ExhaustionSignal.id)).where(
                         ExhaustionSignal.is_paper == trading_engine.is_paper_mode).group_by(func.coalesce(ExhaustionSignal.block, ExhaustionSignal.status)))).all()

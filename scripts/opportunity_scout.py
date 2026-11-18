@@ -1576,6 +1576,14 @@ def run():
     except Exception as _sso_e:
         log(f"EXH_SSC_OIVOL gate failed: {_sso_e}")
         _rg_sec += ["## 🧯 EXH_SSC_OIVOL (DL 582)", "", f"Unavailable this run ({str(_sso_e)[:120]}).", ""]
+    try:                                               # 📖 Nov-18 DL 583 depth-guard band revert gate (min_frac 0.5 → 0.25; forward)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_depth_band_583 as _db583
+        _rg_sec += [_db583.report(now_ms=now_ms), ""]
+    except Exception as _db583_e:
+        log(f"DL 583 depth band gate failed: {_db583_e}")
+        _rg_sec += ["## 📖 DL 583 depth band", "", f"Unavailable this run ({str(_db583_e)[:120]}).", ""]
     try:                                               # 👁 Oct-30 FADE_NOSTRETCH — SPIKE_FADE with no overshoot to revert, frozen expectancy bar (DECISION_LOG 413; forward)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

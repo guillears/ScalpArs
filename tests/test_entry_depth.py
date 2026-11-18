@@ -48,7 +48,7 @@ def test_config_ui_wiring():
     import config
     inv = config.InvestmentConfig() if hasattr(config, "InvestmentConfig") else None
     j = json.loads((ROOT / "trading_config.json").read_text())["investment"]
-    assert j["entry_depth_guard_enabled"] is True and j["entry_depth_guard_max_sweep_pct"] == 0.15 and j["entry_depth_guard_min_frac"] == 0.5
+    assert j["entry_depth_guard_enabled"] is True and j["entry_depth_guard_max_sweep_pct"] == 0.15 and j["entry_depth_guard_min_frac"] == 0.25   # DL 583
     if inv is not None:
         assert inv.entry_depth_guard_enabled is False and inv.entry_depth_guard_max_sweep_pct == 0.15 and inv.entry_depth_guard_min_frac == 0.5
     html = (ROOT / "templates/index.html").read_text()
@@ -124,3 +124,40 @@ def test_skip_refusal_text_reaches_flatbase_and_frenzy():
     src = (ROOT / "services/trading_engine.py").read_text()
     assert "if _frenzy or _fbs or _exh:   # (551 deep review) FLATBASE too" in src   # 🪫 (DECISION_LOG 578) + EXHAUSTION
     assert "quantity = notional_value / ((_sg_live_px if _surge else _dg_bpx) or current_price)" in src   # (565 review) the book price the depth was measured at
+
+
+import pytest as _pt
+
+
+@_pt.mark.parametrize("plan, fill, frac, act, n", [(1000, 300, 0.25, "SHRINK", 300), (1000, 300, 0.5, "SKIP", 300), (1000, 200, 0.25, "SKIP", 200),
+                                                   (1000, 1200, 0.25, "FULL", 1000), (1000, 250, 0.25, "SHRINK", 250),
+                                                   (6200, 2758, 0.25, "SHRINK", 2758), (6094, 2843, 0.25, "SHRINK", 2843),      # 11-18 ZIL / ZKP
+                                                   (6200, 2758, 0.5, "SKIP", 2758), (6094, 2843, 0.5, "SKIP", 2843)])
+def test_dl583_quarter_book_shrinks(plan, fill, frac, act, n):
+    """📖 (DECISION_LOG 583) a book holding 25–50 % of the plan now SHRINKS (min_frac 0.25) where it used to SKIP (0.5); the boundary shrinks."""
+    from services import entry_depth as ED
+    a, got = ED.depth_guard_size(plan, fill, frac)
+    assert a == getattr(ED, act) and got == n
+
+
+
+def test_dl583_band_scout(tmp_path):
+    import sys as _s
+    _s.path.insert(0, str(ROOT / "scripts"))
+    import scout_depth_band_583 as B
+    import pandas as pd
+    assert B.in_band(2758, 6200) and not B.in_band(3500, 6200) and not B.in_band(2758, None) and not B.in_band(None, 6200)
+    assert B.gate([(1.0, 0.05, 0.05)] * 9)[0] == "COLLECTING"
+    assert B.gate([(5.0, 0.05, 0.08)] * 10)[0] == "KEEP"
+    assert B.gate([(-5.0, 0.05, 0.08)] * 10)[0] == "REVERT"
+    assert B.gate([(5.0, 0.05, 0.30)] * 10)[0] == "REVERT"                                  # thin exit side slips → flag
+    o = pd.Timestamp("2026-11-20")
+    fr = pd.DataFrame([dict(opened_at=str(o + pd.Timedelta(hours=i)), pair=f"P{i}USDT", direction="SHORT", status="CLOSED",
+                            entry_strategy="EXHAUSTION_SHORT", pnl=10.0, pnl_percentage=1.0, close_reason="FRENZY_TP",
+                            notional_value=2700.0, entry_depth_shrunk_from=6100.0, entry_slippage_pct=0.05, exit_slippage_pct=0.0,
+                            is_paper=True, o=o + pd.Timedelta(hours=i)) for i in range(12)])
+    st = tmp_path / "s.json"
+    txt = B.report(frame=fr, since_ms=int(pd.Timestamp("2026-11-19").value // 1_000_000), state_path=str(st), now_ms=0)
+    assert "FROZEN" in txt and "KEEP" in txt
+    import json as _j
+    assert _j.load(open(st))["verdict"] == "KEEP"

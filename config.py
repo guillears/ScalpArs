@@ -3265,7 +3265,9 @@ class InvestmentConfig(BaseModel):
     # Code default OFF; the JSON arms it.
     entry_depth_guard_enabled: bool = False
     entry_depth_guard_max_sweep_pct: float = 0.15
-    entry_depth_guard_min_frac: float = 0.5
+    entry_depth_guard_min_frac: float = 0.5   # 📖 DL 583 (2026-11-18, operator): trading_config.json runs 0.25 — a thin book SHRINKS the entry down to a quarter of the plan
+    #   before it is skipped (was a half). ZILUSDT 15:30 / ZKPUSDT 07:30 EXHAUSTION signals passed every rule and were SKIPPED at 44 % / 47 % of the
+    #   $6.1–6.2k plan (exit side $2.8k). The shrunk size is still exactly what fills within max_sweep_pct on the thinner side; deep books unchanged.
     # ⑦b 📖🧢 Nov-15 CAPPED ENTRY (DECISION_LOG 553, operator "build it, deep reviews, commit and push"): INIT LITE filled 0.32 % above the
     # book the guard had read ~1 s earlier (set_leverage + a ticker read sat between the read and the market order). Live, with the guard
     # on: leverage is set before the book read and the entry is a LIMIT at the guard's ceiling (best ± max_sweep_pct) — fills at once up to

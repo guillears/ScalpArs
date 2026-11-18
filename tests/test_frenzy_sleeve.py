@@ -179,7 +179,7 @@ def test_config_parity_and_every_surface():
     for _id in ("frenzy-monitor-line", "frenzy-flags-body", "frenzy-body"):
         assert html.count(f'id="{_id}"') == 1 and html.count(f"getElementById('{_id}')") == 1
     assert html.count("lines.push(...frenzyReportLines(perf, hr2));") == 2                # clipboard AND saved-file exports
-    for title in ("## 🔥 FRENZY Flagged Pairs (now)", "## 🔥 FRENZY Fills (FRENZY_LONG · FRENZY_LITE · FRENZY_LITE_RETRY · FRENZY_WILLY · FRENZY_WILLY_HT · FLATBASE_SHORT)"):
+    for title in ("## 🔥 FRENZY Flagged Pairs (now)", "## 🔥 FRENZY Fills (FRENZY_LONG · FRENZY_LITE · FRENZY_LITE_RETRY · FRENZY_WILLY · FRENZY_WILLY_HT · FLATBASE_SHORT · EXHAUSTION_SHORT)"):
         assert html.count(title) == 1
     assert '<option value="FRENZY_LONG">' in html and "frenzyMark(_fz)" in html
 
@@ -187,7 +187,7 @@ def test_config_parity_and_every_surface():
 def test_engine_and_api_wiring():
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
     assert eng.count("frenzy_exit_for(") == 4                                             # sleeve: candle + realtime · MANUAL "Frenzy exit": candle + realtime
-    assert "await self._update_frenzy(db, wait=False)" in eng and eng.count('(_fz_es if _frenzy else FLATBASE_SHORT if _fbs else f"SURGE_{direction}" if _surge') == 3   # + the WILLY global hold's sleeve label (251) · 🩳 (348) FLATBASE tag
+    assert "await self._update_frenzy(db, wait=False)" in eng and eng.count('_fz_es if _frenzy else FLATBASE_SHORT if _fbs else f"SURGE_{direction}" if _surge') == 3   # 🪫 (DECISION_LOG 578) EXHAUSTION_SHORT if _exh else … leads now   # + the WILLY global hold's sleeve label (251) · 🩳 (348) FLATBASE tag
     assert "_sg_pref = _fz_es.lower() if _frenzy else" in eng and 'cell_src = _fz_es if _frenzy else' in eng
     assert '"SURGE_SHORT", "SURGE_LONG", "FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE", "FRENZY_WILLY")' in eng                           # no pair-EMA exit on a FRENZY fill
     assert "_frenzy_kill" not in eng and "frenzy_kill_verdict" not in eng                 # operator: no automatic off

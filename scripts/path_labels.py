@@ -70,7 +70,7 @@ GAP_TOL_MIN = 5          # an exchange-missing minute (≤ 5 in a row) never end
 Y_ROUND = 0.05           # Y rounded so a new export cannot nudge every cached key
 STOP_KEYS = {"FRENZY_WILLY": "frenzy_willy_stop_pct", "FRENZY_WILLY_HT": "frenzy_willy_stop_pct", "FRENZY_LITE": "frenzy_stop_pct",
              "FRENZY_LITE_RETRY": "frenzy_stop_pct", "FRENZY_WIDE": "frenzy_stop_pct", "FRENZY_LONG": "frenzy_long_stop_pct",
-             "FLATBASE_SHORT": "flatbase_stop_pct", "SPIKE_FADE": "spike_fade_sl_pct", "SPIKE_BOUNCE": "spike_bounce_sl_pct",
+             "FLATBASE_SHORT": "flatbase_stop_pct", "EXHAUSTION_SHORT": "exhaustion_sl_cap_pct", "SPIKE_FADE": "spike_fade_sl_pct", "SPIKE_BOUNCE": "spike_bounce_sl_pct",
              "SPIKE_CHASE": "spike_sl_pct"}
 Y_FAMILY = {"BEARRUN_SHORT": "MOMENTUM", "BULL_LONG": "MOMENTUM", "BOUNCE_LONG": "MOMENTUM"}   # momentum-stack sleeves: no stop of their own
 

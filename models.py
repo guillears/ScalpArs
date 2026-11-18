@@ -366,6 +366,18 @@ class Order(Base):
     entry_flatbase_flat_cov_pct = Column(Float, nullable=True)     # share of the 14-day bars present when that range was read, %
     entry_flatbase_off_peak_pct = Column(Float, nullable=True)     # the entry bar's close vs the episode peak (highest high since the spike bar), %
     entry_flatbase_peak_age_h = Column(Float, nullable=True)       # 🩳⏱ (DECISION_LOG 401) hours from the peak bar's close to the entry bar's close
+    # 🪫 (DECISION_LOG 578) EXHAUSTION_SHORT entry stamps (services/exhaustion.py) — the episode rides entry_frenzy_spike_at / entry_frenzy_hours,
+    # the 24 h volume entry_pair_volume_24h_usd, the funding entry_funding_rate, the fill vs the decision entry_slippage_pct
+    entry_exh_rsi_prev = Column(Float, nullable=True)              # Wilder RSI(14) of the 15m bar BEFORE the signal bar (> 70)
+    entry_exh_rsi = Column(Float, nullable=True)                   # … of the signal bar (≤ 70)
+    entry_exh_vol_decay = Column(Float, nullable=True)             # last hour's quote volume ÷ the episode's peak hourly quote volume (≥ 0.6366)
+    entry_exh_spot_share_chg = Column(Float, nullable=True)        # spot share of volume, last hour − the 24 h before (< −0.0066)
+    entry_exh_atr_pct = Column(Float, nullable=True)               # Wilder ATR(14) on 15m at the signal bar, % of the decision price
+    entry_exh_tp_pct = Column(Float, nullable=True)                # the TP price distance this row runs = min(3 × ATR %, 5 %) — the exit reads it
+    entry_exh_sl_pct = Column(Float, nullable=True)                # the SL price distance this row runs = min(1.5 × ATR %, 5 %) — the exit reads it
+    entry_exh_decision_price = Column(Float, nullable=True)        # the signal 15m close (the study's entry ≈ the next 5m open)
+    entry_exh_model_slip_pct = Column(Float, nullable=True)        # the study's modelled taker slippage at this notional (the revert gate prices with it)
+    entry_exh_q5_usd = Column(Float, nullable=True)                # median 5m quote volume of the 12 bars ending at the signal bar (the slippage model's Q5)
     # 📖 Oct-3 (DECISION_LOG 192): the ORDER BOOK at a MANUAL click (services/orderbook_stats.orderbook_metrics) — OBSERVE-ONLY research stamps
     manual_ob_spread_pct = Column(Float, nullable=True)
     manual_ob_top_bid_usd = Column(Float, nullable=True)
@@ -1445,6 +1457,57 @@ class FlatbaseEpisode(Base):
     turnover = Column(Float, nullable=True)                        # vol24_usd / mcap_usd (NULL = market cap unknown → traded)
     funding_rate = Column(Float, nullable=True)                    # premiumIndex lastFundingRate at the decision (observe)
     order_id = Column(Integer, nullable=True)                      # OPENED: the order row
+    created_at = Column(DateTime, nullable=True)
+
+
+class ExhaustionEpisode(Base):
+    """🪫 2026-11-18 (DECISION_LOG 578) — the EXHAUSTION_SHORT tracking ledger: one row per (FRENZY episode, mode) the sleeve follows for its
+    72 h signal window. It keeps the episode in view after the FRENZY flag drops (an episode can end — 24 h without a state bar — before its
+    72 h are over) and across a restart. status TRACKING → ENDED (window over). Written by TradingEngine._exh_* only."""
+    __tablename__ = "exhaustion_episodes"
+    __table_args__ = (UniqueConstraint("pair", "spike_at", "is_paper", name="uq_exhaustion_episode"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    pair = Column(String(30), nullable=False, index=True)
+    spike_at = Column(DateTime, nullable=False, index=True)        # close time of the spike bar (naive UTC) = orders.entry_frenzy_spike_at
+    is_paper = Column(Boolean, nullable=False, default=True)
+    first_seen_at = Column(DateTime, nullable=False)               # OPEN time of the first closed bar the engine saw the episode flagged on
+    status = Column(String(12), nullable=False, default="TRACKING", index=True)
+    ended_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, nullable=True)
+
+
+class ExhaustionSignal(Base):
+    """🪫 2026-11-18 (DECISION_LOG 578) — the EXHAUSTION_SHORT DECISION JOURNAL: one row per evaluated signal (a tracked FRENZY coin whose 15m
+    RSI(14) crossed down through 70 on a closed bar), whatever happened: OPENED (order_id) · BLOCKED (a rule refused it: block = EXH_VOL_DECAY /
+    EXH_SPOT_SHARE / EXH_NO_SPOT / EXH_VOL24_LOW / EXH_NO_DATA / EXH_NO_SIGNAL / EXH_PAIR_HELD) · REFUSED (the open path refused: book full,
+    depth, funding, lateness, manual block … — reason says which). Every feature is kept so the scout prices the skipped ones. Rides the
+    decisions export as e=EXHAUSTION rows (exh_* columns)."""
+    __tablename__ = "exhaustion_signals"
+    __table_args__ = (UniqueConstraint("pair", "signal_at", "is_paper", name="uq_exhaustion_signal"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    pair = Column(String(30), nullable=False, index=True)
+    signal_at = Column(DateTime, nullable=False, index=True)       # CLOSE time of the 15m signal bar (naive UTC) = the decision moment
+    is_paper = Column(Boolean, nullable=False, default=True)
+    spike_at = Column(DateTime, nullable=True)                     # the episode (spike bar close)
+    hours_after_spike = Column(Float, nullable=True)
+    status = Column(String(10), nullable=False)                    # OPENED · BLOCKED · REFUSED
+    block = Column(String(40), nullable=True)                      # the counter that refused it (EXH_* / the open path's name)
+    reason = Column(String(240), nullable=True)
+    decision_price = Column(Float, nullable=True)                  # the signal 15m close
+    rsi_prev = Column(Float, nullable=True)
+    rsi = Column(Float, nullable=True)
+    vol_decay = Column(Float, nullable=True)
+    spot_share_chg = Column(Float, nullable=True)
+    has_spot = Column(Boolean, nullable=True)
+    atr_pct = Column(Float, nullable=True)
+    tp_pct = Column(Float, nullable=True)
+    sl_pct = Column(Float, nullable=True)
+    vol24_usd = Column(Float, nullable=True)
+    q5_usd = Column(Float, nullable=True)
+    funding_rate = Column(Float, nullable=True)
+    order_id = Column(Integer, nullable=True)
     created_at = Column(DateTime, nullable=True)
 
 

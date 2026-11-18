@@ -13,7 +13,7 @@ Mechanism (reports/MAKER_TP_ENTRY_DESIGN_2026-10-15.md §3):
   * every other exit cancels the limit FIRST, re-reads its fill, closes only the remainder and books blended (one Order row)
   * paper = live bookkeeping: the paper TP books at the limit with the maker fee only when the tracked price trades ≥ 1 tick THROUGH it
 Switches per sleeve (resting_tp_willy_enabled / resting_tp_lite_enabled / resting_tp_frenzy_long_enabled / resting_tp_lite_retry_enabled /
-resting_tp_flatbase_enabled — 🩳 DL 348, the SHORT's −8 % price TP); OFF → paper and live behave
+resting_tp_flatbase_enabled — 🩳 DL 348, the SHORT's −8 % price TP; resting_tp_exhaustion_enabled — 🪫 DL 578); OFF → paper and live behave
 exactly as before this ship.
 🎯 DECISION_LOG 310 — every FIXED take-profit line: the operator's MANUAL trades in FIXED or FLOOR mode with a TP > 0 (resting_tp_manual_enabled,
 reason MANUAL_TP — incl. a mid-trade edit to FIXED), any bot trade whose exit the operator overrode with a TP > 0 (resting_tp_override_enabled,
@@ -29,6 +29,7 @@ RTP_SLEEVES = {"FRENZY_WILLY": "resting_tp_willy_enabled", "FRENZY_LITE": "resti
                "FRENZY_LITE_RETRY": "resting_tp_lite_retry_enabled",   # 🔁 316: LITE's resting TP, own switch (attribution)
                "FRENZY_WILLY_HT": "resting_tp_willy_enabled",   # 🎲¼ 341: the quarter-size WILLY runs WILLY's exit — WILLY's switch
                "FLATBASE_SHORT": "resting_tp_flatbase_enabled",   # 🩳 348: the −8 % PRICE take profit (net target derived per row, rtp_row_target)
+               "EXHAUSTION_SHORT": "resting_tp_exhaustion_enabled",   # 🪫 578: the row's min(3 × ATR, 5 %) PRICE take profit (net derived per row)
                "FLIP:FAN_RATIO_GATE": "resting_tp_flip_fan_enabled"}   # 🎯 563: the FAN flip's fixed net TP (row-derived: Order.flip_fan_tp_pct)
 FLIP_FAN_ES, FLIP_FAN_TP_REASON = "FLIP:FAN_RATIO_GATE", "FLIP_FAN_TP"   # 🎯 (563) the close reason (already FLIP_-prefixed for the close funnel)
 RTP_MANUAL_KEY, RTP_OVERRIDE_KEY = "resting_tp_manual_enabled", "resting_tp_override_enabled"   # 🎯 (310) the operator's own fixed TPs
@@ -100,6 +101,8 @@ def rtp_row_target(th, row, held_minutes=None) -> Optional[Tuple[float, str]]:
             return flip_fan_row_target(th, row)   # 🎯 (563) only a row stamped with its fixed TP at the open; NULL → the trail (no limit)
         if why is None and str(getattr(row, 'entry_strategy', None) or "") == "FLATBASE_SHORT":
             return _flatbase_row_target(th, row)   # 🩳 (348) the PRICE TP → the row's own net target (its entry fee)
+        if why is None and str(getattr(row, 'entry_strategy', None) or "") == "EXHAUSTION_SHORT":
+            return _exhaustion_row_target(th, row)   # 🪫 (578) the row's own PRICE TP (entry_exh_tp_pct) → its net target
         if why is None and str(getattr(row, 'entry_strategy', None) or "") in ("FRENZY_WILLY", "FRENZY_WILLY_HT"):
             if _f(getattr(row, 'frenzy_willy_runner_k', None)):   # 🏃 (DECISION_LOG 541) a runner row trails past its target — no resting limit
                 return None
@@ -152,6 +155,23 @@ def _flatbase_row_target(th, row) -> Optional[Tuple[float, str]]:
         return None
 
 
+def _exhaustion_row_target(th, row) -> Optional[Tuple[float, str]]:
+    """🪫 (DECISION_LOG 578) EXHAUSTION_SHORT's take profit is a PRICE level from the row (fill × (1 − entry_exh_tp_pct %), min(3 × ATR, 5 %)) →
+    the net % whose maker limit lands there (services.exhaustion.rtp_net_tp with the row's entry fee). None = switch off / bad row."""
+    try:
+        if not rtp_enabled(th, "EXHAUSTION_SHORT"):
+            return None
+        e, q, f = _f(getattr(row, 'entry_price', None)), _f(getattr(row, 'quantity', None)), _f(getattr(row, 'entry_fee', None))
+        if not (e and e > 0 and q and q > 0) or f is None:
+            return None
+        import config as _cfg
+        from services.exhaustion import rtp_net_tp, row_levels
+        net = rtp_net_tp(e, f / (e * q) * 100.0, float(getattr(_cfg.trading_config, 'maker_fee', 0.00018)), row_levels(row, th)[0])
+        return (net, "FRENZY_TP") if net and net > 0 else None
+    except Exception:
+        return None
+
+
 def rtp_row_reason(th, row, limit_px, maker_fee_rate, entry_fee_pct=None) -> str:
     """Which take profit a RECORDED limit on this row books: the operator's (MANUAL_TP / OVERRIDE_TP) or the sleeve's (rtp_reason_for_limit)."""
     why = rtp_fixed_reason(row)
@@ -178,6 +198,9 @@ def rtp_target(th, entry_strategy, held_minutes=None, lite_tp=None, willy_tp=Non
         elif es == "FLATBASE_SHORT":   # 🩳 (348) the nominal PRICE TP — the row-derived net (rtp_row_target) is what the engine places
             from services.flatbase import flatbase_params
             tp, why = flatbase_params(th)['tp'], "FRENZY_TP"
+        elif es == "EXHAUSTION_SHORT":   # 🪫 (578) the nominal = the TP cap — the row-derived net (rtp_row_target, the row's own level) is placed
+            from services.exhaustion import exhaustion_params
+            tp, why = exhaustion_params(th)['tp_cap'], "FRENZY_TP"
         else:
             if (_f(getattr(th, 'frenzy_lock_arm_pct', 0)) or 0) > 0:
                 return None

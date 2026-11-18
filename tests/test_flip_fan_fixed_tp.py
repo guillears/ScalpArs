@@ -56,7 +56,7 @@ def test_wiring():
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
     assert "flip_fan_tp_pct=_ff_tp," in eng and "'flip_fan_tp_pct': _ff_tp," in eng
     assert "'flip_fan_tp_pct': getattr(order, 'flip_fan_tp_pct', None)," in eng                  # cache rebuild (restart-proof)
-    assert "or _fbs or _ff_tp is not None:" in eng                                                  # the resting limit is armed at the open
+    assert "or _fbs or _exh or _ff_tp is not None:" in eng   # 🪫 (DECISION_LOG 578) + EXHAUSTION                                                  # the resting limit is armed at the open
     assert "and _ff_tp_rt is None:   # 🎯 (563) a FAN flip on its fixed TP runs no ladder" in eng
     assert "if _ff_tp_rt is not None:   # 🎯 (DECISION_LOG 563) a FAN flip on its fixed TP: no strpk trail" in eng
 

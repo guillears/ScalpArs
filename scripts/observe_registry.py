@@ -109,6 +109,9 @@ EXIT["scout_blocked_filters.py"] = dict(dl="527 · 529 · 532", sleeves="the 7 a
 PROXY = {"scout_bearrun_v2.py": "359", "scout_bearrun_r24.py": "369",
          "scout_g51_band1_watch.py": "463"}   # 👁 (463) refused band-① signals on the audit's +0.40 / −0.70 ruler, never the live exit
 BOOKED = {   # booked P&L — `era` = drops fills by WILLY exit era (registered on the old +1.25 exit)
+    # 🪫 (578) the EXHAUSTION_SHORT revert gate reads booked fills (re-priced with the modelled slippage) → pinned to the exit the sleeve runs
+    "scout_exhaustion_short.py": {"exhaustion_tp_atr_mult": 3.0, "exhaustion_tp_cap_pct": 5.0, "exhaustion_sl_atr_mult": 1.5,
+                                  "exhaustion_sl_cap_pct": 5.0, "exhaustion_max_hold_hours": 24.0},
     "scout_b1h_negflank.py": None, "scout_fade_watch.py": None,
     # review M5: booked WR judged against TODAY's breakeven over FRENZY fills spanning exit eras (LONG −3 → −4, LITE pre-C)
     "scout_frenzy_entry_lines.py": {**_FZ_STOP3}, "scout_frenzy_wl_lines.py": {**_FZ_STOP3, **_NO_LITE_C}, "scout_lite_ob_thin.py": None, "scout_lite_off30.py": None,

@@ -1654,6 +1654,30 @@ class SignalThresholds(BaseModel):
     # 🔒 Revert to False if, at the first 15 FLATBASE episodes after the deploy, FLATBASE_BOOK_FULL refused ≥ 3 that the shadow prices as winners
     # (net Σ > 0) — scout line FLATBASE_BOOK_FULL. No own sub-cap (operator 11-09: no other sleeve has one); watch: days with ≥ 3 FLATBASE open.
     flatbase_shares_bot_slots: bool = True
+    # 🪫 2026-11-18 EXHAUSTION_SHORT (DECISION_LOG 578 — operator-approved PAPER run, DECLARED OVERRIDE: reports/SPOT_SHARE_DEEP_2026-11-17.md
+    # stamped the rule OBSERVE; no fresh holdout, the 5 % / 5 % exit was picked post-hoc among 54 exits). Pure rules: services/exhaustion.py.
+    # On a coin in a FRENZY episode (≤ 72 h after the spike bar, 24 h quote volume ≥ $20M, the FRENZY universe rules, a Binance SPOT USDT
+    # market required): on the CLOSED 15m bar whose Wilder RSI(14) falls from > 70 to ≤ 70 (the study's RSI14X short), SHORT at market when
+    # vol_decay (last hour's quote volume ÷ the episode's peak hourly volume) ≥ 0.6366 AND spot_share_chg (spot share of volume, last hour vs
+    # the 24 h before) < −0.0066. Exit TP min(3 × ATR14-15m, 5 %) (resting maker limit) · SL min(1.5 × ATR, 5 %) · 24 h. Evidence (study,
+    # every period already seen, modelled $1k slippage): R4 C +0.53 / A +0.61 / DESIGN +0.66 / B +0.97 %/trade; the capped 5 / 5 / 24 h exit
+    # pooled 3,862 trades · 52.1 % WR · +0.43 %/trade, every half-year +0.13 … +0.86, best-5 % removed +0.19, +0.28 at a flat 0.10 % slip.
+    # 🔒 REVERT (scripts/scout_exhaustion_short.py): the first 20 fills re-priced with the modelled slippage (−0.042 + 0.276 · √(notional ÷
+    # 5m quote volume), floored at 0) average ≤ 0 → OFF · mean modelled slippage > 0.25 % → OFF. Code default OFF; trading_config.json ON.
+    exhaustion_short_enabled: bool = False
+    exhaustion_rsi_period: int = 14               # Wilder RSI on 15m closes (the study's RSI14X)
+    exhaustion_rsi_level: float = 70.0            # the signal: RSI(previous closed 15m bar) > this ≥ RSI(this bar)
+    exhaustion_vol_decay_min: float = 0.6366      # KEEP when the last hour holds ≥ this share of the episode's peak hourly quote volume (R4)
+    exhaustion_spot_share_chg_max: float = -0.0066   # KEEP when spot-share change (last hour − the 24 h before) < this (the spot filter, R0)
+    exhaustion_tp_atr_mult: float = 3.0           # TP distance = min(this × ATR14-15m %, exhaustion_tp_cap_pct) below the fill (price %)
+    exhaustion_tp_cap_pct: float = 5.0
+    exhaustion_sl_atr_mult: float = 1.5           # SL distance = min(this × ATR14-15m %, exhaustion_sl_cap_pct) above the fill (price %)
+    exhaustion_sl_cap_pct: float = 5.0
+    exhaustion_max_hold_hours: float = 24.0       # time exit
+    exhaustion_max_hours_after_spike: float = 72.0   # the signal bar must close ≤ this long after the spike bar's close (≤ 100)
+    exhaustion_min_vol_usd: float = 20e6          # 24 h quote volume (Σ of the 288 5m bars ending at the signal bar, exchange quote volume)
+    exhaustion_invest_mult: float = 0.5           # absolute-assign margin share — the Flatbase size (DL 577)
+    exhaustion_lev_mult: float = 0.25             # × the STRONG_BUY leverage (20 × 0.25 = 5×), the Flatbase leverage; a fill holds a bot slot
     # 🎯 2026-10-15 RESTING TAKE-PROFIT (DECISION_LOG 296, operator-armed DECLARED EXCEPTION — below the usual evidence bar): a reduce-only,
     # post-only (GTX) LIMIT rests on Binance at the price that books the SAME net TP with the MAKER exit fee (services/resting_tp.py +
     # exec_shadow.resting_tp_price). Evidence: live TP give-back 4/4 (WILLY ZK +1.12 / BLUR +1.09 / RLC +1.08 vs +1.25, LITE DEEP +2.80 vs
@@ -1676,6 +1700,7 @@ class SignalThresholds(BaseModel):
     resting_tp_override_enabled: bool = True      # a bot trade whose exit the operator overrode with a TP > 0 (OVERRIDE_TP; an override with no TP = none)
     resting_tp_frenzy_long_enabled: bool = True   # FRENZY_LONG (fixed frenzy_tp_pct; none while frenzy_lock_arm_pct > 0) — never FRENZY_WIDE (off)
     resting_tp_flatbase_enabled: bool = True      # 🩳 FLATBASE_SHORT (DECISION_LOG 348): its −8 % price TP rests as a maker limit (the study's TP level; own switch)
+    resting_tp_exhaustion_enabled: bool = True    # 🪫 EXHAUSTION_SHORT (DECISION_LOG 578): its min(3 × ATR, 5 %) price TP rests as a maker limit (the study's maker TP)
     resting_tp_flip_fan_enabled: bool = False     # 🎯 FAN flip fixed TP (DECISION_LOG 563): the row's flip_fan_tp_pct rests as a reduce-only post-only maker limit; off → the software TP closes at market
     resting_tp_grace_s: float = 3.0               # safety net: seconds the price must stay through the limit (0–60)
     resting_tp_through_ticks: int = 2             # safety net: ticks THROUGH the limit (1–50)
@@ -2638,6 +2663,13 @@ class SignalThresholds(BaseModel):
     # Restore 1.0 if the sleeve re-proves (Jun–Aug level) at a batch review. DL 562 (operator 11-16 "change Momentum Long and Short to 10x"): live 0.5 = 10×.
     momentum_short_lev_mult: float = 1.0
     momentum_long_lev_mult: float = 1.0
+    # ⛔ 2026-11-18 MOMENTUM ENTRY SWITCHES (DECISION_LOG 578, operator: "turn off the other sleeves; run in paper with Flatbase and this new
+    # sleeve"): False = no NEW core momentum entry in that direction — every open_position call that would book entry_strategy MOMENTUM (the
+    # ladder's base row, every pattern cell, the probes and doors that open as MOMENTUM) is refused (MOMENTUM_LONG_OFF / MOMENTUM_SHORT_OFF).
+    # Flips, fades, FRENZY, FLATBASE, EXHAUSTION, Bull/Bear-Run, manual trades and the exits of open trades are untouched. momentum_*_lev_mult ≤ 0
+    # reads as 1.0 (full size), so the lev field is NOT an off switch — these are. Code default True (on).
+    momentum_long_entries_enabled: bool = True
+    momentum_short_entries_enabled: bool = True
     # ⚖️ 2026-10-15 (DECISION_LOG 298, operator-approved "go with 5x"): momentum_long_invest_mult — the MARGIN share of every MOMENTUM LONG
     # open (same scope as momentum_long_lev_mult). The NOTIONAL never changes: the open keeps the notional of the PAIRED leverage
     # (momentum_long_lev_mult × this) at the full margin and locks only notional / leverage (trading_engine.momentum_long_inv_factor /

@@ -318,6 +318,11 @@ async def init_db():
                                 'entry_flatbase_peak_age_h'):   # 🩳 (DECISION_LOG 348) FLATBASE_SHORT stamps · ⏱ (401) hours since the peak
                     if _fb_col not in columns:
                         connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_fb_col} FLOAT"))
+                for _ex_col in ('entry_exh_rsi_prev', 'entry_exh_rsi', 'entry_exh_vol_decay', 'entry_exh_spot_share_chg', 'entry_exh_atr_pct',
+                                'entry_exh_tp_pct', 'entry_exh_sl_pct', 'entry_exh_decision_price', 'entry_exh_model_slip_pct',
+                                'entry_exh_q5_usd'):   # 🪫 (DECISION_LOG 578) EXHAUSTION_SHORT stamps (its exit reads tp / sl)
+                    if _ex_col not in columns:
+                        connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_ex_col} FLOAT"))
                 for _lr_col in ('entry_frenzy_retry_wait_min', 'entry_frenzy_retry_green_ret', 'entry_frenzy_stop_pct'):   # 🔁 (DECISION_LOG 316) FRENZY_LITE_RETRY stamps · 🛑 (317) stop at entry
                     if _lr_col not in columns:
                         connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_lr_col} FLOAT"))

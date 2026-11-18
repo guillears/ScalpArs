@@ -119,6 +119,11 @@ class BinanceService:
         self.flatbase_exchange = None   # 🩳 (DECISION_LOG 348) FLATBASE 14-day history reads: own public client + throttle (lazy)
         self.flatbase_limited_until = 0.0   # 🩳 a 429 / 418 on the FLATBASE client → its reader defers until then
         self.flatbase_used_weight = 0   # the X-MBX-USED-WEIGHT-1M of its last response (the reader stops above FLATBASE_WEIGHT_STOP)
+        self.exh_exchange = None        # 🪫 (DECISION_LOG 578) EXHAUSTION_SHORT signal reads (perp 5m klines with quote volume): own public client (lazy)
+        self.exh_spot_exchange = None   # 🪫 … spot 15m klines + spot exchangeInfo (the SPOT API's own weight budget): own public client (lazy)
+        self.exh_limited_until = 0.0    # 🪫 a 429 / 418 on either EXH client → no EXH read until then (the signal fails closed: EXH_NO_DATA)
+        self.exh_used_weight = 0        # X-MBX-USED-WEIGHT-1M of the last perp answer (the engine stands down above EXH_WEIGHT_STOP)
+        self.exh_spot_used_weight = 0   # X-MBX-USED-WEIGHT-1M of the last spot answer (spot budget 6,000 / min; stop above EXH_SPOT_WEIGHT_STOP)
         self.regime_exchange = None     # 📈 (DECISION_LOG 383) alt-correlation stamp reads (5m / 1d klines, ticker/24hr, exchangeInfo): own public client (lazy)
         self.regime_limited_until = 0.0   # 📈 (383 review) a 429 / 418 / -1003 (or used weight > REGIME_WEIGHT_STOP) on the regime client → no regime read until then
         self.regime_used_weight = None    # the X-MBX-USED-WEIGHT-1M of its last response
@@ -541,6 +546,9 @@ class BinanceService:
             await self.flatbase_exchange.close()
         if getattr(self, 'regime_exchange', None) is not None:   # 📈 (DECISION_LOG 383)
             await self.regime_exchange.close()
+        for _xc in ('exh_exchange', 'exh_spot_exchange'):   # 🪫 (DECISION_LOG 578)
+            if getattr(self, _xc, None) is not None:
+                await getattr(self, _xc).close()
     
     @property
     def _last_balance_payload(self):
@@ -937,6 +945,68 @@ class BinanceService:
             if isinstance(e, (RateLimitExceeded, DDoSProtection)) or any(x in str(e) for x in ('429', '418', '-1003', 'Too many requests')):
                 self.flatbase_limited_until = time.time() + 60.0   # the reader defers (no attempt spent) for a minute
             logger.warning(f"[BINANCE] FLATBASE klines until {end_ms} for {pair_id} ({timeframe}) failed: {str(e)[:120]}")
+            return None
+
+    def _exh_note(self, cl, spot: bool) -> None:
+        try:
+            _h = getattr(cl, 'last_response_headers', None) or {}
+            _w = next((v for k, v in _h.items() if str(k).lower() == 'x-mbx-used-weight-1m'), None)
+            if _w is not None:
+                if spot:
+                    self.exh_spot_used_weight = int(_w)
+                else:
+                    self.exh_used_weight = int(_w)
+        except (TypeError, ValueError, AttributeError):
+            pass
+
+    def _exh_error(self, e, what) -> None:
+        self._detect_ban(e)
+        if isinstance(e, (RateLimitExceeded, DDoSProtection)) or any(x in str(e) for x in ('429', '418', '-1003', 'Too many requests')):
+            self.exh_limited_until = time.time() + 120.0   # both EXH clients stand down for 2 min (the signal fails closed)
+        logger.warning(f"[BINANCE] EXHAUSTION {what} failed: {str(e)[:120]}")
+
+    async def fetch_exh_klines(self, pair_id: str, interval: str, limit: int, end_ms: Optional[int] = None, spot: bool = False) -> Optional[List]:
+        """🪫 (DECISION_LOG 578) RAW public klines (open ms, o, h, l, c, v, close ms, QUOTE VOLUME, …) for pair_id ('ABCUSDT') — the perp
+        /fapi/v1/klines (weight 10 at limit > 1000) or, spot=True, the spot /api/v3/klines (weight 2) — the `limit` bars opened ≤ end_ms
+        (or the newest). Own lazily-created public clients and throttles (never the scan / FRENZY / order clients). None on any error,
+        during a ban or the EXH back-off (never sleeps, never raises): the caller fails closed."""
+        try:
+            if _ban_until > time.time() or time.time() < float(self.exh_limited_until or 0.0):
+                return None
+            sym = str(pair_id).replace('/USDT:USDT', 'USDT').replace('/', '')
+            params = {'symbol': sym, 'interval': interval, 'limit': max(1, min(int(limit), 1000 if spot else 1500))}
+            if end_ms is not None:
+                params['endTime'] = int(end_ms)
+            if spot:
+                if self.exh_spot_exchange is None:
+                    self.exh_spot_exchange = ccxt.binance({'enableRateLimit': True})
+                raw = await self.exh_spot_exchange.publicGetKlines(params)
+                self._exh_note(self.exh_spot_exchange, True)
+            else:
+                if self.exh_exchange is None:
+                    self.exh_exchange = ccxt.binanceusdm({'enableRateLimit': True, 'options': {'defaultType': 'future'}})
+                raw = await self.exh_exchange.fapiPublicGetKlines(params)
+                self._exh_note(self.exh_exchange, False)
+            return list(raw or [])
+        except Exception as e:
+            self._exh_error(e, f"klines {pair_id} {interval}{' spot' if spot else ''}")
+            return None
+
+    async def fetch_exh_spot_symbols(self) -> Optional[set]:
+        """🪫 (DECISION_LOG 578) the symbols with a TRADING Binance SPOT market quoted in USDT (spot /api/v3/exchangeInfo, weight 20) — the
+        caller caches it for hours. None on any error / ban / back-off (the caller fails closed: no spot market known → no trade)."""
+        try:
+            if _ban_until > time.time() or time.time() < float(self.exh_limited_until or 0.0):
+                return None
+            if self.exh_spot_exchange is None:
+                self.exh_spot_exchange = ccxt.binance({'enableRateLimit': True})
+            info = await self.exh_spot_exchange.publicGetExchangeInfo()
+            self._exh_note(self.exh_spot_exchange, True)
+            out = {str(x.get('symbol')) for x in (info or {}).get('symbols') or []
+                   if x.get('status') == 'TRADING' and str(x.get('quoteAsset')) == 'USDT'}
+            return out or None
+        except Exception as e:
+            self._exh_error(e, "spot exchangeInfo")
             return None
 
     REGIME_LIMIT_BACKOFF_S = 120.0   # 📈 (383 review) minimum back-off after a rate-limit answer (or Retry-After, whichever is longer)

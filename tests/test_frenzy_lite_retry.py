@@ -412,7 +412,7 @@ def test_config_d11():
     assert mf["frenzy_lite_retry_invest_mult"].default == 1.0 and mf["frenzy_lite_retry_lev_mult"].default == 0.2
     assert mf["resting_tp_lite_retry_enabled"].default is True
     cfg = json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
-    assert cfg["frenzy_lite_retry_enabled"] is True and cfg["frenzy_lite_retry_wait_minutes"] == 15.0
+    assert cfg["frenzy_lite_retry_enabled"] is False and cfg["frenzy_lite_retry_wait_minutes"] == 15.0   # DECISION_LOG 578: off for the FLATBASE + EXHAUSTION paper run (was True, DL 316)
     assert cfg["frenzy_lite_retry_invest_mult"] == 0.95 and cfg["frenzy_lite_retry_lev_mult"] == 0.5 and cfg["resting_tp_lite_retry_enabled"] is True   # DL 528 C5 at 0.95 · DL 533: 10×
     assert "DECISION_LOG 316" in open(os.path.join(ROOT, "config.py"), encoding="utf-8").read()
     assert frenzy_lite_retry_config_errors(NS(frenzy_lite_retry_enabled=True, frenzy_lite_retry_wait_minutes=15)) == []
@@ -443,7 +443,7 @@ def test_reports_d12():
     assert "FRENZY_LITE_RETRY" in body and "lite_retry_last" in body                                         # the shared export block
     assert html.count("lines.push(...frenzyReportLines(perf, hr2));") == 2                                    # clipboard + saved file
     assert html.count("lines.push(...liteCReportLines(perf, hr2));") == 2
-    assert html.count("FRENZY Fills (FRENZY_LONG · FRENZY_LITE · FRENZY_LITE_RETRY · FRENZY_WILLY · FRENZY_WILLY_HT · FLATBASE_SHORT)") == 2   # UI + export
+    assert html.count("FRENZY Fills (FRENZY_LONG · FRENZY_LITE · FRENZY_LITE_RETRY · FRENZY_WILLY · FRENZY_WILLY_HT · FLATBASE_SHORT · EXHAUSTION_SHORT)") == 2   # UI + export
     assert "LITE RETRY ${m.lite_retry_enabled ? 'ON' : 'OFF'}" in html and "LITE RETRY ${_bt.frenzy_lite_retry_enabled === true ? 'ON' : 'OFF'}" in html
     assert "LITE RETRY ${_bt.resting_tp_lite_retry_enabled !== false ? 'ON' : 'OFF'}" in html
     assert '<option value="FRENZY_LITE_RETRY">' in html and "strat === 'FRENZY_LITE_RETRY'" in html
@@ -458,7 +458,7 @@ def test_reports_d12():
 def test_sleeve_and_strategy_rows():
     import main as M
     src = open(os.path.join(ROOT, "main.py"), encoding="utf-8").read()
-    assert "'Frenzy-Lite', 'Frenzy-Lite-Retry', 'Frenzy-Willy', 'Frenzy-Willy-HT', 'Flatbase-Short', 'Manual']" in src   # 🩳 (348) Flatbase-Short   # 🎲¼ (341) + HT after WILLY                            # own sleeve row, right after LITE
+    assert "'Frenzy-Lite', 'Frenzy-Lite-Retry', 'Frenzy-Willy', 'Frenzy-Willy-HT', 'Flatbase-Short', 'Exhaustion-Short', 'Manual']" in src   # 🩳 (348) Flatbase-Short   # 🎲¼ (341) + HT after WILLY                            # own sleeve row, right after LITE
     rows = M._compute_sleeve_performance([NS(entry_strategy=FRENZY_LITE_RETRY, direction="LONG", pnl_percentage=1.0, pnl=10.0,
                                              opened_at=dt.datetime(2026, 10, 19), closed_at=dt.datetime(2026, 10, 19, 1)),
                                           NS(entry_strategy="FRENZY_LITE", direction="LONG", pnl_percentage=-1.0, pnl=-10.0,

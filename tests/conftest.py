@@ -58,6 +58,16 @@ def _fresh_process_locks(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _momentum_entries_on(monkeypatch):
+    """⛔ (DECISION_LOG 578) trading_config.json switches new MOMENTUM entries OFF for the FLATBASE + EXHAUSTION paper run. The suite pins the
+    open-path MECHANICS (sizing, cells, holds, guards), so every test starts with both switches ON; the switch tests turn them off themselves
+    (tests/test_exhaustion_short.py)."""
+    import config as _cfg
+    for _k in ("momentum_long_entries_enabled", "momentum_short_entries_enabled"):
+        monkeypatch.setattr(_cfg.trading_config.thresholds, _k, True, raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _no_orderbook_network(monkeypatch):
     """📖 Oct-3: manual opens read the order book (research stamp) — never the network in tests."""
     from services import binance_service as _bs

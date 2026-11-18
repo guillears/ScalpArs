@@ -24,6 +24,8 @@ NOT_A_MOMENTUM_STAMP = {
     "entry_chop_burst_prior_fill_s",   # 🌀👥 Oct-4: the LONG_CHOP_BURST gate's own input — a bot decision stamp (DB lookup); MANUAL is never gated
     "entry_book_drift_pct", "entry_book_spread_pct", "entry_fill_vs_book_pct", "entry_order_lag_s",   # 📏 (295) FRENZY / SURGE book-path execution shadow (sleeve-only)
     "entry_depth_fillable_usd", "entry_depth_shrunk_from", "entry_depth_exit_fillable_usd", "entry_cap_price", "entry_cap_fill_frac", "entry_cap_immediate_frac",   # 📖 (551) entry depth guard on the FRENZY / SURGE / FLATBASE taker path (sleeve-only)
+    "entry_exh_rsi_prev", "entry_exh_rsi", "entry_exh_vol_decay", "entry_exh_spot_share_chg", "entry_exh_atr_pct", "entry_exh_tp_pct",
+    "entry_exh_sl_pct", "entry_exh_decision_price", "entry_exh_model_slip_pct", "entry_exh_q5_usd",   # 🪫 (DECISION_LOG 578) EXHAUSTION_SHORT stamps (sleeve-only)
     "entry_flatbase_flat14_pct", "entry_flatbase_flat_cov_pct", "entry_flatbase_off_peak_pct", "entry_flatbase_peak_age_h",   # 🩳 (348) FLATBASE_SHORT episode stamps (sleeve-only)
 }
 

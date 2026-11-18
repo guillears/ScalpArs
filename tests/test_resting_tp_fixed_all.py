@@ -98,6 +98,7 @@ def test_reasons_switches_and_config_errors():
     assert set(RTP_SWITCHES) == {"resting_tp_willy_enabled", "resting_tp_lite_enabled", "resting_tp_frenzy_long_enabled",
                                  "resting_tp_manual_enabled", "resting_tp_override_enabled", "resting_tp_lite_retry_enabled",   # 🔁 (316)
                                  "resting_tp_flatbase_enabled",   # 🩳 (348)
+                                 "resting_tp_exhaustion_enabled",   # 🪫 (DECISION_LOG 578)
                                  "resting_tp_flip_fan_enabled"}   # 🎯 (563)
     assert "MANUAL" in RTP_ROW_STRATEGIES and "FRENZY_LONG" in RTP_ROW_STRATEGIES
     assert config_errors(th) == []

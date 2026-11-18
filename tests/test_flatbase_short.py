@@ -631,12 +631,12 @@ def test_exit_and_protection_sites_wired():
     # cached stops (open + every cache rebuild after a restart), resting TP armed at the open, backstop per order at open
     assert "else -flatbase_params(config.trading_config.thresholds)['stop'] if _fbs" in eng
     assert "else -flatbase_params(config.trading_config.thresholds)['stop'] if (order.entry_strategy or '') in FLATBASE_CLASS" in eng
-    assert "if (_frenzy and (_fz_es in RTP_SLEEVES)) or _fbs or _ff_tp is not None:" in eng   # (563) + the FAN flip fixed TP
+    assert "if (_frenzy and (_fz_es in RTP_SLEEVES)) or _fbs or _exh or _ff_tp is not None:" in eng   # 🪫 (DECISION_LOG 578) + EXHAUSTION   # (563) + the FAN flip fixed TP
     assert eng.count("(_fz_es if _frenzy else (FLATBASE_SHORT if _fbs else None))") == 2
     # restart re-arm / heal / re-price / reconcile read the ROW: row_backstop_pct + rtp_row_target cover FLATBASE (tested above)
     assert "_flatbase_follow_seed(db)" in eng and "await self._flatbase_sweep(bar_open, seen | _fbs_seen)" in eng
     p = eng.index("    async def _update_frenzy_pass(self, db):"); body = eng[p:eng.index("\n    def _frenzy_wide_off_note(", p)]
-    assert "if not (_on or _obs or _wide or _lite or _willy or _fbs):" in body
+    assert "if not (_on or _obs or _wide or _lite or _willy or _fbs or _exh):" in body
     # nothing FLATBASE runs on the FRENZY decision path: the loop only QUEUES the pair; tracking / reads / S4 / entries run after it
     assert "self.__dict__.setdefault('_fbs_eval_q', []).append((pair, ep, closed, by[pair], bar_open))" in body and "self._flatbase_eval(" not in body
     assert body.index("await self._frenzy_willy_eval(") < body.index("await self._flatbase_run_queue(db)") < body.index("await self._flatbase_enter_queued(db)") \
@@ -685,7 +685,7 @@ def test_config_defaults_json_ui_and_exports():
     # both text exports: the config line (shared _buildConfigLines, called by both) + the FRENZY monitor line + the FRENZY Fills rows
     assert html.count("..._buildConfigLines(cfg, changelog, hr, hr2, status)") == 2 and "🩳 FLATBASE_SHORT (DECISION_LOG 348, discipline override)" in html
     assert html.count("...frenzyReportLines(perf, hr2)") == 2 and "+ flatbaseMonitorStr(m);" in html
-    assert html.count("FRENZY Fills (FRENZY_LONG · FRENZY_LITE · FRENZY_LITE_RETRY · FRENZY_WILLY · FRENZY_WILLY_HT · FLATBASE_SHORT)") == 2   # UI + the shared export block
+    assert html.count("FRENZY Fills (FRENZY_LONG · FRENZY_LITE · FRENZY_LITE_RETRY · FRENZY_WILLY · FRENZY_WILLY_HT · FLATBASE_SHORT · EXHAUSTION_SHORT)") == 2   # UI + the shared export block
     main = open(os.path.join(ROOT, "main.py"), encoding="utf-8").read()
     assert '("FLATBASE_SHORT", "🩳 FLATBASE_SHORT (' in main and 'if _fz_es == "FLATBASE_SHORT":' in main      # FRENZY Fills row + gate
     assert "_fb_cfg_errors(new_config.thresholds, _sb_lev)" in main and "'FLATBASE_SHORT': ('flatbase_short_enabled',)" in main

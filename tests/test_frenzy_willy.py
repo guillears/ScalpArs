@@ -473,7 +473,7 @@ def test_pass_runs_willy_last():
     for earlier in ("await self._frenzy_open(db, flag, ind, bar_open)", "await self._frenzy_open(db, flag, ind, bar_open, wide=True)",
                     "await self._frenzy_lite_eval("):
         assert body.index(earlier) < w, earlier
-    assert "if not (_on or _obs or _wide or _lite or _willy or _fbs):" in body and "await self._frenzy_willy_sweep(bar_open, _willy, seen)" in body
+    assert "if not (_on or _obs or _wide or _lite or _willy or _fbs or _exh):" in body and "await self._frenzy_willy_sweep(bar_open, _willy, seen)" in body
     assert "pair_warm=(_lo_prev is not None and int(_lo_prev) == bar_open - 600_000)" in body
     assert body.index("_lo_prev = self.__dict__.setdefault('_fz_pair_last_ok', {}).get(pair)") < body.index("self.__dict__.setdefault('_fz_pair_last_ok', {})[pair] = bar_open - 300_000")
     assert "await self._frenzy_willy_seed_from_flags(db)" in body
@@ -680,11 +680,13 @@ def test_hold_choke_point_in_open_position_and_not_manual():
     # the hold's sleeve label = the Order's entry_strategy for every sleeve flag combination
     expr = body[body.index("_wh_es = ") + len("_wh_es = "):body.index("\n", body.index("_wh_es = "))]
     base = dict(_frenzy=False, _fz_es="FRENZY_LONG", _surge=False, direction="LONG", bearrun_short=False, bullrun_long=False, spike_bounce=False,
-                spike_fade=False, spike_chase_probe=False, bounce_long=False, bull_long=False, flip_source=None, _fbs=False, FLATBASE_SHORT="FLATBASE_SHORT")
+                spike_fade=False, spike_chase_probe=False, bounce_long=False, bull_long=False, flip_source=None, _fbs=False, FLATBASE_SHORT="FLATBASE_SHORT",
+                _exh=False, EXHAUSTION_SHORT="EXHAUSTION_SHORT")   # 🪫 (DECISION_LOG 578)
     cases = [({}, "MOMENTUM"), ({"flip_source": "FAN"}, "FLIP:FAN"), ({"spike_fade": True}, "SPIKE_FADE"), ({"bullrun_long": True}, "BULLRUN_LONG"),
              ({"_surge": True, "direction": "SHORT"}, "SURGE_SHORT"), ({"_frenzy": True, "_surge": True, "_fz_es": "FRENZY_WILLY"}, "FRENZY_WILLY"),
              ({"bearrun_short": True}, "BEARRUN_SHORT"), ({"spike_chase_probe": True}, "SPIKE_CHASE"), ({"bounce_long": True}, "BOUNCE_LONG"),
-             ({"_fbs": True, "_surge": True, "direction": "SHORT"}, "FLATBASE_SHORT")]   # 🩳 (348)
+             ({"_fbs": True, "_surge": True, "direction": "SHORT"}, "FLATBASE_SHORT"),   # 🩳 (348)
+             ({"_exh": True, "_surge": True, "direction": "SHORT"}, "EXHAUSTION_SHORT")]   # 🪫 (DECISION_LOG 578)
     for kw, want in cases:
         assert eval(expr, {}, dict(base, **kw)) == want, (kw, want)
     o = eng.index("    async def _frenzy_open("); o1 = eng.index("    async def _maybe_open_surge(", o)
@@ -857,7 +859,7 @@ def test_exit_wiring_every_path():
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
     assert 'FRENZY_STRATEGIES = ("FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE", "FRENZY_WILLY")' in eng
     assert eng.count("frenzy_willy_exit_for(") == 2
-    assert eng.count("_held_minutes(order.opened_at)") == 2 and eng.count("_held_minutes(order_info.get('opened_at'))") == 2   # WILLY + 🩳 FLATBASE (348) exits
+    assert eng.count("_held_minutes(order.opened_at)") == 3 and eng.count("_held_minutes(order_info.get('opened_at'))") == 3   # WILLY + 🩳 FLATBASE (348) + 🪫 EXHAUSTION (DECISION_LOG 578) exits
     assert "max_hold = frenzy_willy_levels(config.trading_config.thresholds)[2]" in eng
     for a, b in (('elif (order.entry_strategy or "") in WILLY_EXIT_CLASS:   # 🎲¼ (341) + HT · 🎲 Oct-8 (251): its OWN exit', 'elif (order.entry_strategy or "") in FRENZY_STRATEGIES:   # 🔥 its own stop'),
                  ("elif (order_info.get('entry_strategy') or '') in WILLY_EXIT_CLASS:", "elif (order_info.get('entry_strategy') or '') in FRENZY_STRATEGIES:   # 🔥 its own stop")):
@@ -888,8 +890,8 @@ def test_sizing_1x_1_0():
 
 # ── config / UI / exports (D11 · D12) ──────────────────────────────────────────────────────────────────────────────────────────────
 
-FIELDS = {"frenzy_willy_enabled": True, "frenzy_willy_entry_a": True, "frenzy_willy_entry_b": False, "frenzy_willy_invest_mult": 1.0,   # DL 528 C5 (0.5: DL 487)
-          "frenzy_willy_lev_mult": 0.4, "frenzy_willy_tp_pct": 1.25, "frenzy_willy_stop_pct": 4.0, "frenzy_willy_max_hold_minutes": 90,
+FIELDS = {"frenzy_willy_enabled": True, "frenzy_willy_entry_a": True, "frenzy_willy_entry_b": False, "frenzy_willy_invest_mult": 0.2,   # DECISION_LOG 578 (operator: WILLY + HT sized like FRENZY_LONG, 0.2 / 0.05) · was 1.0 DL 528 C5 (0.5: DL 487)
+          "frenzy_willy_lev_mult": 0.05, "frenzy_willy_tp_pct": 1.25, "frenzy_willy_stop_pct": 4.0, "frenzy_willy_max_hold_minutes": 90,
           "frenzy_willy_max_slots": 10, "frenzy_willy_red_max_wait_minutes": 60, "frenzy_willy_a_cold_max_bars": 3}
 
 
@@ -937,7 +939,7 @@ def test_ui_inputs_load_save_and_both_exports():
     assert html.count("lines.push(..._buildConfigLines(cfg, changelog, hr, hr2, status));") == 2
     assert "WILLY ${m.willy_enabled ? 'ON' : 'OFF'}" in html and "first red candle ≤ ${m.willy_red_wait ?? '-'} min" in html and "waiting red · expires ' + frenzyWillyClock(x.exp_ms)" in html
     assert html.count("lines.push(...frenzyReportLines(perf, hr2));") == 2
-    assert html.count("FRENZY Fills (FRENZY_LONG · FRENZY_LITE · FRENZY_LITE_RETRY · FRENZY_WILLY · FRENZY_WILLY_HT · FLATBASE_SHORT)") == 2
+    assert html.count("FRENZY Fills (FRENZY_LONG · FRENZY_LITE · FRENZY_LITE_RETRY · FRENZY_WILLY · FRENZY_WILLY_HT · FLATBASE_SHORT · EXHAUSTION_SHORT)") == 2
     assert '<option value="FRENZY_WILLY">' in html and "strat === 'FRENZY_WILLY') return tags" in html
     assert "if (['FRENZY_WILLY', 'FRENZY_WILLY_HT'].includes(o.entry_strategy || '')) {" in html   # 🎲¼ (341) HT = WILLY's exit badge and ">🎯 TP +${_wTp}% · ${_wSl} · ${_wMh}m</span>" in html and "'no SL'" in html
     assert "(?:WIDE |LITE |WILLY [AB] )?opened/.exec((f && f.willy_last) || '')" in html

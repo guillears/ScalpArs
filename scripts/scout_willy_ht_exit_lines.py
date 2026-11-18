@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """🎯👁 Scout — WILLY HT take profit +2 % (SHIPPED in paper, DECISION_LOG 537 declared override) revert gate + the RUN15 watch line (observe
 only — never changes config, no bot API; public 1m klines only, budgeted).
+⛔ RETIRED 2026-11-18 (DECISION_LOG 587): HT's take profit moved +2 → +5 (stop −4) — every line here priced the +2 exit; unhooked from the
+opportunity scout and classified NONE in observe_registry. Kept as a library / history; re-register a line on the new exit if wanted.
 
 WHY        INIT HT 11-12 closed at +1.25 in 38 s, then ran to +6.64 % in 10 min (≈ $1,000 left); ONE HT the same day ran +2.5 then −4.2. Study
            reports/WILLY_HT_EXIT_STUDY_2026-11-12.md: TP2 kept master HT 8 fills +3.0 pts (4 better / 0 worse) + B26 3 fills +2.25, luck p 0.64,

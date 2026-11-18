@@ -215,7 +215,7 @@ def rtp_target(th, entry_strategy, held_minutes=None, lite_tp=None, willy_tp=Non
     try:
         from services.frenzy import frenzy_willy_tp_at, frenzy_tp_for
         if es in ("FRENZY_WILLY", "FRENZY_WILLY_HT"):   # 🎲¼ (341) HT = WILLY's exit
-            tp, why = frenzy_willy_tp_at(th, held_minutes, tp_used=willy_tp)
+            tp, why = frenzy_willy_tp_at(th, held_minutes, tp_used=willy_tp, es=es)   # 🎲 (587) HT: its own late-TP switch
         elif es == "FLATBASE_SHORT":   # 🩳 (348) the nominal PRICE TP — the row-derived net (rtp_row_target) is what the engine places
             from services.flatbase import flatbase_params
             tp, why = flatbase_params(th)['tp'], "FRENZY_TP"
@@ -250,7 +250,7 @@ def rtp_reason_for_limit(th, entry_strategy, direction, entry_px, entry_fee_pct,
             return "FRENZY_TP"
         from services.frenzy import frenzy_willy_late_tp, frenzy_willy_tp_value
         from services.exec_shadow import net_pct_at
-        late = frenzy_willy_late_tp(th)
+        late = frenzy_willy_late_tp(th, entry_strategy)   # 🎲 (587) HT with its late TP off → never a late limit
         if late is None:
             return "FRENZY_TP"
         net = net_pct_at(direction, entry_px, limit_px, entry_fee_pct, maker_fee_rate)

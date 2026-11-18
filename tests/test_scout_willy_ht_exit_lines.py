@@ -56,22 +56,21 @@ def test_engine_config_ui_wiring():
     import config
     assert config.SignalThresholds().frenzy_willy_ht_tp_pct == 0.0                               # code default OFF, the JSON arms 2.0
     cfg = json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
-    assert cfg["frenzy_willy_ht_tp_pct"] == 2.0 and cfg["frenzy_willy_tp_pct"] == 1.25          # WILLY unchanged
+    assert cfg["frenzy_willy_ht_tp_pct"] == 5.0 and cfg["frenzy_willy_tp_pct"] == 1.25          # DL 587: HT +5 (was 2.0); WILLY unchanged
     eng = open(os.path.join(ROOT, "services", "trading_engine.py")).read()
     i = eng.index("HT's OWN base take profit: T_used = max(HT TP")
-    assert "_fz_es == FRENZY_WILLY_HT" in eng[i:i + 800] and "frenzy_willy_ht_target(_wv2_tp, _ht_tp)" in eng[i:i + 900]
+    assert "_fz_es == FRENZY_WILLY_HT" in eng[i:i + 800] and "frenzy_willy_ht_target(_wv2_tp, _ht_tp)" in eng[i:i + 2000]   # (587: + the flat-TP branch)
     assert eng.index("frenzy_willy_tp_target_pct=_wv2_tp") > i                                 # stored on the row after the override
     html = open(os.path.join(ROOT, "templates", "index.html")).read()
     assert "['config-fz-willy-ht-tp', 'frenzy_willy_ht_tp_pct', 0]" in html and 'id="config-fz-willy-ht-tp"' in html
 
 
 def test_hook_registry_ignore():
+    """⛔ (DECISION_LOG 587) RETIRED 2026-11-18: HT's exit moved to TP +5 — the line is unhooked and classified NONE (never read stale)."""
     src = open(os.path.join(ROOT, "scripts", "opportunity_scout.py")).read()
-    j = src.index("import scout_willy_ht_exit_lines as _whx")
-    assert "_whx.run(now_ms)" in src[j:j + 100] and "except Exception as _whx_e" in src[j:j + 200]
+    assert "import scout_willy_ht_exit_lines as _whx" not in src and "WILLY HT EXIT lines (TP2 · RUN15 · HT stop lines) RETIRED" in src
     import observe_registry as OR
-    row = [r for r in OR.status() if r[0] == "scout_willy_ht_exit_lines.py"][0]
-    assert row[4] == "OK", row[5]
+    assert "scout_willy_ht_exit_lines.py" in OR.NONE and "scout_willy_ht_exit_lines.py" in OR.classified()
     assert "reports/SCOUT_WILLY_HT_EXIT_LINES.json" in open(os.path.join(ROOT, ".gitignore")).read()
 
 

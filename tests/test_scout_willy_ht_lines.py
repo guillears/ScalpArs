@@ -115,7 +115,7 @@ def test_verdict_bar_per_sleeve():
     z = pd.DataFrame([dict(pct=(-4.0 if i % 3 else 1.0), day=f"d{i % 12}", pair=f"P{i % 9}") for i in range(24)])
     r = pd.DataFrame([dict(pct=1.5, day=f"d{i % 10}", pair="R") for i in range(20)])
     assert W.verdict(z, r, 0.667)[0] == W.CANDIDATE
-    assert W.BE_WR == {"FRENZY_WILLY": 0.690, "FRENZY_WILLY_HT": 0.667}
+    assert W.BE_WR == {"FRENZY_WILLY": 0.690, "FRENZY_WILLY_HT": 0.444}   # 🔁 (587) HT re-based on TP +5 / SL −4 (was 0.667 at +2 / −4)
 
 
 def test_not_evaluable_without_the_commit(monkeypatch):
@@ -145,7 +145,7 @@ def test_run_on_a_fixture(tmp_path):
 
 def test_registry_and_hook():
     assert "scout_willy_ht_lines.py" in OR.classified()
-    assert OR.BOOKED["scout_willy_ht_lines.py"]["frenzy_willy_ht_tp_pct"] == 2.0
+    assert OR.BOOKED["scout_willy_ht_lines.py"]["frenzy_willy_ht_tp_pct"] == 5.0   # 🔁 re-based DL 587
     src = open(os.path.join(ROOT, "scripts", "opportunity_scout.py"), encoding="utf-8").read()
     assert "import scout_willy_ht_lines" in src and "import scout_exh_exit_override" in src
     gi = open(os.path.join(ROOT, ".gitignore"), encoding="utf-8").read()

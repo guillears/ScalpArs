@@ -486,7 +486,8 @@ def test_operator_sleeve_set_dl578():
     WILLY + HT sized like FRENZY_LONG (0.2 / 0.05) — re-sized to 0.5 × 0.25 (5×) by DECISION_LOG 581."""
     cfg = json.load(open(os.path.join(ROOT, "trading_config.json")))
     th = cfg["thresholds"]
-    on = ("flatbase_short_enabled", "exhaustion_short_enabled", "frenzy_long_enabled", "frenzy_willy_enabled", "frenzy_willy_ht_enabled")
+    on = ("flatbase_short_enabled", "exhaustion_short_enabled", "frenzy_willy_enabled", "frenzy_willy_ht_enabled")   # 🎲 DL 587: FRENZY_LONG off, plain WILLY entries off
+    assert th["frenzy_long_enabled"] is False and th["frenzy_willy_plain_entries_enabled"] is False
     off = ("momentum_long_entries_enabled", "momentum_short_entries_enabled", "frenzy_lite_enabled", "frenzy_lite_retry_enabled", "frenzy_wide_enabled",
            "surge_long_enabled", "surge_short_enabled", "spike_fade_enabled", "spike_chase_probe_enabled", "spike_bounce_enabled",
            "flip_entry_enabled", "bullrun_sleeve_enabled", "bearrun_sleeve_enabled", "bull_long_enabled", "bounce_long_enabled")

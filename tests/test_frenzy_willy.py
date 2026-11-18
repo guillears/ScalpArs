@@ -861,7 +861,7 @@ def test_exit_wiring_every_path():
     assert 'FRENZY_STRATEGIES = ("FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE", "FRENZY_WILLY")' in eng
     assert eng.count("frenzy_willy_exit_for(") == 2
     assert eng.count("_held_minutes(order.opened_at)") == 4 and eng.count("_held_minutes(order_info.get('opened_at'))") == 4   # WILLY + 🩳 FLATBASE (348) + 🪫 EXHAUSTION (DECISION_LOG 578) exits
-    assert "max_hold = frenzy_willy_levels(config.trading_config.thresholds)[2]" in eng
+    assert "max_hold = frenzy_willy_levels(config.trading_config.thresholds, order.entry_strategy)[2]" in eng
     for a, b in (('elif (order.entry_strategy or "") in WILLY_EXIT_CLASS:   # 🎲¼ (341) + HT · 🎲 Oct-8 (251): its OWN exit', 'elif (order.entry_strategy or "") in FRENZY_STRATEGIES:   # 🔥 its own stop'),
                  ("elif (order_info.get('entry_strategy') or '') in WILLY_EXIT_CLASS:", "elif (order_info.get('entry_strategy') or '') in FRENZY_STRATEGIES:   # 🔥 its own stop")):
         assert eng.index(a) < eng.index(b)
@@ -938,7 +938,7 @@ def test_ui_inputs_load_save_and_both_exports():
     assert "${_bt.frenzy_willy_global_hold === false ? 'global hold OFF (DECISION_LOG 340" in html                   # 🔓 (340) config export
     assert "${m.willy_global_hold === false ? 'global hold OFF (DECISION_LOG 340" in html                           # 🔓 (340) monitor line (dashboard + both exports)
     assert html.count("lines.push(..._buildConfigLines(cfg, changelog, hr, hr2, status));") == 2
-    assert "WILLY ${m.willy_enabled ? 'ON' : 'OFF'}" in html and "first red candle ≤ ${m.willy_red_wait ?? '-'} min" in html and "waiting red · expires ' + frenzyWillyClock(x.exp_ms)" in html
+    assert "WILLY ${m.willy_enabled ? (m.willy_plain_enabled === false ? 'plain entries OFF (HT only, DL 587)' : 'ON') : 'OFF'}" in html and "first red candle ≤ ${m.willy_red_wait ?? '-'} min" in html and "waiting red · expires ' + frenzyWillyClock(x.exp_ms)" in html
     assert html.count("lines.push(...frenzyReportLines(perf, hr2));") == 2
     assert html.count("FRENZY Fills (FRENZY_LONG · FRENZY_LITE · FRENZY_LITE_RETRY · FRENZY_WILLY · FRENZY_WILLY_HT · FLATBASE_SHORT · EXHAUSTION_SHORT · DISTRIBUTION_SHORT)") == 2
     assert '<option value="FRENZY_WILLY">' in html and "strat === 'FRENZY_WILLY') return tags" in html
@@ -966,7 +966,7 @@ def test_api_payload_and_sleeve_rows(monkeypatch):
     assert '("FRENZY_WILLY", "FRENZY_WILLY (new flag + ON not taken · red-candle entry · turnover < 1× mcap · declared exception")' in main
     assert "  A · new flag" in main and "_wrt(_wrd(" in main and ".order_by(Order.opened_at.asc())" in main and "'FRENZY_WILLY', 'MANUAL')" in main
     assert "🔒 WILLY hold (lifetime) — automated setups refused while a WILLY was open" in main and 'e="WILLY_HOLD"' in main
-    assert "getattr(_th, 'frenzy_willy_enabled', False)):" in main
+    assert "'frenzy_lite_enabled', 'frenzy_willy_enabled'," in main and "if not _frenzy_loop_on(_th):" in main
     assert '"entry_frenzy_willy_trigger": getattr(o, \'entry_frenzy_willy_trigger\', None),   # 🎲 Oct-8 (251): FRENZY_WILLY entry A / B (closed orders: the A / B split)' in main
 
 

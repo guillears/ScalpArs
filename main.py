@@ -226,6 +226,26 @@ async def scan_loop():
         await asyncio.sleep(scan_backoff)
 
 
+_FRENZY_LOOP_SWITCHES = ('frenzy_long_enabled', 'frenzy_short_observe', 'frenzy_wide_enabled', 'frenzy_lite_enabled', 'frenzy_willy_enabled',
+                         'flatbase_short_enabled', 'exhaustion_short_enabled', 'distribution_short_enabled')
+
+
+def _frenzy_loop_on(th) -> bool:
+    """(DL 587 review) the FRENZY pass runs while ANY sleeve on it is on — FLATBASE_SHORT / EXHAUSTION_SHORT / DISTRIBUTION_SHORT ride the
+    same pass, so FRENZY_LONG off (DL 587) with every FRENZY sleeve off must not silence them (they fell back to the scan's late inline call).
+    (re-review 10) the three short sleeves are read with the SAME helpers _update_frenzy uses (flatbase_enabled / exhaustion_enabled /
+    distribution_enabled), never a raw getattr."""
+    from services.flatbase import flatbase_enabled
+    from services.exhaustion import exhaustion_enabled
+    from services.distribution import distribution_enabled
+    try:
+        if flatbase_enabled(th) or exhaustion_enabled(th) or distribution_enabled(th):
+            return True
+    except Exception:
+        pass
+    return any(bool(getattr(th, k, False)) for k in _FRENZY_LOOP_SWITCHES[:5])
+
+
 async def frenzy_loop():
     """🔥 Oct-3 (DECISION_LOG 191): the FRENZY pass ~4 s after EVERY 5-minute close, in its own task — no longer only after the full
     scan (60–120 s late; the backtest audit: that minute takes the FRENZY long from +0.35 to +0.09 %/trade). Opens stay protected by the
@@ -241,8 +261,7 @@ async def frenzy_loop():
             if should_stop:
                 break
             _th = config.trading_config.thresholds
-            if not (getattr(_th, 'frenzy_long_enabled', False) or getattr(_th, 'frenzy_short_observe', False) or getattr(_th, 'frenzy_wide_enabled', False)
-                    or getattr(_th, 'frenzy_lite_enabled', False) or getattr(_th, 'frenzy_willy_enabled', False)):   # 🪶 Oct-7 (243): LITE runs on the same pass · 🎲 Oct-8 (251) WILLY too
+            if not _frenzy_loop_on(_th):   # 🪶 Oct-7 (243): LITE runs on the same pass · 🎲 Oct-8 (251) WILLY too · (587 review) FLATBASE / EXHAUSTION / DISTRIBUTION too
                 # ⏪ Oct-6 catch-up: FRENZY fully OFF (paused or not) counts as judged — switching it back on never "catches up" a setup that
                 # turned ON while the operator had FRENZY off (the per-pair unread map is cleared too). Never raises.
                 await trading_engine._frenzy_judged_set(int(time.time() // 300) * 300_000 - 300_000, clear_pairs=True)
@@ -2050,6 +2069,7 @@ async def get_pairs(db: AsyncSession = Depends(get_db), limit: int = 50):
         _fz_raw = dict(_fzf)
     except Exception:
         _fz_now, _fz_raw = {}, {}
+    _ss_map = await _sleeve_status_map(db, [p.pair for p in pairs])   # 🧭 (operator 11-18) the BLOCK REASON column's per-sleeve lines
     pairs_data = []
     for p in pairs:
         long_count = positions.get((p.pair, "LONG"), 0)
@@ -2120,6 +2140,7 @@ async def get_pairs(db: AsyncSession = Depends(get_db), limit: int = 50):
             "cmc_rank": _mc[1],
             "block_reason": block_reason,
             "frenzy": _fz_now.get(p.pair),
+            "sleeve_status": _ss_map.get(p.pair) or [],   # 🧭 (operator 11-18) one line per active sleeve — the BLOCK REASON column
             "open_positions": {
                 "long": long_count,
                 "short": short_count
@@ -2147,7 +2168,7 @@ async def get_pairs(db: AsyncSession = Depends(get_db), limit: int = 50):
             "rsi": round(_f['rsi'], 2) if _f.get('rsi') else None, "adx": round(_f['adx'], 2) if _f.get('adx') else None,
             "atr_pct": _v.get("atr_pct"), "signal": None, "confidence": None, "entry_ready": False, "setup_side": None,
             "macro_regime": None, "volume_24h": _f.get('volume_24h'), "mcap_usd": _mc[0], "cmc_rank": _mc[1],
-            "block_reason": None, "frenzy": _v, "frenzy_only": True,
+            "block_reason": None, "frenzy": _v, "frenzy_only": True, "sleeve_status": _ss_map.get(_k) or [],
             "open_positions": {"long": positions.get((_k, "LONG"), 0), "short": positions.get((_k, "SHORT"), 0)},
         })
     if _fz_now:
@@ -5131,6 +5152,7 @@ def _frenzy_monitor_payload():
                 "willy_global_hold": bool(getattr(_th, 'frenzy_willy_global_hold', True)),   # 🔓 (340) the switch the engine USES (OFF since 2026-10-21)
                 # 🎲¼ (341) FRENZY_WILLY_HT: switch, the size fraction the engine USES, own slot
                 "willy_ht_enabled": bool(getattr(_th, 'frenzy_willy_ht_enabled', True)),
+                "willy_plain_enabled": getattr(_th, 'frenzy_willy_plain_entries_enabled', True) is not False,   # 🎲 (587) plain WILLY entries
                 "willy_ht_size_frac": _fz_ht_frac(_th), "willy_ht_max_slots": max(1, int(getattr(_th, 'frenzy_willy_ht_max_slots', 10) or 10)),
                 "willy_red_wait": int(_fz_willy_wait(_th) // 60_000),   # 🟥 the red-candle wait the engine USES (minutes)
                 # 🩳 (348) FLATBASE_SHORT: switch, the values the engine USES, the episodes it is tracking now
@@ -5207,6 +5229,80 @@ def _frenzy_flag_view(f):
             # ⏪ Oct-6: CLOSE time (UTC ms) of the bar the current setup turned ON (on_bar_ts + 5 min) — the UI shows "ON since HH:MM" in the
             # viewer's local time; None when the setup is not ON (the server text stays the fallback)
             "on_ms": (int(f['on_bar_ts']) + 300_000 if (f.get('in_state') and f.get('on_bar_ts') is not None) else None)}
+
+
+_SLEEVE_STATUS_WARN_AT = [0.0]   # 🧭 the last WARNING (rate limit: one per 10 min)
+
+
+async def _sleeve_status_map(db=None, pairs=None) -> dict:
+    """🧭 (operator 11-18, the BLOCK REASON column) {pair: [lines]} — services.sleeve_status.build per pair. Pairs in PRIORITY order before
+    the 300 cut: open positions → tracked by a side sleeve (EXHAUSTION / FLATBASE episodes, WILLY pending) → FRENZY-flagged → the shortlist
+    (pairs). Memory state + ONE newest-row query per journal (last 96 h) in its OWN session (a failure never aborts the caller's transaction;
+    `db` is unused, kept for the call sites) — never an exchange read. Never raises (→ {}; a failure is logged at WARNING, rate-limited)."""
+    try:
+        from services import sleeve_status as _SS
+        import services.trading_engine as _te
+        from services.trading_engine import _frenzy_flags as _fzf
+        eng = getattr(_te, 'trading_engine', None) or trading_engine
+        th = config.trading_config.thresholds
+        now_ms = int(time.time() * 1000)
+        exh_eps = {}
+        for (p_, sp_), r_ in list((getattr(eng, '_exh_eps', None) or {}).items()):
+            if r_.get('status') == "TRACKING":
+                exh_eps.setdefault(p_, []).append((sp_, r_.get('universe') or "FRENZY"))
+        fb = {}
+        for (p_, sp_), r_ in list((getattr(eng, '_fbs_eps', None) or {}).items()):
+            if r_.get('status') == "TRACKING":
+                fb[p_] = r_
+        pend = dict(getattr(eng, '_fz_willy_pending', None) or {})
+        paper = trading_engine.is_paper_mode
+        since = datetime.utcnow() - timedelta(hours=96)
+        async with AsyncSessionLocal() as _s:
+            open_rows = (await _s.execute(select(Order.pair, Order.entry_strategy).where(and_(
+                Order.status == "OPEN", Order.is_paper == paper)))).all()
+            open_es = {}
+            for p_, es_ in open_rows:   # (review 6) two OPEN rows on a pair → the BOT row wins over a MANUAL one
+                if p_ not in open_es or str(open_es[p_] or '').upper() == "MANUAL":
+                    open_es[p_] = es_ or "MOMENTUM"   # (re-review 9) a NULL entry_strategy is a bot momentum row, never "no position"
+            order, seen = [], set()
+            for grp in (sorted(open_es), sorted(set(exh_eps) | set(fb) | set(pend)), sorted(_fzf), list(pairs or ())):
+                for p_ in grp:
+                    if p_ not in seen:
+                        seen.add(p_); order.append(p_)
+            want = set(order[:300])
+            if not want:
+                return {}
+
+            async def newest(model, tcol):
+                out = {}
+                rows = (await _s.execute(select(model).where(and_(model.is_paper == paper, model.pair.in_(want), tcol >= since))
+                                         .order_by(tcol.desc()))).scalars().all()
+                for r in rows:
+                    out.setdefault(r.pair, r)
+                return out
+            ex_last = await newest(ExhaustionSignal, ExhaustionSignal.signal_at)
+            ds_last = await newest(DistributionSignal, DistributionSignal.signal_at)
+            fb_last = await newest(FlatbaseEpisode, FlatbaseEpisode.spike_at)
+        ms = lambda d: int(d.replace(tzinfo=timezone.utc).timestamp() * 1000) if d else None
+        rsi_last = dict(getattr(eng, '_exh_rsi_last', None) or {})
+        res = {}
+        for p_ in want:
+            e_, d_, f_ = ex_last.get(p_), ds_last.get(p_), fb_last.get(p_)
+            lines = _SS.build(p_, now_ms, th, open_es=open_es.get(p_), flag=_fzf.get(p_), exh_eps=exh_eps.get(p_, ()), exh_rsi=rsi_last.get(p_),
+                              exh_last=(dict(at_ms=ms(e_.signal_at), status=e_.status, block=e_.block, reason=e_.reason, spike_ms=ms(e_.spike_at),
+                                             universe=(getattr(e_, 'universe', None) or "FRENZY")) if e_ else None),
+                              dist_last=(dict(at_ms=ms(d_.signal_at), status=d_.status, block=d_.block, reason=d_.reason, spike_ms=ms(d_.spike_at),
+                                              rsi1h=getattr(d_, 'rsi1h', None)) if d_ else None),
+                              fb_rec=fb.get(p_), fb_last=(dict(at_ms=ms(getattr(f_, 'decided_at', None) or f_.spike_at), status=f_.status, reason=f_.reason) if f_ else None),
+                              willy_pend=pend.get(p_))
+            if lines:
+                res[p_] = lines
+        return res
+    except Exception as _e:
+        if time.time() - _SLEEVE_STATUS_WARN_AT[0] > 600:
+            _SLEEVE_STATUS_WARN_AT[0] = time.time()
+            logger.warning(f"[SLEEVE_STATUS] the block-reason status could not be built ({str(_e)[:160]}) — the panel shows the old text")
+        return {}
 
 
 def _frenzy_flag_rows():
@@ -6582,7 +6678,7 @@ SLEEVE_FILTER_SWITCHES = {
     'FRENZY_WIDE': ('frenzy_wide_enabled',),
     'FRENZY_LITE': ('frenzy_lite_enabled',),
     'FRENZY_LITE_RETRY': ('frenzy_lite_enabled', 'frenzy_lite_retry_enabled'),  # the retry runs only while LITE is on
-    'FRENZY_WILLY': ('frenzy_willy_enabled',),
+    'FRENZY_WILLY': ('frenzy_willy_enabled', 'frenzy_willy_plain_entries_enabled'),   # 🎲 (587) plain entries can be off while HT runs
     'FRENZY_WILLY_HT': ('frenzy_willy_enabled', 'frenzy_willy_ht_enabled'),    # HT tries only WILLY's refused red bars
     'FLATBASE_SHORT': ('flatbase_short_enabled',),                             # 🩳 (DECISION_LOG 348) its own master switch
     'EXHAUSTION_SHORT': ('exhaustion_short_enabled',),                         # 🪫 (DECISION_LOG 578) its own master switch
@@ -9998,6 +10094,13 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             return f" · TP +{_tp:g} / SL −{_st:g} / {_hr:g} h"
         if es in ("FRENZY_LITE", "FRENZY_LITE_RETRY"):
             return f" · TP +{_g('frenzy_lite_tp_pct', 3.0):g}" + (f" or +{_g('frenzy_lite_c_tp_pct', 2.0):g} (LITE C)" if _g('frenzy_lite_c_enabled', False) else "") + f" / SL −{_st:g} / {_hr:g} h"
+        if es == "FRENZY_WILLY_HT":   # 🎲 (DECISION_LOG 587) HT's own exit (flat TP / no late TP / own hold when switched)
+            from services.frenzy import frenzy_willy_ht_high_target_on as _hh, frenzy_willy_ht_late_tp_on as _hl, frenzy_willy_levels as _wlv
+            _tht = config.trading_config.thresholds
+            _htp = _g('frenzy_willy_ht_tp_pct', 0.0) or _wlv(_tht)[0]   # 0 = HT follows WILLY's base TP → show that, never "+0"
+            _tpx = (f"TP +{_htp:g} flat" if not _hh(_tht) else f"TP max(+{_htp:g}, the spike high ≤ +{_g('frenzy_willy_high_tp_max_pct', 8.0):g})")
+            return (f" · {_tpx} / SL −{_g('frenzy_willy_stop_pct', 4.0):g} / {_wlv(_tht, 'FRENZY_WILLY_HT')[2]:g} min"
+                    + (f" · late +{_g('frenzy_willy_late_tp_pct', 0.25):g} after {_g('frenzy_willy_late_tp_minutes', 30.0):g} min" if _hl(_tht) else " · no late TP"))
         if es in ("FRENZY_WILLY", "FRENZY_WILLY_HT"):
             return (f" · target at the spike high, up to +{_g('frenzy_willy_high_tp_max_pct', 8.0):g} / SL −{_g('frenzy_willy_stop_pct', 4.0):g} / "
                     f"{_g('frenzy_willy_max_hold_minutes', 90):g} min · late +{_g('frenzy_willy_late_tp_pct', 0.25):g} after {_g('frenzy_willy_late_tp_minutes', 30.0):g} min")
@@ -11379,6 +11482,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "lite_c_rows": lite_c_rows,   # 🎯 (DECISION_LOG 301) LITE C tally — UI + both text exports
         "depth_capacity_rows": depth_capacity_rows,   # 📖📊 (DECISION_LOG 584) capacity at entry per sleeve — UI + both text exports
         "frenzy_flags": _frenzy_flag_rows(),
+        "sleeve_status_rows": [dict(pair=k_, lines=v_) for k_, v_ in sorted((await _sleeve_status_map(db)).items())],   # 🧭 both text exports
         "frenzy_monitor": _frenzy_monitor_payload(),
         "entry_conditions_by_strategy_outcome": entry_conditions_by_strategy_outcome,
         "period_performance": _compute_period_performance(_all_orders),

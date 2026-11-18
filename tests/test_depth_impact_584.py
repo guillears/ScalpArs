@@ -96,7 +96,7 @@ def test_capacity_helpers():
 CAPS = []
 
 
-def _open(monkeypatch, bids, asks=None, mode="impact", sleeve="FLATBASE", exit_side=True, impact=0.10, min_frac=0.25):
+def _open(monkeypatch, bids, asks=None, mode="impact", sleeve="FLATBASE", exit_side=True, impact=0.10, min_frac=0.25, min_usd=0.0):
     from tests import test_flatbase_short as T
     import services.trading_engine as TE
     _orig_off = T._offline
@@ -114,7 +114,8 @@ def _open(monkeypatch, bids, asks=None, mode="impact", sleeve="FLATBASE", exit_s
         inv = TE_.config.trading_config.investment
         for k_, v in (("entry_depth_guard_enabled", True), ("entry_depth_guard_max_sweep_pct", 0.15), ("entry_depth_guard_min_frac", min_frac),
                       ("entry_depth_guard_mode", mode), ("entry_depth_guard_max_avg_impact_pct", impact),
-                      ("entry_depth_guard_exit_side_enabled", exit_side), ("entry_depth_guard_all_enabled", True)):
+                      ("entry_depth_guard_exit_side_enabled", exit_side), ("entry_depth_guard_all_enabled", True),
+                      ("entry_depth_guard_min_usd", min_usd)):   # 📖💵 (588) 0 here = the fraction rule these tests pin; tests/test_depth_floor_588.py drives the $ floor
             mp.setattr(inv, k_, v, raising=False)
         return net
     monkeypatch.setattr(T, "_offline", _off_with_book)
@@ -388,6 +389,7 @@ def _live_open(monkeypatch, book, direction="SHORT", mode="impact"):
     inv = TE.config.trading_config.investment
     for k_, v in (("entry_depth_guard_enabled", True), ("entry_depth_cap_enabled", True), ("entry_depth_cap_wait_s", 0.0),
                   ("entry_depth_guard_max_sweep_pct", 0.15), ("entry_depth_guard_min_frac", 0.25), ("entry_depth_guard_mode", mode),
+                  ("entry_depth_guard_min_usd", 0.0),   # 📖💵 (588) the fraction rule these 584 tests pin
                   ("entry_depth_guard_max_avg_impact_pct", 0.15), ("entry_depth_guard_exit_side_enabled", False), ("max_open_positions", 4),
                   ("redeploy_leftover_enabled", False)):
         monkeypatch.setattr(inv, k_, v, raising=False)

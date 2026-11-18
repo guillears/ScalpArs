@@ -25,7 +25,10 @@ tests/fixtures/exh_parity.npz, built by scripts/exh_parity_fixture.py from the s
   spot_share_chg   s1 / (s1 + p1) − s24 / (s24 + p24): s1 = spot 15m quote volume of the bars opened in [T − 1 h, T − 15 min] (≥ 3 bars),
             s24 = those opened in [T − 25 h, T − 1 h) (≥ 80 bars); p1 = perp roll1h at the signal bar; p24 = perp 5m quote volume of the
             bars opened in [T − 25 h, T − 1 h) (ta_wl_features.work B2). KEEP when finite and < −0.0066 (ssd_eval CUT). No Binance SPOT
-            USDT market (same symbol) → unscored → no trade (the study's has_spot = 0 rows are never kept).
+            USDT market → unscored → no trade (the study's has_spot = 0 rows are never kept). 🔤 (589) the spot symbol is the exact perp
+            symbol, else the multiplier-prefix-stripped coin (1000PEPEUSDT → PEPEUSDT; spot_symbol_for). The study (frenzy_early_data._spot_sym)
+            stripped 1000 / 1000000 UNCONDITIONALLY, so 1000SATS / 1000CAT / 1000CHEEMS (spot lists them WITH the prefix) were no-spot in the
+            study; the engine reads them on their exact spot symbol — a small widening beyond the study's universe.
   lags      every input closes ≤ T (perp 5m bars open + 5 min ≤ T, spot 15m bars open + 15 min ≤ T). The study's metrics rule
             (create_time ≤ T − 5 min) applies to no input of this rule (no metrics feature is used).
   ENTRY     SHORT at market right after T (the study: the next 5m bar's open).
@@ -35,6 +38,7 @@ tests/fixtures/exh_parity.npz, built by scripts/exh_parity_fixture.py from the s
             √(notional ÷ Q5)) (reports/SPOT_SHARE_DEEP_data/slip_model.json) — the revert gate prices paper fills with it.
 Every helper is total: bad input → a fail-closed answer, never an exception."""
 import math
+import re
 from typing import Dict, List, Optional, Sequence, Tuple
 
 EXHAUSTION_SHORT = "EXHAUSTION_SHORT"
@@ -84,6 +88,9 @@ B_NO_DATA, B_NO_SPOT, B_VOL24, B_VOL_DECAY, B_SPOT_SHARE, B_NO_SIGNAL = ("EXH_NO
                                                                          "EXH_SPOT_SHARE", "EXH_NO_SIGNAL")
 B_PAIR_HELD, B_OPEN_REFUSED, B_FAILED, B_LATE = "EXH_PAIR_HELD", "EXH_OPEN_REFUSED", "EXH_FAILED", "EXH_LATE"
 B_SSC_OIVOL, B_SSC_OIVOL_UNREAD = "EXH_SSC_OIVOL", "EXH_SSC_OIVOL_UNREAD"   # 🧯 (DECISION_LOG 582) the block · the fail-open counter
+C_SPOT_MAPPED = "EXH_SPOT_MAPPED"   # 🔤 (DECISION_LOG 589) engine counter (NOT a filter block): a perp read against its prefix-stripped spot symbol
+B_SPOT_MISMATCH = "EXH_SPOT_MISMATCH"   # 🔤 (589 re-review 5) a mapped spot coin that does not price like the perp (or an unreadable close) → blocked
+B_SPOT_MISMATCH_TXT = "mapped spot price mismatch"
 TP_REASON = "FRENZY_TP"                    # the resting-TP / software TP close reason (the FRENZY / FLATBASE label the close funnel knows)
 
 
@@ -264,6 +271,54 @@ def rsi_cross(rows, T, th) -> Dict:
         return out
     except (TypeError, ValueError, IndexError, ZeroDivisionError):
         return dict(cross=False, rsi_prev=None, rsi=None, close=None)
+
+
+# ── 🔤 (DECISION_LOG 589) the perp → SPOT symbol ──────────────────────────────────────────────────────────────────────────────────────
+# Binance lists low-priced coins on the perp market with a size multiplier in the base asset (1000PEPE, 1000BONK, 1000000BOB, 1MBABYDOGE …)
+# while spot lists the plain coin (PEPEUSDT). The engine looked up the EXACT perp symbol in the spot list, so these coins were refused
+# EXH_NO_SPOT — the study (scripts/frenzy_early_data._spot_sym) always read them under the stripped name, so its evidence includes them.
+# Rule: the exact symbol when spot lists it (1000SATS / 1000CAT / 1MBABYDOGE trade on spot WITH the prefix) · else the base asset with a
+# leading multiplier prefix stripped — a "1" followed by ≥ 3 zeros, or "1M" — ONLY when spot lists that symbol (derived from the spot list,
+# no hard-coded coin list). Spot share uses QUOTE (USDT) volumes on both sides — unit-free, the multiplier never enters it; the only
+# base-unit quantity is the price, used once as a sanity check (spot close × multiplier ≈ the perp close, spot_price_consistent).
+_MULT_PREFIX = re.compile(r"^(1(?:0{3,})|1M)(?=[A-Z])")
+
+
+def spot_symbol_for(pair, spot_syms) -> Tuple[Optional[str], int]:
+    """(spot symbol, base multiplier) for perp `pair` ('1000PEPEUSDT') against the set of spot USDT symbols — (pair, 1) when spot lists it
+    as is, (stripped, 10^k / 10^6) when only the prefix-stripped coin is listed, (None, 1) otherwise. Pure, never raises."""
+    try:
+        p = str(pair or "").upper().replace('/USDT:USDT', 'USDT').replace('/', '')
+        syms = spot_syms or ()
+        if p in syms:
+            return p, 1
+        if not p.endswith("USDT"):
+            return None, 1
+        m = _MULT_PREFIX.match(p[:-4])
+        if not m:
+            return None, 1
+        pre = m.group(1)
+        cand = p[len(pre):]
+        if cand == "USDT" or cand not in syms:
+            return None, 1
+        return cand, (1_000_000 if pre == "1M" else 10 ** (len(pre) - 1))
+    except Exception:
+        return None, 1
+
+
+def spot_price_consistent(perp_rows, spot_rows, mult, tol=2.0) -> Optional[bool]:
+    """a MAPPED spot symbol is the same coin when the last spot close × mult is within a factor `tol` of the last perp close (both closed
+    ≤ T; a 15-minute gap on a spike coin moves price far less than 2×, a wrong coin / wrong multiplier misses by orders of magnitude).
+    None = unreadable (the engine blocks a mapped coin on anything but True — fail-closed). Pure."""
+    try:
+        pc = _fin(list(perp_rows)[-1][4])
+        sc = _fin(list(spot_rows)[-1][4])
+        if pc is None or sc is None or pc <= 0 or sc <= 0:
+            return None
+        r = pc / (sc * float(mult))
+        return (1.0 / tol) <= r <= tol
+    except (TypeError, ValueError, IndexError, ZeroDivisionError):
+        return None
 
 
 def spot_share_chg(spot_rows, T, p1, p24) -> Tuple[Optional[float], int, int]:

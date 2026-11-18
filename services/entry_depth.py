@@ -35,18 +35,76 @@ def depth_fillable_usd(levels, direction, max_sweep_pct):
         return None
 
 
-def depth_guard_size(planned_notional, fillable_usd, min_frac):
-    """(action, notional): FULL (planned fits, or no usable book → fail-open) · SHRINK (min_frac ≤ fits < planned → what fits) ·
-    SKIP (fits < min_frac × planned). Never returns more than planned."""
+def depth_floor_usd(planned_notional, min_frac, min_usd) -> float:
+    """📖💵 (DECISION_LOG 588, review 15) the $ floor of the floor mode: min(min_usd, plan × min_frac) — a SMALL plan (below the $ floor) keeps
+    the old fraction behaviour (skip below a quarter of the plan) instead of being skipped outright. Pure."""
+    try:
+        return max(0.0, min(float(min_usd), float(planned_notional or 0.0) * max(0.0, float(min_frac or 0.0))))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def depth_guard_size(planned_notional, fillable_usd, min_frac, min_usd=0.0):
+    """(action, notional): FULL (planned fits, or no usable book → fail-open) · SHRINK (fits < planned → what fits) · SKIP.
+    📖💵 (DECISION_LOG 588) min_usd > 0 → the $ FLOOR mode: SKIP only when what fits < depth_floor_usd = min(min_usd, plan × min_frac) (a
+    growing plan on a thin book shrinks to the book instead of being skipped; a plan smaller than the $ floor keeps the fraction rule);
+    min_usd ≤ 0 → the fraction mode (DL 551 / 583): SKIP when fits < min_frac × planned. Never returns more than planned. Pure."""
     n = float(planned_notional or 0.0)
     if n <= 0 or fillable_usd is None:
         return FULL, n
     f = max(0.0, float(fillable_usd))
     if f >= n:
         return FULL, n
+    try:
+        mu = float(min_usd or 0.0)
+    except (TypeError, ValueError):
+        mu = 0.0
+    if mu > 0:
+        return (SKIP, f) if f < depth_floor_usd(n, min_frac, mu) else (SHRINK, f)
     if f < max(0.0, float(min_frac or 0.0)) * n:
         return SKIP, f
     return SHRINK, f
+
+
+def _amount_step(market):
+    """the symbol's quantity STEP from a ccxt market's precision.amount (588 re-review I-1). ccxt binanceusdm runs in TICK_SIZE precision
+    mode, so precision.amount is ALWAYS the step itself as a number (1.0, 10.0, 0.001) — never a count of decimals. None when absent / ≤ 0."""
+    try:
+        a = ((market or {}).get('precision') or {}).get('amount')
+        if a is None:
+            return None
+        a = float(a)
+        return a if a > 0 else None
+    except (TypeError, ValueError):
+        return None
+
+
+def step_floor_notional(market, notional, price) -> float:
+    """📖💵 (588 review 14) the notional after rounding the quantity DOWN to the symbol's step (what the exchange would actually take). Pure."""
+    try:
+        n, p = float(notional or 0.0), float(price or 0.0)
+        st = _amount_step(market)
+        if not (p > 0 and st):
+            return n
+        import math as _m
+        q = _m.floor((n / p) / st + 1e-9) * st
+        return q * p
+    except (TypeError, ValueError, ZeroDivisionError):
+        return float(notional or 0.0)
+
+
+def exchange_min_notional(market, price) -> float:
+    """📖💵 (DECISION_LOG 588) the symbol's smallest tradable notional from its ccxt market (no network): max(limits.cost.min (5 when
+    missing), max(limits.amount.min, limits.market.min) × price). 5.0 on an unreadable market. Pure."""
+    try:
+        lim = (market or {}).get('limits') or {}
+        c = float(((lim.get('cost') or {}).get('min')) or 5.0)
+        mins = [x for x in (((lim.get('amount') or {}).get('min')), ((lim.get('market') or {}).get('min'))) if x is not None]
+        a = max(float(x) for x in mins) if mins else None
+        p = float(price or 0.0)
+        return max(c, a * p if (a is not None and p > 0) else 0.0)
+    except (TypeError, ValueError, AttributeError):
+        return 5.0
 
 
 def exit_side_fillable_usd(book, direction, max_sweep_pct):

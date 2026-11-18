@@ -29,6 +29,7 @@ from services.indicators import closed_ema_gap_pct, last_closed_bar_ret_pct, clo
 from services.regime import classify_btc_regime
 from services.ml_second_chance import sc_params, sc_in_zone, sc_base_reason, sc_phase2_exit, net_pnl_pct as _sc_net_pnl_pct, SC_URGENT
 from services.funding_guard import funding_guard_block   # 💸 (DECISION_LOG 566)
+from services.entry_depth import exchange_min_notional, depth_floor_usd, step_floor_notional   # 📖💵 (DECISION_LOG 588) the $ floor + the symbol's minimum (no read)
 from services.entry_depth import cap_price, capped_fill_fee, depth_fillable_usd, depth_guard_size, exit_side_fillable_usd, thinner_side_usd, FULL as DEPTH_FULL, SHRINK as DEPTH_SHRINK, SKIP as DEPTH_SKIP   # 📖 (DECISION_LOG 551)
 from services.entry_depth import impact_fillable_detail, impact_limit_price, impact_cap_limit, walk_detail, book_bands, book_band_usd, binding_side as depth_binding_side   # 📖📐 (DECISION_LOG 584) impact-capped depth sizing + capacity stamps
 from services.ml_risk_cap import worst_stop_pct as _mlrc_worst_stop, open_trade_risk_pct as _mlrc_trade_risk, open_risk_pct_of_account as _mlrc_open_pct, fit_notional as _mlrc_fit
@@ -63,6 +64,7 @@ from services.frenzy import frenzy_walk, frenzy_flagged, frenzy_long_status, fre
 from services.frenzy import frenzy_willy_runner_k_for, frenzy_willy_runner_on   # 🏃 (DECISION_LOG 541) WILLY runner
 from services.frenzy import frenzy_willy_high_target, frenzy_willy_row_tp   # 🎲² (DECISION_LOG 356) WILLY exit V2 · 🎲²ᵇ (358) floor removed
 from services.frenzy import frenzy_willy_ht_tp, frenzy_willy_ht_target   # 🎯 (DECISION_LOG 537) HT's own base take profit
+from services.frenzy import frenzy_willy_plain_on, frenzy_willy_ht_high_target_on, frenzy_willy_late_tp   # 🎲 (DECISION_LOG 587) plain WILLY off → HT only · HT flat TP
 from services.hard_tp_ladder import parse_hard_tp_ladder, hard_tp_ladder_floor, DEFAULT_LADDER_RUNGS
 from services.golive_guards import (backstop_heal_skip_inflight, backstop_trigger_price, backstop_needs_replace, algo_status_resting, find_untracked_positions,  # 🛡 (DECISION_LOG 292)
                                    untracked_action, preflight_failures, BACKSTOP_REPLACE_RETRY_S, BACKSTOP_REPRICE_INTERVAL_S, UNTRACKED_CONFIRM_PASSES,
@@ -11078,6 +11080,12 @@ class TradingEngine:
             return
         sp, univ = _exh_rules.pick_episode(cands)   # the study: a later episode's window overrides an earlier one (ep_of)
         sig = _exh_rules.rsi_cross(closed, T, th)
+        if sig.get('rsi') is not None:   # 🧭 (block-reason column) the last 15m RSI read per tracked pair — memory only, no read
+            _rl = self.__dict__.setdefault('_exh_rsi_last', {})
+            _rl[pair] = (int(T), float(sig['rsi']))
+            if len(_rl) > 2000:
+                for _k in sorted(_rl, key=lambda k: _rl[k][0])[:500]:
+                    _rl.pop(_k, None)
         if not sig.get('cross'):
             return
         _done.add((pair, T))
@@ -11230,12 +11238,18 @@ class TradingEngine:
             _why = await self._exh_budget_wait(T, spot=False)
         syms = None
         has_spot = None
+        _spot_sym, _spot_mult = None, 1   # 🔤 (DECISION_LOG 589) the spot symbol read (1000PEPEUSDT → PEPEUSDT ×1000)
         if _why is None:
             syms = await self._exh_spot_symbols()
             if syms is None:
                 _why = "spot market list unreadable"
         if _why is None:
-            has_spot = pair in syms
+            _spot_sym, _spot_mult = _exh_rules.spot_symbol_for(pair, syms)
+            has_spot = _spot_sym is not None
+            if has_spot and _spot_sym != pair:   # (589 re-review 4) a NON-block counter — never a filter-block tally
+                _mc = self.__dict__.setdefault('_exh_spot_mapped', {})
+                _mc[pair] = int(_mc.get(pair, 0)) + 1
+                logger.info(f"[EXHAUSTION_SHORT] {pair}: spot market read as {_spot_sym} ×{int(_spot_mult):,} ({_exh_rules.C_SPOT_MAPPED} #{_mc[pair]})")
             if not has_spot:   # refused BEFORE any kline read (no spot market → the study never scored it)
                 self._exh_count(_exh_rules.B_NO_SPOT, pair)
                 await self._exh_journal(pair, T, _exh_rules.ST_BLOCKED, _exh_rules.B_NO_SPOT,
@@ -11254,7 +11268,8 @@ class TradingEngine:
             _why = await self._exh_budget_wait(T, spot=True)
         if _why is None:
             try:
-                spot = await asyncio.wait_for(binance_service.fetch_exh_klines(pair, '15m', _exh_rules.SPOT_LIMIT, end_ms=int(T) - 1, spot=True), 10.0)
+                spot = await asyncio.wait_for(binance_service.fetch_exh_klines(_spot_sym or pair, '15m', _exh_rules.SPOT_LIMIT, end_ms=int(T) - 1,
+                                                                               spot=True), 10.0)   # 🔤 (589) the mapped spot symbol
             except Exception:
                 spot = None
             self._exh_last_spot_t = _leash_time.time()
@@ -11264,8 +11279,17 @@ class TradingEngine:
             self._exh_count(_exh_rules.B_NO_DATA, pair)
             await self._exh_journal(pair, T, _exh_rules.ST_BLOCKED, _exh_rules.B_NO_DATA, f"inputs unreadable: {_why} (fail-closed)", sp, sig=sig)
             return
+        if _spot_sym != pair and _exh_rules.spot_price_consistent(rows, spot, _spot_mult) is not True:   # 🔤 (589) a mapped coin must price alike
+            self._exh_count(_exh_rules.B_SPOT_MISMATCH, pair)   # (re-review 5) its own code; unreadable prices → blocked too (fail-closed)
+            await self._exh_journal(pair, T, _exh_rules.ST_BLOCKED, _exh_rules.B_SPOT_MISMATCH,
+                                    f"{_exh_rules.B_SPOT_MISMATCH_TXT}: {_spot_sym} ×{int(_spot_mult):,} does not price like {pair} "
+                                    f"(or a close is unreadable) (fail-closed)", sp, sig=sig)
+            return
         f = _exh_rules.features(rows, spot, T, int(sp) - _exh_rules.BAR_MS, has_spot, th)
+        f['spot_symbol'] = _spot_sym
         ok, code, why = _exh_rules.decide(f, th, min_vol=_exh_rules.universe_min_vol(universe, th))   # 🌐 (585) WIDE: $5M floor
+        if _spot_sym and _spot_sym != pair:
+            why = f"spot {_spot_sym} ×{int(_spot_mult):,} · {why}"   # 🔤 (589) the journal reason names the spot coin read
         tp, sl = _exh_rules.exit_levels(f.get('atr_pct'), th)
         if ok and (tp is None or sl is None):
             ok, code, why = False, _exh_rules.B_NO_DATA, "exit levels unreadable (ATR) (fail-closed)"
@@ -11318,7 +11342,7 @@ class TradingEngine:
             entry_exh_atr_pct=round(f['atr_pct'], 6), entry_exh_tp_pct=tp, entry_exh_sl_pct=sl,
             entry_exh_decision_price=float(f['close']), entry_exh_q5_usd=f.get('q5'),
             entry_exh_oi_usd=_oi_usd, entry_exh_oi_vol=(round(_oi_vol, 6) if _oi_vol is not None else None),   # 🧯 (582) filter on or off
-            entry_exh_universe=universe)   # 🌐 (585)
+            entry_exh_universe=universe, entry_exh_spot_symbol=_spot_sym)   # 🌐 (585) · 🔤 (589)
         if order:
             await self._exh_journal(pair, T, _exh_rules.ST_OPENED, None, f"opened #{order.id} — {why}", sp, f=f, sig=sig, tp=tp, sl=sl,
                                     order_id=order.id, funding=_fr, oi_usd=_oi_usd, oi_vol=_oi_vol, cap=self._depth_cap_for(pair))
@@ -13104,13 +13128,30 @@ class TradingEngine:
             # open. Checked quietly; the FIRST time it blocks this pending entry, the open path runs once to record it (FRENZY_WILLY_HOLD /
             # FRENZY_WILLY_PAIR_HELD + the hold event) and the entry is marked blocked — later red bars re-check quietly.
             # 🔓 (340) global hold OFF: the quiet check is WILLY's OWN slot cap (10 since DL 542 — no longer one WILLY at a time) instead of the hold — same "stays armed"
-            _held = (await self._willy_hold_state(db))[0] if self._willy_global_hold_on() else await self._willy_slots_full(db)
+            # 🎲 (587 re-review 3) plain entries OFF: only HT can open, so WILLY's OWN slot cap is not applied here — _frenzy_willy_ht_try judges
+            # HT's slot (the global hold and pair-held still apply).
+            _held = ((await self._willy_hold_state(db))[0] if self._willy_global_hold_on()
+                     else (await self._willy_slots_full(db) if frenzy_willy_plain_on(th) else False))
             if not _held:
                 try:
                     _held = (await db.execute(select(Order.id).where(and_(Order.pair == pair, Order.status == "OPEN",
                                                                           Order.is_paper == self.is_paper_mode)))).first() is not None
                 except Exception:
                     _held = True
+            if _held and not frenzy_willy_plain_on(th):
+                # 🎲 (DECISION_LOG 587 review 9) plain WILLY entries OFF: a held / slot-blocked setup is only worth a hold record when it is an HT
+                # candidate (a MEASURED turnover refusal). One whose turnover would PASS is a plain WILLY → ended as WILLY_PLAIN_OFF, never a
+                # FRENZY_WILLY_HOLD / PAIR_HELD record for a trade that could never open.
+                _cut_h = float(getattr(th, 'frenzy_willy_max_vol_mcap_ratio', 0) or 0)
+                _R_h = self._willy_turnover(pair, flag.get('volume_24h')) if _cut_h > 0 else None
+                if _cut_h <= 0 or (_R_h is not None and _R_h < _cut_h):   # (587 re-review 2) an UNREADABLE turnover is not "passed": stays armed below
+                    _pend.pop(pair, None)
+                    self._record_filter_block("WILLY_PLAIN_OFF", "LONG")
+                    self._willy_event("WILLY_PLAIN_OFF", pair, reason=(f"R={_R_h:.3f} passed turnover" if _R_h is not None else "turnover filter off")
+                                      + f" · {_pd['trig']} · pair held / slots", price=(flag.get('live_price') or flag.get('price')), tally=False)
+                    flag['willy_last'] = f"{_bar_txt} WILLY {_pd['trig']} red bar (pair held / slots) passed turnover → refused: plain WILLY entries OFF (HT only)"
+                    await self._frenzy_willy_save()
+                    return
             if _held:
                 if not _pd.get('blocked'):
                     await self._frenzy_open(db, flag, ind, bar_open, willy=_pd['trig'], willy_note="red candle — blocked (hold / slots full / pair held)",
@@ -13146,6 +13187,18 @@ class TradingEngine:
                         if (await self._frenzy_willy_ht_try(db, pair, ep, flag, ind, bar_open, _pd, _R, _bar_txt)) in ("opened", "ended"):
                             _pend.pop(pair, None); await self._frenzy_willy_save()   # opened, or refused for HT's own late / disloc / open path (WILLY's rule)
                     return
+            # 🎲 (DECISION_LOG 587, operator 11-18) PLAIN WILLY entries OFF: the setup PASSED turnover (or the turnover filter is off) — a
+            # plain FRENZY_WILLY would open here. Refused instead (WILLY_PLAIN_OFF, counted + journaled once) and the pending entry ENDS (the
+            # bar a plain WILLY would have taken — WILLY's one-shot rule). Turnover-refused setups never reach this line: they open as HT above.
+            if not frenzy_willy_plain_on(th):
+                _pend.pop(pair, None)
+                self._record_filter_block("WILLY_PLAIN_OFF", "LONG")
+                self._willy_event("WILLY_PLAIN_OFF", pair, reason=f"plain WILLY entries off (DECISION_LOG 587) · {_pd['trig']}",
+                                  price=(flag.get('live_price') or flag.get('price')), tally=False)
+                flag['willy_last'] = f"{_bar_txt} WILLY {_pd['trig']} red bar passed turnover → refused: plain WILLY entries OFF (HT only)"
+                logger.info(f"[FRENZY_WILLY] {pair}: red bar passed turnover — plain WILLY entries are OFF (DECISION_LOG 587): refused, entry ended")
+                await self._frenzy_willy_save()
+                return
             _pd['blocked'] = False   # free now: the open path decides
             _wb = int((int(bar_open) - int(_pd['armed'])) // 300_000)
             _ok = await self._frenzy_open(db, flag, ind, bar_open, willy=_pd['trig'],
@@ -14517,6 +14570,7 @@ class TradingEngine:
         entry_exh_oi_usd: Optional[float] = None,    # 🧯 (582) open interest $ at the decision (openInterestHist row with T − 30 min ≤ timestamp ≤ T − 5 min)
         entry_exh_oi_vol: Optional[float] = None,    # 🧯 (582) entry_exh_oi_usd ÷ the rule's 24 h quote volume (EXH_SSC_OIVOL's input)
         entry_exh_universe: Optional[str] = None,    # 🌐 (585) the episode's universe: FRENZY · WIDE
+        entry_exh_spot_symbol: Optional[str] = None,   # 🔤 (589) the spot symbol the spot share was read on (1000PEPEUSDT → PEPEUSDT)
         # 📉 2026-11-18 DISTRIBUTION_SHORT (DECISION_LOG 586): a SHORT from _distribution_judge (a red VSW 15m candle on a tracked FRENZY coin while
         # the top-trader position ratio fell ≥ 0.01097 over 4 h). Tagged DISTRIBUTION_SHORT; rides the SURGE open path exactly like EXHAUSTION
         # (alt entry filters / pattern cells bypassed, the book read + entry depth guard / capacity sizing, the funding guard, direct taker, NO
@@ -16338,6 +16392,11 @@ class TradingEngine:
         _dg_on2 = bool(getattr(_dg_inv, 'entry_depth_guard_enabled', False))
         _dg_all = bool(getattr(_dg_inv, 'entry_depth_guard_all_enabled', False))
         _dg_exit_on = bool(getattr(_dg_inv, 'entry_depth_guard_exit_side_enabled', False))
+        try:   # 📖💵 (DECISION_LOG 588) the $ floor: > 0 → shrink to the book, skip only below it (the fraction rule off); ≤ 0 / bad → the fraction rule
+            _dg_min_usd = float(getattr(_dg_inv, 'entry_depth_guard_min_usd', 0.0) or 0.0)
+            _dg_min_usd = _dg_min_usd if (math.isfinite(_dg_min_usd) and _dg_min_usd > 0) else 0.0
+        except (TypeError, ValueError):
+            _dg_min_usd = 0.0
         _dg_xfill = None
         _dg_book = _sg_ob if _surge else None
         _dg_mode = str(getattr(_dg_inv, 'entry_depth_guard_mode', 'sweep') or 'sweep').strip().lower()   # 📖📐 (DECISION_LOG 584)
@@ -16425,7 +16484,7 @@ class TradingEngine:
                 _dg_fill = round(_dg_fill, 2) if _dg_fill is not None else None
                 _dg_xfill = round(_dg_xfill, 2) if _dg_xfill is not None else None
                 _dg_act, _dg_n = depth_guard_size(notional_value, thinner_side_usd(_dg_fill, _dg_xfill),
-                                                  float(getattr(_dg_inv, 'entry_depth_guard_min_frac', 0.5) or 0.0))
+                                                  float(getattr(_dg_inv, 'entry_depth_guard_min_frac', 0.5) or 0.0), _dg_min_usd)   # 📖💵 (588)
                 try:   # 📖📊 (584) capacity stamps: the plan, each side's fillable $ (this mode's rule), the binding side, the book bands
                     entry_cap_planned_usd = round(float(notional_value), 2)
                     entry_cap_entry_side_usd, entry_cap_exit_side_usd = _dg_fill, _dg_xfill
@@ -16446,7 +16505,28 @@ class TradingEngine:
                 (f" · exit side ${_dg_xfill:,.0f}" if _dg_xfill is not None else " · exit side unmeasured") if _dg_exit_on else "")
             _dg_min_m = _dg_inv.min_investment_size * _ml_min_scale * _ht_min_scale
             _dg_min_note = ""
-            if _dg_act == DEPTH_SHRINK and _dg_n / leverage < _dg_min_m:
+            if _dg_min_usd > 0:
+                # 📖💵 (DECISION_LOG 588) the $ FLOOR mode: a shrunk entry is judged against the $ floor and the exchange's own minimum notional for
+                # the symbol (limits.cost.min / amount.min × price, from the loaded markets — no read) — NOT min_investment_size (a $100 margin floor
+                # at 5× would re-skip every shrink below $500 and undo the fix). Below either → SKIP, named.
+                _dg_mkt = ((getattr(binance_service.public_exchange, 'markets', None) or {}).get(pair.replace('USDT', '/USDT:USDT')) or {})
+                _dg_floor = depth_floor_usd(notional_value, float(getattr(_dg_inv, 'entry_depth_guard_min_frac', 0.5) or 0.0), _dg_min_usd)   # (review 15)
+                # (re-review 8) the step / minimum are priced at the SAME price the shrunk quantity is computed at below (the SURGE live price
+                # or the book's best price the depth was measured at, else current_price). depth_guard_size already SKIPs below _dg_floor.
+                _dg_qpx = None
+                try:
+                    _dg_qpx = _sg_live_px if _surge else float(_dg_book['best_ask'] if direction == 'LONG' else _dg_book['best_bid'])
+                except Exception:
+                    _dg_qpx = None
+                _dg_qpx = _dg_qpx or current_price
+                _dg_xmin = exchange_min_notional(_dg_mkt, _dg_qpx)
+                _dg_stepped = step_floor_notional(_dg_mkt, _dg_n, _dg_qpx) if _dg_act == DEPTH_SHRINK else _dg_n   # (review 14) the quantity step
+                if _dg_act == DEPTH_SHRINK and _dg_stepped < _dg_xmin:
+                    _dg_act = DEPTH_SKIP
+                    _dg_min_note = f" — shrunk notional ${_dg_stepped:,.2f} (after the quantity step) < the exchange minimum ${_dg_xmin:,.2f}"
+                elif _dg_act == DEPTH_SKIP:
+                    _dg_min_note = f" — fillable ${_dg_n:,.2f} < the ${_dg_floor:,.0f} floor (DL 588: min(${_dg_min_usd:,.0f}, plan × min_frac))"
+            elif _dg_act == DEPTH_SHRINK and _dg_n / leverage < _dg_min_m:
                 _dg_act = DEPTH_SKIP
                 _dg_min_note = f" — shrunk margin ${_dg_n / leverage:.2f} < min ${_dg_min_m:.2f}"
             if _dg_act == DEPTH_SKIP:
@@ -16455,11 +16535,13 @@ class TradingEngine:
                                                               entry_cap_exit_side_usd, entry_cap_binding_side, 0.0, 0.0, None)
                 self._record_filter_block("DEPTH_GUARD_SKIP", direction)
                 _dg_msg = (f"the book holds {_dg_sides} within {_dg_band} of the best "
-                           f"price vs ${notional_value:,.0f} planned (min {getattr(_dg_inv, 'entry_depth_guard_min_frac', 0.5)}×){_dg_min_note}")
+                           f"price vs ${notional_value:,.0f} planned ("
+                           + (f"$ floor ${_dg_min_usd:,.0f}" if _dg_min_usd > 0 else f"min {getattr(_dg_inv, 'entry_depth_guard_min_frac', 0.5)}×") + f"){_dg_min_note}")
                 if _frenzy or _fbs or _exh or _dsh:   # (551 deep review) FLATBASE too: its caller reads the refusal text (no double FLATBASE_OPEN_REFUSED) · 🪫 (578) EXHAUSTION too
                     _k = lambda v: (f"${v / 1000:,.1f}k" if v is not None else "?")   # (dashboard) the short form — the full line stays in the log
                     self._frenzy_open_refusal = (f"thin book {_k(_dg_fill)}" + (f" / {_k(_dg_xfill)}" if _dg_exit_on else "")
-                                                 + f" vs {_k(notional_value)}" + (" · below min margin" if _dg_min_note else ""))
+                                                 + f" vs {_k(notional_value)}" + ((((" · below the exchange minimum" if "exchange minimum" in _dg_min_note else " · below the $ floor"))
+                                                                                    if _dg_min_usd > 0 else " · below min margin") if _dg_min_note else ""))
                 logger.warning(f"[DEPTH_GUARD_SKIP] {pair} {direction} {_wh_es}: {_dg_msg} — skipped")
                 try:
                     _dg_ef = {k: v for k, v in locals().items() if k.startswith('entry_') and not callable(v)}
@@ -16791,6 +16873,14 @@ class TradingEngine:
             # spike-high target) — a spike target above it is kept; WILLY unchanged. Stored on the row like every WILLY target (restart-proof).
             _ht_tp = frenzy_willy_ht_tp(_wv2_th) if _fz_es == FRENZY_WILLY_HT else None
             _ht_applied = False
+            if _fz_es == FRENZY_WILLY_HT and not frenzy_willy_ht_high_target_on(_wv2_th):
+                # 🎲 (DECISION_LOG 587, operator 11-18) HT's spike-high target OFF → a FLAT take profit: frenzy_willy_ht_tp_pct (or WILLY's base TP
+                # when that is 0) — never max(it, the spike target). Stored on the row like every WILLY target (restart-proof; the resting limit reads it).
+                _flat = _ht_tp if _ht_tp is not None else frenzy_willy_levels(_wv2_th)[0]
+                if _flat != _wv2_tp:
+                    logger.info(f"[WILLY_HT_TP] {pair}: flat HT take profit +{_flat}% (spike-high target {_wv2_tp}% not used — DECISION_LOG 587)")
+                    _wv2_tp, _ht_applied = _flat, True
+                _ht_tp = None
             if _ht_tp is not None:
                 _ht_new = frenzy_willy_ht_target(_wv2_tp, _ht_tp)
                 if _ht_new != _wv2_tp:
@@ -16798,8 +16888,11 @@ class TradingEngine:
                     _wv2_tp, _ht_applied = _ht_new, True
             logger.info(f"[WILLY_V2] {pair} {_fz_es}: entry {actual_price} · spike high H {entry_frenzy_willy_spike_high} → net at H×(1−k) "
                         f"{_wv2_traw if _wv2_traw is not None else 'n/a'}% → TP +{_wv2_tp}% "
-                        f"{'(HT TP)' if _ht_applied else '(runner)' if (_wv2_tp or 0) > frenzy_willy_levels(_wv2_th)[0] + 1e-9 else '(base TP)'} · "
-                        f"stop −{self._frenzy_entry_stop_pct(_fz_es)}% · late TP + time cap as before (V2b, DECISION_LOG 358) · BTC 1h slope {entry_btc_1h_slope}")
+                        f"{('(HT flat TP)' if (_fz_es == FRENZY_WILLY_HT and not frenzy_willy_ht_high_target_on(_wv2_th)) else '(HT TP)') if (_ht_applied or (_fz_es == FRENZY_WILLY_HT and not frenzy_willy_ht_high_target_on(_wv2_th))) else '(spike-high target)' if (_wv2_tp or 0) > frenzy_willy_levels(_wv2_th)[0] + 1e-9 else '(base TP)'} · "
+                        f"stop −{self._frenzy_entry_stop_pct(_fz_es)}% · "
+                        + (f"late TP {'on' if frenzy_willy_late_tp(_wv2_th, _fz_es) else 'OFF'} · time cap {frenzy_willy_levels(_wv2_th, _fz_es)[2]} min (DECISION_LOG 587)"
+                           if _fz_es == FRENZY_WILLY_HT else "late TP + time cap as before (V2b, DECISION_LOG 358)")
+                        + f" · BTC 1h slope {entry_btc_1h_slope}")
 
         # Create order record
         # Aug-11 🛡 BROKER BACKSTOP (live only): resting exchange-side STOP_MARKET via the
@@ -17006,7 +17099,8 @@ class TradingEngine:
                 entry_exh_sl_pct=entry_exh_sl_pct, entry_exh_decision_price=entry_exh_decision_price, entry_exh_q5_usd=entry_exh_q5_usd,
                 entry_exh_model_slip_pct=_exh_rules.model_slip_pct(notional_value, entry_exh_q5_usd),
                 entry_exh_oi_usd=entry_exh_oi_usd, entry_exh_oi_vol=entry_exh_oi_vol,   # 🧯 (582)
-                entry_exh_universe=(entry_exh_universe if entry_exh_universe in (_exh_rules.UNIV_FRENZY, _exh_rules.UNIV_WIDE) else _exh_rules.UNIV_FRENZY))),   # 🌐 (585)
+                entry_exh_universe=(entry_exh_universe if entry_exh_universe in (_exh_rules.UNIV_FRENZY, _exh_rules.UNIV_WIDE) else _exh_rules.UNIV_FRENZY),
+                entry_exh_spot_symbol=((str(entry_exh_spot_symbol)[:30] or None) if entry_exh_spot_symbol else None))),   # 🌐 (585) · 🔤 (589)
             entry_frenzy_stop_atr=(entry_frenzy_stop_atr if _frenzy else None),
             entry_frenzy_bar_ret_pct=(entry_frenzy_bar_ret_pct if _frenzy else None),
             entry_frenzy_di_spread=(entry_frenzy_di_spread if _frenzy else None),
@@ -21891,7 +21985,7 @@ class TradingEngine:
                 if _sg_mh > 0:
                     max_hold = min(max_hold, _sg_mh) if max_hold > 0 else _sg_mh
             elif (order.entry_strategy or "") in WILLY_EXIT_CLASS:   # 🎲¼ (341) + HT · 🎲 Oct-8 (251): its OWN time cap (frenzy_willy_max_hold_minutes, 120; never the global / FRENZY 12 h)
-                max_hold = frenzy_willy_levels(config.trading_config.thresholds)[2]
+                max_hold = frenzy_willy_levels(config.trading_config.thresholds, order.entry_strategy)[2]   # 🎲 (587) HT: its own cap
             elif (order.entry_strategy or "") in FLATBASE_CLASS:   # 🩳 (348) its OWN 72 h time exit (flatbase_max_hold_hours) — never the global 20 h cap
                 max_hold = flatbase_max_hold_minutes(config.trading_config.thresholds)
             elif (order.entry_strategy or "") in EXHAUSTION_CLASS:   # 🪫 (578) its OWN 24 h time exit (exhaustion_max_hold_hours)

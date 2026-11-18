@@ -189,8 +189,8 @@ def test_under_lock_recheck_and_catchup_stand_down_when_off():
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
     assert "if self._willy_global_hold_on() and (await self._willy_hold_state(db))[0]:   # 🔓 (340)" in eng      # book-lock re-check
     assert "if status != FRENZY_CATCHUP_STALE and self._willy_global_hold_on():" in eng                           # catch-up deferral
-    assert ("_held = (await self._willy_hold_state(db))[0] if self._willy_global_hold_on() else await self._willy_slots_full(db)"
-            in eng)                                                                                                # WILLY red-candle quiet check
+    assert ("_held = ((await self._willy_hold_state(db))[0] if self._willy_global_hold_on()\n"
+            "                     else (await self._willy_slots_full(db) if frenzy_willy_plain_on(th) else False))" in eng)   # (587 re-review 3) plain off: no WILLY cap                                                                                                # WILLY red-candle quiet check
     # every remaining _willy_hold_state caller is behind the switch (the block itself checks it first)
     i = eng.index("    async def _willy_hold_block("); blk = eng[i:eng.index("    def _willy_hold_record(", i)]
     assert blk.index("if not self._willy_global_hold_on():") < blk.index("await self._willy_hold_state(db)")

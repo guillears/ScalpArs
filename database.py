@@ -336,6 +336,8 @@ async def init_db():
                         connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_ex_col} FLOAT"))
                 if 'entry_exh_universe' not in columns:   # 🌐 (DECISION_LOG 585) the episode universe (FRENZY · WIDE)
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_exh_universe VARCHAR(8)"))
+                if 'entry_exh_spot_symbol' not in columns:   # 🔤 (DECISION_LOG 589) the spot symbol read (1000PEPEUSDT → PEPEUSDT)
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_exh_spot_symbol VARCHAR(30)"))
                 for _ds_col in ('entry_dist_bar_ret_pct', 'entry_dist_vsw_mult', 'entry_dist_pos_ratio', 'entry_dist_pos_chg_4h', 'entry_dist_atr_pct',
                                 'entry_dist_tp_pct', 'entry_dist_sl_pct', 'entry_dist_decision_price', 'entry_dist_q5_usd',
                                 'entry_dist_model_slip_pct', 'entry_dist_rsi1h', 'entry_dist_di_diff1h',

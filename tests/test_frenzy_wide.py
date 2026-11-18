@@ -213,7 +213,7 @@ def test_wide_off_shadow_dl291():
     import json
     from services.frenzy import frenzy_wide_shadow
     assert json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]["frenzy_wide_enabled"] is False
-    assert json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]["frenzy_long_enabled"] is True   # LONG keeps blocking bad LITE
+    assert json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]["frenzy_long_enabled"] is False   # 🎲 DL 587 (operator 11-18): FRENZY_LONG off (LITE is off too)
     off = NS(**{**vars(TH), "frenzy_wide_enabled": False})
     for code in FRENZY_WIDE_CODES:
         assert frenzy_wide_shadow(EP, code, off, 6.2) and not frenzy_wide_ready(EP, code, off, 6.2)           # OFF: counted, not taken

@@ -1585,12 +1585,27 @@ class SignalThresholds(BaseModel):
     # ≥ 10 days vs full-size WILLY same period: HT ≥ WILLY → recommend turnover ratio 0 + HT off · HT ≤ WILLY − 0.20 → filter confirmed,
     # HT off · else re-read at 60. Code default ON (operator).
     frenzy_willy_ht_enabled: bool = True
+    # 🎲 2026-11-18 PLAIN WILLY ENTRIES (DECISION_LOG 587, operator 11-18 "WILLY off, WILLY_HT on", PAPER, operator-declared): False = the WILLY
+    # machinery (frenzy_willy_enabled: arming A / B, the red-candle wait, the turnover read) keeps running so FRENZY_WILLY_HT can open, but a
+    # setup that PASSES turnover — a plain FRENZY_WILLY — is refused (WILLY_PLAIN_OFF, counted + journaled) and its pending entry ends.
+    # Evidence for HT-only: reports/HT_TP6_WL_2026-11-18.md (real HT fills 93 % WORKED, 73 % reach +6) · WILLY_EXIT_V2_2026-11-18. Code
+    # default True (plain WILLY entries as before); trading_config.json False. Alert-only gates in scripts/scout_willy_ht_lines.py (re-based).
+    frenzy_willy_plain_entries_enabled: bool = True
     frenzy_willy_ht_size_frac: float = 0.5        # × WILLY's margin at WILLY's leverage (0 < f ≤ 1; else 0.25 used). DL 487: 0.25 → 0.5 with WILLY's margin halved — HT's $ size UNCHANGED (operator: HT left alone); on the DL 365 ladder this reads as rung 0.5 of a half-size WILLY = the same notional as rung 0.25 before
     # 🎯 Nov-12 HT OWN TAKE PROFIT (DECISION_LOG 537, operator declared override in PAPER, below the study bar): T_used = max(this, the spike-high
     # target). Study reports/WILLY_HT_EXIT_STUDY_2026-11-12.md: kept master HT 8 fills +3.0 pts (4 better / 0 worse) + B26 3 fills +2.25, but luck
     # p 0.64 and the WILLY backtest −15.7 (19 of 609 reach +1.25 then stop, mostly Jul–Sep 2026). 🔒 revert (scripts/scout_willy_ht_exit_lines.py):
-    # first 8 HT fills Σ (live − the +1.25 exit) < 0 → 0; at 15 Σ ≤ 0 → 0. 0 = HT follows WILLY's base TP (the code default; the JSON arms 2.0).
+    # first 8 HT fills Σ (live − the +1.25 exit) < 0 → 0; at 15 Σ ≤ 0 → 0. 0 = HT follows WILLY's base TP (the code default).
+    # 🎯 DL 587 (operator 11-18, operator-declared): the JSON arms 5.0 (was 2.0) and, with the HT-only fields below (high target OFF, late TP
+    # OFF, 1440-min cap), HT runs a FLAT +5 net take profit (resting maker) / −4 stop / 24 h. The DL 537 TP2 revert lines
+    # (scripts/scout_willy_ht_exit_lines.py) are RETIRED with this change.
     frenzy_willy_ht_tp_pct: float = 0.0
+    # 🎲 HT-ONLY EXIT (DECISION_LOG 587, operator 11-18, operator-declared): a plain TP +5 / SL −4 / 24 h for FRENZY_WILLY_HT; WILLY's own
+    # fields untouched. Evidence reports/HT_TP6_WL_2026-11-18.md: on the rebuild 29 % of HT trades reach +6 before −4 within 90 min vs 36 %
+    # within 24 h (the 90-min cap and the +0.25 late TP from minute 30 cut the target). Code defaults keep today's behaviour; JSON false / false / 1440.
+    frenzy_willy_ht_late_tp_enabled: bool = True      # False → the WILLY late take profit never applies to HT (no TP drop, no resting-limit re-price)
+    frenzy_willy_ht_high_target_enabled: bool = True  # False → HT's TP is a FLAT frenzy_willy_ht_tp_pct, not max(it, the spike-high target)
+    frenzy_willy_ht_max_hold_minutes: float = 0.0     # 0 = WILLY's frenzy_willy_max_hold_minutes; 1 – 10,080 → HT's own time cap (minutes)
     frenzy_willy_ht_max_slots: int = 10            # 🧺 DL 542 (operator 11-13): no per-sleeve limit — 10 = the book count ceiling (was 1) · FRENZY_WILLY_HT open at once (its OWN slot; WILLY's slot never counts HT)
     # 🩳 2026-10-22 FLATBASE_SHORT (DECISION_LOG 348 — operator DISCIPLINE OVERRIDE: the study FAILED its ship bars; alert-only gates, no
     # auto-off). Short a FRENZY episode whose coin was FLAT for the 14 days before the spike (14-d close range ≤ flatbase_flat_max at the base
@@ -3312,6 +3327,15 @@ class InvestmentConfig(BaseModel):
     # Code default OFF; the JSON arms it.
     entry_depth_guard_enabled: bool = False
     entry_depth_guard_max_sweep_pct: float = 0.15
+    # 📖💵 Nov-18 $ FLOOR MODE (DECISION_LOG 588, operator-approved): > 0 → a guarded entry trades min(plan, what fills — impact / sweep read,
+    # thinner side binds) and is SKIPPED only when that is below the floor = min(this many $, plan × entry_depth_guard_min_frac) (588 review 15:
+    # a plan smaller than $200 ÷ min_frac keeps the fraction rule) or below the symbol's exchange minimum notional after the quantity step; the
+    # min_investment_size margin floor on a shrunk entry is not used in this mode. Evidence reports/JOINT_SIM_2026-11-18.md: a coin's book
+    # fills ≈ $7k per trade inside the 0.15 % average walk → under the fraction rule every guarded trade is skipped once the plan passes ≈ $28k
+    # (equity ≈ $57k) and the account stops compounding; shrinking to the book keeps it compounding ($10k → $340k on the history). 0 = the
+    # fraction rule (code default, today's behaviour); trading_config.json 200. 🔒 watch (scripts/scout_depth_band_583.py, DL 588 line): the
+    # first 20 fills with entry_cap_frac < 0.25 → mean booked net < 0 or mean live |entry slip| > 0.15 % → flag (alert only).
+    entry_depth_guard_min_usd: float = 0.0
     entry_depth_guard_min_frac: float = 0.5   # 📖 DL 583 (2026-11-18, operator): trading_config.json runs 0.25 — a thin book SHRINKS the entry down to a quarter of the plan
     #   before it is skipped (was a half). ZILUSDT 15:30 / ZKPUSDT 07:30 EXHAUSTION signals passed every rule and were SKIPPED at 44 % / 47 % of the
     #   $6.1–6.2k plan (exit side $2.8k). The shrunk size is still exactly what fills within max_sweep_pct on the thinner side; deep books unchanged.
@@ -3361,6 +3385,15 @@ class InvestmentConfig(BaseModel):
         except (TypeError, ValueError):
             return 0.15
         return x if (x == x and 0 < x <= 1) else 0.15
+
+    @field_validator("entry_depth_guard_min_usd", mode="before")
+    @classmethod
+    def _dg_min_usd_ok(cls, v):   # 📖💵 (588) a finite $ ≥ 0, else 0 (the fraction rule — today's behaviour)
+        try:
+            x = float(v)
+        except (TypeError, ValueError):
+            return 0.0
+        return x if (x == x and 0 <= x < 1e9) else 0.0
     max_open_positions_hard: int = 10  # absolute ceiling when redeploying
     # 🖐 Sep-29 MANUAL sleeve: its own slot lane — manual positions never consume a bot slot and are capped here (balance still binds)
     manual_max_open_positions: int = 8

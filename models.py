@@ -401,6 +401,7 @@ class Order(Base):
     entry_exh_q5_usd = Column(Float, nullable=True)                # median 5m quote volume of the 12 bars ending at the signal bar (the slippage model's Q5)
     entry_exh_oi_usd = Column(Float, nullable=True)                # 🧯 (DECISION_LOG 582) open interest $ at the decision (openInterestHist sumOpenInterestValue, the row with T − 30 min ≤ timestamp ≤ T − 5 min)
     entry_exh_oi_vol = Column(Float, nullable=True)                # 🧯 (582) entry_exh_oi_usd ÷ the rule's 24 h quote volume — EXH_SSC_OIVOL blocks > 0.128 when spot_share_chg > −0.0366
+    entry_exh_spot_symbol = Column(String(30), nullable=True)     # 🔤 (DECISION_LOG 589) the spot symbol the spot share was read on (1000PEPEUSDT → PEPEUSDT; = pair when spot lists it as is)
     entry_exh_universe = Column(String(8), nullable=True)          # 🌐 (DECISION_LOG 585) the episode's universe: FRENZY (the FRENZY flag, 20× / $20M) · WIDE (15× / $5M)
     # 📉 (DECISION_LOG 586) DISTRIBUTION_SHORT entry stamps (services/distribution.py) — the episode rides entry_frenzy_spike_at / entry_frenzy_hours,
     # the 24 h volume entry_pair_volume_24h_usd, the funding entry_funding_rate

@@ -1468,14 +1468,7 @@ def run():
     except Exception as _lvs_e:
         log(f"LEV_STEP line failed: {_lvs_e}")
         _rg_sec += ["## 📈 B26 LEVERAGE STEP", "", f"Unavailable this run ({str(_lvs_e)[:120]}).", ""]
-    try:                                               # 👁 Nov-12 WILLY HT EXIT watch lines TP2 · RUN15 (DECISION_LOG 537; observe only, budgeted public 1m)
-        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
-            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        import scout_willy_ht_exit_lines as _whx
-        _rg_sec += _whx.run(now_ms)
-    except Exception as _whx_e:
-        log(f"WILLY_HT_EXIT line failed: {_whx_e}")
-        _rg_sec += ["## 👁 WILLY HT EXIT — watch lines", "", f"Unavailable this run ({str(_whx_e)[:120]}).", ""]
+    # ⛔ (DECISION_LOG 587) WILLY HT EXIT lines (TP2 · RUN15 · HT stop lines) RETIRED 2026-11-18: HT's exit is now TP +5 / SL −4
     try:                                               # 🏃 Nov-13 WILLY RUNNER revert gate (DECISION_LOG 541; budgeted public 1m)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -1581,6 +1574,7 @@ def run():
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         import scout_depth_band_583 as _db583
         _rg_sec += [_db583.report(now_ms=now_ms), ""]
+        _rg_sec += [_db583.report_588(now_ms=now_ms), ""]   # 📖💵 (DECISION_LOG 588) the deep-shrink line (fills < 0.25 of the plan)
     except Exception as _db583_e:
         log(f"DL 583 depth band gate failed: {_db583_e}")
         _rg_sec += ["## 📖 DL 583 depth band", "", f"Unavailable this run ({str(_db583_e)[:120]}).", ""]

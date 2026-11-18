@@ -861,6 +861,13 @@ def frenzy_willy_ht_frac(th) -> float:
         return WILLY_HT_FRAC_DEF
 
 
+def frenzy_willy_plain_on(th) -> bool:
+    """🎲 (DECISION_LOG 587, operator 11-18) PLAIN FRENZY_WILLY entries on (frenzy_willy_plain_entries_enabled; anything but False = on — the
+    code default). False = the WILLY machinery (arming, red-candle wait, turnover read) keeps running for FRENZY_WILLY_HT, but a setup that
+    PASSES turnover (a plain WILLY) is refused (WILLY_PLAIN_OFF) instead of opening; turnover-refused setups still open as HT."""
+    return getattr(th, 'frenzy_willy_plain_entries_enabled', True) is not False
+
+
 def frenzy_willy_ht_tp(th) -> Optional[float]:
     """🎯 (DECISION_LOG 537) FRENZY_WILLY_HT's OWN base take profit, net %: frenzy_willy_ht_tp_pct > 0 → that (HT's T_used = max(it, the
     spike-high target)); blank / 0 / ≤ 0 / unreadable → None = HT follows WILLY's base TP (as before 537). Never raises."""
@@ -886,6 +893,15 @@ def frenzy_willy_ht_config_errors(th) -> list:
     errs = []
     if not isinstance(getattr(th, 'frenzy_willy_ht_enabled', True), bool):
         errs.append("frenzy_willy_ht_enabled must be true or false")
+    for _k in ('frenzy_willy_plain_entries_enabled', 'frenzy_willy_ht_late_tp_enabled', 'frenzy_willy_ht_high_target_enabled'):   # 🎲 (587)
+        if not isinstance(getattr(th, _k, True), bool):
+            errs.append(f"{_k} must be true or false")
+    if getattr(th, 'frenzy_willy_plain_entries_enabled', True) is False and not ((_fin(getattr(th, 'frenzy_willy_max_vol_mcap_ratio', 0) or 0) or 0) > 0):
+        errs.append("frenzy_willy_plain_entries_enabled false with frenzy_willy_max_vol_mcap_ratio ≤ 0 can never open anything: WILLY_HT opens only "
+                    "on a turnover refusal (DECISION_LOG 587) — set a turnover cap or turn plain WILLY entries back on")
+    _hm = _fin(getattr(th, 'frenzy_willy_ht_max_hold_minutes', 0) or 0)
+    if _hm is None or not (_hm == 0 or 1 <= _hm <= 10080):
+        errs.append("frenzy_willy_ht_max_hold_minutes must be 0 (WILLY's cap) or 1 – 10,080 minutes")
     v = _fin(getattr(th, 'frenzy_willy_ht_size_frac', WILLY_HT_FRAC_DEF))
     if v is None or not (0 < v <= 1.0):
         errs.append("frenzy_willy_ht_size_frac must be > 0 and ≤ 1 (0.25 = a quarter of WILLY)")
@@ -958,20 +974,48 @@ def frenzy_willy_ht_gate(ht_fills, willy_fills) -> Tuple[str, str]:
 WILLY_TP_DEF, WILLY_HOLD_DEF = 1.0, 120   # 🎯 operator Oct-8 originals — ONLY the blank / 0 fallbacks of frenzy_willy_levels; the LIVE exit is trading_config.json (+1.25 / −4 / 90 since DECISION_LOG 281)
 
 
-def frenzy_willy_levels(th) -> Tuple[float, Optional[float], int]:
+def frenzy_willy_levels(th, es=None) -> Tuple[float, Optional[float], int]:
     """(tp %, stop % as a NEGATIVE number or None = NO stop, max hold minutes) the WILLY exit USES. TP blank / ≤ 0 → +1; hold blank / < 1 →
     120 (the take profit and the time cap ARE the exit — a zero never removes them). Stop: frenzy_willy_stop_pct > 0 → −that; blank / 0 /
-    unreadable → None — unreachable from the config since DECISION_LOG 292 ⑤ (save refuses ≤ 0, load resets it to 4.0)."""
+    unreadable → None — unreachable from the config since DECISION_LOG 292 ⑤ (save refuses ≤ 0, load resets it to 4.0).
+    🎲 (DECISION_LOG 587) es = FRENZY_WILLY_HT with frenzy_willy_ht_max_hold_minutes ≥ 1 → that hold replaces WILLY's (0 / blank = WILLY's)."""
     tp = _f(th, 'frenzy_willy_tp_pct', WILLY_TP_DEF)
     st = abs(_f(th, 'frenzy_willy_stop_pct', 0.0))
     mh = _f(th, 'frenzy_willy_max_hold_minutes', WILLY_HOLD_DEF)
-    return ((tp if tp > 0 else WILLY_TP_DEF), (-st if st > 0 else None), (int(round(mh)) if mh >= 1 else WILLY_HOLD_DEF))
+    mh = int(round(mh)) if mh >= 1 else WILLY_HOLD_DEF
+    if str(es or "") == FRENZY_WILLY_HT:
+        hm = frenzy_willy_ht_max_hold(th)
+        if hm is not None:
+            mh = hm
+    return ((tp if tp > 0 else WILLY_TP_DEF), (-st if st > 0 else None), mh)
 
 
-def frenzy_willy_late_tp(th) -> Optional[Tuple[float, float]]:
+def frenzy_willy_ht_max_hold(th) -> Optional[int]:
+    """🎲 (DECISION_LOG 587) FRENZY_WILLY_HT's OWN time cap in minutes (frenzy_willy_ht_max_hold_minutes ≥ 1, ≤ 10,080) or None = WILLY's."""
+    try:
+        v = float(getattr(th, 'frenzy_willy_ht_max_hold_minutes', 0) or 0)
+        return int(round(v)) if (math.isfinite(v) and 1 <= v <= 10080) else None
+    except (TypeError, ValueError):
+        return None
+
+
+def frenzy_willy_ht_late_tp_on(th) -> bool:
+    """🎲 (DECISION_LOG 587) the WILLY late take profit applies to FRENZY_WILLY_HT (frenzy_willy_ht_late_tp_enabled; anything but False = on)."""
+    return getattr(th, 'frenzy_willy_ht_late_tp_enabled', True) is not False
+
+
+def frenzy_willy_ht_high_target_on(th) -> bool:
+    """🎲 (DECISION_LOG 587) HT's take profit = max(HT TP, the spike-high target) (frenzy_willy_ht_high_target_enabled; anything but False =
+    on). False → a FLAT frenzy_willy_ht_tp_pct (or WILLY's base TP when that is 0)."""
+    return getattr(th, 'frenzy_willy_ht_high_target_enabled', True) is not False
+
+
+def frenzy_willy_late_tp(th, es=None) -> Optional[Tuple[float, float]]:
     """⏰ (DECISION_LOG 297, operator-armed DECLARED EXCEPTION) the WILLY LATE take profit → (minutes, net %) or None = off. From the order's
     age ≥ frenzy_willy_late_tp_minutes its take profit is frenzy_willy_late_tp_pct instead of the WILLY TP (stop and time cap unchanged).
     Off when either is ≤ 0 / blank / unreadable, or when the late % is not below the WILLY TP (it would not be a lower target)."""
+    if str(es or "") == FRENZY_WILLY_HT and not frenzy_willy_ht_late_tp_on(th):   # 🎲 (DECISION_LOG 587) HT's late TP switched off
+        return None
     try:
         mins = float(getattr(th, 'frenzy_willy_late_tp_minutes', 0) or 0)
         pct = float(getattr(th, 'frenzy_willy_late_tp_pct', 0) or 0)
@@ -982,14 +1026,14 @@ def frenzy_willy_late_tp(th) -> Optional[Tuple[float, float]]:
     return mins, pct
 
 
-def frenzy_willy_tp_at(th, held_minutes, tp_used=None) -> Tuple[float, str]:
+def frenzy_willy_tp_at(th, held_minutes, tp_used=None, es=None) -> Tuple[float, str]:
     """(the WILLY take profit in force at this age, its close reason): the late TP (WILLY_LATE_TP) once the order is ≥ the late minutes old,
     else the WILLY TP (FRENZY_TP). Unknown age → the WILLY TP. ONE rule for the exit, the resting limit and the sweeps.
     🎲² (DECISION_LOG 356 WILLY exit V2) tp_used = the order's OWN stored take profit (Order.frenzy_willy_tp_target_pct; None / unusable →
     the config TP, exactly as before). 🎲²ᵇ (DECISION_LOG 358) the late TP applies to EVERY order again (the V2 "armed" exception is gone
     with the floor)."""
     base = frenzy_willy_tp_value(th, tp_used)
-    late = frenzy_willy_late_tp(th)
+    late = frenzy_willy_late_tp(th, es)   # 🎲 (587) es = FRENZY_WILLY_HT → its own late-TP switch
     try:
         if late is not None and held_minutes is not None and float(held_minutes) >= late[0] and late[1] < base:
             return late[1], "WILLY_LATE_TP"
@@ -1172,7 +1216,8 @@ def frenzy_willy_exit_for(pnl, peak_pnl, th, held_minutes=None, stop_floor=None,
     🎲²ᵇ (DECISION_LOG 358) no floor: stop, late TP and time cap apply to every order. row None / a pre-V2 row → the config exit.
     🏃 (DECISION_LOG 541) a row with frenzy_willy_runner_k (and no resting TP alive): reaching the target ARMS the trail instead of selling —
     WILLY_RUNNER_TRAIL at max(peak − k × ATR, floor, stop); before the target the late TP / stop / cap as above; once armed the cap only."""
-    tp, stop, mh = frenzy_willy_levels(th)
+    _es = _g(row, 'entry_strategy') if row is not None else None   # 🎲 (587) an HT row → HT's late-TP switch and time cap
+    tp, stop, mh = frenzy_willy_levels(th, _es)
     if row is not None:
         tp = frenzy_willy_row_tp(th, row)
     try:
@@ -1188,7 +1233,7 @@ def frenzy_willy_exit_for(pnl, peak_pnl, th, held_minutes=None, stop_floor=None,
                 if held_minutes is not None and float(held_minutes) >= mh:
                     return True, "MAX_HOLD_TIME", p
                 return False, "WILLY_RUNNER_TRAIL", line
-            late_tp, late_reason = frenzy_willy_tp_at(th, held_minutes, tp_used=tp)
+            late_tp, late_reason = frenzy_willy_tp_at(th, held_minutes, tp_used=tp, es=_es)
             if late_reason == "WILLY_LATE_TP" and p >= late_tp:
                 return True, "WILLY_LATE_TP", late_tp
             if stop is not None and p <= stop:
@@ -1198,7 +1243,7 @@ def frenzy_willy_exit_for(pnl, peak_pnl, th, held_minutes=None, stop_floor=None,
             return False, "MAX_HOLD_TIME", stop
         if p >= tp and not resting_tp:
             return True, "FRENZY_TP", tp
-        late_tp, late_reason = frenzy_willy_tp_at(th, held_minutes, tp_used=tp)
+        late_tp, late_reason = frenzy_willy_tp_at(th, held_minutes, tp_used=tp, es=_es)
         if late_reason == "WILLY_LATE_TP" and p >= late_tp and not resting_tp:   # ⏰ (297) late TP: the CURRENT P&L only (a peak before
             return True, "WILLY_LATE_TP", late_tp                                  # the late minute is no fill at the late target)
         if pk >= tp and not resting_tp:

@@ -1,0 +1,6 @@
+cell,g1,g1ok,g2,g2ok,g3,g3ok,g4,g4ok,g5,g5ok,g6,g6ok,g7,g7ok,g8,g8ok,g9,g9ok
+NP_8h,-0.005 (-0.015 … +0.000),False,1/7,False,-0.005,False,+0.257 vs +0.262,False,0.054 / 0.165,True,1.00,False,Δ ≤ 0,False,1.553 vs 1.554 · HO 2.562 vs 2.562,False,"alone wd -34.3 vs -34.3, dd 68 vs 68",True
+NP_4h,-0.011 (-0.030 … +0.004),False,2/7,False,-0.011,False,+0.250 vs +0.262,False,0.054 / 0.163,True,1.00,False,Δ ≤ 0,False,n/a,False,"alone wd -34.3 vs -34.3, dd 68 vs 68",True
+NP_2h,+0.001 (-0.050 … +0.045),False,2/7,False,+0.000,True,+0.263 vs +0.262,True,0.056 / 0.168,True,1.00,False,543 / 402,False,n/a,False,"alone wd -37.9 vs -34.3, dd 66 vs 68",False
+L_A8_L5,-0.057 (-0.176 … +0.061),False,2/7,False,-0.068,False,+0.203 vs +0.262,False,0.064 / 0.168,True,1.00,False,Δ ≤ 0,False,1.462 vs 1.554 · HO 2.451 vs 2.562,False,"alone wd -27.6 vs -34.3, dd 65 vs 68",True
+T_16h,-0.073 (-0.138 … -0.007),False,0/7,False,-0.076,False,+0.185 vs +0.262,False,0.051 / 0.155,True,1.00,False,Δ ≤ 0,False,1.494 vs 1.554 · HO 2.433 vs 2.562,False,"alone wd -34.3 vs -34.3, dd 79 vs 68",False

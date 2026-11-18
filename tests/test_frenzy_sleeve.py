@@ -151,11 +151,11 @@ def test_config_parity_and_every_surface():
     import config as C
     th = C.trading_config.thresholds
     fields = sorted(k for k in type(th).model_fields if k.startswith("frenzy_"))
-    assert len(fields) == 78   # +frenzy_willy_runner_enabled, _atr_k, _floor_pct (Nov-13, 541) · +frenzy_willy_ht_tp_pct (Nov-12, 537) · −frenzy_willy_floor_arm_pct, _floor_pct (Oct-23, 358 V2 floor removed) · +frenzy_willy_high_target_enabled, _high_k_pct, _high_tp_max_pct, _floor_arm_pct, _floor_pct (Oct-23, 356 WILLY exit V2) · +frenzy_willy_a_nomiss (Oct-23, 350) · +frenzy_willy_ht_enabled, _size_frac, _max_slots (Oct-21, 341) · +frenzy_willy_global_hold (Oct-21, 340) · +frenzy_long_stop_pct (Oct-19, 317) · +frenzy_lite_retry_enabled, _wait_minutes, _invest_mult, _lev_mult (Oct-19, 316) · +frenzy_lite_c_enabled, _vol_mult, _btc_slope_min, _tp_pct (Oct-15, 301) · +frenzy_willy_late_tp_minutes, _pct (Oct-15, 297) · +frenzy_lite_tp_pct (Oct-12, 284) · +frenzy_willy_a_cold_max_bars (Oct-8, GTCUSDT late-A fix) · +11 frenzy_willy_* (Oct-8, 251; incl. the red-candle wait + the turnover filter) · +frenzy_bearish_day_block (Oct-8, 250) · +6 frenzy_lite_* (Oct-7, 243) · +frenzy_catchup_max_bars (Oct-6 catch-up) · +frenzy_lock_arm_pct, _floor_pct, _trail_pct (Oct-5, 205) · +frenzy_wide_above_share_min (Oct-5, 215) · +frenzy_wide_hold_green_streak (Oct-6, 231)
+    assert len(fields) == 82   # +frenzy_willy_plain_entries_enabled, _ht_late_tp_enabled, _ht_high_target_enabled, _ht_max_hold_minutes (Nov-18, 587) · +frenzy_willy_runner_enabled, _atr_k, _floor_pct (Nov-13, 541) · +frenzy_willy_ht_tp_pct (Nov-12, 537) · −frenzy_willy_floor_arm_pct, _floor_pct (Oct-23, 358 V2 floor removed) · +frenzy_willy_high_target_enabled, _high_k_pct, _high_tp_max_pct, _floor_arm_pct, _floor_pct (Oct-23, 356 WILLY exit V2) · +frenzy_willy_a_nomiss (Oct-23, 350) · +frenzy_willy_ht_enabled, _size_frac, _max_slots (Oct-21, 341) · +frenzy_willy_global_hold (Oct-21, 340) · +frenzy_long_stop_pct (Oct-19, 317) · +frenzy_lite_retry_enabled, _wait_minutes, _invest_mult, _lev_mult (Oct-19, 316) · +frenzy_lite_c_enabled, _vol_mult, _btc_slope_min, _tp_pct (Oct-15, 301) · +frenzy_willy_late_tp_minutes, _pct (Oct-15, 297) · +frenzy_lite_tp_pct (Oct-12, 284) · +frenzy_willy_a_cold_max_bars (Oct-8, GTCUSDT late-A fix) · +11 frenzy_willy_* (Oct-8, 251; incl. the red-candle wait + the turnover filter) · +frenzy_bearish_day_block (Oct-8, 250) · +6 frenzy_lite_* (Oct-7, 243) · +frenzy_catchup_max_bars (Oct-6 catch-up) · +frenzy_lock_arm_pct, _floor_pct, _trail_pct (Oct-5, 205) · +frenzy_wide_above_share_min (Oct-5, 215) · +frenzy_wide_hold_green_streak (Oct-6, 231)
     cfgj = json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
     assert sorted(k for k in cfgj if k.startswith("frenzy_")) == fields                   # every field has a JSON value
     assert type(th).model_fields["frenzy_long_enabled"].default is False                  # OFF in code; the JSON arms it
-    assert cfgj["frenzy_long_enabled"] is True and cfgj["frenzy_long_invest_mult"] == 0.2 and cfgj["frenzy_long_lev_mult"] == 0.05   # DECISION_LOG 289 blocker size 0.2 × 1× (286: 1.0 × 2×; 283: 10× for one day)
+    assert cfgj["frenzy_long_enabled"] is False and cfgj["frenzy_long_invest_mult"] == 0.2   # 🎲 DL 587 (operator 11-18): FRENZY_LONG off and cfgj["frenzy_long_lev_mult"] == 0.05   # DECISION_LOG 289 blocker size 0.2 × 1× (286: 1.0 × 2×; 283: 10× for one day)
     assert cfgj["frenzy_wide_invest_mult"] == 0.2 and cfgj["frenzy_wide_lev_mult"] == 0.05                          # DECISION_LOG 289 WIDE blocker size 0.2 × 1×
     html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
     listed = dict(re.findall(r"\['(config-fz-[a-z0-9-]+)', '(frenzy_[a-z0-9_]+)'", html))
@@ -170,7 +170,9 @@ def test_config_parity_and_every_surface():
                   frenzy_willy_ht_enabled="config-fz-willy-ht-enabled",   # 🎲¼ (341) FRENZY_WILLY_HT switch
                   frenzy_willy_a_nomiss="config-fz-willy-a-nomiss",   # 🧭 (350) WILLY A R_NOMISS switch
                   frenzy_willy_high_target_enabled="config-fz-willy-high-target",   # 🎲² (356) WILLY exit V2 switch
-                  frenzy_willy_runner_enabled="config-fz-willy-runner")   # 🏃 (541) WILLY runner switch
+                  frenzy_willy_runner_enabled="config-fz-willy-runner",   # 🏃 (541) WILLY runner switch
+                  frenzy_willy_plain_entries_enabled="config-fz-willy-plain-enabled",   # 🎲 (587) plain WILLY entries switch
+                  frenzy_willy_ht_late_tp_enabled="config-fz-willy-ht-late-tp", frenzy_willy_ht_high_target_enabled="config-fz-willy-ht-high-target")   # 🎲 (587) HT exit switches
     assert sorted(by_key) == fields                                                       # every field has a UI input
     for key, _id in by_key.items():
         assert html.count(f'id="{_id}"') == 1, _id

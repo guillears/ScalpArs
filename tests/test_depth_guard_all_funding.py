@@ -96,7 +96,7 @@ def _run(monkeypatch, book=None, funding=None, direction="LONG", **kw):
         mp.setattr(TE.binance_service, "fetch_funding_next", fn)
         inv = TE.config.trading_config.investment
         for k_, v in (("entry_depth_guard_enabled", True), ("entry_depth_guard_all_enabled", True), ("entry_depth_guard_exit_side_enabled", True),
-                      ("entry_depth_guard_max_sweep_pct", 0.15), ("entry_depth_guard_min_frac", 0.5),
+                      ("entry_depth_guard_max_sweep_pct", 0.15), ("entry_depth_guard_min_frac", 0.5), ("entry_depth_guard_min_usd", 0.0),   # (588) fraction rule
                       ("entry_depth_guard_mode", MODE[0])):   # 📖📐 (584) sweep unless a test asks
             mp.setattr(inv, k_, v, raising=False)
         mp.setattr(TE.config.trading_config.thresholds, "funding_guard_enabled", True, raising=False)

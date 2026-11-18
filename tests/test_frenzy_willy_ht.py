@@ -224,11 +224,13 @@ def test_exit_resting_tp_stop_and_time_are_willys():
     from services.frenzy import frenzy_willy_levels
     th = C.trading_config.thresholds
     assert rtp_enabled(th, "FRENZY_WILLY_HT") == rtp_enabled(th, "FRENZY_WILLY")
-    for m in (5, 45):
-        assert rtp_target(th, "FRENZY_WILLY_HT", m) == rtp_target(th, "FRENZY_WILLY", m)               # TP then the late TP @30
+    assert rtp_target(th, "FRENZY_WILLY_HT", 5) == rtp_target(th, "FRENZY_WILLY", 5)                    # the same TP before the late minute
+    assert rtp_target(th, "FRENZY_WILLY", 45)[1] == "WILLY_LATE_TP"                                     # WILLY: the late TP @30
+    assert rtp_target(th, "FRENZY_WILLY_HT", 45)[1] == ("FRENZY_TP" if th.frenzy_willy_ht_late_tp_enabled is False else "WILLY_LATE_TP")   # 🎲 (587) HT's own switch
     assert len(RTP_SWITCHES) == len(set(RTP_SWITCHES))
     assert TE.bot_own_stop_pct(th, "FRENZY_WILLY_HT") == TE.bot_own_stop_pct(th, "FRENZY_WILLY") == abs(frenzy_willy_levels(th)[1])   # backstop
-    assert rtp_reason_for_limit(th, "FRENZY_WILLY_HT", "LONG", 1.0, 0.05, 1.0, 0.02) == rtp_reason_for_limit(th, "FRENZY_WILLY", "LONG", 1.0, 0.05, 1.0, 0.02)
+    assert rtp_reason_for_limit(th, "FRENZY_WILLY", "LONG", 1.0, 0.05, 1.0, 0.02) == "WILLY_LATE_TP"
+    assert rtp_reason_for_limit(th, "FRENZY_WILLY_HT", "LONG", 1.0, 0.05, 1.0, 0.02) == ("FRENZY_TP" if th.frenzy_willy_ht_late_tp_enabled is False else "WILLY_LATE_TP")   # 🎲 (587)
     assert "FRENZY_WILLY_HT" in TE.FRENZY_STRATEGIES and TE._ema13_cross_exit_applies("FRENZY_WILLY_HT") is False
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
     for s_ in ('elif (order.entry_strategy or "") in WILLY_EXIT_CLASS:   # 🎲¼ (341) + HT · 🎲 Oct-8 (251): its OWN time cap',

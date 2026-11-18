@@ -526,7 +526,7 @@ def test_engine_and_api_wiring():
     assert "atr" not in re.sub(r'""".*?"""', "", body, flags=re.S).replace("ATR", "")          # no ATR filter in the LITE path
     main = open(os.path.join(ROOT, "main.py"), encoding="utf-8").read()
     assert "'Frenzy-Lite'" in main and main.count("'FRENZY_LITE'") >= 3 and '("FRENZY_LITE", "LONG"): "FRENZY LITE Long"' in main
-    assert '"lite_enabled": bool(getattr(_th, \'frenzy_lite_enabled\', False))' in main and "getattr(_th, 'frenzy_lite_enabled', False) or getattr(_th, 'frenzy_willy_enabled', False)):" in main
+    assert '"lite_enabled": bool(getattr(_th, \'frenzy_lite_enabled\', False))' in main and "'frenzy_lite_enabled', 'frenzy_willy_enabled'," in main and "if not _frenzy_loop_on(_th):" in main   # (587 review) main._frenzy_loop_on
     assert '("FRENZY_LITE", "FRENZY_LITE (held above' in main and '"lite_ready": bool(f.get(\'lite_ready\'))' in main
 
 

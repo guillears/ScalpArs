@@ -89,6 +89,7 @@ def _run_flatbase(monkeypatch, bids):
         mp.setattr(TE.config.trading_config.investment, "entry_depth_guard_enabled", True, raising=False)
         mp.setattr(TE.config.trading_config.investment, "entry_depth_guard_max_sweep_pct", 0.15, raising=False)
         mp.setattr(TE.config.trading_config.investment, "entry_depth_guard_min_frac", 0.5, raising=False)
+        mp.setattr(TE.config.trading_config.investment, "entry_depth_guard_min_usd", 0.0, raising=False)   # 📖💵 (588) the fraction rule these tests pin
         mp.setattr(TE.config.trading_config.investment, "entry_depth_guard_mode", MODE[0], raising=False)   # 📖📐 (584) the 551 band rule unless a test asks
         return net
     monkeypatch.setattr(T, "_offline", _off_with_book)

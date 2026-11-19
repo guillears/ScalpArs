@@ -137,6 +137,7 @@ Run the scouts through `scripts/opportunity_scout.py` (or each script directly).
   - %/day per sleeve at one size, and the combined %/day;
   - worst day and same-day stop count;
   - compare to `reports/JOINT_SIM_2026-11-18.md`. The backtest's worst days were −35…−42 % with 17–19 stops at today's size.
+- **💸 Funding (FUNDING_RULE_2026-11-19, descriptive, no gate):** average `funding_fee_usd` ÷ notional per EXH / DIST fill and its share of the winners' gross, vs the backtest (−0.20 % EXH / −0.09 % DIST per fill). Flag if live runs far above it.
 
 ## 7. Decisions parked for the pre-live review (do not re-raise before then)
 - **Size of EXHAUSTION / WIDE / DISTRIBUTION / Flatbase / HT.** Today all are 0.5 × 5× ≈ 0.61 × equity.
@@ -148,4 +149,5 @@ Run the scouts through `scripts/opportunity_scout.py` (or each script directly).
 - **No-spot shorts:** entries (NOSPOT_SLEEVE), exits incl. TP 1 / SL 3 (NOSPOT_EXIT), and BTC-bear switch (NOSPOT_BTCBEAR) → nothing. The one frozen watch: R4 × 5m-bear, re-read only after ≥ 30 new bear days.
 - **Exits** of EXHAUSTION (EXH_EXIT2) and DISTRIBUTION (DIST_EXIT): keep today's.
 - **Entry runner-vs-give-back separation (ENTRY_WL):** nothing on EXH; only the DIST thin-coin observe.
+- **Funding rule for EXH / DIST (FUNDING_RULE_2026-11-19):** skip / half-size at negative funding, 20 rules → none pass (HOLDOUT negative except the EXH ≤ −1.0 pair, which flips sign vs DESIGN). Backtests already include real funding.
 - **CRASH_DIP_LONG:** dropped (too few trades, one window = 77 % of profit).

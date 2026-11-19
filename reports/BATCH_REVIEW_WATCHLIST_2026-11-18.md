@@ -73,6 +73,7 @@ Run the scouts through `scripts/opportunity_scout.py` (or each script directly).
 
 **Observe lines (no gate yet):**
 - **Thin coin (24 h vol ≤ $42M):** a down-size candidate only, never a filter (ENTRY_WL). Re-price it at the pre-live size review: Kelly 0.012 thin vs 0.098 rest.
+  - **Thin-coin cost (DIST_THIN_DEEPDIVE_2026-11-19):** per DIST fill, entry drift + fill-vs-book + exit slippage, thin vs rest, vs the backtest's flat 0.10 %. Running count (paper export 2026-11-19 12:48): 2 fills, both thin, both losers (NAORIS never worked, peak +0.07 %; SENT gave back after +3.57 %).
 - **Stamps** `entry_dist_di_diff1h` / `entry_dist_gap15` (the DIST_WL strength factor) and `entry_dist_rsi1h`.
 - **Position-ratio lag stamps** `entry_dist_pos_lag_min` / `_span_min`. If the lag is often > 5 min, live reads a later row than the study did.
 

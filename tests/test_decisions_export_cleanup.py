@@ -313,3 +313,34 @@ def test_frenzy_list_seed_nonascii_and_read_limit():
     assert got["SEEDUSDT"] == "restart seed (one pass)"
     assert got["龙虾USDT"] == "non-ASCII symbol (never shortlisted)"
     assert got["FLGUSDT"] == "read limit (followed coins beyond the read cap)"
+
+
+def test_track_record_keys_configured_still_importable():
+    """review (Nov-19 hotfix): ea62eddb dropped track_record._keys_configured, which services/accounting_export.statement_pass imports and the
+    recorder calls — the accounting statement loop failed with ImportError on the live server. Pin both callers' import."""
+    import importlib
+    tr = importlib.import_module("services.track_record")
+    assert callable(tr._keys_configured) and isinstance(tr._keys_configured(), bool)
+    with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "services", "accounting_export.py")) as fh:
+        assert "from services.track_record import _keys_configured" in fh.read()
+
+
+def test_every_services_from_import_resolves():
+    """review (Nov-19 hotfix): imports done INSIDE functions only fail when the function runs, so the suite missed a removed name. Every
+    `from services.<mod> import <name>` in services/ and main.py (top level or nested) must resolve."""
+    import ast
+    import importlib
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    files = [os.path.join(root, "main.py")] + [os.path.join(root, "services", f) for f in sorted(os.listdir(os.path.join(root, "services")))
+                                               if f.endswith(".py")]
+    missing = []
+    for f in files:
+        with open(f) as fh:
+            tree = ast.parse(fh.read())
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module and node.module.startswith("services.") and node.level == 0:
+                mod = importlib.import_module(node.module)
+                for a in node.names:
+                    if a.name != "*" and not hasattr(mod, a.name):
+                        missing.append(f"{os.path.relpath(f, root)}: {node.module}.{a.name}")
+    assert missing == []

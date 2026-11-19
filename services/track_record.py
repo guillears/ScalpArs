@@ -313,6 +313,14 @@ def _cfg():
     return config.trading_config
 
 
+def _keys_configured() -> bool:
+    try:
+        from config import settings
+        return bool(settings.binance_api_key and settings.binance_api_secret)
+    except Exception:
+        return False
+
+
 def paper_day(bot: dict) -> bool:
     """PURE. A day the bot ran in PAPER — on DB EVIDENCE only: it booked ≥ 1 PAPER row (opened or closed) that day and no LIVE row. Never the
     engine's CURRENT mode: a past live day whose bot rows are gone (the go-live days 11-14..17 on a paper DB) has no rows at all and stays

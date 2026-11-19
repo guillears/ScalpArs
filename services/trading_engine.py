@@ -1331,6 +1331,8 @@ _market_bull_pct_top: float = None   # 105: breadth over br_rank ≤ universe_si
 _market_bear_pct_top: float = None
 _market_top_n: int = 0          # 105: how many TRADEABLE pairs the reading above is over
 _market_bear_pct: float = 0.0
+_market_stamps_at: float = 0.0   # 🩹 (DECISION_LOG 593) time.time() when a scan last published breadth + global volume (Phase 2 done)
+_market_stamps_snap: tuple = None   # 🩹 (593 review) (at, bull %, bear %, global volume) published together — read as one
 # 🌊 Aug-21 gate 57: Bull-Run Monitor state (in-memory; flips also logged for post-restart
 # forensics). state ∈ DARK/AMBER/GREEN. Schmitt band + crash-latch computed in
 # _update_bullrun_monitor (throttled). Entries additionally require updated_at fresh
@@ -4928,9 +4930,10 @@ class TradingEngine:
                 snap.pop('entry_macro_trend', None)   # not backfilled: the dashboard already buckets a sleeve's NULL as NEUTRAL — kept as it was
             except Exception:
                 pass
-            if (now_s - (getattr(self, '_scan_pair_meta_at', 0.0) or 0.0)) > 1800:   # no scan published yet (restart): breadth 0 % /
+            if (now_s - (g.get('_market_stamps_at') or 0.0)) > 1800:   # no scan published breadth + volume yet (restart; 593 review): breadth 0 % /
                 for k in ('entry_bull_pct', 'entry_bear_pct', 'entry_global_volume_ratio'):   # volume 1.0 are defaults, not readings
                     snap.pop(k, None)
+                snap['_await_scan_since'] = now_s   # 🩹 (593) fill the three from the FIRST scan after the fill (≤ STAMP_AWAIT_SCAN_S)
             try:
                 snap.update(monitor_entry_stamps(_bullrun_monitor, _bearrun_monitor, now_s))
             except Exception:
@@ -4955,6 +4958,44 @@ class TradingEngine:
         except Exception:
             return False
 
+    STAMP_AWAIT_SCAN_S = 300.0   # 🩹 (593) longest wait for the first post-restart scan; past it the three stamps stay NULL (alert shows them)
+    STAMP_AWAIT_POLL_S = 5.0
+
+    async def _await_first_scan_stamps(self, pair, es, since_s, wait_s=None, poll_s=None) -> dict:
+        """🩹 (DECISION_LOG 593) A fill made before the first scan after a restart has no breadth / global-volume reading (the defaults 0 % / 1.0
+        are never stamped). Wait — bounded — for the FIRST scan that publishes them AFTER the fill (_market_stamps_at > since_s), then return
+        entry_bull_pct / entry_bear_pct / entry_global_volume_ratio from it (+ the pair's scan volume / rank / age when the pair is in that scan).
+        The reading is up to wait_s after the fill (market-wide values move slowly; a sleeve's own values always win the COALESCE). Timeout or
+        error → {} (the columns stay NULL, as before). Never raises."""
+        try:
+            wait_s = self.STAMP_AWAIT_SCAN_S if wait_s is None else float(wait_s)
+            poll_s = self.STAMP_AWAIT_POLL_S if poll_s is None else float(poll_s)
+            g = globals()
+            deadline = float(since_s) + wait_s
+            while (g.get('_market_stamps_at') or 0.0) <= float(since_s):
+                if _leash_time.time() >= deadline:
+                    logger.info(f"[STAMP_BACKFILL] {pair} {es}: no scan within {wait_s:.0f} s of the fill — breadth / global volume left NULL")
+                    return {}
+                await asyncio.sleep(poll_s)
+            out = {}
+            snap_ = g.get('_market_stamps_snap')   # (593 review) the scan's own published tuple — never a later scan's partial reset
+            if not snap_ or float(snap_[0]) <= float(since_s):
+                return {}
+            for k, v, nd in (('entry_bull_pct', snap_[1], 1), ('entry_bear_pct', snap_[2], 1), ('entry_global_volume_ratio', snap_[3], 4)):
+                if isinstance(v, (int, float)):
+                    out[k] = round(float(v), nd)
+            meta = getattr(self, '_scan_pair_meta', {}) or {}
+            if pair in meta:
+                _v24, _rk, _age = meta[pair]
+                out.update({k: v for k, v in (('entry_pair_volume_24h_usd', _v24), ('entry_pair_age_days', _age)) if v is not None})
+                if _rk is not None and not str(es or "").startswith(self.STAMP_BACKFILL_NO_RANK):
+                    out['entry_pair_rank'] = _rk
+            logger.info(f"[STAMP_BACKFILL] {pair} {es}: market stamps from the first scan after the fill "
+                        f"({(g.get('_market_stamps_at') or 0.0) - float(since_s):.0f} s later)")
+            return out
+        except Exception:
+            return {}
+
     async def _stamp_backfill(self, order_id, pair, opened_at, direction, es, entry_price, snap) -> int:
         """The background half: 5m klines up to the fill → the momentum scan's own pair stamps (pair_entry_stamps at the FILL price, quality
         score) + the FRENZY trend stamps on closed bars (FLATBASE fills) + funding + the pair's daily −DI, then ONE guarded UPDATE that sets
@@ -4964,6 +5005,7 @@ class TradingEngine:
             th = config.trading_config.thresholds
             st = {k: v for k, v in (snap or {}).items() if v is not None}
             symbol = pair.replace('USDT', '/USDT:USDT')
+            _q_keep = None   # (593 review) the score inputs, to re-score once the awaited breadth arrives
 
             await asyncio.sleep(2.0 + (order_id % 7) * 0.5)   # off the fill's own moment (staggered): never queues in front of its next trading reads
             try:
@@ -5008,7 +5050,7 @@ class TradingEngine:
                                                           .where(Order.id == order_id))).first()
                         except Exception:
                             _cur = None
-                        _q = [(_cur[i] if (_cur and _cur[i] is not None) else v) for i, v in
+                        _q = _q_keep = [(_cur[i] if (_cur and _cur[i] is not None) else v) for i, v in
                               enumerate((st.get('entry_rsi'), st.get('entry_adx'), st.get('entry_gap'), st.get('entry_ema20_slope')))]
                         _qs = _calculate_quality_score(direction, _q[0], _q[1], _q[2], st.get('entry_bull_pct', g.get('_market_bull_pct')),
                                                        st.get('entry_bear_pct', g.get('_market_bear_pct')), g.get('_current_btc_adx'), _q[3])
@@ -5040,6 +5082,19 @@ class TradingEngine:
                     st['entry_pair_alpha'] = _st
             except Exception:
                 pass
+            _aw = st.pop('_await_scan_since', None)
+            if _aw is not None:   # 🩹 (593) a fill in the first minutes after a restart: no scan had published the market stamps yet
+                for k, v in (await self._await_first_scan_stamps(pair, es, float(_aw))).items():
+                    if st.get(k) is None:
+                        st[k] = v
+                if _q_keep is not None and st.get('entry_bull_pct') is not None:   # (593 review) the score read the 0 % default breadth
+                    try:
+                        _qs2 = _calculate_quality_score(direction, _q_keep[0], _q_keep[1], _q_keep[2], st.get('entry_bull_pct'), st.get('entry_bear_pct'),
+                                                        globals().get('_current_btc_adx'), _q_keep[3])
+                        if _qs2 is not None:
+                            st['entry_quality_score'] = _qs2
+                    except Exception:
+                        pass
             cols = Order.__table__.columns
             vals = {k: func.coalesce(getattr(Order, k), v) for k, v in st.items()
                     if k in cols and k.startswith('entry_') and k not in self.STAMP_BACKFILL_NEVER}
@@ -23924,7 +23979,7 @@ class TradingEngine:
             _global_volume_ratio = round(_scan_vol_sum / _scan_avg_vol_sum, 4)
             logger.info(f"[GLOBAL_VOL] ratio={_global_volume_ratio:.4f} (sum_vol={_scan_vol_sum:.0f}, sum_avg={_scan_avg_vol_sum:.0f})")
 
-        global _market_bull_pct, _market_bear_pct, _breadth_n_bull, _breadth_n_bear, _breadth_n_neutral, _breadth_n_total
+        global _market_bull_pct, _market_bear_pct, _breadth_n_bull, _breadth_n_bear, _breadth_n_neutral, _breadth_n_total, _market_stamps_at, _market_stamps_snap
         global _market_bull_pct_top, _market_bear_pct_top, _market_top_n
         _breadth_n_bull = sum(1 for r in _collected if r['breadth_regime'] == "BULLISH")
         _breadth_n_bear = sum(1 for r in _collected if r['breadth_regime'] == "BEARISH")
@@ -23936,6 +23991,9 @@ class TradingEngine:
         else:
             _market_bull_pct = 0.0
             _market_bear_pct = 0.0
+        if _breadth_n_total > 0 and _scan_avg_vol_sum > 0:   # 🩹 (593) breadth AND global volume are real readings from this scan
+            _market_stamps_at = _leash_time.time()
+            _market_stamps_snap = (_market_stamps_at, _market_bull_pct, _market_bear_pct, _global_volume_ratio)
         # 📏 (105, operator-raised) TRADEABLE-UNIVERSE breadth — OBSERVE-ONLY, gates nothing.
         # The live floor reads the scan-wide number below (trading_pairs_limit=50) while this sleeve
         # only trades br_rank ≤ bullrun_universe_size. The REARM door already reasons over the

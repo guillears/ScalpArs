@@ -139,3 +139,11 @@ reports/SCOUT_DIST_RSI1H_KEPT_586.json
 reports/SCOUT_DIST_RSI1H_BLOCKED_586.json
 reports/.dist_rsi1h_cache.json
 reports/SCOUT_DEPTH_FLOOR_588.json
+# research working data stays local (large / binary) — 2026-11-18
+reports/*_data/**/*.pkl
+reports/*_data/**/*.npy
+reports/*_data/**/*.npz
+reports/*_data/**/*.log
+reports/EXHAUSTION_EXPAND_data/
+reports/FRENZY_TA_CATALOG_data/
+reports/LEADS_DEEP_2026-11-18_data/

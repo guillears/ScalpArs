@@ -21,7 +21,9 @@ Design constraints (this bot has had SQLite write-lock incidents — the journal
     harness sets it — a replay must not write a journal)
 
 Events: SCAN (BTC/market state + macro vetoes + monitor), BLOCK (gate + pair + the pair's indicator
-snapshot), ADMIT (a gate waived, e.g. CROSS_OB_OPEN), OPEN (a fill), EXPIRED (maker window lapsed).
+snapshot), ADMIT (a gate waived, e.g. CROSS_OB_OPEN), OPEN (a fill), EXPIRED (maker window lapsed), FRENZY_LIST (📋 Nov-19: a
+pair entering / leaving FRENZY's followed list — FRENZY_FOLLOW / FRENZY_UNFOLLOW + reason, transitions only). 🔇 Nov-19: the momentum
+ladder's BLOCK / FAILS / ADMIT lines are not written while both momentum entry switches are off (TradingEngine._journal_momentum_muted).
 """
 import atexit
 import gzip
@@ -172,6 +174,15 @@ def _rollover(d, today):
 EXPORT_COLS = ("t", "e", "pair", "dir", "gate", "n", "no_room", "strategy", "price", "conf", "cell", "via", "reason", "closed", "src")
 
 
+FRENZY_LIST_COLS = ("fl_chg24_pct", "fl_range24_pct", "fl_vol24_usd", "fl_rank")   # 📋 (Nov-19) FRENZY_LIST rows' 24 h ticker + shortlist rank
+
+
+def cols_if_event(rows, event, cols) -> list:
+    """🧹 (Nov-19) an export section's columns only when at least one row of that event is in the file (the FRENZY_WILLY global hold is off
+    since DL 340: its 8 wh_* columns were always empty). Readers already skip a file without them. Pure."""
+    return list(cols) if any(r.get("e") == event for r in rows or ()) else []
+
+
 EXPORT_MAX_DAYS = 7    # 🗂 (DECISION_LOG 392) a whole-batch export is capped here (rows are built in memory in the trading process)
 
 
@@ -226,6 +237,8 @@ def export_rows(days=3, now=None, directory=None):
                                 a[1] += 1
                         elif ev in ('OPEN', 'ADMIT', 'EXPIRED', 'WILLY'):   # 🎲 Oct-8 (251): WILLY events (arm / expiry / turnover refusal) one per line
                             out.append({k: r.get(k) for k in EXPORT_COLS if k != 'e'} | {'e': ev})
+                        elif ev == 'FRENZY_LIST':   # 📋 (Nov-19) FRENZY follow / unfollow transitions, one per line with the pass's 24 h numbers
+                            out.append({k: r.get(k) for k in EXPORT_COLS + FRENZY_LIST_COLS if k != 'e'} | {'e': ev})
                     except Exception:
                         continue
         except Exception:

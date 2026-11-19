@@ -3373,7 +3373,9 @@ async def export_decisions_csv(days: Optional[int] = None, db: AsyncSession = De
     Read-only; the orders export is unchanged.
     Rows: OPEN/ADMIT/EXPIRED (journal lines) · BLOCK (per 5 min × pair × dir × gate; pair-less = MARKET) · SCAN (5-min heartbeat =
     journal coverage) · FAILS (per 5 min × pair × dir × FULL gate set "A+B+…" × source — which gates must ALL be loosened to free a
-    trade) · POSITION (every bot + MANUAL position overlapping the window, open or closed, with `closed`)."""
+    trade) · POSITION (every bot + MANUAL position overlapping the window, open or closed, with `closed`) · FRENZY_LIST (📋 Nov-19: a pair
+    entering / leaving FRENZY's followed list — gate FRENZY_FOLLOW / FRENZY_UNFOLLOW, reason, fl_* 24 h numbers; transitions only).
+    🔇 Nov-19: while BOTH momentum entry switches are off the momentum ladder's BLOCK / FAILS / ADMIT lines are not journaled."""
     import asyncio as _aio
     import csv
     import io
@@ -3422,6 +3424,8 @@ async def export_decisions_csv(days: Optional[int] = None, db: AsyncSession = De
         logger.warning(f"[DECISIONS_EXPORT] order-book rows skipped: {_e}")
     # 🔒 Oct-8 (DECISION_LOG 251): the FRENZY_WILLY global hold's refusals (willy_hold_blocks) ride this file as WILLY_HOLD rows — one per
     # (open WILLY, pair, direction, sleeve) with its repeats — so scripts/scout_willy_hold.py can price the "cost of the hold".
+    # 🧹 (Nov-19) the hold is OFF since DL 340 (frenzy_willy_global_hold=false → no row is written): the 8 wh_* columns ride the file only
+    # when at least one WILLY_HOLD row exists (scout_willy_hold.py already skips a file without wh_willy_id)
     _wh_cols = ["wh_signal_at", "wh_last_at", "wh_repeats", "wh_invest_mult", "wh_lev_mult", "wh_willy_id", "wh_willy_pair", "wh_reason"]
     try:
         _since_wh = _day0
@@ -3531,7 +3535,8 @@ async def export_decisions_csv(days: Optional[int] = None, db: AsyncSession = De
                              reason=_b.error, bk_day=_b.day, bk_bytes=_b.bytes, bk_s3_key=_b.s3_key, bk_code_version=_b.code_version))
     except Exception as _e:
         logger.warning(f"[DECISIONS_EXPORT] track-record rows skipped: {_e}")
-    _cols = list(_dj.EXPORT_COLS) + _ob_cols + _wh_cols + _fb_cols + _exh_cols + _dist_cols + _mr_cols + _bl_cols + _xd_cols
+    _wh_cols = _dj.cols_if_event(rows, "WILLY_HOLD", _wh_cols)   # 🧹 (Nov-19) the dead hold's wh_* only when a WILLY_HOLD row exists
+    _cols = list(_dj.EXPORT_COLS) + _ob_cols + _wh_cols + list(_dj.FRENZY_LIST_COLS) + _fb_cols + _exh_cols + _dist_cols + _mr_cols + _bl_cols + _xd_cols
 
     def _write_csv():   # off the event loop: up to ~50k BOOK rows (deep review)
         buf = io.StringIO()

@@ -151,3 +151,27 @@ def test_registry_and_hook():
     gi = open(os.path.join(ROOT, ".gitignore"), encoding="utf-8").read()
     for f in ("reports/SCOUT_WILLY_HT_LINES.json", "reports/.willy_ht_lines_cache.json", "reports/.exh_exit_override_cache.json"):
         assert f in gi
+
+
+def test_ht_freeze_waits_for_hts_own_max_hold(tmp_path, monkeypatch):
+    """🔁 (DL 587) an HT verdict freezes only once the newest export is ≥ the crossing fill + HT's OWN max hold (1440 min), not WILLY's 90."""
+    import json
+    monkeypatch.setattr(WF, "cap_minutes", lambda path=None, es=None: 1440.0 if es == "FRENZY_WILLY_HT" else 90.0)
+    rows = [dict(opened_at=f"2026-11-{20 + i % 9:02d}T{i:02d}:00:00", closed_at="", pair=f"P{i}USDT", direction="LONG",
+                 entry_strategy="FRENZY_WILLY_HT", status="CLOSED", pnl_percentage=-1.0, pnl=-1.0, close_reason="STOP_LOSS",
+                 entry_frenzy_vs_vwap_pct=1.0, entry_adx=30, entry_ema_gap_8_13=2.0, entry_price=99.0,
+                 entry_frenzy_willy_spike_high=100.0, entry_frenzy_hours=0.3, entry_frenzy_willy_trigger="B") for i in range(15)]   # the 15th = the crossing fill]
+    df = pd.DataFrame(rows)
+    last = pd.to_datetime(df.opened_at).max()
+    st = tmp_path / "st.json"
+    since = int(pd.Timestamp("2026-11-19").value // 1_000_000)
+    for stamp, frozen in ((last + pd.Timedelta(minutes=600), False), (last + pd.Timedelta(days=2), True)):   # > 90 min but < 24 h → wait
+        p = tmp_path / f"scalpars_orders_paper_{stamp:%Y-%m-%d_%H-%M-%S}.csv"
+        df.to_csv(p, index=False)
+        W.run(paths=[str(p)], state_path=str(st), since_ms=since, now_ms=int(pd.Timestamp("2026-12-30").value // 1_000_000), fetch=False)
+        saved = json.load(open(st)) if st.exists() else {}
+        assert ("FRENZY_WILLY_HT@587|NEAR_SPIKE_HIGH" in saved) is frozen
+    cfg = tmp_path / "c.json"
+    cfg.write_text(json.dumps({"thresholds": {"frenzy_willy_max_hold_minutes": 90, "frenzy_willy_ht_max_hold_minutes": 0}}))
+    monkeypatch.undo()
+    assert WF.cap_minutes(str(cfg), es="FRENZY_WILLY_HT") == 90                       # 0 → WILLY's cap (fallback)

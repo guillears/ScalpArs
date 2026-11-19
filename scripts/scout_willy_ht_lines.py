@@ -26,7 +26,8 @@ COHORT     CLOSED FRENZY_WILLY and FRENZY_WILLY_HT LONG fills from the orders ex
 FROZEN BAR the WILLY_FAILED_SPIKE / WILLY_GAP bar (DL 414 / 509), per sleeve: at the first prefix where a line's ZONE reaches N ≥ 15 on ≥ 8 UTC
            days, decided ONCE — zone avg ≥ rest avg or ≥ 0 → RETIRED · FILTER CANDIDATE (operator decides; never automatic) iff zone WR <
            the sleeve's breakeven (WILLY 69.0 % · HT 66.7 % → 44.4 % re-based at DL 587, TP +5 / SL −4; HT cohort from the 587 commit) ∧ zone mean < 0 at day-bootstrap P(mean < 0) ≥ 0.95 ∧ no day / pair ≥ 50 % of
-           the zone's gross loss · else KEEP OBSERVING. Booked P&L → pinned to the WILLY / HT exit keys in observe_registry.
+           the zone's gross loss · else KEEP OBSERVING. ⚠ HT's 44.4 % is frozen from THEORY (+5 / −4 net = 4 ÷ 9 — no stop slippage, no
+           24 h time exits), WILLY's 69.0 % from real fills (V2b, N 50). Booked P&L → pinned to the WILLY / HT exit keys in observe_registry.
 STATE      reports/SCOUT_WILLY_HT_LINES.json (gitignored).
 Usage: venv/bin/python -I scripts/scout_willy_ht_lines.py"""
 import json
@@ -53,6 +54,7 @@ DL_HT = 587   # 🔁 (DECISION_LOG 587) RE-BASED 2026-11-18: HT's exit changed (
 SLEEVES = ("FRENZY_WILLY", "FRENZY_WILLY_HT")
 # FROZEN breakevens: WILLY V2b (DL 509) · HT re-based at DL 587 = the +5 / −4 exit: |loss| ÷ (win + |loss|) = 4 ÷ 9 (was 0.667 at +2 / −4)
 BE_WR = {"FRENZY_WILLY": 0.690, "FRENZY_WILLY_HT": 0.444}
+BE_NOTE = WF.BE_NOTE   # HT's 44.4 % is frozen from theory (+5 / −4 net), WILLY's 69.0 % from real fills
 STATE_KEY = {"FRENZY_WILLY": "FRENZY_WILLY", "FRENZY_WILLY_HT": "FRENZY_WILLY_HT@587"}   # the HT verdicts of the +2 era are never read again
 TOP_ACC_CUT, GLOB_ACC_CUT, OFF_PEAK_CUT, REANCHOR_H = 1.19, 1.0624, -1.4, 1.0
 LINES = ("CROWDED_LONGS", "NEAR_SPIKE_HIGH", "REANCHORED")
@@ -278,7 +280,7 @@ def run(now_ms=None, paths=None, state_path=STATE, since_ms=None, fetch=True):
     keep, ox = _GK.split_operator_closed(c) if len(c) else (c, c)
     keep, stop = score(keep, now_ms, fetch) if len(keep) else (keep, None)
     st, ok = NF.du_load_state(state_path, now_ms) if state_path else ({}, True)
-    changed, cap = False, WF.cap_minutes()
+    changed = False
     L += [f"Cohort: CLOSED fills opened ≥ {since:%Y-%m-%d %H:%M} UTC ({'DL ' + str(DL) + ' commit + 10 min' if given is None else 'floor given'}) · "
           f"each sleeve × line decided separately · {_GK.operator_closed_line(ox)}.", ""]
     if stop:
@@ -292,7 +294,7 @@ def run(now_ms=None, paths=None, state_path=STATE, since_ms=None, fetch=True):
                 L += [f"⚠ HT re-based on the DECISION_LOG {DL_HT} exit (TP +5 / SL −4) — NOT EVALUABLE until that commit is in git.", ""]
                 continue
             s = s[s.o >= pd.Timestamp(int(ht_floor), unit="ms")] if len(s) else s
-            L += [f"(re-based: HT fills opened ≥ {pd.Timestamp(int(ht_floor), unit='ms'):%Y-%m-%d %H:%M} UTC — the DL {DL_HT} TP +5 / SL −4 exit; breakeven 44.4 %)", ""]
+            L += [f"(re-based: HT fills opened ≥ {pd.Timestamp(int(ht_floor), unit='ms'):%Y-%m-%d %H:%M} UTC — the DL {DL_HT} TP +5 / SL −4 exit; breakeven 44.4 %)", f"⚠ {BE_NOTE}.", ""]
         elif es == "FRENZY_WILLY":
             L += ["(plain WILLY entries are OFF since DECISION_LOG 587 — this sleeve collects no new fills while they stay off)", ""]
         for ln in LINES:
@@ -312,7 +314,7 @@ def run(now_ms=None, paths=None, state_path=STATE, since_ms=None, fetch=True):
                 pre = crossing_prefix(sc, col)
                 if pre is not None:
                     last = pre.o.max()
-                    if newest is not None and newest >= last + pd.Timedelta(minutes=cap):
+                    if newest is not None and newest >= last + pd.Timedelta(minutes=WF.cap_minutes(es=es)):   # 🔁 (587) HT: its own 24 h cap
                         state, det = verdict(pre[pre[col] == "zone"], pre[pre[col] == "rest"], BE_WR[es])
                         rec = dict(state=state, detail=det, at=f"{last:%Y-%m-%d %H:%M} UTC",
                                    run_at=pd.Timestamp(now_ms, unit="ms").strftime("%Y-%m-%d %H:%M UTC"))

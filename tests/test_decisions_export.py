@@ -74,7 +74,8 @@ def test_engine_journal_fails_dedupes_and_never_raises(monkeypatch):
     from services import trading_engine as te
     got = []
     monkeypatch.setattr(te._djournal, "note", lambda ev, **kw: got.append((ev, kw)))
-    self = types.SimpleNamespace()
+    monkeypatch.setattr(te.config.trading_config.thresholds, "momentum_long_entries_enabled", True, raising=False)   # 🔇 momentum ON:
+    self = types.SimpleNamespace()                                                                                  # FAILS written
     jf = te.TradingEngine._journal_fails
     jf(self, ["EMA_STACK", "RSI_MAX"], "LONG", "QNTUSDT", "MOMENTUM")
     jf(self, ["EMA_STACK", "RSI_MAX"], "LONG", "QNTUSDT", "MOMENTUM")          # same bucket → skipped

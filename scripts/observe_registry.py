@@ -109,7 +109,11 @@ EXIT["scout_blocked_filters.py"] = dict(dl="527 · 529 · 532", sleeves="the 7 a
     # 🔂 (532) re-based the day of the ship: its ML legs price RP.BASE + the live second chance (MM.apply_second_chance, era-keyed on the knobs)
     "ml_second_chance_enabled": True,
     # the WILLY V2b target is built by the pinned scout_frenzy_v2b_shadow.V2B_TH (review LOW-2) — a live change shows ⚠ STALE
-    "frenzy_willy_high_target_enabled": True, "frenzy_willy_tp_pct": 1.25, "frenzy_willy_high_k_pct": 1.0, "frenzy_willy_high_tp_max_pct": 8.0})
+    "frenzy_willy_high_target_enabled": True, "frenzy_willy_tp_pct": 1.25, "frenzy_willy_high_k_pct": 1.0, "frenzy_willy_high_tp_max_pct": 8.0,
+    # 🎲 (587 exit, re-based 2026-11-19) HT is priced on its OWN exit (scout_blocked_filters.ht_exit, read live; every stored HT price re-priced on
+    # a change via era_of) and its gate state is namespaced FRENZY_WILLY_HT@587 → a later HT exit change shows ⚠ STALE (re-namespace / re-base)
+    "frenzy_willy_ht_tp_pct": 5.0, "frenzy_willy_ht_high_target_enabled": False, "frenzy_willy_ht_late_tp_enabled": False,
+    "frenzy_willy_ht_max_hold_minutes": 1440.0, "frenzy_willy_stop_pct": 4.0})
 PROXY = {"scout_bearrun_v2.py": "359", "scout_bearrun_r24.py": "369",
          "scout_g51_band1_watch.py": "463"}   # 👁 (463) refused band-① signals on the audit's +0.40 / −0.70 ruler, never the live exit
 BOOKED = {   # booked P&L — `era` = drops fills by WILLY exit era (registered on the old +1.25 exit)
@@ -166,9 +170,12 @@ BOOKED = {   # booked P&L — `era` = drops fills by WILLY exit era (registered 
                                 "frenzy_willy_high_tp_max_pct": 8.0, "frenzy_willy_max_hold_minutes": 90, "frenzy_willy_ht_tp_pct": 5.0,   # 🔁 (587) re-based
                                 "frenzy_willy_ht_late_tp_enabled": False, "frenzy_willy_ht_high_target_enabled": False, "frenzy_willy_ht_max_hold_minutes": 1440.0,
                                 "frenzy_willy_late_tp_minutes": 30.0, "frenzy_willy_late_tp_pct": 0.25},
+    # 🔁 (587 exit, re-based 2026-11-19) the HT half: HT fills ≥ the DL 587 commit + 10 min vs the frozen 44.4 % (+5 / −4) breakeven → the HT exit keys
     "scout_willy_failed_spike_watch.py": {"frenzy_willy_high_target_enabled": True, "frenzy_willy_stop_pct": 4.0, "frenzy_willy_high_k_pct": 1.0,
                                   "frenzy_willy_high_tp_max_pct": 8.0, "frenzy_willy_max_hold_minutes": 90,
-                                  "frenzy_willy_late_tp_minutes": 30.0, "frenzy_willy_late_tp_pct": 0.25},
+                                  "frenzy_willy_late_tp_minutes": 30.0, "frenzy_willy_late_tp_pct": 0.25,
+                                  "frenzy_willy_ht_tp_pct": 5.0, "frenzy_willy_ht_high_target_enabled": False,
+                                  "frenzy_willy_ht_late_tp_enabled": False, "frenzy_willy_ht_max_hold_minutes": 1440.0},
     "scout_ml_turn.py": None, "scout_rebound.py": None, "scout_willy_hold_off.py": None,
     "scout_willy_ht.py": _OLD_WILLY, "scout_willy_nomiss.py": _OLD_WILLY,
     # (496) FRENZY max-duration read: fills that closed before X keep their BOOKED % → the read is tied to today's FRENZY / WILLY TP + stop

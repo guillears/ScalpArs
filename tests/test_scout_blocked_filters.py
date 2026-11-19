@@ -278,3 +278,96 @@ def test_1m_price_is_provisional_until_ticks_cover(monkeypatch):
     assert M.ERA_1M == "|1m"
     src = open(M.__file__).read()
     assert 'eras.get(sl, "") + (ERA_1M if _SRC.get(k) == "1m" else "")' in src and "return not _ticks_cover(pair, te, store[k][2])" in src
+
+
+# ─────────── 🎲 (DECISION_LOG 587 exit, re-based 2026-11-19) FRENZY_WILLY_HT priced on its OWN exit ───────────
+HT_T = dict(frenzy_willy_stop_pct=4.0, frenzy_willy_max_hold_minutes=90, frenzy_willy_late_tp_minutes=30.0, frenzy_willy_late_tp_pct=0.25,
+            frenzy_willy_tp_pct=1.25, frenzy_willy_high_target_enabled=True, frenzy_willy_high_k_pct=1.0, frenzy_willy_high_tp_max_pct=8.0,
+            frenzy_willy_ht_tp_pct=5.0, frenzy_willy_ht_high_target_enabled=False, frenzy_willy_ht_late_tp_enabled=False,
+            frenzy_willy_ht_max_hold_minutes=1440.0)
+
+
+def test_ht_exit_of_flat_tp_own_cap_no_late_tp():
+    x = S.exit_of("FRENZY_WILLY_HT", HT_T)
+    assert x == dict(sl=4.0, cap=1440, late=None, ltp=None, flat=True, tp=5.0)          # TP +5 net flat · 24 h · no late TP
+    assert S.exit_of("FRENZY_WILLY", HT_T) == dict(sl=4.0, cap=90, late=30.0, ltp=0.25)   # plain WILLY unchanged
+    on = S.exit_of("FRENZY_WILLY_HT", dict(HT_T, frenzy_willy_ht_high_target_enabled=True, frenzy_willy_ht_late_tp_enabled=True,
+                                          frenzy_willy_ht_max_hold_minutes=0))
+    assert on == dict(sl=4.0, cap=90, late=30.0, ltp=0.25, flat=False)                  # switches on / 0 → WILLY's V2b behaviour
+    assert S.exit_of("FRENZY_WILLY_HT", dict(HT_T, frenzy_willy_ht_tp_pct=0))["tp"] == 1.25   # HT TP 0 → WILLY's base TP (engine)
+    live = S.exit_of("FRENZY_WILLY_HT", S.th())
+    assert live["cap"] == 1440 and live["late"] is None and live.get("flat") is True and live["tp"] == 5.0   # today's trading_config.json
+
+
+def test_ht_era_changes_with_every_ht_exit_field_willy_era_does_not():
+    e = S.era_of("FRENZY_WILLY_HT", HT_T)
+    ew = S.era_of("FRENZY_WILLY", HT_T)
+    for k, v in (("frenzy_willy_ht_tp_pct", 6.0), ("frenzy_willy_ht_high_target_enabled", True), ("frenzy_willy_ht_late_tp_enabled", True),
+                 ("frenzy_willy_ht_max_hold_minutes", 240.0)):
+        assert S.era_of("FRENZY_WILLY_HT", dict(HT_T, **{k: v})) != e, k               # a stored HT price of another HT exit → re-priced
+        assert S.era_of("FRENZY_WILLY", dict(HT_T, **{k: v})) == ew, k                  # WILLY's stored prices untouched
+    old = '{"_ruler": [0.1, 8000, 0.045], "cap": 90, "late": 30.0, "ltp": 0.25, "sl": 4.0}'
+    assert e != old and '"cap": 1440' in e                                               # the +2-era HT store rows never match today's era
+    import observe_registry as OR
+    w = OR.EXIT["scout_blocked_filters.py"]["walks"]
+    assert OR.diffs(w, OR.thresholds()) == [] and all(k in w for k in S.HT_KEYS)
+    assert [d[0] for d in OR.diffs(w, dict(OR.thresholds(), frenzy_willy_ht_tp_pct=6.0))] == ["frenzy_willy_ht_tp_pct"]   # → ⚠ STALE
+
+
+def test_ht_flat_price_needs_no_spike_high_and_runs_24h(monkeypatch):
+    import numpy as np
+    import scout_frenzy_willy_exit as FX
+    te = SINCE
+    n = 1441
+    t = te + (np.arange(n) + 1) * 60_000
+    hi = np.full(n, 1.0); lo = np.full(n, -1.0)
+    hi[600] = 5.2                                                                         # +5 reached at minute ~601 (after WILLY's 90-min cap)
+    P = dict(t=t, hi=hi, lo=lo, cl=np.zeros(n), op=np.full(n, np.nan), bar=np.ones(n, bool), end_ms=int(t[-1]), n_tick=0, n_bar=n,
+             tick_end=te, lim=int(te + 1441 * 60_000), te=te)
+    seen = {}
+    monkeypatch.setattr(FX, "load_path", lambda pair, te_, E, cap, cache: seen.setdefault("cap", cap) and P)
+    r = dict(pair="HUSDT", sleeve="FRENZY_WILLY_HT", te=te, E=1.0, snap={}, key="h1")    # no entry_frenzy_spike_at stamp: no V2b target
+    pct, why, st, ex = S.price_frenzy(r, HT_T, te + 3 * 86_400_000, {}, {}, None)
+    assert (pct, why, st, ex) == (5.0, "TP", "PRICED", int(t[600])) and seen["cap"] == 1440
+    lo[300] = -4.1
+    assert S.price_frenzy(r, HT_T, te + 3 * 86_400_000, {}, {}, None)[:3] == (-4.0, "STOP", "PRICED")
+    lo[300] = -1.0; hi[600] = 1.0
+    assert S.price_frenzy(r, HT_T, te + 3 * 86_400_000, {}, {}, None)[:3] == (0.0, "CAP", "PRICED")   # no late +0.25 at minute 31
+
+
+def test_ht_gate_state_namespaced_587(tmp_path, monkeypatch):
+    assert S.GATE_KEY == {"FRENZY_WILLY_HT": "FRENZY_WILLY_HT@587"} and S.SPAN_MAX <= 1497
+    rows = [(i // 2, f"P{i}USDT", "FRENZY_WILLY_HT", "WILLY_FAILED_SPIKE", 1.0, True, "LONG") for i in range(16)]
+    paths = _dec(tmp_path, rows)
+    k = [dict(opened_at=(T0 + pd.Timedelta(hours=i)).strftime("%Y-%m-%dT%H:%M:%S"), closed_at="", pair=f"K{i}USDT", direction="LONG",
+              entry_strategy="FRENZY_WILLY_HT", status="CLOSED", pnl_percentage=0.5, close_reason="TP", entry_price=1.0, is_probe=False) for i in range(6)]
+    op = tmp_path / "scalpars_orders_paper_2026-12-01_00-00-00.csv"
+    pd.DataFrame(k).to_csv(op, index=False)
+    monkeypatch.setattr(S, "price_all", lambda B, now_ms, fetch=True, store_path=None: B.assign(pct=-1.0, why="STOP", status="PRICED", exit_ms=B.te + 60_000))
+    st = tmp_path / "g.json"
+    st.write_text(json.dumps({"FRENZY_WILLY_HT:WILLY_FAILED_SPIKE": dict(state="REVERT CANDIDATE (old era)", detail="+2 exit", at="x")}))
+    out = "\n".join(S.run(now_ms=SINCE + 30 * 86_400_000, dec_paths=paths, ord_paths=[str(op)], state_path=str(st), store_path=None, since_ms=SINCE))
+    g = json.load(open(st))
+    assert g["FRENZY_WILLY_HT@587:WILLY_FAILED_SPIKE"]["state"] == "KEEP" and g["FRENZY_WILLY_HT:WILLY_FAILED_SPIKE"]["detail"] == "+2 exit"
+    assert "old era" not in out                                                          # the pre-587 record is never read as the HT verdict
+
+
+def test_ht_exit_error_is_never_priced_on_willys_exit(tmp_path, monkeypatch):
+    """review: HT's own exit unreadable → NOT_EVALUABLE for the run + a ⚠ line naming the error — never WILLY's V2b / 90-min exit."""
+    import services.frenzy as SF
+    def boom(th):
+        raise RuntimeError("engine piece missing")
+    monkeypatch.setattr(SF, "frenzy_willy_ht_max_hold", boom)
+    x = S.exit_of("FRENZY_WILLY_HT", HT_T)
+    assert "engine piece missing" in x["err"] and x["cap"] == 90                       # carries the error, flagged for the pricer
+    r = dict(pair="HUSDT", sleeve="FRENZY_WILLY_HT", te=SINCE, E=1.0, snap={}, key="h1")
+    p, why, st, ex = S.price_frenzy(r, HT_T, SINCE + 3 * 86_400_000, {}, {}, None)
+    assert (p, st, ex) == (None, "NOT_EVALUABLE", None) and why.startswith("ERR:HT_EXIT") and "engine piece missing" in why
+    sp = str(tmp_path / "store.csv")
+    S.save_store({"h1": (5.0, "TP", SINCE + 60_000, "an older era")}, sp)
+    B = pd.DataFrame([r])
+    out = S.price_all(B, SINCE + 3 * 86_400_000, fetch=False, store_path=sp)
+    assert out.status.iloc[0] == "NOT_EVALUABLE" and S.load_store(sp)["h1"][0] == 5.0   # the store is not overwritten
+    paths = _dec(tmp_path, [(0, "HUSDT", "FRENZY_WILLY_HT", "WILLY_FAILED_SPIKE", 1.0, True, "LONG")])
+    txt = "\n".join(S.run(now_ms=SINCE + 3 * 86_400_000, dec_paths=paths, ord_paths=[], state_path=None, store_path=None, since_ms=SINCE, fetch=False))
+    assert "⚠ FRENZY_WILLY_HT's own exit" in txt and "engine piece missing" in txt and "never priced on WILLY's exit" in txt

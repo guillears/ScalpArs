@@ -13,7 +13,8 @@
    (entry fee on the open day, exit fee on the close day; BNB fees at the BNB 1m close of their minute), funding (informational — the bot
    stamps funding on the close day, Binance pays it while a position is held), and the WALLET CHECK: the USDT wallet moved between two
    snapshots by exactly Σ the USDT income rows between them (Binance's own consistency, independent of the bot). Status OK / CHECK
-   (a difference above the tolerance) / NO_SNAPSHOT (a backfilled day: income only) / NO_ACTIVITY. Runs in paper and live — the record is
+   (a difference above the tolerance) / NO_SNAPSHOT (a backfilled day: income only) / NO_ACTIVITY / PAPER (Nov-19: a paper day — the bot
+   booked ≥ 1 paper row and no live row, so Binance's realized / fees are the operator's own trades, not a bot mismatch; a wallet-check gap stays CHECK). Runs in paper and live — the record is
    the live ACCOUNT's (operator app trades included); the bot side counts is_paper = False rows only. Shares the Binance-app recorder's
    request budget machinery (its own WeightBudget instance, ban check, used-weight header pause).
 ③ CODE VERSION — code_version() = a 12-hex fingerprint of the runtime source (top-level *.py, services/*.py, live_terminal/*.py,
@@ -270,9 +271,13 @@ def tolerance(equity: Optional[float]) -> float:
     return max(1.0, 0.001 * abs(float(equity or 0.0)))
 
 
-def exchange_day_verdict(sums: dict, bot: dict, snap: Optional[dict], prev_snap: Optional[dict], wallet_income: Optional[float]) -> dict:
+def exchange_day_verdict(sums: dict, bot: dict, snap: Optional[dict], prev_snap: Optional[dict], wallet_income: Optional[float],
+                         paper: bool = False) -> dict:
     """PURE. sums = income_sums of the day · bot = dict(gross, fees, funding, closed, opened) of the bot's live rows · snap / prev_snap =
     dict(at_ms, wallet, …) or None · wallet_income = Σ USDT income between the two snapshots (None when either is missing).
+    paper = the bot ran in PAPER that day (paper_day): a CHECK that is only "Binance traded, the bot booked no live row" becomes PAPER
+    (the live account was traded by hand / the app, not by the bot — not a reconciliation alarm). A wallet-check difference, an
+    unconverted asset or any live bot row keep CHECK; LIVE days are unchanged.
     → the ExchangeDay fields: diffs + status."""
     eq = (snap or {}).get("margin_balance") or (snap or {}).get("wallet") or (prev_snap or {}).get("wallet")
     tol = tolerance(eq)
@@ -294,6 +299,10 @@ def exchange_day_verdict(sums: dict, bot: dict, snap: Optional[dict], prev_snap:
         status = "NO_ACTIVITY" if (w_chk is None or abs(w_chk) <= tol) else "CHECK"
     else:
         status = "CHECK" if notes else ("OK" if snap else "NO_SNAPSHOT")
+    if (paper and status == "CHECK" and not bot.get("closed") and not bot.get("opened") and not sums.get("unknown")
+            and (w_chk is None or abs(w_chk) <= tol)):
+        status = "PAPER"
+        notes = [f"paper: live account not traded by the bot — Binance realized {sums['realized']:+.2f}, fees {-sums['commission']:.2f}"]
     return dict(diff_realized=d_real, diff_fees=d_fee, wallet_check_diff=w_chk, tolerance=round(tol, 2), status=status,
                 note="; ".join(notes)[:300] if notes else None)
 
@@ -304,12 +313,11 @@ def _cfg():
     return config.trading_config
 
 
-def _keys_configured() -> bool:
-    try:
-        from config import settings
-        return bool(settings.binance_api_key and settings.binance_api_secret)
-    except Exception:
-        return False
+def paper_day(bot: dict) -> bool:
+    """PURE. A day the bot ran in PAPER — on DB EVIDENCE only: it booked ≥ 1 PAPER row (opened or closed) that day and no LIVE row. Never the
+    engine's CURRENT mode: a past live day whose bot rows are gone (the go-live days 11-14..17 on a paper DB) has no rows at all and stays
+    CHECK (review, Nov-19)."""
+    return not bot.get("closed") and not bot.get("opened") and int(bot.get("paper") or 0) > 0
 
 
 async def _bot_side(db, day: str) -> dict:
@@ -319,6 +327,9 @@ async def _bot_side(db, day: str) -> dict:
     from models import Order
     lo = datetime.strptime(day, "%Y-%m-%d")
     hi = lo + timedelta(days=1)
+    from sqlalchemy import func, or_
+    paper = (await db.execute(select(func.count(Order.id)).where(and_(Order.is_paper == True, or_(   # noqa: E712 — 🧻 paper_day
+        and_(Order.opened_at >= lo, Order.opened_at < hi), and_(Order.closed_at >= lo, Order.closed_at < hi)))))).scalar() or 0
     closed = (await db.execute(select(Order).where(and_(Order.is_paper == False, Order.status == "CLOSED",   # noqa: E712
                                                         Order.closed_at >= lo, Order.closed_at < hi)))).scalars().all()
     opened = (await db.execute(select(Order).where(and_(Order.is_paper == False, Order.opened_at >= lo,       # noqa: E712
@@ -327,7 +338,7 @@ async def _bot_side(db, day: str) -> dict:
     fin = lambda o: f(o.funding_fee_usd) if getattr(o, 'funding_in_pnl', None) else 0.0   # 💸 (DECISION_LOG 539) funding inside pnl: backed out
     return dict(gross=round(sum(f(o.pnl) - fin(o) + f(o.entry_fee) + f(o.exit_fee) for o in closed), 4),
                 fees=round(sum(f(o.entry_fee) for o in opened) + sum(f(o.exit_fee) for o in closed), 4),
-                funding=round(sum(f(o.funding_fee_usd) for o in closed), 4), closed=len(closed), opened=len(opened))
+                funding=round(sum(f(o.funding_fee_usd) for o in closed), 4), closed=len(closed), opened=len(opened), paper=int(paper))
 
 
 class TrackRecorder:
@@ -409,7 +420,10 @@ class TrackRecorder:
                 sums = dict(realized=r.inc_realized or 0.0, commission=r.inc_commission or 0.0, funding=r.inc_funding or 0.0,
                             transfer=r.inc_transfer or 0.0, other=r.inc_other or 0.0, n=r.inc_rows or 0, n_est=r.inc_est_rows or 0)
                 snap = dict(at_ms=r.snap_at_ms, wallet=r.wallet_usdt, margin_balance=r.margin_balance_usdt) if r.wallet_usdt is not None else None
-                v = exchange_day_verdict(sums, bot, snap, None, None)
+                # 🧻 an existing PAPER stays PAPER (a paper reset deletes the rows that proved it) while the day has no live row;
+                # a CHECK becomes PAPER only on evidence (paper rows that day, no live row)
+                _paper = paper_day(bot) or (r.status == "PAPER" and not bot["closed"] and not bot["opened"])
+                v = exchange_day_verdict(sums, bot, snap, None, None, paper=_paper)
                 keep = [x for x in (r.note or "").split("; ") if x.startswith("wallet moved") or "not converted" in x]
                 notes = ([v["note"]] if v["note"] else []) + keep
                 new = dict(bot_gross=bot["gross"], bot_fees=bot["fees"], bot_funding=bot["funding"], bot_closed=bot["closed"],
@@ -481,7 +495,7 @@ class TrackRecorder:
         w_inc = usdt_income_between(rows, prev_snap["at_ms"], snap["at_ms"]) if (snap and prev_snap) else None
         async with self.sf() as db:
             bot = await _bot_side(db, day)
-            v = exchange_day_verdict(sums, bot, snap, prev_snap, w_inc)
+            v = exchange_day_verdict(sums, bot, snap, prev_snap, w_inc, paper=paper_day(bot))
             known = set((await db.execute(select(ExchangeIncome.key).where(ExchangeIncome.key.in_([income_key(r) for r in rows])))).scalars().all())
             for r in rows:
                 k = income_key(r)

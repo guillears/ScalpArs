@@ -610,6 +610,9 @@ def book_changed_refusal(available_at_sizing, available_now, investment, is_pape
 _JOURNAL_PAIR_CV: contextvars.ContextVar = contextvars.ContextVar("_journal_pair", default=None)
 _JOURNAL_CTX_CV: contextvars.ContextVar = contextvars.ContextVar("_journal_ctx", default=None)
 _OPEN_CTX_MOMENTUM_CV: contextvars.ContextVar = contextvars.ContextVar("_open_ctx_momentum", default=True)   # Block-Reason stamp scope, per task
+# 🔇 (Nov-19) True only while the scan evaluates the MOMENTUM ladder / engine chain for a pair (never in a sleeve hook, the spike branch,
+# the FRENZY task or any other path): the journal's BLOCK lines are muted inside it while BOTH momentum entry switches are off
+_JOURNAL_MOM_SCOPE_CV: contextvars.ContextVar = contextvars.ContextVar("_journal_mom_scope", default=False)
 
 # 🔒 Sep-30 book lock releases still pending in the current open (released by serialized_per_pair's wrapper on any exit)
 _BOOK_HOLDS: contextvars.ContextVar = contextvars.ContextVar("_BOOK_HOLDS", default=None)
@@ -3379,6 +3382,63 @@ def frenzy_read_order(sl_b, sl_a, follow, flags, by, skip, is_alpha, limit: int 
     return base + out_a
 
 
+def frenzy_list_events(prev, names, shortlist, flags, by, skip, chg: float, vmin: float, first: bool = False, follow=()) -> list:
+    """📋 (Nov-19, operator) FRENZY's followed list (its own read set: shortlist + followed coins) as TRANSITIONS for the decision journal —
+    one FRENZY_FOLLOW row when a pair enters it, one FRENZY_UNFOLLOW when it leaves, never a row per pass (so the file can answer "was the
+    coin followed when the WILLY_HT backtest traded it?"). `prev` = {pair: origin} of the previous pass (frenzy_list_origins: shortlist /
+    flagged / seed); `first` = the first pass of this process (every pair enters with reason "process start: …" — the restart baseline);
+    `follow` = this pass's follow candidates (flags + the one-time restart seed). Leave reason, first that applies: no ticker (delisted /
+    out of the universe) · blacklisted · non-ASCII symbol · restart seed (one pass — the DB seed is read on the first pass only) · read
+    limit (a followed coin crowded out by frenzy_read_order's limit) · 24 h volume floor · 24 h move below frenzy_shortlist_change_pct
+    (an episode that just ended says so) · cap displaced (still qualifies; a bigger mover took its place). Numbers = the pass's 24 h
+    ticker (change %, low→high range %, quote volume) + its 1-based shortlist rank. Pure."""
+    names = list(names or [])
+    now = set(names)
+    rank = {k: i + 1 for i, k in enumerate(shortlist or [])}
+    flags = flags or {}
+    skip = skip or set()
+    follow = set(follow or ())
+
+    def _nums(k):
+        p = (by or {}).get(k) or {}
+        return dict(fl_chg24_pct=p.get('change_24h'), fl_range24_pct=p.get('range_24h'), fl_vol24_usd=p.get('volume_24h'), fl_rank=rank.get(k))
+    out = []
+    for k in names:
+        if k in (prev or {}):
+            continue
+        why = ("shortlist (24 h move ≥ threshold)" if k in rank else "flagged episode" if k in flags
+               else "restart seed (open episode / recent trade)")
+        out.append(dict(pair=k, gate="FRENZY_FOLLOW", reason=(f"process start: {why}" if first else why), **_nums(k)))
+    for k, origin in sorted((prev or {}).items()):
+        if k in now:
+            continue
+        p = (by or {}).get(k)
+        if p is None:
+            why = "no 24 h ticker (delisted / out of the universe)"
+        elif str(k).upper() in skip:
+            why = "blacklisted"
+        elif not str(k).isascii():
+            why = "non-ASCII symbol (never shortlisted)"
+        elif origin == "seed":
+            why = "restart seed (one pass)"
+        elif k in follow:
+            why = "read limit (followed coins beyond the read cap)"
+        elif (p.get('volume_24h') or 0) < vmin:
+            why = "24 h volume below the floor"
+        elif max(abs(p.get('change_24h') or 0), p.get('range_24h') or 0) < chg:
+            why = ("episode ended · " if origin == "flagged" and k not in flags else "") + "24 h move below the shortlist threshold"
+        else:
+            why = "cap displaced (still qualifies; bigger movers took the places)"
+        out.append(dict(pair=k, gate="FRENZY_UNFOLLOW", reason=why, **_nums(k)))
+    return out
+
+
+def frenzy_list_origins(names, shortlist, flags) -> dict:
+    """📋 {pair: shortlist / flagged / seed} for the read set — a followed coin neither shortlisted nor flagged came from the restart seed. Pure."""
+    sl, flags = set(shortlist or ()), flags or {}
+    return {k: ("shortlist" if k in sl else "flagged" if k in flags else "seed") for k in names or ()}
+
+
 def frenzy_shortlist_parts(allp, skip, chg: float, vmin: float, markets, cap: int = 25, alpha_cap: int = 25) -> tuple:
     """🅰️ (DECISION_LOG 465) → (non-Alpha shortlist, Alpha shortlist, non-Alpha QUALIFYING count, Alpha qualifying count) — the counts
     are the pairs that pass the move / volume / skip rules BEFORE each list's cap, so a log can show when a cap cuts coins. Pure."""
@@ -3396,6 +3456,7 @@ class TradingEngine:
     _journal_pair = property(lambda self: _JOURNAL_PAIR_CV.get(), lambda self, v: _JOURNAL_PAIR_CV.set(v))
     _journal_ctx = property(lambda self: _JOURNAL_CTX_CV.get(), lambda self, v: _JOURNAL_CTX_CV.set(v))
     _open_ctx_momentum = property(lambda self: _OPEN_CTX_MOMENTUM_CV.get(), lambda self, v: _OPEN_CTX_MOMENTUM_CV.set(v))
+    _journal_mom_scope = property(lambda self: _JOURNAL_MOM_SCOPE_CV.get(), lambda self, v: _JOURNAL_MOM_SCOPE_CV.set(v))
     
     def __init__(self):
         # Strong refs to fire-and-forget tasks (funding stamps) — asyncio only keeps weak refs,
@@ -6062,7 +6123,49 @@ class TradingEngine:
             "stamp_gaps": list(self.__dict__.get('_stamp_gaps') or [])[:20],
             "stamp_gap_count": len(self.__dict__.get('_stamp_gaps') or []),
             "stamp_gaps_accepted": len(self.__dict__.get('_stamp_gaps_accepted') or []),   # ✅ (446) hidden, still in the log
+            # 🔇 (Nov-19) momentum-path journal lines NOT written while both momentum switches are off, per event (since start)
+            "journal_momentum_suppressed": dict(self.__dict__.get('_journal_suppressed') or {}),
         }
+
+    @staticmethod
+    def _momentum_entries_off(th=None) -> bool:
+        """⛔ (DECISION_LOG 578) True when BOTH core MOMENTUM entry switches are off AND the Bear-Run sleeve is off (its shorts come from the
+        momentum ladder and can trade with both switches off) — read live, so any of the three turned back on resumes journaling at once."""
+        th = th if th is not None else config.trading_config.thresholds
+        return (getattr(th, 'momentum_long_entries_enabled', True) is False
+                and getattr(th, 'momentum_short_entries_enabled', True) is False
+                and not getattr(th, 'bearrun_sleeve_enabled', False))
+
+    def _journal_momentum_muted(self, event: str, scoped: bool = True) -> bool:
+        """🔇 (Nov-19, operator) the momentum ladder's journal lines (BLOCK / FAILS / ADMIT) are noise while momentum cannot trade: 40k FAILS +
+        10k BLOCK rows in a 2-day export. True = do NOT write this line. `scoped` (BLOCK): only inside the momentum scope of the scan (never
+        a sleeve hook / the spike branch / FRENZY / an open working for another sleeve); FAILS(src MOMENTUM) / ADMIT sites are momentum by
+        construction. Only the journal FILE is muted — filter-block counters, Block Reason stamps and logs are untouched. Every muted line is
+        counted per event (`_journal_suppressed`, /api/engine/state) and logged once an hour. Never raises (an error = write the line)."""
+        try:
+            if scoped and not (self._journal_mom_scope and self._open_ctx_momentum):
+                return False
+            if not TradingEngine._momentum_entries_off():
+                return False
+            counts = self.__dict__.setdefault('_journal_suppressed', {})
+            counts[event] = counts.get(event, 0) + 1
+            _now = time.time()
+            if _now - self.__dict__.get('_journal_suppressed_logged_at', 0.0) >= 3600:
+                self._journal_suppressed_logged_at = _now
+                logger.info(f"[JOURNAL_MOMENTUM_MUTED] both momentum entry switches off — momentum-path journal lines not written "
+                            f"(since start): {dict(counts)}")
+            return True
+        except Exception:
+            return False
+
+    async def _outside_momentum_journal(self, coro):
+        """🔇 run a sleeve hook called from inside the momentum scan (flip / bounce / bull / Bear-Run) OUTSIDE the momentum journal scope —
+        its own BLOCK lines are always written."""
+        _tok = _JOURNAL_MOM_SCOPE_CV.set(False)
+        try:
+            return await coro
+        finally:
+            _JOURNAL_MOM_SCOPE_CV.reset(_tok)
 
     def _record_filter_block(self, filter_name: str, direction: str, had_room: bool = True) -> None:
         """Increment a counter for a pre-entry filter block.
@@ -6092,9 +6195,11 @@ class TradingEngine:
         (no clear directional preference).
         """
         # 📓 Sep-18 decision journal: gate + the pair under evaluation + its indicator snapshot (file-only, never raises)
+        # 🔇 (Nov-19) muted on the momentum path while both momentum switches are off — the counters below still count
         try:
-            _djournal.note('BLOCK', gate=filter_name, dir=direction, pair=getattr(self, '_journal_pair', None),
-                           room=bool(had_room), ctx=getattr(self, '_journal_ctx', None))
+            if not TradingEngine._journal_momentum_muted(self, 'BLOCK'):   # class call: duck-typed test engines still journal
+                _djournal.note('BLOCK', gate=filter_name, dir=direction, pair=getattr(self, '_journal_pair', None),
+                               room=bool(had_room), ctx=getattr(self, '_journal_ctx', None))
         except Exception:
             pass
         if not filter_name:
@@ -6186,6 +6291,8 @@ class TradingEngine:
                 if key in seen[1]:
                     return
                 seen[1].add(key)
+                if src == "MOMENTUM" and TradingEngine._journal_momentum_muted(self, 'FAILS', scoped=False):   # 🔇 (Nov-19) momentum off → no ladder FAILS
+                    return
                 # 🔭 Nov-4 (DECISION_LOG 463): a macro-vetoed set carries the scan's BTC RSI / ADX — the exact values the BTC gates read —
                 # so a reader can tell WHICH band of btc_rsi_adx_filter_long blocked it (a recomputation from klines matches only ~80 %)
                 why = (f"btc_rsi={_current_btc_rsi:.4f} btc_adx={_current_btc_adx:.4f}"   # 4 dp: never rounds across a band edge
@@ -10013,6 +10120,15 @@ class TradingEngine:
             names = frenzy_read_order(_sl_b, _sl_a, _follow, _frenzy_flags, by, skip,
                                       lambda k: binance_alpha_flag((((_mk_a.get((by.get(k) or {}).get('symbol')) or {}).get('info')) or {}).get('underlyingSubType')) is True)
             _fz_names = list(names)   # FRENZY's own read set — the FLATBASE-only extras below never enter any FRENZY / WIDE / LITE / WILLY judgement
+            try:   # 📋 (Nov-19) the followed list's transitions → journal (FRENZY_LIST: FRENZY_FOLLOW / FRENZY_UNFOLLOW), never a row per pass
+                _fl_prev = self.__dict__.get('_frenzy_follow_prev')
+                _fl_sl = list(_sl_b) + list(_sl_a)
+                for _ev in frenzy_list_events(_fl_prev or {}, _fz_names, _fl_sl, _frenzy_flags, by, skip, chg, vmin,
+                                              first=_fl_prev is None, follow=_follow):
+                    _djournal.note('FRENZY_LIST', **_ev)
+                self._frenzy_follow_prev = frenzy_list_origins(_fz_names, _fl_sl, _frenzy_flags)
+            except Exception as _fl_err:
+                logger.debug(f"[FRENZY_LIST] follow journal skipped: {_fl_err}")
             _fbs_only, _fbs_seen = set(), set()
             if _fbs:   # 🩳 (348) pairs with a TRACKING episode (its 96 h S4 window outlives the flag): ≤ FLATBASE_EXTRA_READS_MAX EXTRA reads per pass, rotating
                 _fbx_all = sorted(p for p in self._flatbase_pairs() if p in by and p.upper() not in skip and p not in names)
@@ -23131,6 +23247,15 @@ class TradingEngine:
         return updates
     
     async def scan_and_trade(self, db: AsyncSession) -> List[Dict]:
+        """Scan top pairs and open positions based on signals. 🔇 (Nov-19) the momentum journal scope (_JOURNAL_MOM_SCOPE_CV) is set by hand
+        inside the per-pair loops (their bodies `continue` from many places); this wrapper restores it whatever the scan raises."""
+        _tok = _JOURNAL_MOM_SCOPE_CV.set(False)
+        try:
+            return await self._scan_and_trade_body(db)
+        finally:
+            _JOURNAL_MOM_SCOPE_CV.reset(_tok)
+
+    async def _scan_and_trade_body(self, db: AsyncSession) -> List[Dict]:
         """Scan top pairs and open positions based on signals"""
         if not self.is_running:
             return []
@@ -23141,6 +23266,7 @@ class TradingEngine:
             return []
         
         logger.info(f"[SCAN] Starting scan_and_trade cycle...")
+        self._journal_mom_scope = False   # 🔇 (Nov-19) a scan that raised mid-loop never leaves the momentum journal scope on
         # Aug-24 LIVE M2 repair (GRASS incident): a live OPEN row with entry_price<=0 has NO working
         # realtime stop (the cache guard skips it). Repair from Binance's own position entryPrice each scan.
         if not self.is_paper_mode:
@@ -23725,33 +23851,37 @@ class TradingEngine:
                 _current_pair_holder['price'] = indicators.get('price')
                 _current_pair_holder['rsi_ob_flip'] = False  # Jun 16: reset live-flip marker per pair
 
-                signal, confidence = get_signal(
-                    ema5=indicators.get('ema5'),
-                    ema8=indicators.get('ema8'),
-                    ema13=indicators.get('ema13'),
-                    ema20=indicators.get('ema20'),
-                    rsi=indicators.get('rsi'),
-                    adx=indicators.get('adx'),
-                    volume=indicators.get('volume'),
-                    avg_volume=indicators.get('avg_volume'),
-                    price=indicators.get('price'),
-                    ema20_prev3=indicators.get('ema20_prev3'),
-                    ema50=indicators.get('ema50'),
-                    ema50_prev12=indicators.get('ema50_prev12'),
-                    rsi_prev3=indicators.get('rsi_prev3'),
-                    rsi_prev2=indicators.get('rsi_prev2'),   # 🧭 Sep-29 (deep review): the scan never passed rsi_prev2 — the RSI-momentum legs were unreachable here since c42d1c1
-                    ema5_prev1=indicators.get('ema5_prev1'),
-                    ema8_prev1=indicators.get('ema8_prev1'),
-                    ema5_prev2=indicators.get('ema5_prev2'),
-                    ema8_prev2=indicators.get('ema8_prev2'),
-                    ema13_prev1=indicators.get('ema13_prev1'),
-                    ema13_prev2=indicators.get('ema13_prev2'),
-                    adx_prev1=indicators.get('adx_prev1'),
-                    high_20=indicators.get('high_20'),
-                    low_20=indicators.get('low_20'),
-                    block_recorder=_signal_block_recorder,
-                    multi_block_recorder=_signal_multi_recorder,
-                )
+                self._journal_mom_scope = True    # 🔇 (Nov-19) the ladder's own BLOCK lines (via _signal_block_recorder) = the momentum path
+                try:
+                    signal, confidence = get_signal(
+                        ema5=indicators.get('ema5'),
+                        ema8=indicators.get('ema8'),
+                        ema13=indicators.get('ema13'),
+                        ema20=indicators.get('ema20'),
+                        rsi=indicators.get('rsi'),
+                        adx=indicators.get('adx'),
+                        volume=indicators.get('volume'),
+                        avg_volume=indicators.get('avg_volume'),
+                        price=indicators.get('price'),
+                        ema20_prev3=indicators.get('ema20_prev3'),
+                        ema50=indicators.get('ema50'),
+                        ema50_prev12=indicators.get('ema50_prev12'),
+                        rsi_prev3=indicators.get('rsi_prev3'),
+                        rsi_prev2=indicators.get('rsi_prev2'),   # 🧭 Sep-29 (deep review): the scan never passed rsi_prev2 — the RSI-momentum legs were unreachable here since c42d1c1
+                        ema5_prev1=indicators.get('ema5_prev1'),
+                        ema8_prev1=indicators.get('ema8_prev1'),
+                        ema5_prev2=indicators.get('ema5_prev2'),
+                        ema8_prev2=indicators.get('ema8_prev2'),
+                        ema13_prev1=indicators.get('ema13_prev1'),
+                        ema13_prev2=indicators.get('ema13_prev2'),
+                        adx_prev1=indicators.get('adx_prev1'),
+                        high_20=indicators.get('high_20'),
+                        low_20=indicators.get('low_20'),
+                        block_recorder=_signal_block_recorder,
+                        multi_block_recorder=_signal_multi_recorder,
+                    )
+                finally:
+                    self._journal_mom_scope = False   # an exception in the ladder never leaves the scope on
 
                 if signal not in ("LONG", "SHORT"):
                     _prs = self._last_pair_block_reason
@@ -23848,6 +23978,7 @@ class TradingEngine:
             _adx_surge_open_hit = False  # ⚡ Sep-28 BTC ADX-surge waiver: per-pair flag, reset FIRST (no leak between pairs)
             self._journal_pair = pair  # 📓 decision journal context for every gate below (reset per pair)
             self._open_ctx_momentum = True   # Sep-29: reason-stamp scope back to the momentum ladder for this pair
+            self._journal_mom_scope = True   # 🔇 (Nov-19) the momentum engine chain for this pair (sleeve hooks below run outside it)
             self._journal_ctx = None
             symbol = _cr['symbol']  # Sep-7 full-review C1: was leaked from Phase 1's last iteration — entry_funding_rate stamped the wrong pair
             ohlcv = _cr.get('ohlcv')  # Sep-7 full-review C1: same leak — spike chase/fade/bounce candle+volume legs judged the wrong pair
@@ -23868,10 +23999,10 @@ class TradingEngine:
             # open_position. Fail-silent so a flip bug can't break the scan.
             if _cr.get('rsi_ob_flip'):
                 try:
-                    await self._maybe_open_flip(
+                    await self._outside_momentum_journal(self._maybe_open_flip(   # 🔇 a flip's own journal lines are never muted
                         db, pair, "LONG", "PAIR_RSI_OB", indicators,
                         entry_fields=self._flip_entry_fields(indicators, flip_dir="SHORT",
-                                                             scan=self._flip_scan_ctx(locals())))
+                                                             scan=self._flip_scan_ctx(locals()))))
                 except Exception as _ob_flip_err:
                     logger.error(f"[FLIP_ENTRY] {pair}: PAIR_RSI_OB flip failed: {_ob_flip_err}")
 
@@ -24009,8 +24140,9 @@ class TradingEngine:
                     logger.info(f"[ADX_SURGE_OPEN] {pair}: LONG admitted through the BTC ADX floor — BTC ADX {btc_adx:.1f} "
                                 f"(prev {btc_adx_prev:.1f}, +{btc_adx - btc_adx_prev:.2f}) < {_btc_adx_lo}, slope {btc_ema20_slope_pct:+.4f}")
                     _adx_surge_open_hit = True
-                    _djournal.note('ADMIT', gate='ADX_SURGE', dir='LONG', pair=pair, via='BTC_ADX_GATE_LOW', btc_adx=btc_adx,
-                                   btc_adx_prev=btc_adx_prev, btc_slope=btc_ema20_slope_pct)
+                    if not self._journal_momentum_muted('ADMIT', scoped=False):   # 🔇 (Nov-19) momentum off → no ladder ADMIT lines
+                        _djournal.note('ADMIT', gate='ADX_SURGE', dir='LONG', pair=pair, via='BTC_ADX_GATE_LOW', btc_adx=btc_adx,
+                                       btc_adx_prev=btc_adx_prev, btc_slope=btc_ema20_slope_pct)
                 elif _btc_adx_too_low or _btc_adx_too_high:
                     _gate_subtype = "BTC_ADX_GATE_LOW" if _btc_adx_too_low else "BTC_ADX_GATE_HIGH"
                     _bound_label = f"<{_btc_adx_lo}" if _btc_adx_too_low else f">{_btc_adx_hi}"
@@ -24128,7 +24260,7 @@ class TradingEngine:
 
             # 🐻 gate 60: bear-run bypass eligibility for this pair-scan (read by the BTC gate sites below)
             try:
-                await self._bearrun_eligibility(db, pair, signal, indicators)
+                await self._outside_momentum_journal(self._bearrun_eligibility(db, pair, signal, indicators))
             except Exception as _bear_err:
                 self._bear_pair = None
                 logger.debug(f"[BEARRUN] {pair}: eligibility failed ({_bear_err}) — no bypass this scan")
@@ -24283,15 +24415,17 @@ class TradingEngine:
                                         f"{getattr(_th, 'long_cross_ob_r72_block_min', None)}% (breakout from a base) → probe size"
                                     )
                                     _cross_ob_open_hit = True
-                                    _djournal.note('ADMIT', gate='CROSS_OB_OPEN', dir='LONG', pair=pair, btc_rsi=btc_rsi, btc_adx=btc_adx, r72=_bullrun_monitor.get('r72'))
+                                    if not self._journal_momentum_muted('ADMIT', scoped=False):   # 🔇 (Nov-19)
+                                        _djournal.note('ADMIT', gate='CROSS_OB_OPEN', dir='LONG', pair=pair, btc_rsi=btc_rsi, btc_adx=btc_adx, r72=_bullrun_monitor.get('r72'))
                                 elif (_cf_out and signal == "LONG"
                                         and btc_adx_surge_waived(_th, "BTC_RSI_ADX_CROSS", _cf_rsi_min, btc_adx, btc_adx_prev, btc_ema20_slope_pct)):
                                     # ⚡ Sep-28 BTC ADX-surge waiver on the 50-55 / 55-60 bands (never the ≥70 band)
                                     logger.info(f"[ADX_SURGE_OPEN] {pair}: LONG admitted through the BTC RSI band [{_cf_rsi_min}-{_cf_rsi_max}) — "
                                                 f"BTC RSI {btc_rsi:.1f}, ADX {btc_adx:.1f} (prev {btc_adx_prev:.1f}), slope {btc_ema20_slope_pct:+.4f}")
                                     _adx_surge_open_hit = True
-                                    _djournal.note('ADMIT', gate='ADX_SURGE', dir='LONG', pair=pair, via='BTC_RSI_ADX_CROSS', btc_rsi=btc_rsi,
-                                                   btc_adx=btc_adx, btc_adx_prev=btc_adx_prev, btc_slope=btc_ema20_slope_pct)
+                                    if not self._journal_momentum_muted('ADMIT', scoped=False):   # 🔇 (Nov-19)
+                                        _djournal.note('ADMIT', gate='ADX_SURGE', dir='LONG', pair=pair, via='BTC_RSI_ADX_CROSS', btc_rsi=btc_rsi,
+                                                       btc_adx=btc_adx, btc_adx_prev=btc_adx_prev, btc_slope=btc_ema20_slope_pct)
                                 elif _cf_out and not self._bearrun_bypass(pair, "BTC_RSI_ADX_CROSS", _had_room):  # 🐻 gate 60 bypass (SHORT, monitor ON)
                                     logger.info(
                                         f"[BTC_RSI_ADX_CROSS] {pair}: {signal} blocked — "
@@ -24312,9 +24446,9 @@ class TradingEngine:
                                     # regime ∈ bounce_long_regimes. Phantom above keeps running as the proxy.
                                     if signal == "SHORT" and btc_rsi <= 35:
                                         try:
-                                            await self._maybe_open_bounce_long(
+                                            await self._outside_momentum_journal(self._maybe_open_bounce_long(
                                                 db, pair, indicators,
-                                                entry_fields=self._flip_entry_fields(indicators, flip_dir='LONG', scan=self._flip_scan_ctx(locals())))
+                                                entry_fields=self._flip_entry_fields(indicators, flip_dir='LONG', scan=self._flip_scan_ctx(locals()))))
                                         except Exception:
                                             pass
                                     # Jun 17 passthrough-long (un-block hunt): ALL long blocks (not just
@@ -24485,9 +24619,9 @@ class TradingEngine:
                                         # (H.BULL) the long should be UN-BLOCKED, not faded short (flip-shorts lose in H.BULL
                                         # anyway), and opening both would race for the one-per-pair slot.
                                         try:
-                                            _bl_o = await self._maybe_open_bull_long(
+                                            _bl_o = await self._outside_momentum_journal(self._maybe_open_bull_long(
                                                 db, pair, indicators,
-                                                entry_fields=self._flip_entry_fields(indicators, flip_dir='LONG', scan=self._flip_scan_ctx(locals())))
+                                                entry_fields=self._flip_entry_fields(indicators, flip_dir='LONG', scan=self._flip_scan_ctx(locals()))))
                                             _bl_opened = bool(_bl_o)
                                         except Exception:
                                             pass
@@ -24497,8 +24631,8 @@ class TradingEngine:
                                     # waiver lifted a BTC veto must not seed a live FAN flip SHORT — the flip sleeve keeps
                                     # exactly its pre-waiver population.
                                     if not _bl_opened and not _adx_surge_open_hit:
-                                        await self._maybe_open_flip(db, pair, signal, "FAN_RATIO_GATE", indicators,
-                                                                    entry_fields=_fan_ef)
+                                        await self._outside_momentum_journal(self._maybe_open_flip(db, pair, signal, "FAN_RATIO_GATE", indicators,
+                                                                                                   entry_fields=_fan_ef))
                                     signal = "NO_TRADE"
                                     break
                             except (ValueError, TypeError):
@@ -25166,6 +25300,7 @@ class TradingEngine:
             # Caps/sizing/tagging enforced inside open_position (max_open, last-2-slots guard).
             _spike_chase_hit = False
             _spike_fade_hit = False
+            self._journal_mom_scope = False   # 🔇 (Nov-19) the spike chase / fade / bounce branch is its own sleeve — its BLOCK lines always written
             _sc_lag_ndi, _sc_lag_gap = None, None   # 🪤 Sep-29 fade laggard readings (fade signals only)
             try:
                 _sc_th = config.trading_config.thresholds
@@ -25396,6 +25531,7 @@ class TradingEngine:
                 signal = None
                 _spike_bounce_hit = False
 
+            self._journal_mom_scope = not (_spike_chase_hit or _spike_fade_hit or _spike_bounce_hit)   # 🔇 back on the momentum path unless a spike sleeve took it
             if signal in ["LONG", "SHORT"] and confidence and confidence != "NO_TRADE":
                 # Aug-17 audit (Important-1): these two lines fire BEFORE the quality gate,
                 # the promo router, and every in-open_position rejection — reworded so log
@@ -25767,6 +25903,7 @@ class TradingEngine:
                         logger.warning(f"[OPEN_FAILED_UNATTRIBUTED] {pair} {signal} {confidence}: open_position returned None with NO filter block recorded — real failure class (rejection/precision/balance), investigate")
                         self._record_filter_block("OPEN_FAILED_MOMENTUM", signal if signal in ("LONG", "SHORT") else "ANY")
 
+        self._journal_mom_scope = False   # 🔇 (Nov-19) the momentum loop is over
         # ===== SPIKE SCANNER START (Jul 24 — full-universe SPIKE_CHASE feeder) =====
         # REVERT = spike_scanner_enabled=false (UI toggle): this is the ONLY call site, the
         # cycle is fail-silent, and the probe class has its own kill (spike_chase_probe_enabled).

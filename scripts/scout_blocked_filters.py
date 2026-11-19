@@ -9,8 +9,13 @@ RULER    entry = the refusal + 8 s at the decision price moved 0.10 % against th
          the sleeve's live exit read from trading_config.json each run:
            FRENZY_LITE / FRENZY_LITE_RETRY   TP frenzy_lite_tp_pct / stop frenzy_stop_pct / cap frenzy_max_hold_minutes
            FRENZY_LONG                       TP frenzy_tp_pct / stop frenzy_long_stop_pct (or frenzy_stop_pct) / the same cap
-           FRENZY_WILLY / FRENZY_WILLY_HT    the V2b exit: target from the spike high (the engine's frenzy_willy_high_target), stop
+           FRENZY_WILLY                      the V2b exit: target from the spike high (the engine's frenzy_willy_high_target), stop
                                              frenzy_willy_stop_pct, late TP, cap frenzy_willy_max_hold_minutes
+           FRENZY_WILLY_HT                   HT's OWN exit (DECISION_LOG 587; ht_exit(), the engine's services.frenzy pieces):
+                                             frenzy_willy_ht_high_target_enabled false → a FLAT target frenzy_willy_ht_tp_pct (or WILLY's
+                                             base TP when 0) — net % of the position, as the engine stores it (no spike high needed); true →
+                                             max(HT TP, the V2b spike-high target) as before · late TP only when frenzy_willy_ht_late_tp_enabled ·
+                                             cap frenzy_willy_ht_max_hold_minutes (0 / blank → WILLY's) · stop frenzy_willy_stop_pct
              (all FRENZY: the validated net-path walker scout_willy_exit_v2.walk_v2 on scout_frenzy_willy_exit.load_path — the walker the
               v2b shadow's parity check uses against live fills)
            SPIKE_FADE                        today's live fade exit from the ENGINE's pure pieces (fade_base_shadow_seed for the stop /
@@ -24,6 +29,9 @@ RULER    entry = the refusal + 8 s at the decision price moved 0.10 % against th
          A path not complete yet → PENDING (re-priced next run); no path ≥ 1 day after the horizon → NOT_EVALUABLE (listed, never counted).
          Final prices are cached (reports/SCOUT_BLOCKED_FILTERS.csv) WITH the exit era they were priced on: when a sleeve's exit changes,
          its stored prices are re-priced on the new exit (never two exit eras in one gate prefix — CLAUDE.md entry × exit ④).
+         🎲 (DL 587, re-based 2026-11-19) HT's era carries its own exit fields (HT_KEYS): every stored HT price of the +2 / V2b / 90-min exit
+         is re-priced on TP +5 / SL −4 / 24 h — blocked AND kept, so the DL 527 window stays ONE exit era; HT's gate state is namespaced
+         FRENZY_WILLY_HT@587 (GATE_KEY). A 24 h hold keeps an HT row PENDING up to a day (1m top-up pages ≤ 1,500 bars per call).
 EPISODES The engine records one refusal per (pair, sleeve, bar) — a setup that stays blocked for 2 h gives ~24 ML rows. Only one shadow per
          (pair, sleeve) is open at a time (live holds one position per pair): a refusal inside an earlier blocked shadow's life (its priced
          exit; still PENDING = open) is SHADOWED — listed, never counted.
@@ -114,8 +122,9 @@ def exit_of(sleeve, t):
     if sleeve == "FRENZY_LONG":
         return dict(tp=float(t.get("frenzy_tp_pct", 1.5) or 1.5), sl=float(t.get("frenzy_long_stop_pct") or st), cap=cap)
     if sleeve in ("FRENZY_WILLY", "FRENZY_WILLY_HT"):
-        return dict(sl=float(t.get("frenzy_willy_stop_pct", 4.0) or 4.0), cap=int(t.get("frenzy_willy_max_hold_minutes", 90) or 90),
-                    late=float(t.get("frenzy_willy_late_tp_minutes", 30) or 30), ltp=float(t.get("frenzy_willy_late_tp_pct", 0.25) or 0.25))
+        x = dict(sl=float(t.get("frenzy_willy_stop_pct", 4.0) or 4.0), cap=int(t.get("frenzy_willy_max_hold_minutes", 90) or 90),
+                 late=float(t.get("frenzy_willy_late_tp_minutes", 30) or 30), ltp=float(t.get("frenzy_willy_late_tp_pct", 0.25) or 0.25))
+        return ht_exit(t, x) if sleeve == "FRENZY_WILLY_HT" else x
     if sleeve == "SPIKE_FADE":
         return dict(sl=float(t.get("spike_fade_sl_pct", -1.5) or -1.5), cap=int(t.get("max_holding_time_minutes", 1200) or 1200))
     if sleeve in ML_SLEEVES:
@@ -125,6 +134,33 @@ def exit_of(sleeve, t):
         except Exception:
             return dict(cap=2 * 1440)
     return dict(cap=1200)
+
+
+HT_KEYS = ("frenzy_willy_ht_tp_pct", "frenzy_willy_ht_high_target_enabled", "frenzy_willy_ht_late_tp_enabled", "frenzy_willy_ht_max_hold_minutes")
+
+
+def ht_exit(t, x):
+    """🎲 (DECISION_LOG 587) FRENZY_WILLY_HT's OWN live exit from the engine's pure pieces (services.frenzy), on top of WILLY's dict x:
+    cap = frenzy_willy_ht_max_hold (None → WILLY's cap) · late / ltp = frenzy_willy_late_tp(th, HT) (None when HT's late TP is off) ·
+    flat = HT's spike-high target OFF → tp = the flat target the engine stores at entry (frenzy_willy_ht_tp, or WILLY's base TP when that is
+    0 / blank) — a NET % of the position (entry taker + maker exit fees in), the same unit as the V2b target. Engine unreadable / any error →
+    x + err (review: NEVER priced on WILLY's exit silently — price_frenzy returns NOT_EVALUABLE for the run, era_of never matches a stored
+    price, run() prints a ⚠ line naming the error)."""
+    try:
+        from types import SimpleNamespace
+        from services.frenzy import (frenzy_willy_ht_high_target_on, frenzy_willy_ht_max_hold, frenzy_willy_ht_tp, frenzy_willy_late_tp,
+                                     frenzy_willy_levels)
+        ns = SimpleNamespace(**{str(k): v for k, v in t.items()})
+        hm = frenzy_willy_ht_max_hold(ns)
+        late = frenzy_willy_late_tp(ns, "FRENZY_WILLY_HT")
+        out = dict(sl=x["sl"], cap=int(hm) if hm is not None else x["cap"], late=(float(late[0]) if late else None),
+                   ltp=(float(late[1]) if late else None), flat=not frenzy_willy_ht_high_target_on(ns))
+        if out["flat"]:
+            htp = frenzy_willy_ht_tp(ns)
+            out["tp"] = float(htp if htp is not None else frenzy_willy_levels(ns)[0])
+        return out
+    except Exception as e:
+        return dict(x, err=f"{type(e).__name__}: {str(e)[:80]}")
 
 
 # ─────────────────────────── load ───────────────────────────
@@ -255,17 +291,14 @@ def _frenzy_exit_ms(P, x, T=None):
     return te + x["cap"] * MIN
 
 
-def _ht_target(T):
-    """🎯 (537) the live frenzy_willy_ht_tp_pct applied to an HT target (services.frenzy.frenzy_willy_ht_target); unreadable → T."""
+def _ht_target(T, t=None):
+    """🎯 (537) the live frenzy_willy_ht_tp_pct applied to an HT target (services.frenzy.frenzy_willy_ht_target); t = the run's thresholds
+    (None → read trading_config.json); unreadable → T. Used only while HT's spike-high target is ON (DL 587: off → ht_exit's flat tp)."""
     try:
-        import json
         from types import SimpleNamespace
-        _r = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        _r in sys.path or sys.path.insert(0, _r)
         from services.frenzy import frenzy_willy_ht_tp, frenzy_willy_ht_target
-        with open(os.path.join(_r, "trading_config.json")) as fh:
-            th = SimpleNamespace(**json.load(fh).get("thresholds", {}))
-        v = frenzy_willy_ht_target(T, frenzy_willy_ht_tp(th))
+        th_ = SimpleNamespace(**{str(k): v for k, v in (th() if t is None else t).items()})
+        v = frenzy_willy_ht_target(T, frenzy_willy_ht_tp(th_))
         return T if v is None else v
     except Exception:
         return T
@@ -278,11 +311,16 @@ def price_frenzy(r, t, now_ms, path_cache, tcache, bud):
     import scout_frenzy_v2b_shadow as VB
     x = exit_of(r["sleeve"], t)
     end = int(r["te"]) + (x["cap"] + 1) * MIN
+    if x.get("err"):                                         # HT's own exit unreadable → unpriced this run (never WILLY's exit)
+        return None, f"ERR:HT_EXIT {x['err']}"[:90], "NOT_EVALUABLE", None
     P = FX.load_path(r["pair"], int(r["te"]), float(r["E"]), x["cap"], path_cache)
     if P is None or not len(P.get("t", [])):
         return None, "NO_PATH", _late_over(now_ms, end), None
     T = None
-    if r["sleeve"] in ("FRENZY_WILLY", "FRENZY_WILLY_HT"):
+    if r["sleeve"] == "FRENZY_WILLY_HT" and x.get("flat"):   # 🎲 (DECISION_LOG 587) HT's flat take profit — no spike high needed
+        T = float(x["tp"])
+        w = SV.walk_v2(P, T, sl=x["sl"], cap=x["cap"], late=x.get("late"), ztp=x.get("ltp"))
+    elif r["sleeve"] in ("FRENZY_WILLY", "FRENZY_WILLY_HT"):
         rr = dict(pair=r["pair"], opened_at=pd.Timestamp(r["te"], unit="ms").strftime("%Y-%m-%dT%H:%M:%S"),
                   entry_frenzy_spike_at=(pd.Timestamp(int(r["snap"]["entry_frenzy_spike_at"]), unit="ms").strftime("%Y-%m-%dT%H:%M:%S")
                                          if _f(r["snap"].get("entry_frenzy_spike_at")) else r["snap"].get("entry_frenzy_spike_at")),
@@ -292,7 +330,7 @@ def price_frenzy(r, t, now_ms, path_cache, tcache, bud):
         if T is None:
             return None, "NO_TARGET", _late_over(now_ms, end), None
         if r["sleeve"] == "FRENZY_WILLY_HT":   # 🎯 (DECISION_LOG 537, review) HT's own take profit: max(HT TP, the V2b target) — read live
-            T = _ht_target(T)
+            T = _ht_target(T, t)
         w = SV.walk_v2(P, T, sl=x["sl"], cap=x["cap"], late=x["late"], ztp=x["ltp"])
     else:
         w = SV.walk_v2(P, x["tp"], sl=x["sl"], cap=x["cap"], late=None, ztp=None)
@@ -401,6 +439,8 @@ def era_of(sleeve, t):
     if sleeve in FRENZY:                                                 # keys that shape the FRENZY / WILLY exit beyond exit_of (review)
         x = dict(x, **{k: t.get(k) for k in ("frenzy_lock_arm_pct", "frenzy_lite_c_enabled", "frenzy_willy_high_target_enabled",
                                               "frenzy_willy_high_k_pct", "frenzy_willy_high_tp_max_pct", "frenzy_willy_tp_pct")})
+    if sleeve == "FRENZY_WILLY_HT":                                      # 🎲 (587) HT's own exit fields: any change re-prices every stored HT price
+        x = dict(x, **{k: t.get(k) for k in HT_KEYS})
     x = dict(x, _ruler=(SLIP, LAT_MS, TAKER))                            # the slip / latency / fee ruler is part of the price
     if sleeve in SHORTS:
         x = dict(x, **{k: t.get(k) for k in ("hard_tp_enabled", "hard_tp_ladder_short", "hard_tp_pct", "runner_trail_short_arm_peak",
@@ -451,6 +491,7 @@ def _ticks_cover(pair, te, exit_ms):
 
 
 TOPUP_MAX_CALLS, TOPUP_WEIGHT_STOP, TOPUP_BUDGET_S, TOPUP_EMPTY_MAX = 20, 800, 60.0, 3
+SPAN_MAX = 1497                 # the shared WT.ensure_data 1m page asks span + 3 bars — Binance's klines limit is 1,500
 TOPUP_STATE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "reports", ".blocked_topup_attempts.json")
 _FETCH_NOTES = []
 
@@ -565,7 +606,8 @@ def price_all(B, now_ms, fetch=True, store_path=STORE):
     if fetch and len(fz):
         try:
             import scout_willy_timecap as WT
-            span = max(exit_of(sl, t)["cap"] for sl in set(fz.sleeve))       # the fade cap (1,200 min) is longer than FRENZY's
+            span = max(exit_of(sl, t)["cap"] for sl in set(fz.sleeve))       # HT's 24 h cap (DL 587) / the fade's 1,200 min
+            span = min(span, SPAN_MAX)       # one 1m page is ≤ 1,500 bars (WT fetches span + 3); _topup_1m pages the rest, one call per row per run
             _FETCH_NOTES.extend(WT.ensure_data(pd.DataFrame(dict(ts=pd.to_datetime(fz.te, unit="ms"), pair=fz.pair.values, te=fz.te.values, src=None)),
                                                span, now_ms, fetch=True, max_req=40) or [])
         except Exception as _ed:
@@ -696,6 +738,12 @@ LINES = {"FRENZY_WILLY": ("WILLY_GAP", "WILLY_FAILED_SPIKE"), "FRENZY_WILLY_HT":
 # (skipped trades still profitable) — weigh it against the drawdown it avoided; never an automatic revert
 
 
+# 🎲 (DECISION_LOG 587) gate-state namespace per exit era: HT's verdict is read on its TP +5 / SL −4 / 24 h exit only — a record frozen under the
+# plain key (the +2 / V2b era) is never read as it (none had frozen at the re-base, 2026-11-19). Every HT price, blocked AND kept, is re-priced
+# on today's exit (era_of carries HT_KEYS), so the whole DL 527 window is ONE exit era — the window keeps the DL 527 floor.
+GATE_KEY = {"FRENZY_WILLY_HT": "FRENZY_WILLY_HT@587"}
+
+
 def _load_state(path):
     """→ (state dict, usable path or None, warning or None). Valid JSON of the wrong shape counts as unreadable (never crashes the run)."""
     if not (path and os.path.exists(path)):
@@ -724,6 +772,10 @@ def run(now_ms=None, dec_paths=None, ord_paths=None, state_path=STATE, store_pat
     _FETCH_NOTES.clear()
     ALL = price_all(ALL, now_ms, fetch=fetch, store_path=store_path) if len(ALL) else ALL.assign(pct=[], why=[], status=[], exit_ms=[])
     isk = ALL.key.astype(str).str.startswith("K|")
+    _hx = exit_of("FRENZY_WILLY_HT", th())
+    if _hx.get("err"):
+        L += [f"⚠ FRENZY_WILLY_HT's own exit (DECISION_LOG 587) could not be built from services.frenzy ({_hx['err']}) — every unpriced HT "
+              "row is NOT_EVALUABLE this run (never priced on WILLY's exit); fix the import / config and re-run.", ""]
     B = shadow_episodes(ALL[~isk].reset_index(drop=True))
     K = ALL[isk].reset_index(drop=True)
     st, state_path, warn = _load_state(state_path)
@@ -745,7 +797,7 @@ def run(now_ms=None, dec_paths=None, ord_paths=None, state_path=STATE, store_pat
         for ln in lines:
             P = Bs[_has_line(Bs.lines, ln) & (Bs.status == "PRICED")] if len(Bs) else Bs
             S = P[P.sole.astype(bool)] if len(P) else P
-            key = f"{sl}:{ln}"
+            key = f"{GATE_KEY.get(sl, sl)}:{ln}"
             rec = st.get(key)
             if not rec:
                 state, det, _ = gate_read(Bs, Ks, ln) if len(Bs) else ("COLLECTING", "0 priced", None)

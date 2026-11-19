@@ -20022,9 +20022,14 @@
                     const _confTitle = _confBlocked ? `Raw setup rating ${_confSafe} — entry BLOCKED by ${(_brSafe && !_brSafe.startsWith('Awaiting')) ? _brSafe : 'a gate'}. Not tradeable by the bot right now.`
                         : (p.confidence === 'NO_TRADE' ? 'EMA stack present, but the setup meets no confidence level'
                         : (!p.confidence ? 'No aligned EMA stack — nothing to rate' : 'Setup rating — passed the scan gates (sizing / slot / pattern checks still apply at the open)'));
-                    let blockReasonHtml = p.block_reason
+                    // ⛔ (DL 578, operator 11-18) momentum long AND short entries OFF → its gate text is noise: grey "momentum OFF", the gate in the hover
+                    const _thMom = (window._cachedConfig && window._cachedConfig.thresholds) || {};
+                    const _momAllOff = _thMom.momentum_long_entries_enabled === false && _thMom.momentum_short_entries_enabled === false;
+                    let blockReasonHtml = _momAllOff
+                        ? `<span class="text-xs text-gray-500" title="${_escAttr('Momentum entries are OFF (DECISION_LOG 578)' + (p.block_reason ? ' — its gate would read: ' + p.block_reason : ''))}">momentum OFF</span>`
+                        : (p.block_reason
                         ? `<span class="text-xs text-yellow-400/80">${_brSafe}</span>`
-                        : '<span class="text-gray-500">-</span>';
+                        : '<span class="text-gray-500">-</span>');
                     // 🔥 Oct 2 FRENZY: a flagged pair shows the sleeve's own status here (the momentum gate moves to the hover), a badge by its
                     // name. The ATR cell keeps the table's own colouring (operator, Oct-2); the FRENZY ATR limit shows in the status text. Pinned by the server.
                     const _fz = p.frenzy || null;
@@ -20032,15 +20037,15 @@
                     if (_fz) {
                         const _fzTip = `FRENZY — spike ${surgeTime(_fz.spike_ms, _fz.spike, true, true)} (${_fz.hours != null ? _fz.hours.toFixed(1) : '?'} h ago) · ${_fz.gain_pct != null ? (_fz.gain_pct >= 0 ? '+' : '') + _fz.gain_pct.toFixed(0) : '?'}% since the spike · ${_fz.vs_vwap_pct != null ? (_fz.vs_vwap_pct >= 0 ? '+' : '') + _fz.vs_vwap_pct.toFixed(1) : '?'}% vs its average price · volume ${_fz.vol_mult != null ? _fz.vol_mult.toFixed(0) : '?'}× normal · ★ = long setup ON · ⏳ = flagged ≥ 32 h${p.frenzy_only ? ' · outside the Top list: followed by FRENZY only' : ''}`;
                         _fzBadge = `<span class="mr-1 cursor-help" title="${_escAttr(_fzTip)}">${frenzyMark(_fz)}</span>`;
-                        blockReasonHtml = `<span class="text-xs whitespace-nowrap ${(_fz.ready || _fz.lite_ready) ? 'text-emerald-400 font-semibold' : 'text-orange-300'}" title="${_escAttr(((_fzFull => _fzFull ? _fzFull + ' · ' : '')(frenzyFullReason(_fz))) + 'FRENZY status. Momentum gate: ' + (p.block_reason || (p.frenzy_only ? 'not in the Top list' : 'none')) + (_fz.last_fire ? ' · last setup: ' + frenzyLastFireLocal(_fz.last_fire) : ''))}">${_escAttr(frenzyStatusText(_fz))}</span>`;
+                        blockReasonHtml = `<span class="text-xs whitespace-nowrap ${(_fz.ready || _fz.lite_ready) ? 'text-emerald-400 font-semibold' : 'text-orange-300'}" title="${_escAttr(((_fzFull => _fzFull ? _fzFull + ' · ' : '')(frenzyFullReason(_fz))) + 'FRENZY status. ' + (_momAllOff ? '(momentum OFF) ' : '') + 'Momentum gate: ' + (p.block_reason || (p.frenzy_only ? 'not in the Top list' : 'none')) + (_fz.last_fire ? ' · last setup: ' + frenzyLastFireLocal(_fz.last_fire) : ''))}">${_escAttr(frenzyStatusText(_fz))}</span>`;
                     }
 
                     // 🧭 (operator 11-18) the per-sleeve status replaces the old FRENZY long-side text when any active sleeve has a line
                     if (p.sleeve_status && p.sleeve_status.length) {
-                        const _ssTitle = p.sleeve_status.map(sleeveStatusFull).join('\n') + (p.block_reason ? '\nMomentum gate: ' + p.block_reason : '');
+                        const _ssTitle = p.sleeve_status.map(sleeveStatusFull).join('\n') + (p.block_reason ? '\n' + (_momAllOff ? '(momentum OFF) ' : '') + 'Momentum gate: ' + p.block_reason : '');
                         blockReasonHtml = `<div class="text-xs leading-tight text-left" id="sleeve-status-${_escAttr(p.pair)}" title="${_escAttr(_ssTitle)}">`
                             + p.sleeve_status.map(l => `<div class="whitespace-nowrap ${l.state === 'open' ? 'text-emerald-400 font-semibold' : (l.rank === 1 ? 'text-amber-300' : (l.state === 'blocked' ? 'text-orange-300' : 'text-gray-400'))}">${_escAttr(sleeveStatusShort(l))}</div>`).join('')
-                            + ((_brSafe && !_brSafe.startsWith('Awaiting')) ? `<div class="whitespace-nowrap text-yellow-400/80" data-momentum-gate="1">momentum: ${_brSafe}</div>` : '')   // (review 7) the momentum gate stays visible, last
+                            + ((_brSafe && !_brSafe.startsWith('Awaiting') && !_momAllOff) ? `<div class="whitespace-nowrap text-yellow-400/80" data-momentum-gate="1">momentum: ${_brSafe}</div>` : '')   // (review 7) the momentum gate stays visible, last
                             + '</div>';
                     }
                     // 🔗 Oct-5 (operator): LINKUSDT row always shaded light grey, so it stands out in the list

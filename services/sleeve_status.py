@@ -10,6 +10,7 @@ A line = dict(sleeve, icon, state, rank, at_ms, reason, detail):
   state  open · signal (a decision < 1 h old that opened / passed) · blocked (a refused decision) · armed · waiting · tracking
   rank   0 open trade · 1 a signal or block in the last hour · 2 an older block · 3 waiting / tracking   (the panel shows rank order, then newest)
 """
+import re as _re
 import logging
 from typing import Dict, Iterable, List, Optional
 
@@ -63,6 +64,14 @@ def _decision_line(sleeve, last, now_ms, reason_map, rsi_cut=None) -> Optional[d
     if blk == "DIST_RSI1H":
         r = _f(last.get('rsi1h'))
         why = f"RSI1h {r:.0f} < {rsi_cut:g}" if (r is not None and rsi_cut) else "RSI1h below the cut"
+    elif blk == "DIST_NOT_VSW":   # (operator 11-18) show how close the candle came: "red candle 4.7× (needs 5×)"
+        m = _re.search(r"quote volume ([0-9]+(?:\.[0-9]+)?)× the 20-candle mean \(need ≥ ([0-9]+(?:\.[0-9]+)?)×", str(last.get('reason') or ''))
+        if not m:
+            why = reason_map.get(blk, "volume < 5×")
+        elif float(m.group(1)) > float(m.group(2)):   # the multiple clearly passed → the candle was not red (= at 2 dp is ambiguous → shown as a near-miss)
+            why = f"candle not red ({float(m.group(1)):.2f}×)"
+        else:
+            why = f"red candle {float(m.group(1)):.2f}× (needs {float(m.group(2)):g}×)"
     else:
         why = reason_map.get(blk) or (str(last.get('reason') or '')[:40] if st != "OPENED" else "")
     fresh = at is not None and now_ms - at <= HOUR_MS

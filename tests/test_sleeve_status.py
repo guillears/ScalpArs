@@ -171,3 +171,18 @@ def test_build_keeps_lines_on_an_error(monkeypatch):
     monkeypatch.setattr(S, "utc_prefix_ms", lambda *a: (_ for _ in ()).throw(RuntimeError("boom")))
     L = S.build("KUSDT", NOW, TH, open_es="EXHAUSTION_SHORT", flag=dict(willy_last="11-18 10:00 x refused: y"))
     assert [d["sleeve"] for d in L] == ["EXH"]                                                     # the open line survives the failure
+
+
+def test_dist_not_vsw_shows_the_multiple():
+    """(operator 11-18) a DIST near-miss shows how close the red candle came."""
+    from services import sleeve_status as SS
+    last = dict(at_ms=1_000, status="BLOCKED", block="DIST_NOT_VSW",
+                reason="exchange quote volume 4.72× the 20-candle mean (need ≥ 5×, red) — the pre-screen's proxy passed")
+    ln = SS._decision_line("DIST", last, 2_000, SS.DIST_REASON)
+    assert ln["reason"] == "red candle 4.72× (needs 5×)"
+    ln2 = SS._decision_line("DIST", dict(last, reason="garbled"), 2_000, SS.DIST_REASON)
+    assert ln2["reason"] == "volume < 5×"
+    ln3 = SS._decision_line("DIST", dict(last, reason="exchange quote volume 7.10× the 20-candle mean (need ≥ 5×, red)"), 2_000, SS.DIST_REASON)
+    assert ln3["reason"] == "candle not red (7.10×)"
+    ln4 = SS._decision_line("DIST", dict(last, reason="exchange quote volume 5.00× the 20-candle mean (need ≥ 5×, red)"), 2_000, SS.DIST_REASON)
+    assert ln4["reason"] == "red candle 5.00× (needs 5×)"   # rounded at 2 dp: a red candle just under the cut, not "not red"

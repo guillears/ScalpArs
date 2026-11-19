@@ -102,12 +102,9 @@ def test_not_evaluable_hook_and_registry(monkeypatch):
     monkeypatch.setattr(W._GK, "dl_deploy_ms", lambda *a, **k: None)
     assert "NOT EVALUABLE" in "\n".join(W.run(now_ms=0, paths=[], state_path=None))
     src = open(os.path.join(ROOT, "scripts", "opportunity_scout.py")).read()
-    j = src.index("import scout_willy_adx_watch as _wax")
-    assert "_wax.run(now_ms)" in src[j:j + 200] and "except Exception as _wax_e" in src[j:j + 400]
+    assert "import scout_willy_adx_watch" not in src and "DECISION_LOG 590" in src   # ⛔ RETIRED 2026-11-19 (DL 590): unhooked
     import observe_registry as OR
-    era = OR.BOOKED["scout_willy_adx_watch.py"]
-    assert era["frenzy_willy_high_target_enabled"] is True and era["frenzy_willy_stop_pct"] == 4.0
-    assert OR.diffs(era, OR.thresholds()) == []                              # pinned to today's V2b exit (a change → STALE)
+    assert "scout_willy_adx_watch.py" in OR.NONE and "scout_willy_adx_watch.py" not in OR.BOOKED
 
 
 def test_operator_closed_forward_floor_dedup_and_relative_retire(tmp_path):

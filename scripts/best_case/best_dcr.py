@@ -472,7 +472,7 @@ RESIZES = (("C1 5 % cap: RETRY + Flatbase up, LITE down", dict(CAP5)),
 # 📏 (DECISION_LOG 514, operator 11-09: "now that willy is positive we should add the new sizing of willy to the best case" + "and willy Ht too")
 # WILLY / WILLY_HT on the same DL 502 5 % cap (one −frenzy_willy_stop_pct stop = 5 % of the account at today's size). They qualify only
 # under their best line (kept fills above breakeven WR: WILLY 21 / 21 winners master + current batch, HT 5 / 6) — in-sample; both lines NOT
-# ABOVE LUCK, so the step is off in LUCK-CHECKED and waits for WILLY_ADX55 + WILLY_FAILED_SPIKE (WILLY) / WILLY_FAILED_SPIKE (HT) in CLEAN ONLY.
+# ABOVE LUCK, so the step is off in LUCK-CHECKED and waits for WILLY_FAILED_SPIKE (WILLY and HT) in CLEAN ONLY (WILLY_ADX55 retired, DL 590).
 _WSTOP = float(_TH.get("frenzy_willy_stop_pct", 4.0) or 4.0)
 WCAP5 = {sl: round(OS.cap_factor(X[sl], _WSTOP), 2) for sl in ("FRENZY_WILLY", "FRENZY_WILLY_HT") if sl in X and X[sl] > 0}
 if any(not (v == v) for v in WCAP5.values()):   # (DL 514 review) a bad stop / size → NaN would blank C5 silently
@@ -505,7 +505,7 @@ for nm, size in RESIZES:
 # DL 317 stop read is not in this view → never on here). Grows toward the full number as lines pass; equals today while none has.
 import confidence as CF
 RESIZE_GATE = {"FRENZY_LITE_RETRY": "RETRY_BTC1H", "FLATBASE_SHORT": "FB_CONFIRM", "MOMENTUM_LONG": "ML_MKT_HOT",
-               "FRENZY_WILLY": ("WILLY_ADX55", "WILLY_FAILED_SPIKE"), "FRENZY_WILLY_HT": ("WILLY_FAILED_SPIKE",)}   # a step UP waits for its line(s) — a tuple = every line must PASS (DL 514) · a step DOWN (risk cap) always counts
+               "FRENZY_WILLY": ("WILLY_FAILED_SPIKE",), "FRENZY_WILLY_HT": ("WILLY_FAILED_SPIKE",)}   # a step UP waits for its line(s) — a tuple = every line must PASS (DL 514) · a step DOWN (risk cap) always counts
 _best = [(r[1], r[6]) for r in rows if r[0] == "B" and r[6]]
 CALLS = CF.line_calls([(sl, ln) for sl, combo in _best for ln in combo.split(" + ")])
 CS = ({}, set(), {})

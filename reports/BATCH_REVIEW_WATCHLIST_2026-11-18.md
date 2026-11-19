@@ -101,9 +101,7 @@ Run the scouts through `scripts/opportunity_scout.py` (or each script directly).
 |---|---|---|---|---|
 | H1 | DL 580 lines (re-based to the DL 587 exit): CROWDED_LONGS · NEAR_SPIKE_HIGH · REANCHORED | zone N ≥ 15, ≥ 8 days | RETIRED / FILTER CANDIDATE / KEEP | `scout_willy_ht_lines.py` |
 
-**⚠ Stale lines, to re-base or retire at the review (rule ④, DL 406):**
-- WILLY_ADX55 (DL 412) and WILLY_GAP (DL 414) are pinned to the old V2b exit keys. The HT exit changed in DL 587, so these lines read ⚠ STALE for HT.
-- Decide: retire them, or re-register them on the +5 / −4 / 24 h exit.
+**✅ Stale lines retired 2026-11-19 (DL 590, operator):** WILLY_ADX55 (DL 412) unhooked; WILLY_GAP's watch scout was already retired (DL 530) and its filter applies to plain WILLY only (off). Re-register on the +5 / −4 / 24 h exit only if wanted.
 
 **Before the first DL 580 verdict:** verify the long/short ratio timestamp alignment (fill − 1 min cut) on the live API.
 

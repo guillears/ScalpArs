@@ -169,11 +169,7 @@ BOOKED = {   # booked P&L — `era` = drops fills by WILLY exit era (registered 
     "scout_willy_failed_spike_watch.py": {"frenzy_willy_high_target_enabled": True, "frenzy_willy_stop_pct": 4.0, "frenzy_willy_high_k_pct": 1.0,
                                   "frenzy_willy_high_tp_max_pct": 8.0, "frenzy_willy_max_hold_minutes": 90,
                                   "frenzy_willy_late_tp_minutes": 30.0, "frenzy_willy_late_tp_pct": 0.25},
-    # (414) WILLY_GAP judges booked WR against the same frozen V2b breakeven (69.0 %) → the same pins
-    # (412) WILLY_ADX55 judges booked WR against the frozen V2b breakeven (69.0 %) → pinned to the V2b exit keys
-    "scout_willy_adx_watch.py": {"frenzy_willy_high_target_enabled": True, "frenzy_willy_stop_pct": 4.0, "frenzy_willy_high_k_pct": 1.0,
-                                 "frenzy_willy_high_tp_max_pct": 8.0, "frenzy_willy_max_hold_minutes": 90,
-                                 "frenzy_willy_late_tp_minutes": 30.0, "frenzy_willy_late_tp_pct": 0.25}, "scout_ml_turn.py": None, "scout_rebound.py": None, "scout_willy_hold_off.py": None,
+    "scout_ml_turn.py": None, "scout_rebound.py": None, "scout_willy_hold_off.py": None,
     "scout_willy_ht.py": _OLD_WILLY, "scout_willy_nomiss.py": _OLD_WILLY,
     # (496) FRENZY max-duration read: fills that closed before X keep their BOOKED % → the read is tied to today's FRENZY / WILLY TP + stop
     # (caps are re-read live every run; LITE / RETRY are split at the DL 420 revert) → a TP / stop change makes it STALE
@@ -198,7 +194,10 @@ NONE = {"scout_features.py", "scout_features_parity.py", "scout_gatekit.py", "sc
         "scout_fade_late_weak.py",
         # ⛔ (DECISION_LOG 587) RETIRED 2026-11-18 — unhooked: the DL 537 TP2 revert gate + RUN15 + the DL 546 / 548 HT stop lines priced the
         # +2 HT exit; HT now runs TP +5 / SL −4 (a new exit era — the operator re-registers a line on it if wanted)
-        "scout_willy_ht_exit_lines.py"}
+        "scout_willy_ht_exit_lines.py",
+        # ⛔ (DECISION_LOG 590) RETIRED 2026-11-19 (operator) — unhooked: WILLY_ADX55 was pinned to the V2b exit; plain WILLY is off and HT
+        # runs TP +5 / SL −4. (WILLY_GAP's watch scout was already retired by DL 530; its filter only applies to plain WILLY, which is off.)
+        "scout_willy_adx_watch.py"}
 
 
 def thresholds(path=CONFIG):

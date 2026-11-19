@@ -1408,14 +1408,7 @@ def run():
     except Exception as _mw4_e:
         log(f"ML_W4 line failed: {_mw4_e}")
         _rg_sec += ["## 👁 ML_W4", "", f"Unavailable this run ({str(_mw4_e)[:120]}).", ""]
-    try:                                               # 👁 Oct-29 WILLY_ADX55 watch line — WILLY / WILLY_HT entries on a coin with ADX > 55 (DECISION_LOG 412; frozen expectancy bar per sleeve, OBSERVE only; orders exports only, no network; never breaks the run)
-        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
-            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        import scout_willy_adx_watch as _wax
-        _rg_sec += _wax.run(now_ms)
-    except Exception as _wax_e:
-        log(f"WILLY_ADX55 line failed: {_wax_e}")
-        _rg_sec += ["## 👁 WILLY_ADX55", "", f"Unavailable this run ({str(_wax_e)[:120]}).", ""]
+    # ⛔ (DECISION_LOG 590) WILLY_ADX55 RETIRED 2026-11-19 (operator): pinned to the V2b exit — plain WILLY is off and HT runs TP +5 / SL −4 (DL 587), so it read ⚠ STALE
     # ⛔ scout_lite_c_revert_watch RETIRED 2026-11-11 (DECISION_LOG 530): LITE C revert watch — DECIDED REVERT CONFIRMED
     try:                                               # 👁 Nov-1 SURGE_WL — BTC RSI ≥ 78 · pair volume < $150M, frozen at zone N ≥ 15 on ≥ 8 windows (DECISION_LOG 427; forward)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:

@@ -366,7 +366,7 @@ def main(exp, review=None):
         if _rf3:
             L += ["", "C5 (DECISION_LOG 514, operator 11-09): " + _rf3[1] + ". WILLY / WILLY_HT step up on the same 5 % cap only under their best "
                   "line: at registration (export 11-09) the kept fills were above breakeven (WILLY 21 / 21 winners master + current batch — no loss seen, so its breakeven cannot even be measured; HT 5 / 6 on 6 fills, current batch only, below the N < 10 noise floor) — in-sample, the row uses the factor AFTER each fill's coin cap (the caps already bind at today's balance), and both lines were "
-                  "NOT ABOVE LUCK; the step is off in LUCK-CHECKED while a line is NOT ABOVE LUCK and waits for WILLY_ADX55 + WILLY_FAILED_SPIKE (WILLY) / WILLY_FAILED_SPIKE "
+                  "NOT ABOVE LUCK; the step is off in LUCK-CHECKED while a line is NOT ABOVE LUCK and waits for WILLY_FAILED_SPIKE (WILLY; WILLY_ADX55 retired, DL 590) / WILLY_FAILED_SPIKE "
                   "(HT) to PASS in CLEAN ONLY. WILLY and HT can be open together → two stops ≈ 10 % of the account in one spike."]
         L += _settings_block(_rf, _rf2, _rf3)
     L += ["", f"Clean-only lines: {npass} of {len(tc['calls'].split(' · '))} passed — {tc['calls']} "
@@ -387,7 +387,7 @@ def main(exp, review=None):
     L += ["", "FAN flips row: its best line is the TP +2 exit; table ② shows the totals with and without it."]
     if tline.strip():   # (DECISION_LOG 485, operator: "add this tables to the best case view, so its only one call")
         L += ["", "## ④ Checkpoint timeline", "", tline.strip()]
-    L += ["", "Caveats: in-sample (30–50 % haircut minimum) · a step UP waits for its line's frozen read (RETRY ← RETRY_BTC1H, Flatbase ← the FB_CONFIRM revert gate, Momentum Long ← ML_MKT_HOT, WILLY ← WILLY_ADX55 + WILLY_FAILED_SPIKE, WILLY_HT ← WILLY_FAILED_SPIKE); "
+    L += ["", "Caveats: in-sample (30–50 % haircut minimum) · a step UP waits for its line's frozen read (RETRY ← RETRY_BTC1H, Flatbase ← the FB_CONFIRM revert gate, Momentum Long ← ML_MKT_HOT, WILLY ← WILLY_FAILED_SPIKE (ADX55 retired, DL 590), WILLY_HT ← WILLY_FAILED_SPIKE); "
           "the LITE step DOWN is a risk cap (operator call at the review); FRENZY_LONG is never sized up while below breakeven (DL 503); WILLY / HT (C5) wait for their lines (DL 514) · "
           "the 5 % factors use the price stop (real stops book a little worse) and assume no Binance bracket / notional cap — RETRY at 7× would "
           "meet the caps that already cut ≈ 35 % of LITE fills, so its step-up is an upper bound · both blocks use today's intended sizes (one size, DL 503), not the sizes traded — ① 'As traded' = the account path.", ""]

@@ -165,6 +165,30 @@ def frenzy_adx_delta(bars) -> Optional[float]:
         return None
 
 
+PRE_VOL_BARS_RECENT, PRE_VOL_BARS_BASE = 15, 60   # 📊 (DECISION_LOG 596) pre_vol15_vs60 windows (reports/WILLY_HT_WL594_2026-11-19.md)
+
+
+def pre_vol15_vs60(rows_1m, fill_ms):
+    """📊 (DECISION_LOG 596, OBSERVE) mean 1m BASE volume of the 15 bars CLOSED before the fill minute ÷ the mean of the 60 bars before those
+    (the WL594 study's pre_vol15_vs60: pre[-15:].mean() ÷ pre[-75:-15].mean(), bars opened before the fill minute). rows_1m = raw / ccxt
+    1m klines [open_ms, o, h, l, c, v, …]. → float, or None when fewer than 75 such bars / unreadable / the base mean is 0 (the study divides by max(base, 1e-12) → a huge value; live leaves a dead-volume hour UNSCORED). Pure, never raises."""
+    try:
+        m0 = (int(fill_ms) // 60_000) * 60_000
+        pre = sorted((r for r in (rows_1m or []) if int(r[0]) < m0), key=lambda r: int(r[0]))
+        n = PRE_VOL_BARS_RECENT + PRE_VOL_BARS_BASE
+        if len(pre) < n:
+            return None
+        v = [float(r[5]) for r in pre[-n:]]
+        if any(x != x or x < 0 for x in v):
+            return None
+        base = sum(v[:PRE_VOL_BARS_BASE]) / PRE_VOL_BARS_BASE
+        if not base > 0:
+            return None
+        return round((sum(v[PRE_VOL_BARS_BASE:]) / PRE_VOL_BARS_RECENT) / base, 4)
+    except (TypeError, ValueError, IndexError):
+        return None
+
+
 def frenzy_vol_trend(bars) -> Optional[float]:
     """🔬 Oct-3 OBSERVE-ONLY stamp (DECISION_LOG 193): quote volume (≈ base volume × close — ccxt bars carry no quote column; the backtest
     used Binance's own quote volume) of the last 12 CLOSED 5m bars ÷ the 12 before them (> 1 = volume rising,

@@ -29,6 +29,8 @@ NOT_A_MOMENTUM_STAMP = {
     "entry_exh_rsi_prev", "entry_exh_rsi", "entry_exh_vol_decay", "entry_exh_spot_share_chg", "entry_exh_atr_pct", "entry_exh_tp_pct",
     "entry_exh_sl_pct", "entry_exh_decision_price", "entry_exh_model_slip_pct", "entry_exh_q5_usd", "entry_exh_oi_usd", "entry_exh_oi_vol",   # 🪫 (DECISION_LOG 578) EXHAUSTION_SHORT stamps (sleeve-only)
     "entry_exh_universe",   # 🌐 (585)
+    "entry_exh_ret_1h_pct",   # 📉 (596) observe
+    "entry_frenzy_pre_vol15_vs60",   # 📊 (596) FRENZY post-fill backfill (observe)
     "entry_exh_spot_symbol",   # 🔤 (589)
     "entry_dist_bar_ret_pct", "entry_dist_vsw_mult", "entry_dist_pos_ratio", "entry_dist_pos_chg_4h", "entry_dist_atr_pct", "entry_dist_tp_pct",
     "entry_dist_sl_pct", "entry_dist_decision_price", "entry_dist_q5_usd", "entry_dist_model_slip_pct",

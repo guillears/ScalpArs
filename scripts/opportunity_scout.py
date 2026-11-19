@@ -1538,7 +1538,7 @@ def run():
     except Exception as _wvw_e:
         log(f"WILLY_FAILED_SPIKE line failed: {_wvw_e}")
         _rg_sec += ["## 👁 WILLY_FAILED_SPIKE", "", f"Unavailable this run ({str(_wvw_e)[:120]}).", ""]
-    try:                                               # 👁 Nov-18 WILLY / HT lines — CROWDED_LONGS · NEAR_SPIKE_HIGH · REANCHORED (DECISION_LOG 580; forward)
+    try:                                               # 👁 Nov-18 WILLY / HT lines — CROWDED_LONGS · NEAR_SPIKE_HIGH · REANCHORED (DECISION_LOG 580) + HT PRE_VOL_SURGE · BTC5M_UP (596; forward)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         import scout_willy_ht_lines as _whl
@@ -1546,6 +1546,14 @@ def run():
     except Exception as _whl_e:
         log(f"WILLY / HT lines failed: {_whl_e}")
         _rg_sec += ["## 👁 WILLY / HT lines", "", f"Unavailable this run ({str(_whl_e)[:120]}).", ""]
+    try:                                               # 📉 Nov-19 EXH_AFTER_DROP watch line (DECISION_LOG 596; forward, booked)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_exh_after_drop as _ead
+        _rg_sec += _ead.run(now_ms)
+    except Exception as _ead_e:
+        log(f"EXH_AFTER_DROP line failed: {_ead_e}")
+        _rg_sec += ["## 📉 EXH_AFTER_DROP", "", f"Unavailable this run ({str(_ead_e)[:120]}).", ""]
     try:                                               # 🎯 Nov-18 EXHAUSTION exit override revert gate (DECISION_LOG 579; paired re-pricing)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

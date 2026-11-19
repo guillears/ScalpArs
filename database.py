@@ -332,7 +332,8 @@ async def init_db():
                         connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_fb_col} FLOAT"))
                 for _ex_col in ('entry_exh_rsi_prev', 'entry_exh_rsi', 'entry_exh_vol_decay', 'entry_exh_spot_share_chg', 'entry_exh_atr_pct',
                                 'entry_exh_tp_pct', 'entry_exh_sl_pct', 'entry_exh_decision_price', 'entry_exh_model_slip_pct',
-                                'entry_exh_q5_usd', 'entry_exh_oi_usd', 'entry_exh_oi_vol'):   # 🪫 (DECISION_LOG 578) EXHAUSTION_SHORT stamps (its exit reads tp / sl) · 🧯 (582) OI
+                                'entry_exh_q5_usd', 'entry_exh_oi_usd', 'entry_exh_oi_vol', 'entry_exh_ret_1h_pct',
+                                'entry_frenzy_pre_vol15_vs60'):   # 🪫 (DECISION_LOG 578) EXHAUSTION_SHORT stamps (its exit reads tp / sl) · 🧯 (582) OI · 📉📊 (596) observe stamps
                     if _ex_col not in columns:
                         connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_ex_col} FLOAT"))
                 if 'entry_exh_universe' not in columns:   # 🌐 (DECISION_LOG 585) the episode universe (FRENZY · WIDE)
@@ -911,7 +912,7 @@ async def init_db():
                     connection.execute(text("ALTER TABLE monitor_periods ADD COLUMN blocked_age INTEGER DEFAULT 0"))
             if 'exhaustion_signals' in inspector.get_table_names():   # 🧯 (DECISION_LOG 582) EXH_SSC_OIVOL inputs + the shadow-pricing fields
                 _exs_cols = [c['name'] for c in inspector.get_columns('exhaustion_signals')]
-                for _exs_c in ('oi_usd', 'oi_vol', 'model_slip_pct', 'shadow_notional_usd'):
+                for _exs_c in ('oi_usd', 'oi_vol', 'model_slip_pct', 'shadow_notional_usd', 'ret_1h_pct'):   # 📉 (596) ret_1h_pct
                     if _exs_c not in _exs_cols:
                         connection.execute(text(f"ALTER TABLE exhaustion_signals ADD COLUMN {_exs_c} FLOAT"))
             _cap584 = (('cap_action', 'VARCHAR(8)'), ('cap_mode', 'VARCHAR(8)'), ('cap_planned_usd', 'FLOAT'), ('cap_entry_side_usd', 'FLOAT'),

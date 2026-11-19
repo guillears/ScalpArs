@@ -348,10 +348,10 @@ def spot_share_chg(spot_rows, T, p1, p24) -> Tuple[Optional[float], int, int]:
 
 def features(rows_qv, spot_rows, T, on_ms, has_spot, th) -> Dict:
     """every input of the rule at the signal close T from RAW perp 5m klines (quote volume at index 7) and RAW spot 15m klines.
-    → dict(ok, why, rsi_prev, rsi, cross, close, atr, atr_pct, vol24, vol_decay, spot_share_chg, spot_n1, spot_n24, q5, has_spot).
+    → dict(ok, why, rsi_prev, rsi, cross, close, atr, atr_pct, vol24, vol_decay, spot_share_chg, spot_n1, spot_n24, q5, has_spot, ret_1h).
     ok False + why = the window cannot score the rule (fail-closed). spot_share_chg None when has_spot is False / unscorable. Never raises."""
     out = dict(ok=False, why="no data", rsi_prev=None, rsi=None, cross=False, close=None, atr=None, atr_pct=None, vol24=None, vol_decay=None,
-               spot_share_chg=None, spot_n1=0, spot_n24=0, q5=None, has_spot=bool(has_spot))
+               spot_share_chg=None, spot_n1=0, spot_n24=0, q5=None, has_spot=bool(has_spot), ret_1h=None)
     try:
         T = int(T)
         p = exhaustion_params(th)
@@ -375,6 +375,9 @@ def features(rows_qv, spot_rows, T, on_ms, has_spot, th) -> Dict:
         r = rsi(c15, p['rsi_period'])
         a = atr(h15, l15, c15, 14)
         out.update(rsi_prev=r[k - 1], rsi=r[k], close=c[j], atr=a[k])
+        # 📉 (DECISION_LOG 596, OBSERVE) the coin's move over the hour before the decision: the signal close vs the 5m close 12 bars earlier
+        # (= the close at T − 60 min; set before the later data checks, so a journal row that failed one still carries it) — the EXH_AFTER_DROP watch line's input (= the ret_1h of reports/EXH_BADDAY_2026-11-18_PREREG.md, same two 5m closes)
+        out['ret_1h'] = ((c[j] / c[j - 12] - 1.0) * 100.0) if (j >= 12 and c[j - 12] and c[j - 12] > 0) else None
         out['cross'] = bool(r[k - 1] is not None and r[k] is not None and r[k - 1] > p['rsi_level'] and r[k] <= p['rsi_level'])
         if a[k] is None or not a[k] > 0:
             out['why'] = "ATR undefined"

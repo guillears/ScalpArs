@@ -402,6 +402,7 @@ class Order(Base):
     entry_exh_oi_usd = Column(Float, nullable=True)                # 🧯 (DECISION_LOG 582) open interest $ at the decision (openInterestHist sumOpenInterestValue, the row with T − 30 min ≤ timestamp ≤ T − 5 min)
     entry_exh_oi_vol = Column(Float, nullable=True)                # 🧯 (582) entry_exh_oi_usd ÷ the rule's 24 h quote volume — EXH_SSC_OIVOL blocks > 0.128 when spot_share_chg > −0.0366
     entry_exh_spot_symbol = Column(String(30), nullable=True)     # 🔤 (DECISION_LOG 589) the spot symbol the spot share was read on (1000PEPEUSDT → PEPEUSDT; = pair when spot lists it as is)
+    entry_exh_ret_1h_pct = Column(Float, nullable=True)            # 📉 (DECISION_LOG 596, observe) the signal close vs the 5m close 1 h earlier, % — EXH_AFTER_DROP zone −10 … −5
     entry_exh_universe = Column(String(8), nullable=True)          # 🌐 (DECISION_LOG 585) the episode's universe: FRENZY (the FRENZY flag, 20× / $20M) · WIDE (15× / $5M)
     # 📉 (DECISION_LOG 586) DISTRIBUTION_SHORT entry stamps (services/distribution.py) — the episode rides entry_frenzy_spike_at / entry_frenzy_hours,
     # the 24 h volume entry_pair_volume_24h_usd, the funding entry_funding_rate
@@ -711,6 +712,7 @@ class Order(Base):
     entry_frenzy_willy_spike_high = Column(Float, nullable=True)
     # 🧱 (DECISION_LOG 594) WILLY / WILLY_HT fills: (H − the DECISION price) ÷ H × 100 — the dip below the spike high the WILLY_HT_NEAR_HIGH
     # filter judged (blocks HT when < frenzy_willy_ht_min_dip_pct). The fill-price dip = (H − entry_price) ÷ H × 100 (the scout's measure).
+    entry_frenzy_pre_vol15_vs60 = Column(Float, nullable=True)     # 📊 (DECISION_LOG 596, observe) mean 1m base volume of the 15 bars before the fill minute ÷ the 60 before those (post-fill backfill, FRENZY_*)
     entry_frenzy_willy_dip_pct = Column(Float, nullable=True)
     frenzy_willy_tp_target_pct = Column(Float, nullable=True)
     willy_floor_armed_at = Column(DateTime, nullable=True)
@@ -1569,6 +1571,7 @@ class ExhaustionSignal(Base):
     model_slip_pct = Column(Float, nullable=True)                  # 🧯 (582) EXH_SSC_OIVOL blocks: the modelled taker slip at shadow_notional_usd (the shadow scout prices with it)
     shadow_notional_usd = Column(Float, nullable=True)             # 🧯 (582) EXH_SSC_OIVOL blocks: the notional the sleeve's sizing gave at the decision (estimate)
     universe = Column(String(8), nullable=True)                    # 🌐 (DECISION_LOG 585) the episode's universe (FRENZY · WIDE)
+    ret_1h_pct = Column(Float, nullable=True)                      # 📉 (DECISION_LOG 596, observe) the signal close vs the 5m close 1 h earlier, % (signals the features read)
     # 📖📊 (DECISION_LOG 584) the depth guard's capacity read for this decision (NULL = the guard did not run: refused earlier / guard off)
     cap_action = Column(String(8), nullable=True)                  # FULL · SHRINK · SKIP
     cap_mode = Column(String(8), nullable=True)                    # sweep · impact

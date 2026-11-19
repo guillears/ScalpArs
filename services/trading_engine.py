@@ -5022,9 +5022,20 @@ class TradingEngine:
             if _limited:
                 k5 = fr = ndi = None
             else:
-                k5, fr, ndi = await asyncio.gather(_get(binance_service.get_ohlcv(symbol, '5m', 301), 8.0),   # 300 closed bars for the FRENZY stamps
-                                                   _get(binance_service.fetch_funding_rate(symbol, max_age_s=3600), 6.0),   # hourly-funding pumps: ≤ 1 h old
-                                                   _get(_fade_pair_1d_ndi(symbol), 6.0))
+                _want1m = es.startswith("FRENZY_") and opened_at is not None   # 📊 (DECISION_LOG 596, observe) the WL594 volume shape
+                k5, fr, ndi, k1 = await asyncio.gather(_get(binance_service.get_ohlcv(symbol, '5m', 301), 8.0),   # 300 closed bars for the FRENZY stamps
+                                                       _get(binance_service.fetch_funding_rate(symbol, max_age_s=3600), 6.0),   # hourly-funding pumps: ≤ 1 h old
+                                                       _get(_fade_pair_1d_ndi(symbol), 6.0),
+                                                       (_get(binance_service.get_ohlcv(symbol, '1m', 90), 8.0) if _want1m else asyncio.sleep(0)))   # 75 closed 1m bars before the fill minute (+ slack)
+                if k1:
+                    try:
+                        from services.frenzy import pre_vol15_vs60
+                        _fms1 = int((opened_at - datetime(1970, 1, 1)).total_seconds() * 1000) if opened_at.tzinfo is None else int(opened_at.timestamp() * 1000)
+                        _pv = pre_vol15_vs60(k1, _fms1)
+                        if _pv is not None:
+                            st['entry_frenzy_pre_vol15_vs60'] = _pv
+                    except Exception as _e:
+                        logger.debug(f"[STAMP_BACKFILL] {pair} #{order_id}: pre_vol15_vs60 failed ({_e})")
             if isinstance(fr, (int, float)):
                 st['entry_funding_rate'] = round(fr, 6)
             if ndi is not None:
@@ -11359,6 +11370,7 @@ class TradingEngine:
                     has_spot=(bool(f['has_spot']) if f.get('has_spot') is not None else None), atr_pct=f.get('atr_pct'),
                     tp_pct=tp, sl_pct=sl, vol24_usd=f.get('vol24'), q5_usd=f.get('q5'), funding_rate=funding, order_id=order_id,
                     oi_usd=oi_usd, oi_vol=oi_vol, model_slip_pct=model_slip, shadow_notional_usd=shadow_notional,   # 🧯 (582)
+                    ret_1h_pct=(round(f['ret_1h'], 4) if f.get('ret_1h') is not None else None),   # 📉 (596) EXH_AFTER_DROP's input (observe)
                     universe=(universe or self._exh_universe_of(pair, sp)),   # 🌐 (585)
                     **{k: v for k, v in (cap or {}).items() if k in self.DEPTH_CAP_JOURNAL_KEYS},   # 📖📊 (584) the depth guard's capacity read
                     created_at=datetime.utcnow()))
@@ -11514,7 +11526,8 @@ class TradingEngine:
             entry_exh_atr_pct=round(f['atr_pct'], 6), entry_exh_tp_pct=tp, entry_exh_sl_pct=sl,
             entry_exh_decision_price=float(f['close']), entry_exh_q5_usd=f.get('q5'),
             entry_exh_oi_usd=_oi_usd, entry_exh_oi_vol=(round(_oi_vol, 6) if _oi_vol is not None else None),   # 🧯 (582) filter on or off
-            entry_exh_universe=universe, entry_exh_spot_symbol=_spot_sym)   # 🌐 (585) · 🔤 (589)
+            entry_exh_universe=universe, entry_exh_spot_symbol=_spot_sym,   # 🌐 (585) · 🔤 (589)
+            entry_exh_ret_1h_pct=(round(f['ret_1h'], 4) if f.get('ret_1h') is not None else None))   # 📉 (596) the hour before the signal (EXH_AFTER_DROP, observe)
         if order:
             await self._exh_journal(pair, T, _exh_rules.ST_OPENED, None, f"opened #{order.id} — {why}", sp, f=f, sig=sig, tp=tp, sl=sl,
                                     order_id=order.id, funding=_fr, oi_usd=_oi_usd, oi_vol=_oi_vol, cap=self._depth_cap_for(pair))
@@ -14758,6 +14771,7 @@ class TradingEngine:
         entry_exh_oi_vol: Optional[float] = None,    # 🧯 (582) entry_exh_oi_usd ÷ the rule's 24 h quote volume (EXH_SSC_OIVOL's input)
         entry_exh_universe: Optional[str] = None,    # 🌐 (585) the episode's universe: FRENZY · WIDE
         entry_exh_spot_symbol: Optional[str] = None,   # 🔤 (589) the spot symbol the spot share was read on (1000PEPEUSDT → PEPEUSDT)
+        entry_exh_ret_1h_pct: Optional[float] = None,   # 📉 (596) the signal close vs the close 1 h earlier, % (EXH_AFTER_DROP watch line, observe)
         # 📉 2026-11-18 DISTRIBUTION_SHORT (DECISION_LOG 586): a SHORT from _distribution_judge (a red VSW 15m candle on a tracked FRENZY coin while
         # the top-trader position ratio fell ≥ 0.01097 over 4 h). Tagged DISTRIBUTION_SHORT; rides the SURGE open path exactly like EXHAUSTION
         # (alt entry filters / pattern cells bypassed, the book read + entry depth guard / capacity sizing, the funding guard, direct taker, NO
@@ -17287,7 +17301,8 @@ class TradingEngine:
                 entry_exh_model_slip_pct=_exh_rules.model_slip_pct(notional_value, entry_exh_q5_usd),
                 entry_exh_oi_usd=entry_exh_oi_usd, entry_exh_oi_vol=entry_exh_oi_vol,   # 🧯 (582)
                 entry_exh_universe=(entry_exh_universe if entry_exh_universe in (_exh_rules.UNIV_FRENZY, _exh_rules.UNIV_WIDE) else _exh_rules.UNIV_FRENZY),
-                entry_exh_spot_symbol=((str(entry_exh_spot_symbol)[:30] or None) if entry_exh_spot_symbol else None))),   # 🌐 (585) · 🔤 (589)
+                entry_exh_spot_symbol=((str(entry_exh_spot_symbol)[:30] or None) if entry_exh_spot_symbol else None),   # 🌐 (585) · 🔤 (589)
+                entry_exh_ret_1h_pct=entry_exh_ret_1h_pct)),   # 📉 (596) EXH_AFTER_DROP's input (observe)
             entry_frenzy_stop_atr=(entry_frenzy_stop_atr if _frenzy else None),
             entry_frenzy_bar_ret_pct=(entry_frenzy_bar_ret_pct if _frenzy else None),
             entry_frenzy_di_spread=(entry_frenzy_di_spread if _frenzy else None),

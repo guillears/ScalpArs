@@ -121,6 +121,9 @@ BOOKED = {   # booked P&L — `era` = drops fills by WILLY exit era (registered 
     # 🔁 (579) re-based 2026-11-18 on the exit override (TP 10 % / SL ≤ 6 %): it counts only fills of that exit era
     "scout_exhaustion_short.py": {"exhaustion_tp_atr_mult": 20.0, "exhaustion_tp_cap_pct": 10.0, "exhaustion_sl_atr_mult": 1.5,
                                   "exhaustion_sl_cap_pct": 6.0, "exhaustion_max_hold_hours": 24.0},
+    # 📉 (596) EXH_AFTER_DROP judges booked EXHAUSTION fills (−10 … −5 % hour vs the rest) against the frozen 35 % breakeven → the same exit pins
+    "scout_exh_after_drop.py": {"exhaustion_tp_atr_mult": 20.0, "exhaustion_tp_cap_pct": 10.0, "exhaustion_sl_atr_mult": 1.5,
+                                "exhaustion_sl_cap_pct": 6.0, "exhaustion_max_hold_hours": 24.0},
     # 📖 (583) the depth-guard band gate reads booked $ and slippage of shrunk band fills (exit-agnostic: same trade, smaller size)
     "scout_depth_band_583.py": None,
     # 📖📐 (584) the impact-mode gate reads the ENTRY cost only (realised entry slippage vs the stamped modelled walk) — exit-agnostic
@@ -166,6 +169,7 @@ BOOKED = {   # booked P&L — `era` = drops fills by WILLY exit era (registered 
     "scout_surge_wl_watch.py": {"surge_long_exit_no_lock": True, "surge_max_hold_minutes": 240, "sl_atr_multiplier": 1.5, "sl_atr_widen_floor_pct": -1.2, "bullrun_base_sl_pct": -0.7, "bullrun_be_arm_pct": 1.0, "surge_long_trail_atr_mult": 1.0},
     # (509) WILLY_FAILED_SPIKE + the WILLY OFF trigger judge booked WR against the same frozen V2b breakeven (69.0 %) → the same pins
     # 👁 (580) CROWDED_LONGS · NEAR_SPIKE_HIGH · REANCHORED judge booked WILLY / HT P&L against frozen breakevens → the same V2b pins
+    # 📊 (596) + HT PRE_VOL_SURGE · BTC5M_UP (booked HT P&L, the same frozen 44.4 % breakeven, from the DL 596 commit) → the same pins
     "scout_willy_ht_lines.py": {"frenzy_willy_high_target_enabled": True, "frenzy_willy_stop_pct": 4.0, "frenzy_willy_high_k_pct": 1.0,
                                 "frenzy_willy_high_tp_max_pct": 8.0, "frenzy_willy_max_hold_minutes": 90, "frenzy_willy_ht_tp_pct": 5.0,   # 🔁 (587) re-based
                                 "frenzy_willy_ht_late_tp_enabled": False, "frenzy_willy_ht_high_target_enabled": False, "frenzy_willy_ht_max_hold_minutes": 1440.0,

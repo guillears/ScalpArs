@@ -3462,7 +3462,7 @@ async def export_decisions_csv(days: Optional[int] = None, db: AsyncSession = De
     _exh_cols = ["exh_signal_at", "exh_spike_at", "exh_hours_after_spike", "exh_status", "exh_block", "exh_reason", "exh_decision_price",
                  "exh_rsi_prev", "exh_rsi", "exh_vol_decay", "exh_spot_share_chg", "exh_has_spot", "exh_atr_pct", "exh_tp_pct", "exh_sl_pct",
                  "exh_vol24_usd", "exh_q5_usd", "exh_funding_rate", "exh_order_id",
-                 "exh_oi_usd", "exh_oi_vol", "exh_model_slip_pct", "exh_shadow_notional_usd", "exh_universe"] + ["exh_" + _k for _k in TradingEngine.DEPTH_CAP_JOURNAL_KEYS]   # 📖📊 (584)   # 🧯 (DECISION_LOG 582) EXH_SSC_OIVOL inputs + shadow pricing
+                 "exh_oi_usd", "exh_oi_vol", "exh_model_slip_pct", "exh_shadow_notional_usd", "exh_universe", "exh_ret_1h_pct"] + ["exh_" + _k for _k in TradingEngine.DEPTH_CAP_JOURNAL_KEYS]   # 📖📊 (584)   # 🧯 (DECISION_LOG 582) EXH_SSC_OIVOL inputs + shadow pricing
     try:
         _fmt = lambda d: d.strftime('%Y-%m-%dT%H:%M:%S') if d else None
         for b in (await db.execute(select(ExhaustionSignal).where(and_(ExhaustionSignal.is_paper == trading_engine.is_paper_mode,
@@ -3477,6 +3477,7 @@ async def export_decisions_csv(days: Optional[int] = None, db: AsyncSession = De
                              exh_order_id=b.order_id, exh_oi_usd=getattr(b, 'oi_usd', None), exh_oi_vol=getattr(b, 'oi_vol', None),
                              exh_model_slip_pct=getattr(b, 'model_slip_pct', None), exh_shadow_notional_usd=getattr(b, 'shadow_notional_usd', None),
                              exh_universe=(getattr(b, 'universe', None) or 'FRENZY'),   # 🌐 (585)
+                             exh_ret_1h_pct=getattr(b, 'ret_1h_pct', None),   # 📉 (596) EXH_AFTER_DROP's input
                              **{"exh_" + _k: getattr(b, _k, None) for _k in TradingEngine.DEPTH_CAP_JOURNAL_KEYS}))   # 📖📊 (584) the guard's capacity read
     except Exception as _e:
         logger.warning(f"[DECISIONS_EXPORT] EXHAUSTION rows skipped: {_e}")

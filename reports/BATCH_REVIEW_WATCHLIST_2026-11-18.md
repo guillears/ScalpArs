@@ -40,6 +40,7 @@ Run the scouts through `scripts/opportunity_scout.py` (or each script directly).
 | E1 | DL 578 sleeve gate (override-era fills) | first 20 fills | re-priced avg ≤ 0 → OFF · mean modelled slip > 0.25 % → OFF | `scout_exhaustion_short.py` |
 | E2 | DL 579 exit override vs old exit (3/5/1.5/5) | 40 · 80 · 120 fills, ≥ 10 days | 90 % upper bound of paired Δ < 0 → REVERT exit | `scout_exh_exit_override.py` (replica check → UNRELIABLE) |
 | E3 | DL 582 EXH_SSC_OIVOL filter | ≥ 30 blocked signals, ≥ 10 days | 80 % lower bound of the blocked mean > 0 → REVERT filter | `scout_exh_ssc_oivol.py` |
+| E4 | 📉 DL 596 EXH_AFTER_DROP watch line (OBSERVE): shorts whose coin already fell −5 … −10 % in the hour before the signal (`entry_exh_ret_1h_pct`; backtest 61 · 34 % · −0.48 and 144 · 35 % · −0.71, but −10 … −15 % wins → non-monotonic) | zone N ≥ 15 on ≥ 8 days (forward from the DL 596 commit) | RETIRED / FILTER CANDIDATE (WR < 35 % ∧ mean < 0 at P ≥ 0.95 ∧ no day / pair ≥ 50 %) / KEEP — frozen once | `scout_exh_after_drop.py` |
 
 **By hand:**
 - **Spot mapping (DL 589):**
@@ -48,7 +49,8 @@ Run the scouts through `scripts/opportunity_scout.py` (or each script directly).
   - `entry_exh_spot_symbol` on fills.
 - **Block tally:** EXH_NO_SPOT, EXH_SSC_OIVOL(_UNREAD) and EXH_READ_CAP. Read cap hits mean coins went unread.
 - **Stop clustering:** stops per day and per hour; the worst day at today's size (EXH_EXIT2: worst backtest day −34 %; 2025-11-22 had 12 EXH stops). It feeds the pre-live size review.
-- **Pending observation:** none. The entry W/L study (ENTRY_WL) found nothing at entry, and every exit alternative lost (EXH_EXIT2).
+- **Pending observation:** E4 (EXH_AFTER_DROP) only. The entry W/L study (ENTRY_WL) found nothing at entry, and every exit alternative lost (EXH_EXIT2).
+- **Stamp check (DL 596):** `entry_exh_ret_1h_pct` filled on every EXH fill after the deploy (and `exh_ret_1h_pct` on the decisions' EXHAUSTION rows); NULL = the line's UNSCORED row.
 
 ## 2. 🌐 EXHAUSTION WIDE universe (DL 585) — read apart from FRENZY-universe EXH
 **Baseline:** about +1.0 trades/day · +0.55 %/trade (in-sample, 3 of 7 half-years negative).
@@ -101,6 +103,8 @@ Run the scouts through `scripts/opportunity_scout.py` (or each script directly).
 |---|---|---|---|---|
 | H1 | DL 580 lines (re-based to the DL 587 exit): CROWDED_LONGS · NEAR_SPIKE_HIGH · REANCHORED | zone N ≥ 15, ≥ 8 days | RETIRED / FILTER CANDIDATE / KEEP | `scout_willy_ht_lines.py` |
 | H2 | 🧱 WILLY_HT_NEAR_HIGH ARMED (DL 594, `frenzy_willy_ht_min_dip_pct` 1.4; NEAR_SPIKE_HIGH above now shows ≈ 0 zone fills): blocked HT trades priced on HT's exit | first 15 priced blocked HT trades on ≥ 8 days (also the sole-line subset) | avg net ≥ 0 → REVERT (set 0) · else KEEP (alert-only, frozen once) | `scout_blocked_filters.py` (FRENZY_WILLY_HT · WILLY_HT_NEAR_HIGH) |
+| H3 | 📊 DL 596 PRE_VOL_SURGE (OBSERVE, HT only): the 15 min before the fill traded > 1.6× the hour before (`entry_frenzy_pre_vol15_vs60`, post-fill backfill; master 22 · 32 % · −1.21 vs 22 · 77 % · +2.93, luck p 0.33, no backtest check possible) | zone N ≥ 15 on ≥ 8 days, HT fills from the DL 596 commit | RETIRED / FILTER CANDIDATE / KEEP (frozen once) | `scout_willy_ht_lines.py` |
+| H4 | 📊 DL 596 BTC5M_UP (OBSERVE, HT only, REFUTE line): BTC 5m EMA13 above EMA50 at entry (`entry_btc_trend_gap_pct` > 0; master 20 · 30 % · −1.37, the backtest flipped it in both periods). Market-wide → read in day units | zone N ≥ 15 on ≥ 8 days, from the DL 596 commit | expected RETIRED; a FILTER CANDIDATE here needs the backtest re-checked first | `scout_willy_ht_lines.py` |
 
 - **Plain WILLY (DL 595, back ON 11-19):** its existing DL 531 WILLY OFF v2 gate (first 15 closed fills, WR < 69 % ∧ avg < 0 → recommend OFF) reads the new fills; compare per-fill with the master kept 24 · 71 % · +2.75 (3 runners = +51 of +66; without them +0.71). By hand: runner count and V2b exit mix.
 
@@ -111,6 +115,7 @@ Run the scouts through `scripts/opportunity_scout.py` (or each script directly).
 **By hand:**
 - WILLY_PLAIN_OFF counter: plain setups refused.
 - WILLY_HT_NEAR_HIGH_UNREAD counter: should be ≈ 0 (spike high unreadable → entered unfiltered).
+- `entry_frenzy_pre_vol15_vs60` filled on WILLY / HT fills after the DL 596 deploy (NULL = the backfill's 1m read failed or was rate-limited → H3 UNSCORED).
 - HT exit mix (TP +5 vs SL −4 vs 24 h time).
 - Hold time and slot use: an HT now holds up to 24 h.
 

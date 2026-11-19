@@ -180,7 +180,7 @@ def test_ht_rebased_587_breakeven_namespaced_state_and_ht_cap(tmp_path, monkeypa
     out = "\n".join(V.run(now_ms=since + 30 * 86_400_000, paths=early, state_path=str(own), since_ms=since))
     assert "+ 1440 min (a fill could still be open)" in out and "FRENZY_WILLY_HT@587" not in json.load(open(own))
     assert "ARMED for WILLY_HT since DECISION_LOG 527" in out and "scout_blocked_filters" in out and "rest-side fills" in out
-    assert "plain WILLY entries are OFF since DECISION_LOG 587" in out and "History only (pre-DL 587" in out
+    assert "plain WILLY entries back ON since DECISION_LOG 595" in out and "History only (pre-DL 587" in out
     late = _write(tmp_path, ht, stamp=(last + pd.Timedelta(days=2)).strftime("%Y-%m-%d_%H-%M-%S"))
     out = "\n".join(V.run(now_ms=since + 30 * 86_400_000, paths=late, state_path=str(own), since_ms=since))
     st = json.load(open(own))

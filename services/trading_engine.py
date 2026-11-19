@@ -41,6 +41,7 @@ from services.frenzy import frenzy_stop_for   # 🛑 (DECISION_LOG 317) FRENZY_L
 from services.paper_costs import paper_exit_book_price, exit_slip_pct, accrue_funding, fold_funding, funding_topup_needed, live_income_foreign   # 💸 (DECISION_LOG 539) paper = live costs
 from sqlalchemy.orm.attributes import flag_modified   # 💸 (DECISION_LOG 539 review) force the funding write on every close attempt
 PAPER_EXIT_SLIP_SANE_PCT = 3.0   # 💸 (539) a paper exit book read further than this from the decision price is a bad read (booked at the decision price)
+from services.watch_filters import ht_min_dip as watch_ht_min_dip, ht_dip_pct as watch_ht_dip_pct   # 🧱 (DECISION_LOG 594) WILLY_HT_NEAR_HIGH
 from services.watch_filters import frenzy_blocks as watch_frenzy_blocks, ml_blocks as watch_ml_blocks, fade_blocks as watch_fade_blocks, ms_blocks as watch_ms_blocks, block_code as watch_block_code   # 🧱 (DECISION_LOG 527 · 561 ms) armed watch-line filters
 from services.frenzy import FRENZY_WILLY_HT, WILLY_EXIT_CLASS, frenzy_willy_ht_frac   # 🎲¼ (DECISION_LOG 341) the quarter-size WILLY
 from services.flatbase import (FLATBASE_SHORT, FLATBASE_CLASS, flatbase_enabled, flatbase_params, flatbase_exit_for,   # 🩳 (DECISION_LOG 348)
@@ -13620,7 +13621,13 @@ class TradingEngine:
                 btc_ema20_slope_raw=_g.get('_btc_ema20_slope_pct_raw'),
                 frenzy_vol_mult=(round(flag['vol_mult'], 1) if flag.get('vol_mult') is not None else None),
                 btc_rsi=(_ef.get('entry_btc_rsi') if _ef.get('entry_btc_rsi') is not None else _g.get('_current_btc_rsi')),   # 🧱 (554) LITE_BTC_RSI_HOT
-                above_share=(round(flag['above_share'], 2) if flag.get('above_share') is not None else None))   # 🧱 (556) LITE_WEAK_HOLD — the stamp's value
+                above_share=(round(flag['above_share'], 2) if flag.get('above_share') is not None else None),   # 🧱 (556) LITE_WEAK_HOLD — the stamp's value
+                price=price, spike_high=(flag.get('peak') if _ht else None))   # 🧱 (594) WILLY_HT_NEAR_HIGH: the DECISION price vs H (frenzy_walk's peak = the spike-high stamp)
+            # 🧱 (DECISION_LOG 594) HT near-high line ON but the spike high / price unreadable → FAIL-OPEN (the entry proceeds), counted per check (HT is one-shot, so ≈ once per setup)
+            _ht_dip = watch_ht_dip_pct(price, flag.get('peak')) if _ht else None
+            if _ht and watch_ht_min_dip(th) > 0 and _ht_dip is None:
+                self._record_filter_block("WILLY_HT_NEAR_HIGH_UNREAD", "LONG")
+                logger.warning(f"[{_es}] {pair}: near-high filter ON but the spike high is unreadable (peak={flag.get('peak')} price={price}) — fail-open, entry proceeds")
             if _wfl:
                 _wcode = watch_block_code(_es, _wfl)
                 self._record_filter_block(_wcode, "LONG")
@@ -13636,7 +13643,14 @@ class TradingEngine:
                             entry_btc_ema20_slope_raw=_g.get('_btc_ema20_slope_pct_raw'), entry_pair_volume_24h_usd=flag.get('volume_24h'),
                             entry_bull_pct=_g.get('_market_bull_pct'), entry_bear_pct=_g.get('_market_bear_pct'),
                             entry_frenzy_above_share=(round(flag['above_share'], 2) if flag.get('above_share') is not None else None))   # (556 review a)
+                if _wl:   # 🧱 (594) the WILLY stamps the pricer / the HT lines read (spike high = HT's high-target anchor; dip = the value judged)
+                    _wef.update(entry_frenzy_willy_spike_high=flag.get('peak'), entry_frenzy_willy_trigger=willy,
+                                entry_frenzy_willy_dip_pct=(round(_ht_dip, 4) if _ht_dip is not None else None))
                 self._blocked_record(_es, "LONG", pair, price, _wfl, _wef, bar_ms=(int(catchup_now) if _cu else int(bar_open)))
+                if _ht and "WILLY_HT_NEAR_HIGH" in _wfl:   # 🧱 (594) the WILLY journal line (decisions export e=WILLY) — the counter is the filter block
+                    self._willy_event("WILLY_HT_NEAR_HIGH", pair, reason=(f"dip {_ht_dip:.2f} % below the spike high {flag.get('peak')} < {watch_ht_min_dip(th):g} % · {willy}"
+                                                                          + (f" · also {'+'.join(x for x in _wfl if x != 'WILLY_HT_NEAR_HIGH')}" if len(_wfl) > 1 else "")),
+                                      price=price, tally=False)
                 return
             _pvr = ((indicators.get('volume') or 0) / indicators['avg_volume']) if (indicators and indicators.get('avg_volume')) else None
             if _wl:   # 🎲 (251) the operator's log line: "[FRENZY_WILLY] PAIR: entry A (new flag) → opening" / "entry B (ON not taken: <reason>) → opening"
@@ -13654,6 +13668,7 @@ class TradingEngine:
                 entry_frenzy_willy_trigger=(willy if _wl else None), entry_frenzy_willy_wait_bars=(willy_wait_bars if _wl else None), frenzy_bar_open_ms=(int(_leash_time.time() * 1000) if _cu else bar_open), frenzy_catchup=_cu,   # ⏪ catch-up: only the bot-open-lane wait counts
                 entry_frenzy_willy_nomiss=(bool(((getattr(self, '_fz_willy_pending', None) or {}).get(pair) or {}).get('nomiss')) if _wl else None),   # 🧭 (350) the pending entry's R_NOMISS tag
                 entry_frenzy_willy_spike_high=(flag.get('peak') if _wl else None),   # 🎲² (356) H = frenzy_walk's peak: highest 5m high, spike bar → this red signal bar
+                entry_frenzy_willy_dip_pct=((round(watch_ht_dip_pct(price, flag.get('peak')), 4) if watch_ht_dip_pct(price, flag.get('peak')) is not None else None) if _wl else None),   # 🧱 (594) (H − decision price) ÷ H × 100
                 frenzy_willy_ht=_ht,   # 🎲¼ (341) with frenzy_willy=True → tagged FRENZY_WILLY_HT by open_position
                 frenzy_lite_retry=_lr,   # 🔁 (316) the retry rides lite=True (LITE-family open) and is tagged FRENZY_LITE_RETRY by open_position
                 entry_frenzy_retry_wait_min=(round((int(bar_open) - int(lite_retry['green'])) / 60_000.0, 2) if _lr else None),
@@ -14692,6 +14707,7 @@ class TradingEngine:
         entry_frenzy_willy_wait_bars: Optional[int] = None,   # 🎲 (251) closed 5m bars from the trigger to the red entry bar (0 = the trigger bar was red)
         entry_frenzy_willy_nomiss: Optional[bool] = None,   # 🧭 (350) True = an R_NOMISS entry A (read after the late window, no red bar missed)
         entry_frenzy_willy_spike_high: Optional[float] = None,   # 🎲² (356) the episode's spike high H (WILLY exit V2 target anchor)
+        entry_frenzy_willy_dip_pct: Optional[float] = None,   # 🧱 (594) (H − the decision price) ÷ H × 100 — the value WILLY_HT_NEAR_HIGH judged
         frenzy_strong: bool = False,   # 💪 Oct-4 (197): FRENZY_LONG with ADX rising ∧ +DI above −DI → frenzy_long_lev_mult_strong
         frenzy_bar_open_ms: Optional[int] = None,   # 🔥 Oct-3: the signal bar's open — lateness re-checked AFTER the bot open lane
         frenzy_catchup: bool = False,   # ⏪ Oct-6: a catch-up fill (its fresh ON bar was never judged) → entry_frenzy_catchup
@@ -17332,6 +17348,7 @@ class TradingEngine:
                 entry_dist_rsi1h=entry_dist_rsi1h, entry_dist_di_diff1h=entry_dist_di_diff1h, entry_dist_gap15=entry_dist_gap15,
                 entry_dist_pos_lag_min=entry_dist_pos_lag_min, entry_dist_pos_span_min=entry_dist_pos_span_min)),
             entry_frenzy_willy_spike_high=(entry_frenzy_willy_spike_high if (_frenzy and _fz_es in WILLY_EXIT_CLASS) else None),   # 🎲² (356) WILLY exit V2 stamps
+            entry_frenzy_willy_dip_pct=(entry_frenzy_willy_dip_pct if (_frenzy and _fz_es in WILLY_EXIT_CLASS) else None),   # 🧱 (594) the near-high dip judged at the decision
             frenzy_willy_tp_target_pct=_wv2_tp,   # 🎲² (356) the WILLY TP decided at entry (NULL = pre-V2 row → config TP)
             frenzy_willy_runner_k=_wrun_k,   # 🏃 (541) WILLY runner k (NULL = today's exit)
             flip_fan_tp_pct=_ff_tp,   # 🎯 (563) FAN flip fixed TP (NULL = the trail)

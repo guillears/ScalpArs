@@ -1,0 +1,71 @@
+{
+ "win": {
+  "n_splits": 199,
+  "n_vars": 90,
+  "obs_nominal": 16,
+  "obs_min_p": 0.005629695740532954,
+  "null_nominal_med": 4.0,
+  "null_nominal_p95": 16.0,
+  "P_null_count_ge": 0.054,
+  "P_null_minp_le": 0.198,
+  "circ_P_count_ge": 0.06896551724137931,
+  "circ_P_minp_le": 0.20689655172413793
+ },
+ "worked": {
+  "n_splits": 199,
+  "n_vars": 90,
+  "obs_nominal": 0,
+  "obs_min_p": 0.08424387344887688,
+  "null_nominal_med": 5.0,
+  "null_nominal_p95": 18.0,
+  "P_null_count_ge": 1.0,
+  "P_null_minp_le": 0.9685,
+  "circ_P_count_ge": 1.0,
+  "circ_P_minp_le": 0.9310344827586207
+ },
+ "2d_win": {
+  "n_cells": 12420,
+  "obs_nominal": 539,
+  "obs_min_p": 0.00013418844955997536,
+  "null_nominal_med": 335.0,
+  "null_nominal_p95": 719.1999999999998,
+  "P_null_count_ge": 0.17,
+  "P_null_minp_le": 0.2425
+ },
+ "fs_block_bar": {
+  "N": 32,
+  "windows": 14,
+  "WR": 43.75,
+  "be_WR": 45.05494505494505,
+  "avg": -0.1187499999999998,
+  "ci": [
+   -1.1645161290322579,
+   1.1
+  ],
+  "P_boot_avg_ge0": 0.42425,
+  "top_pair_loss_share": 16.666666666666668
+ },
+ "loo": {
+  "day": {
+   "min_sum44": 28.000000000000007,
+   "max_sum44": 42.10000000000001,
+   "min_sum12": 31.799999999999997,
+   "max_sum12": 45.9,
+   "n_sum12_gt_sum44": 14,
+   "n": 17
+  },
+  "pair": {
+   "min_sum44": 27.10000000000001,
+   "max_sum44": 50.300000000000004,
+   "min_sum12": 26.799999999999997,
+   "max_sum12": 45.9,
+   "n_sum12_gt_sum44": 13,
+   "n": 24
+  }
+ },
+ "btc5m_gap_rebuild_check": {
+  "spearman": 0.9968992248062015,
+  "sign_agree": 0.9772727272727273,
+  "med_abs_diff": 0.004264948930422813
+ }
+}

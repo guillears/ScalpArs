@@ -45,6 +45,9 @@ COHORT   BLOCKED rows from every decisions export (export_glob: Downloads + expo
          window are priced (none of them pending) — the blocked trades' average > 0 OR above the sleeve's kept average over the same window
          → REVERT CANDIDATE (operator switches the line off — never automatic); else KEEP. Before that: COLLECTING. The sole-blocked subset
          is shown beside (the line's own effect).
+         🧱 (DL 594) WILLY_HT_NEAR_HIGH (FRENZY_WILLY_HT, operator-declared): an ABSOLUTE gate instead — first 15 priced refusals on ≥ 8
+         days, avg net on HT's exit ≥ 0 → REVERT CANDIDATE (frenzy_willy_ht_min_dip_pct → 0), else KEEP; also frozen on its sole refusals
+         (key FRENZY_WILLY_HT@587:WILLY_HT_NEAR_HIGH|sole).
 PARITY   on B25 real CLOSED fills (deep review 2026-11-11): FRENZY LITE / RETRY / WILLY / HT exact (corr 1.000, bias ≤ 0.01 %/fill) ·
          momentum long 53 / 53 priced with the top-up, corr 0.97, bias −0.01 · SPIKE_FADE 29 / 30, same sign 90 %, corr 0.71, bias +0.07,
          median |Δ| 0.08 — without TLM (+0.31 booked, +3.44 priced: an intra-minute trail exit 1m bars cannot see) corr 0.78, bias −0.04,
@@ -681,10 +684,38 @@ def _has_line(lines, line):
 TIGHT = {"LITE_BTC_RSI_HOT": (5, 3), "ML_WEAK_RESCUE": (8, None), "LITE_WEAK_HOLD": (8, None), "ML_WEAK_MARKET": (8, None), "ML_FADING_QUIET": (8, None)}   # (555) first 8 priced: avg > 0 → revert (no winner-count leg)
 
 
-def gate_read(B, K, line):
-    """the line's blocked trades (priced, not shadowed, refusal order) vs the sleeve's kept fills → (state, detail, prefix)."""
+# 🧱 (DECISION_LOG 594) an operator-declared line with an ABSOLUTE pre-committed gate: at the first prefix of N priced refusals on ≥ D UTC days
+# (no earlier refusal of the sleeve still pending) — the blocked trades' average net on the sleeve's own exit ≥ 0 → REVERT; else KEEP. No kept
+# comparison. Frozen once. SOLE_GATED lines also freeze a second verdict on their SOLE refusals (the line's own effect) under "<key>|sole".
+ABS_GATE = {"WILLY_HT_NEAR_HIGH": (15, 8)}
+SOLE_GATED = ("WILLY_HT_NEAR_HIGH",)
+REVERT_TXT = "REVERT CANDIDATE (operator switches the line off — never automatic)"
+
+
+def gate_read(B, K, line, sole=False):
+    """the line's blocked trades (priced, not shadowed, refusal order) vs the sleeve's kept fills → (state, detail, prefix).
+    sole=True → only the refusals this line made ALONE (the sole-line case; the pending check still reads every refusal of the sleeve)."""
     a = B[_has_line(B.lines, line)].sort_values("te") if len(B) else B
+    if sole and len(a):
+        a = a[a.sole.astype(bool)]
     g = a[a.status == "PRICED"]
+    if line in ABS_GATE:
+        an, ad = ABS_GATE[line]
+        seen, cut = set(), None
+        for i, dd in enumerate(g.day):
+            seen.add(dd)
+            if i + 1 >= an and len(seen) >= ad:
+                cut = i + 1
+                break
+        if cut is None:
+            return "COLLECTING", f"{len(g)}/{an} priced on {g.day.nunique() if len(g) else 0}/{ad} days (absolute gate, declared override)", g
+        pre = g.iloc[:cut]
+        pend = B[(B.status == "PENDING") & (B.te <= int(pre.te.max()))]
+        if len(pend):
+            return "COLLECTING", f"{cut} priced, but {len(pend)} earlier refusal(s) still pending", g
+        ba = float(pre.pct.mean())
+        det = f"blocked {cut} on {pre.day.nunique()} d · WR {(pre.pct > 0).mean():.0%} · avg {ba:+.3f} % (absolute gate: avg ≥ 0 → revert)"
+        return (REVERT_TXT if ba >= 0 else "KEEP"), det, pre
     if line in TIGHT:
         tn, tw = TIGHT[line]
         if len(g) < tn:
@@ -731,7 +762,7 @@ def gate_read(B, K, line):
 ML_RISKCAP = "MOMENTUM_LONG_RISKCAP"
 ML_SLEEVES = ("MOMENTUM_LONG", ML_RISKCAP)
 KEPT_AS = {ML_RISKCAP: "MOMENTUM_LONG"}
-LINES = {"FRENZY_WILLY": ("WILLY_GAP", "WILLY_FAILED_SPIKE"), "FRENZY_WILLY_HT": ("WILLY_FAILED_SPIKE",), "FRENZY_LITE_RETRY": ("RETRY_BTC1H",),
+LINES = {"FRENZY_WILLY": ("WILLY_GAP", "WILLY_FAILED_SPIKE"), "FRENZY_WILLY_HT": ("WILLY_FAILED_SPIKE", "WILLY_HT_NEAR_HIGH"), "FRENZY_LITE_RETRY": ("RETRY_BTC1H",),   # 🧱 (594) near high
          "FRENZY_LITE": ("LITE_BTC_EMA20_DOWN", "LITE_BTC_RSI_HOT", "LITE_WEAK_HOLD"), "FRENZY_LONG": ("LONG_WEAK_FRENZY",), "SPIKE_FADE": ("FADE_LATE_WEAK",),
          "MOMENTUM_LONG": ("ML_MKT_HOT", "ML_BULL90", "ML_WEAK_RESCUE", "ML_WEAK_MARKET", "ML_FADING_QUIET"),
          ML_RISKCAP: ("ML_RISK_CAP",)}   # 📈 (533) a RISK limiter, not an edge filter: its "REVERT CANDIDATE" reads as what the cap COST
@@ -794,13 +825,15 @@ def run(now_ms=None, dec_paths=None, ord_paths=None, state_path=STATE, store_pat
         Ks = K[K.sleeve == KEPT_AS.get(sl, sl)] if len(K) else K
         Kk = Ks[Ks.status == "PRICED"] if len(Ks) else Ks
         kept = f"{len(Kk)} · {Kk.pct.mean():+.3f} · {pd.to_numeric(Kk.booked, errors='coerce').mean():+.3f}" if len(Kk) else "0"
-        for ln in lines:
+        for ln, _sole in [(x, v) for x in lines for v in ((False, True) if x in SOLE_GATED else (False,))]:
             P = Bs[_has_line(Bs.lines, ln) & (Bs.status == "PRICED")] if len(Bs) else Bs
+            if _sole and len(P):
+                P = P[P.sole.astype(bool)]
             S = P[P.sole.astype(bool)] if len(P) else P
-            key = f"{GATE_KEY.get(sl, sl)}:{ln}"
+            key = f"{GATE_KEY.get(sl, sl)}:{ln}" + ("|sole" if _sole else "")
             rec = st.get(key)
             if not rec:
-                state, det, _ = gate_read(Bs, Ks, ln) if len(Bs) else ("COLLECTING", "0 priced", None)
+                state, det, _ = gate_read(Bs, Ks, ln, sole=_sole) if len(Bs) else ("COLLECTING", "0 priced", None)
                 if state != "COLLECTING" and state_path:
                     st[key] = rec = dict(state=state, detail=det, at=pd.Timestamp(now_ms, unit="ms").strftime("%Y-%m-%d %H:%M UTC"))
                     changed = True
@@ -808,10 +841,11 @@ def run(now_ms=None, dec_paths=None, ord_paths=None, state_path=STATE, store_pat
             else:
                 gtxt = f"**{rec['state']}** (frozen {rec['at']}: {rec['detail']})"
             sole = f"{len(S)} · {S.pct.mean():+.3f}" if len(S) else "0"
+            _lab = f"{ln} (sole)" if _sole else ln
             if len(P):
-                L.append(f"| {sl} · {ln} | {len(P)} | {P.day.nunique()} | {(P.pct > 0).mean():.0%} | {P.pct.mean():+.3f} | {P.pct.sum():+.2f} | {sole} | {kept} | {gtxt} |")
+                L.append(f"| {sl} · {_lab} | {len(P)} | {P.day.nunique()} | {(P.pct > 0).mean():.0%} | {P.pct.mean():+.3f} | {P.pct.sum():+.2f} | {sole} | {kept} | {gtxt} |")
             else:
-                L.append(f"| {sl} · {ln} | 0 | – | – | – | – | 0 | {kept} | {gtxt} |")
+                L.append(f"| {sl} · {_lab} | 0 | – | – | – | – | 0 | {kept} | {gtxt} |")
     if changed and state_path:
         tmp = f"{state_path}.{os.getpid()}.tmp"
         with open(tmp, "w") as fh:
@@ -824,7 +858,9 @@ def run(now_ms=None, dec_paths=None, ord_paths=None, state_path=STATE, store_pat
     L += ["", f"🔒 Gate (DL {FLOOR_DL}, frozen once per line): at {N_MIN} priced blocked trades on {DAYS_MIN} UTC days (no earlier refusal pending, "
           f"≥ {K_MIN} kept fills priced in the window) — blocked avg > 0 OR above the sleeve's kept avg over the same window (the kept fills "
           "priced by the SAME pricer on the SAME slip ruler) → REVERT CANDIDATE (the operator switches that line's watch_block_* toggle off); "
-          "else KEEP. Never automatic.", ""]
+          "else KEEP. Never automatic. 🧱 (DL 594) FRENZY_WILLY_HT · WILLY_HT_NEAR_HIGH runs its own ABSOLUTE gate: at the first 15 priced "
+          "blocked HT trades on ≥ 8 UTC days (no earlier refusal pending), their average net on HT's exit ≥ 0 → REVERT CANDIDATE (set "
+          "frenzy_willy_ht_min_dip_pct to 0); else KEEP — frozen once, and once more on its sole refusals (\"(sole)\" row).", ""]
     return L
 
 

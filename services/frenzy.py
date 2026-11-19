@@ -911,6 +911,9 @@ def frenzy_willy_ht_config_errors(th) -> list:
     tp_ = _fin(getattr(th, 'frenzy_willy_ht_tp_pct', 0.0) or 0.0)   # 🎯 (537 review) 0 = off, else above WILLY's TP and ≤ 50
     if tp_ is None or tp_ < 0 or tp_ > 50 or (0 < tp_ <= frenzy_willy_levels(th)[0]):
         errs.append(f"frenzy_willy_ht_tp_pct must be 0 (HT follows WILLY's TP) or above WILLY's take profit (+{frenzy_willy_levels(th)[0]}) and ≤ 50")
+    dip_ = _fin(getattr(th, 'frenzy_willy_ht_min_dip_pct', 0.0) or 0.0)   # 🧱 (594 review) 0 = off, else (0, 50] — a value outside would silently switch it off
+    if dip_ is None or dip_ < 0 or dip_ > 50:
+        errs.append("frenzy_willy_ht_min_dip_pct must be 0 (off) or > 0 and ≤ 50 (% below the spike high)")
     return errs
 
 

@@ -1606,6 +1606,16 @@ class SignalThresholds(BaseModel):
     frenzy_willy_ht_late_tp_enabled: bool = True      # False → the WILLY late take profit never applies to HT (no TP drop, no resting-limit re-price)
     frenzy_willy_ht_high_target_enabled: bool = True  # False → HT's TP is a FLAT frenzy_willy_ht_tp_pct, not max(it, the spike-high target)
     frenzy_willy_ht_max_hold_minutes: float = 0.0     # 0 = WILLY's frenzy_willy_max_hold_minutes; 1 – 10,080 → HT's own time cap (minutes)
+    # 🧱 2026-11-19 WILLY_HT NEAR-SPIKE-HIGH FILTER (DECISION_LOG 594, operator-declared override, PAPER): refuse a FRENZY_WILLY_HT long whose
+    # DECISION price (flag live price, else the signal close) is < X % below the episode's spike high H (frenzy_walk's peak = the highest 5m
+    # high from the spike bar through the red signal bar = entry_frenzy_willy_spike_high). The DL 580 NEAR_SPIKE_HIGH line, armed. Evidence:
+    # backtest HT (+5 / −4 / 24 h) zone dip < 1.4 %: 117 trades · 108 days · WR 34 % (breakeven 44.4 %) · avg −0.96 %, day-block CI
+    # [−1.74, −0.08]; skip-if-dip<1.4: 26-H2 161 · −0.21 → 122 · +0.19; master 49 real fills +0.54 → 44 · +0.86. Caveat: found by the
+    # 11-18 screen (null not cleared — partly in-sample). An armed watch line (services/watch_filters WILLY_HT_NEAR_HIGH): counter
+    # FRENZY_WILLY_HT_BLOCK_WILLY_HT_NEAR_HIGH + a blocked_signals row + a WILLY journal event; the pending entry ENDS (HT's one-shot rule).
+    # Unreadable H → fail-open (WILLY_HT_NEAR_HIGH_UNREAD). 🔒 revert (alert-only, scripts/scout_blocked_filters.py): first 15 priced blocked
+    # HT trades on ≥ 8 days, avg net on HT's exit ≥ 0 → REVERT (set 0). Code default 0 = OFF; trading_config.json 1.4.
+    frenzy_willy_ht_min_dip_pct: float = 0.0
     frenzy_willy_ht_max_slots: int = 10            # 🧺 DL 542 (operator 11-13): no per-sleeve limit — 10 = the book count ceiling (was 1) · FRENZY_WILLY_HT open at once (its OWN slot; WILLY's slot never counts HT)
     # 🩳 2026-10-22 FLATBASE_SHORT (DECISION_LOG 348 — operator DISCIPLINE OVERRIDE: the study FAILED its ship bars; alert-only gates, no
     # auto-off). Short a FRENZY episode whose coin was FLAT for the 14 days before the spike (14-d close range ≤ flatbase_flat_max at the base

@@ -12,6 +12,8 @@ Lines (sleeve → refuse when):
   FRENZY_WILLY     WILLY_GAP           coin ADX > 55 OR |EMA8 − EMA13| gap ≤ 0.90 %         (DL 414)
                    WILLY_FAILED_SPIKE  the signal bar closed at / below the spike VWAP       (DL 509)
   FRENZY_WILLY_HT  WILLY_FAILED_SPIKE  the same                                             (DL 511)
+                   WILLY_HT_NEAR_HIGH  the decision price is < frenzy_willy_ht_min_dip_pct % below the episode's spike high H
+                                       (H = frenzy_walk's peak = entry_frenzy_willy_spike_high; 0 = off)   (DL 594, declared override)
   FRENZY_LITE_RETRY RETRY_BTC1H        BTC 1 h EMA20 slope ≤ 0                               (DL 415)
   FRENZY_LITE      LITE_BTC_EMA20_DOWN BTC 5 m EMA20 slope ≤ 0 (the RAW slope — the engine's display copy reads an unreadable slope as 0)  (DL 522)
                    LITE_BTC_RSI_HOT    BTC RSI (the entry stamp, 1 dp) ≥ 70 — BTC overbought                (DL 554, declared override)
@@ -44,6 +46,7 @@ ML_WEAK_GAP_MAX = 0.27             # (DL 555) EMA gap ≤ this = weak trend (mas
 ML_WEAK_BULL_MAX, ML_WEAK_BTC_ADX_MAX = 64.1, 21.71   # (DL 559) master full-size terciles, frozen
 ML_FADING_ADX_DELTA_MAX, ML_QUIET_ATR_MAX = 0.0, 0.38  # (DL 559) ADX falling (< 0) · ATR % bottom tercile, frozen
 MS_QS_WEAK_MAX, MS_QS_LATE_MIN = 2, 5   # (DL 561) momentum short: score ≤ 2 = unconfirmed, ≥ 5 = exhausted (scores 3–4 trade in any regime)
+HT_MIN_DIP_MAX = 50.0             # (DL 594) frenzy_willy_ht_min_dip_pct sanity ceiling: a value outside [0, 50] (or unreadable) = OFF
 ML_QUIET_GVOL_MAX = 0.70           # (DL 555) global volume < this = the VOL_GATE's long threshold AT SHIP (frozen — the rescue fires < 0.60, so the live band
 #                                    is < 0.60 today; if the VOL_GATE long threshold is ever lowered, longs at the new gate..0.70 would start being blocked — re-read)
 
@@ -80,9 +83,25 @@ def _on(th, line):
     return bool(getattr(th, TOGGLES[line], False))
 
 
-def willy_blocks(th, adx, ema_gap_8_13, vs_vwap_pct, ht=False):
+def ht_min_dip(th):
+    """(DL 594) the WILLY_HT_NEAR_HIGH cut X (%) from frenzy_willy_ht_min_dip_pct — 0 = off; unreadable / non-finite / < 0 / > 50 → 0 (off)."""
+    x = _num(getattr(th, "frenzy_willy_ht_min_dip_pct", 0))
+    return x if (x is not None and 0 < x <= HT_MIN_DIP_MAX) else 0.0
+
+
+def ht_dip_pct(price, spike_high):
+    """(DL 594) how far the price sits BELOW the episode's spike high, % of the high: (H − price) ÷ H × 100 (negative = above H). None when
+    either is unreadable / ≤ 0. The scout_willy_ht_lines NEAR_SPIKE_HIGH off_peak is exactly −this (on the fill price)."""
+    p, h = _num(price), _num(spike_high)
+    if p is None or h is None or p <= 0 or h <= 0:
+        return None
+    return (h - p) / h * 100.0
+
+
+def willy_blocks(th, adx, ema_gap_8_13, vs_vwap_pct, ht=False, price=None, spike_high=None):
     """FRENZY_WILLY (ht=False) / FRENZY_WILLY_HT (ht=True) → the refusing lines. WILLY_GAP fires on EITHER leg it can read (a readable
-    ADX > 55 blocks even when the gap is unreadable, and vice versa). HT runs WILLY_FAILED_SPIKE only (its own toggle)."""
+    ADX > 55 blocks even when the gap is unreadable, and vice versa). HT runs WILLY_FAILED_SPIKE (its own toggle) and WILLY_HT_NEAR_HIGH
+    (DL 594: dip below the spike high < frenzy_willy_ht_min_dip_pct; an unreadable price / high never blocks)."""
     out = []
     if not ht and _on(th, "WILLY_GAP"):
         a, g = _num(adx), _num(ema_gap_8_13)
@@ -92,6 +111,10 @@ def willy_blocks(th, adx, ema_gap_8_13, vs_vwap_pct, ht=False):
         v = _num(vs_vwap_pct)
         if v is not None and v <= FAILED_SPIKE_VWAP_MAX:
             out.append("WILLY_FAILED_SPIKE")
+    if ht:
+        x, d = ht_min_dip(th), ht_dip_pct(price, spike_high)
+        if x > 0 and d is not None and d < x:
+            out.append("WILLY_HT_NEAR_HIGH")
     return out
 
 
@@ -162,12 +185,12 @@ def ml_blocks(th, mkt_hot_share, bull_pct, entry_gap=None, global_volume_ratio=N
 
 
 def frenzy_blocks(th, sleeve, adx=None, ema_gap_8_13=None, vs_vwap_pct=None, btc_1h_slope=None, btc_ema20_slope_raw=None,
-                  frenzy_vol_mult=None, btc_rsi=None, above_share=None):
+                  frenzy_vol_mult=None, btc_rsi=None, above_share=None, price=None, spike_high=None):
     """the FRENZY open helper's single call: sleeve = the order's entry_strategy → its refusing lines (FRENZY_WIDE / unknown → [])."""
     if sleeve == "FRENZY_WILLY":
         return willy_blocks(th, adx, ema_gap_8_13, vs_vwap_pct, ht=False)
     if sleeve == "FRENZY_WILLY_HT":
-        return willy_blocks(th, adx, ema_gap_8_13, vs_vwap_pct, ht=True)
+        return willy_blocks(th, adx, ema_gap_8_13, vs_vwap_pct, ht=True, price=price, spike_high=spike_high)
     if sleeve == "FRENZY_LITE_RETRY":
         return retry_blocks(th, btc_1h_slope)
     if sleeve == "FRENZY_LITE":

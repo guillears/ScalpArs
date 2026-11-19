@@ -87,7 +87,7 @@ def test_config_json_ui_exports_and_registry():
     import config as C
     assert C.SignalThresholds.model_fields["frenzy_willy_plain_entries_enabled"].default is True
     cfg = json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
-    assert cfg["frenzy_willy_plain_entries_enabled"] is False and cfg["frenzy_willy_enabled"] is True and cfg["frenzy_willy_ht_enabled"] is True
+    assert cfg["frenzy_willy_plain_entries_enabled"] is True and cfg["frenzy_willy_enabled"] is True and cfg["frenzy_willy_ht_enabled"] is True   # plain WILLY back ON (DL 595)
     assert "DECISION_LOG 587" in open(os.path.join(ROOT, "config.py"), encoding="utf-8").read()
     html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
     assert html.count('id="config-fz-willy-plain-enabled"') == 1

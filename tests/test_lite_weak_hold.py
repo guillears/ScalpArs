@@ -47,8 +47,8 @@ def test_wiring():
     assert json.loads((ROOT / "trading_config.json").read_text())["thresholds"]["watch_block_lite_weak_hold"] is True
     assert (ROOT / "templates/index.html").read_text().count("config-wb-lite-weak-hold") == 3
     eng = (ROOT / "services/trading_engine.py").read_text()
-    assert "above_share=(round(flag['above_share'], 2) if flag.get('above_share') is not None else None))   # 🧱 (556)" in eng
-    assert 'above_share=_num(r, "entry_frenzy_above_share"))' in (ROOT / "scripts/build_master_pool.py").read_text()
+    assert "above_share=(round(flag['above_share'], 2) if flag.get('above_share') is not None else None),   # 🧱 (556)" in eng   # (594: + price / spike_high after it)
+    assert 'above_share=_num(r, "entry_frenzy_above_share"),' in (ROOT / "scripts/build_master_pool.py").read_text()
     sys.path.insert(0, str(ROOT / "scripts"))
     import scout_blocked_filters as S
     assert "LITE_WEAK_HOLD" in S.LINES["FRENZY_LITE"] and S.TIGHT["LITE_WEAK_HOLD"] == (8, None)

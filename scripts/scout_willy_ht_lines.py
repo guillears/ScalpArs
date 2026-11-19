@@ -16,6 +16,10 @@ LINES      (zone = the entries the line would block; rest = the scored others; a
   NEAR_SPIKE_HIGH  off_peak = (entry_price ÷ entry_frenzy_willy_spike_high − 1) × 100 > −1.4 (bought within 1.4 % of the spike high —
                    theory: no pull-back to buy; WL_DEEP_WILLY_HT top-tercile cut). Measured on the REAL fill (the rebuild's off_peak differs
                    by up to ~1 pt on the same trade — this line uses the fill only).
+                   ⚠ ARMED for WILLY_HT since DECISION_LOG 594 (2026-11-19, operator-declared; frenzy_willy_ht_min_dip_pct 1.4 — the engine
+                   judges the DECISION price vs the same H, the fill sits a few bps away) → forward HT zone fills should be ~0 and the
+                   HT row here mostly shows rest-side fills; the filter's forward verdict is the blocked-trade pricer (scout_blocked_filters.py,
+                   FRENZY_WILLY_HT · WILLY_HT_NEAR_HIGH, absolute gate: first 15 priced on ≥ 8 days, avg ≥ 0 → REVERT).
   REANCHORED       entry A (entry_frenzy_willy_trigger == "A") > 1 h after the spike (entry_frenzy_hours > 1.0 — measured signal-bar
                    OPEN − spike-bar OPEN, services/frenzy.py, ≈ 5 min more than "since the spike close"): entry A fired on a spike
                    that re-anchored an episode already running (audit: HT 114 · −0.39; today it fires only when the pair is warm, restarts
@@ -50,6 +54,7 @@ import scout_b1h_negflank as NF    # noqa: E402
 import scout_willy_failed_spike_watch as WF   # noqa: E402  (the loader + the frozen bar — one definition)
 
 DL = 580
+DL_ARMED_NEAR_HIGH = 594   # 🧱 (DECISION_LOG 594) NEAR_SPIKE_HIGH ARMED for WILLY_HT (the engine refuses the zone; the blocked-trade pricer decides)
 DL_HT = 587   # 🔁 (DECISION_LOG 587) RE-BASED 2026-11-18: HT's exit changed (TP +2 → +5 net, stop −4) → HT counts only fills ≥ the DL 587 commit + 10 min
 SLEEVES = ("FRENZY_WILLY", "FRENZY_WILLY_HT")
 # FROZEN breakevens: WILLY V2b (DL 509) · HT re-based at DL 587 = the +5 / −4 exit: |loss| ÷ (win + |loss|) = 4 ÷ 9 (was 0.667 at +2 / −4)
@@ -294,9 +299,12 @@ def run(now_ms=None, paths=None, state_path=STATE, since_ms=None, fetch=True):
                 L += [f"⚠ HT re-based on the DECISION_LOG {DL_HT} exit (TP +5 / SL −4) — NOT EVALUABLE until that commit is in git.", ""]
                 continue
             s = s[s.o >= pd.Timestamp(int(ht_floor), unit="ms")] if len(s) else s
-            L += [f"(re-based: HT fills opened ≥ {pd.Timestamp(int(ht_floor), unit='ms'):%Y-%m-%d %H:%M} UTC — the DL {DL_HT} TP +5 / SL −4 exit; breakeven 44.4 %)", f"⚠ {BE_NOTE}.", ""]
+            L += [f"(re-based: HT fills opened ≥ {pd.Timestamp(int(ht_floor), unit='ms'):%Y-%m-%d %H:%M} UTC — the DL {DL_HT} TP +5 / SL −4 exit; breakeven 44.4 %)", f"⚠ {BE_NOTE}.",
+                  f"⚠ NEAR_SPIKE_HIGH is ARMED for WILLY_HT since DECISION_LOG {DL_ARMED_NEAR_HIGH} (frenzy_willy_ht_min_dip_pct) — zone entries are REFUSED, "
+                  "so forward HT zone fills should be ~0 and its table mostly shows rest-side fills. The filter's forward verdict is the blocked-trade "
+                  "pricer (scout_blocked_filters: FRENZY_WILLY_HT · WILLY_HT_NEAR_HIGH — the refused zone trades priced on HT's live exit).", ""]
         elif es == "FRENZY_WILLY":
-            L += ["(plain WILLY entries are OFF since DECISION_LOG 587 — this sleeve collects no new fills while they stay off)", ""]
+            L += ["(plain WILLY entries back ON since DECISION_LOG 595 (2026-11-19) — OFF 11-18 → 11-19 (DL 587), no fills in that gap)", ""]
         for ln in LINES:
             col = f"z_{ln}"
             if not len(s) or col not in s:

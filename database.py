@@ -308,6 +308,7 @@ async def init_db():
                 if 'lite_c_zone' not in columns:   # 🎯 (DECISION_LOG 301) LITE C zone flag
                     connection.execute(text("ALTER TABLE orders ADD COLUMN lite_c_zone BOOLEAN"))
                 for _wv_col, _wv_type in (('entry_frenzy_willy_spike_high', 'FLOAT'), ('frenzy_willy_tp_target_pct', 'FLOAT'),
+                                          ('entry_frenzy_willy_dip_pct', 'FLOAT'),   # 🧱 (DECISION_LOG 594) the HT near-high dip judged at entry
                                           ('willy_floor_armed_at', 'DATETIME'),
                                           ('entry_willy_ht_size_frac', 'FLOAT'),
                                           ('frenzy_willy_runner_k', 'FLOAT'),

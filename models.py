@@ -709,6 +709,9 @@ class Order(Base):
     # willy_floor_armed_at = HISTORICAL ONLY: the first time the V2 profit floor armed (DL 356). The floor was REMOVED by DECISION_LOG 358 —
     # the engine no longer writes or reads it (kept in the schema, no drops; set only on V2-era rows, 2026-10-23). The stop stays entry_frenzy_stop_pct.
     entry_frenzy_willy_spike_high = Column(Float, nullable=True)
+    # 🧱 (DECISION_LOG 594) WILLY / WILLY_HT fills: (H − the DECISION price) ÷ H × 100 — the dip below the spike high the WILLY_HT_NEAR_HIGH
+    # filter judged (blocks HT when < frenzy_willy_ht_min_dip_pct). The fill-price dip = (H − entry_price) ÷ H × 100 (the scout's measure).
+    entry_frenzy_willy_dip_pct = Column(Float, nullable=True)
     frenzy_willy_tp_target_pct = Column(Float, nullable=True)
     willy_floor_armed_at = Column(DateTime, nullable=True)
     # 🏃 (DECISION_LOG 541) WILLY RUNNER: k (× entry_atr_pct below the peak) when this FRENZY_WILLY fill runs the trailing runner after its target

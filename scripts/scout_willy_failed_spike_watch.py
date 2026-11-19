@@ -217,7 +217,7 @@ def run(now_ms=None, paths=None, state_path=STATE, since_ms=None):
                      "and this table mostly shows rest-side fills. The filter's forward verdict is the blocked-trade pricer "
                      "(scout_blocked_filters: FRENZY_WILLY_HT · WILLY_FAILED_SPIKE — the refused zone trades priced on HT's live exit)."]
         else:
-            notes = ["(plain WILLY entries are OFF since DECISION_LOG 587 — this sleeve collects no new fills while they stay off)"]
+            notes = ["(plain WILLY entries back ON since DECISION_LOG 595 (2026-11-19) — OFF 11-18 → 11-19 (DL 587), no fills in that gap)"]
         sc = s[s.zone != "unscored"] if len(s) else s
         zone, rest = sc[sc.zone == "zone"], sc[sc.zone == "rest"]
         uns = s[s.zone == "unscored"] if len(s) else s

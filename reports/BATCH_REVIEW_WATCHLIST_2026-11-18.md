@@ -94,12 +94,15 @@ Run the scouts through `scripts/opportunity_scout.py` (or each script directly).
 
 - **By hand:** size recomputed monthly (DL 577); the capacity stamps (Flatbase is a CLAUDE.md capacity-rule priority).
 
-## 5. 🎲 FRENZY_WILLY_HT (DL 587: own exit TP +5 net / SL −4 / 24 h, 0.5 × 5×; plain WILLY OFF)
+## 5. 🎲 FRENZY_WILLY_HT (DL 587: own exit TP +5 net / SL −4 / 24 h, 0.5 × 5×) + plain FRENZY_WILLY back ON (DL 595, V2b exit)
 **Baseline:** full-history backtest −0.19 %/trade at the old +2 exit (no baseline yet for +5 / 24 h). Master 15 · 80 % · +1.78 (filters fitted on those fills). New breakeven WR 44.4 % (4 ÷ 9).
 
 | # | Line | Read at | Flag when | Scout |
 |---|---|---|---|---|
 | H1 | DL 580 lines (re-based to the DL 587 exit): CROWDED_LONGS · NEAR_SPIKE_HIGH · REANCHORED | zone N ≥ 15, ≥ 8 days | RETIRED / FILTER CANDIDATE / KEEP | `scout_willy_ht_lines.py` |
+| H2 | 🧱 WILLY_HT_NEAR_HIGH ARMED (DL 594, `frenzy_willy_ht_min_dip_pct` 1.4; NEAR_SPIKE_HIGH above now shows ≈ 0 zone fills): blocked HT trades priced on HT's exit | first 15 priced blocked HT trades on ≥ 8 days (also the sole-line subset) | avg net ≥ 0 → REVERT (set 0) · else KEEP (alert-only, frozen once) | `scout_blocked_filters.py` (FRENZY_WILLY_HT · WILLY_HT_NEAR_HIGH) |
+
+- **Plain WILLY (DL 595, back ON 11-19):** its existing DL 531 WILLY OFF v2 gate (first 15 closed fills, WR < 69 % ∧ avg < 0 → recommend OFF) reads the new fills; compare per-fill with the master kept 24 · 71 % · +2.75 (3 runners = +51 of +66; without them +0.71). By hand: runner count and V2b exit mix.
 
 **✅ Stale lines retired 2026-11-19 (DL 590, operator):** WILLY_ADX55 (DL 412) unhooked; WILLY_GAP's watch scout was already retired (DL 530) and its filter applies to plain WILLY only (off). Re-register on the +5 / −4 / 24 h exit only if wanted.
 
@@ -107,6 +110,7 @@ Run the scouts through `scripts/opportunity_scout.py` (or each script directly).
 
 **By hand:**
 - WILLY_PLAIN_OFF counter: plain setups refused.
+- WILLY_HT_NEAR_HIGH_UNREAD counter: should be ≈ 0 (spike high unreadable → entered unfiltered).
 - HT exit mix (TP +5 vs SL −4 vs 24 h time).
 - Hold time and slot use: an HT now holds up to 24 h.
 

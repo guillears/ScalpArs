@@ -1199,7 +1199,8 @@ def main(allow_proxy=False):
     # (DL 576) today's stack = each line's switch as in trading_config.json (a line switched OFF — e.g. LITE_BTC_RSI_HOT, DL 570 — no longer
     # blocks master rows); a key missing from the JSON = ON (the frozen 527 behaviour for every armed line)
     _wf_cfg = json.load(open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "trading_config.json"))).get("thresholds", {})
-    _WF_TH = SimpleNamespace(**{k: (_wf_cfg.get(k, True) is True) for k in WF.TOGGLES.values()})
+    _WF_TH = SimpleNamespace(**{k: (_wf_cfg.get(k, True) is True) for k in WF.TOGGLES.values()},
+                             frenzy_willy_ht_min_dip_pct=_wf_cfg.get("frenzy_willy_ht_min_dip_pct", 0))   # 🧱 (594) the HT near-high cut (0 / missing = off)
     _wo = pd.to_datetime(df.opened_at.astype(str).str.replace(" ", "T").str[:19], format="ISO8601", errors="coerce")
     _es = df.entry_strategy.astype(str)
     _prb = (df.is_probe.astype(str).str.lower().isin(("true", "1", "1.0")) if "is_probe" in df else pd.Series(False, index=df.index))
@@ -1250,7 +1251,8 @@ def main(allow_proxy=False):
                                      vs_vwap_pct=_num(r, "entry_frenzy_vs_vwap_pct"), btc_1h_slope=_num(r, "entry_btc_1h_slope"),
                                      btc_ema20_slope_raw=_num(r, "entry_btc_ema20_slope"), frenzy_vol_mult=_num(r, "entry_frenzy_vol_mult"),
                                      btc_rsi=_num(r, "entry_btc_rsi"),   # 🧱 (554) LITE_BTC_RSI_HOT — applied at the next master re-freeze
-                                     above_share=_num(r, "entry_frenzy_above_share"))   # 🧱 (556) LITE_WEAK_HOLD — same
+                                     above_share=_num(r, "entry_frenzy_above_share"),   # 🧱 (556) LITE_WEAK_HOLD — same
+                                     price=_num(r, "entry_price"), spike_high=_num(r, "entry_frenzy_willy_spike_high"))   # 🧱 (594) WILLY_HT_NEAR_HIGH on the FILL price (the scout_willy_ht_lines measure) — same
         elif e == "SPIKE_FADE":
             lines = WF.fade_blocks(_WF_TH, _gap1d[i], _num(r, "entry_pos_di"), _num(r, "entry_dist_from_ema13_pct"))
         elif _msm[i]:

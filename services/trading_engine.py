@@ -178,6 +178,7 @@ def alt_corr_stamp(now_ms=None) -> dict:
 
 from services.mkt_up4h import MktUp4hTracker   # 🌡 (DECISION_LOG 489) Market-hot (top-100 up over 4 h), rolling top-100 (observe-only)
 from services.mkt_up4h import READ_GAP_S as _MKT_READ_GAP_S, COLD_GAP_S as _MKT_COLD_GAP_S
+from services import route_b_publish as _route_b   # 📡 (DECISION_LOG 597) Route B: the FRENZY list → the recorder's bucket (observe-only)
 
 
 async def _mkt_universe_load(day_ms):
@@ -10196,6 +10197,12 @@ class TradingEngine:
                 self._frenzy_follow_prev = frenzy_list_origins(_fz_names, _fl_sl, _frenzy_flags)
             except Exception as _fl_err:
                 logger.debug(f"[FRENZY_LIST] follow journal skipped: {_fl_err}")
+            try:   # 📡 (DECISION_LOG 597) Route B: what the bot watches → the recorder records those coins in full (background, ≤ 1 / 4 min)
+                if _route_b.due():
+                    _route_b.maybe_publish(self.is_paper_mode, self._route_b_open_pairs, _frenzy_flags,
+                                           sorted(self._exhaustion_pairs() | self._flatbase_pairs()), _fz_names)   # never awaits
+            except Exception as _rb_err:
+                logger.debug(f"[ROUTE_B] publish skipped: {_rb_err}")
             _fbs_only, _fbs_seen = set(), set()
             if _fbs:   # 🩳 (348) pairs with a TRACKING episode (its 96 h S4 window outlives the flag): ≤ FLATBASE_EXTRA_READS_MAX EXTRA reads per pass, rotating
                 _fbx_all = sorted(p for p in self._flatbase_pairs() if p in by and p.upper() not in skip and p not in names)
@@ -10564,6 +10571,11 @@ class TradingEngine:
             return sorted({k[0] for k, r in self._fbs_state().items() if r.get('status') == ST_TRACKING})
         except Exception:
             return []
+
+    async def _route_b_open_pairs(self) -> list:
+        """📡 (DECISION_LOG 597) the OPEN positions' pairs (this mode) — read inside Route B's background task, its own session."""
+        async with AsyncSessionLocal() as _rbs:
+            return [p for (p,) in (await _rbs.execute(select(Order.pair).where(and_(Order.status == "OPEN", Order.is_paper == self.is_paper_mode)))).all()]
 
     def _flatbase_pairs(self) -> set:
         """pairs with a TRACKING episode now (the pass follows them like flagged pairs — never crowded out of the read)."""

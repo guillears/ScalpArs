@@ -390,3 +390,69 @@ def test_day_health_uses_that_days_record():
     assert DR.day_health("2026-11-19", "2026-11-20", dict(ok, started=d0 + 3_600_000), 0)[0] == 1   # restarted during the day
     assert DR.day_health("2026-11-19", "2026-11-20", dict(ok, bot_n=0), 0)[0] == 1
     assert DR.day_health("2026-11-20", "2026-11-20", None, 1) == (1, "live")             # today → the live verdict
+
+
+def test_one_report_market_sections(tmp_path):
+    """the daily report carries the market-data analysis (first_view.sections) — one report, DECISION_LOG 598."""
+    import numpy as np
+    import pandas as pd
+    import daily_report as DR
+    import first_view as FV
+    assert FV.bot_sets({"open": {"A": 1}, "flagged": ["B"], "tracked": ["C"]}) == ({"A"}, {"B"}, {"C"}, set())
+    assert FV.bot_sets({"open": ["A"], "flagged": {"B": {}}}) == ({"A"}, {"B"}, set(), set())
+    d = int(pd.Timestamp("2026-11-20", tz="UTC").value // 1_000_000)
+    ev = [{"ev": "bot", "r": d + 1000, "open": {"AUSDT": {"s": "X"}}, "flagged": ["BUSDT"], "tracked": ["CUSDT"],
+           "recent": {"k": {"p": "EUSDT", "s": "X", "o": "2026-11-20T00:00:30"}}},
+          {"ev": "bot", "r": d + 2000, "flagged": ["DUSDT"]},
+          {"ev": "bot", "r": d - 1000, "flagged": ["OLDUSDT"]}]                     # previous day → not counted
+    doc = DR.day_bot_doc(ev, "2026-11-20")
+    assert doc["open"] == ["AUSDT", "EUSDT"] and "followed" not in doc and doc["flagged"] == ["BUSDT", "DUSDT"] and doc["tracked"] == ["CUSDT"]
+    rng = np.random.default_rng(1)
+    rows = []
+    for s in ("AUSDT", "BUSDT", "CUSDT"):
+        mid = 1.0
+        for i in range(90):
+            mid *= 1 + rng.normal(0, 1e-3)
+            rows.append(dict(sym=s, minute=d + i * 60_000, n_book=120, mid=mid, spread_bps=3.0, bid_usd_05=2e4, ask_usd_05=2e4,
+                             imb_05=rng.uniform(-1, 1), cost_buy_2500=5.0, cost_sell_2500=5.0, cost_buy_10000=12.0, cost_sell_10000=12.0,
+                             n_trades=10, buy_usd=rng.uniform(1e3, 1e4), sell_usd=rng.uniform(1e3, 1e4), liq_long_usd=0.0, liq_short_usd=0.0))
+    f = tmp_path / "00.csv.gz"
+    pd.DataFrame(rows).to_csv(f, index=False, compression="gzip")
+    png = tmp_path / "day.png"
+    L = FV.sections(doc, [str(f)], str(png))
+    txt = "\n".join(L)
+    for h in ("## ① What was recorded", "## ② What it costs", "## ③ Does the book", "## ④ Liquidations", "## Data and caveats"):
+        assert h in txt
+    assert "Covered in full detail: 3 of 5" in txt          # DUSDT + EUSDT (recent close) not recorded
+    assert png.exists()
+    assert "chart skipped" in "\n".join(FV.sections(doc, [str(f)], None))         # no chart path → no file, still a report
+
+
+def test_non_overlap_counts_possibilities_not_events():
+    import numpy as np
+    import first_view as FV
+    m = np.array([0, 1, 2, 3, 4, 5, 6, 20, 21]) * 60_000          # 9 signal minutes on one coin
+    k = FV.non_overlap(m, 5)
+    assert list(m[k] // 60_000) == [0, 5, 20]                      # 3 trades, not 9 events
+    assert sorted(m[::-1][FV.non_overlap(m[::-1], 15)] // 60_000) == [0, 20]   # input order does not matter
+
+
+def test_wl_ready_flag():
+    import daily_report as DR
+    assert DR.wl_flag(5) == "5/30"
+    assert DR.wl_flag(29) == "29/30"
+    assert DR.wl_flag(30).startswith("🟢 30/30") and "ready" in DR.wl_flag(30)
+    assert DR.wl_flag(41).startswith("🟢 41/30")
+
+
+def test_split_minute_merged_not_double_counted():
+    import pandas as pd
+    import first_view as FV
+    a = pd.DataFrame([dict(sym="AUSDT", minute=0, n_book=80, mid=1.0, n_trades=3, buy_usd=10.0, sell_usd=5.0, liq_long_usd=0.0, liq_short_usd=0.0, max_trade_usd=4.0),
+                      dict(sym="AUSDT", minute=0, n_book=40, mid=2.0, n_trades=2, buy_usd=1.0, sell_usd=1.0, liq_long_usd=7.0, liq_short_usd=0.0, max_trade_usd=9.0),
+                      dict(sym="AUSDT", minute=60_000, n_book=120, mid=1.1, n_trades=1, buy_usd=1.0, sell_usd=0.0, liq_long_usd=0.0, liq_short_usd=0.0, max_trade_usd=1.0)])
+    m = FV.merge_split_minutes(a).sort_values("minute").set_index("minute")
+    assert len(m) == 2
+    r = m.loc[0]
+    assert r.mid == 1.0 and r.n_book == 80                       # book from the fuller row
+    assert r.n_trades == 5 and r.buy_usd == 11.0 and r.sell_usd == 6.0 and r.liq_long_usd == 7.0 and r.max_trade_usd == 9.0

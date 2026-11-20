@@ -11,6 +11,9 @@ reports/.route_b_cache/ (gitignored), so each run only fetches the new files.
      ENTRY (a features row with book data in the entry minute) · the real book's cost of a $2.5k / $10k market order at entry (median)
   ③ INACTIVE sleeves: Frenzy-flagged coins that day and how many were recorded in full (their setups can be priced later from the journal)
   ④ Market cost at our size that day (bot coins) · ⑤ new-sleeve hunt: days recorded vs the 21 days the weekly scan waits for
+  ⑥ the day's MARKET DATA analysis (scripts/route_b/first_view.sections — one report): what was recorded · cost at our size per coin group +
+     the thinnest bot coins · book imbalance / taker buy share vs the next 1 / 5 / 15 min (per coin, shuffled control, hour consistency)
+     + chart (reports/route_b_daily/<day>.png) · liquidations. EXPLORATORY — never a ship input.
 Winners vs losers need results → read from the orders export at the weekly scan; the daily line counts toward the minimums.
 Usage: venv/bin/python -I scripts/route_b/daily_report.py [YYYY-MM-DD]   (default: yesterday UTC) → prints + reports/route_b_daily/<day>.md"""
 import gzip
@@ -27,6 +30,7 @@ import pandas as pd
 _D = os.path.dirname(os.path.abspath(__file__))
 _D in sys.path or sys.path.insert(0, _D)
 import health_check as H      # noqa: E402
+import first_view as FV       # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(_D))
 CACHE = os.path.join(ROOT, "reports", ".route_b_cache")
@@ -126,6 +130,22 @@ def feature_keys_needed(all_keys, day, pos):
     return [k for k in all_keys if any(w in k for w in want) or k in hours]
 
 
+def day_bot_doc(ev, day):
+    """the bot's coins over the whole report day (union of that day's bot lists): open (incl. recent closes) · flagged · tracked. Pure."""
+    op, fl, tr = set(), set(), set()
+    for e in ev:
+        if e.get("ev") != "bot" or not e.get("r") or datetime.fromtimestamp(e["r"] / 1000, timezone.utc).strftime("%Y-%m-%d") != day:
+            continue
+        o, f, t, _ = FV.bot_sets(e)
+        op |= o
+        if isinstance(e.get("recent"), dict):                    # opened AND closed between two publishes
+            op |= {v.get("p") for v in e["recent"].values() if isinstance(v, dict) and v.get("p")}
+        fl |= f
+        tr |= t
+    # the recorder logs only the COUNT of followed coins (n_followed), not the list → no "followed" key (sections says so)
+    return {"open": sorted(op), "flagged": sorted(fl), "tracked": sorted(tr)}
+
+
 def last_sleeves(ev):
     for e in reversed(ev):
         if e.get("ev") == "bot" and isinstance(e.get("sleeves"), dict) and e["sleeves"]:
@@ -190,6 +210,12 @@ LEGEND = ("Colours (fixed rules, data quality only — a day never makes a findi
           "(that day's data can't be used) · ⚪ no trades that day (Frenzy line: no flagged coins). Red wins over yellow. The recorder's "
           "health is THAT DAY's (its daily record: > 1 h of gaps 🔴 · > 5 min, a restart or no bot list 🟡), the live one for today. "
           "Hourly summaries: 🟢 24 · 🟡 20–23 · 🔴 fewer · ⚪ day still running.")
+
+
+def wl_flag(n_recorded, need=WL_MIN):
+    """the 'toward W/L' cell: n/need, or 🟢 READY once the sleeve has `need` trades with the book recorded at entry (the W/L read itself
+    runs in a review session — sweep_separators + the locked gates — never in the daily report). Pure."""
+    return f"{GREEN} {n_recorded}/{need} — ready for the winners-vs-losers read" if n_recorded >= need else f"{n_recorded}/{need}"
 
 
 def coverage_colour(health_code, n, recorded):
@@ -283,6 +309,8 @@ def build(day=None):
           f"- {summaries_colour(len(fd), day < _today)} per-minute summaries for {day}: {len(fd)} of 24 hours"
           + (" (day still running)" if day >= _today else "") + (" (recording began this day)" if day == first_day else ""), "",
           "## Active sleeves — trades with the order book recorded at entry", "",
+          f"Toward W/L = trades with the book recorded at entry since recording began; at {WL_MIN} the row turns 🟢 READY and the "
+          "winners-vs-losers read runs in a review session (results come from the orders export; full separator sweep, locked gates).", "",
           f"Mode: {'PAPER' if mode else 'LIVE' if mode is not None else '—'} fills only. Trades = positions seen in the bot's list (open, or "
           "closed within the last 30 min of a publish) — a lower bound if the bot paused publishing.", "",
           f"| | Sleeve | trades {day} | book at entry | since {first_day} | book at entry (total) | median entry cost $2.5k / $10k (bps) | toward W/L ({WL_MIN}) |",
@@ -296,7 +324,7 @@ def build(day=None):
         L.append(f"| {coverage_colour(dcode, len(pd_), n_rec)} | {s} | {len(pd_)} | {n_rec}/{len(pd_)} | {len(p)} | "
                  f"{int(p.recorded.sum()) if len(p) else 0}/{len(p)} | "
                  + ("–" if c25 != c25 else f"{c25:.1f}") + " / " + ("–" if c10 != c10 else f"{c10:.1f}")
-                 + f" | {int(p.recorded.sum()) if len(p) else 0}/{WL_MIN} |")
+                 + f" | {wl_flag(int(p.recorded.sum()) if len(p) else 0)} |")
     other = pos[~pos.sleeve.isin(active)] if len(pos) else pos
     for lab, g in ((("manual (your own trades)"), other[other.sleeve == "MANUAL"] if len(other) else other),
                    ("sleeves off now / other", other[other.sleeve != "MANUAL"] if len(other) else other)):
@@ -323,6 +351,17 @@ def build(day=None):
           f"- {n_days} of {SCAN_DAYS} days recorded — the weekly research scan starts at day {SCAN_DAYS} "
           f"(≈ {(datetime.strptime(first_day, '%Y-%m-%d') + timedelta(days=SCAN_DAYS)).strftime('%Y-%m-%d')}). Nothing is read daily.", ""]
     os.makedirs(OUTDIR, exist_ok=True)
+    day_files = [os.path.join(CACHE, k) for k in sorted(fd) if os.path.exists(os.path.join(CACHE, k))]
+    L += [f"# Market data on {day} — what the recording shows (EXPLORATORY)", "",
+          "Nothing below is a filter, a sleeve or a ship input: it is what the data can answer and the shapes to test properly at the weekly "
+          "scan. \"The bot's coins\" = every coin open, Frenzy-flagged or tracked in any of the bot's lists that day (the coins the Frenzy pass only follows are not in the recorder's log).", ""]
+    if day_files:
+        try:
+            L += FV.sections(day_bot_doc(ev, day), day_files, os.path.join(OUTDIR, f"{day}.png"))
+        except Exception as e:                                   # the health / sleeve part must still be written
+            L += [f"(market-data analysis skipped: {type(e).__name__}: {e})", ""]
+    else:
+        L += ["(no per-minute summaries for this day yet)", ""]
     txt = "\n".join(L)
     with open(os.path.join(OUTDIR, f"{day}.md"), "w") as f:
         f.write(txt)

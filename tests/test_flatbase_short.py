@@ -1457,3 +1457,70 @@ def test_funding_above_base_scout_gate():
     src = open(os.path.join(ROOT, "scripts", "scout_flatbase_confirm_watch.py"), encoding="utf-8").read()
     assert "~led.fb_reason.astype(str).str.startswith(FA_TAG)" in src                          # never priced as a FB_CONFIRM skip
     assert '("funding-above-base gate", lambda: fa_lines(now_ms, dec_paths, bars_fn))' in src
+
+
+def test_fb_tp6_shadow_walk_and_gate():
+    """🎯 (DECISION_LOG 604) FB_TP6_SHADOW — observe-only TP −6 vs −5 walk on the real fill price + its frozen ship read."""
+    sys.path.insert(0, os.path.join(ROOT, "scripts"))
+    import numpy as np
+    import scout_flatbase_confirm_watch as W
+    te, E, m = 1_700_000_000_000, 100.0, 60_000
+    bar = lambda k, o, h, l: [te // m * m + (k + 1) * m, o, h, l, o]   # the walk starts the minute AFTER the fill minute
+    pre = [te // m * m, 100.0, 200.0, 1.0, 100.0]                      # the fill minute (pre-fill prints) is never read
+    assert W.walk_tp([pre], E, te, 5.0)[0] == "UNPRICED"
+    # reaches −5.05 then −6.05 → −5 books +4.94, −6 books +5.94
+    b = [bar(0, 100, 100.5, 99), bar(1, 99, 99, 94.9), bar(2, 95, 95, 93.9)]
+    assert W.walk_tp(b, E, te, 5.0) == ("TP", 5.0 - W.TP6_FEE)
+    assert W.walk_tp(b, E, te, 6.0) == ("TP", 6.0 - W.TP6_FEE)
+    # touches −5 exactly (not 0.05 through) → no TP; then the stop: stop-first on a bar touching both
+    b2 = [bar(0, 100, 100, 95.0), bar(1, 99, 110.5, 90)]
+    assert W.walk_tp(b2, E, te, 5.0) == ("STOP", W.STOP_NET)
+    # hit −5, then stopped before −6 → the payer case
+    b3 = [bar(0, 100, 100, 94.9), bar(1, 96, 111, 96)]
+    assert W.walk_tp(b3, E, te, 5.0)[0] == "TP" and W.walk_tp(b3, E, te, 6.0) == ("STOP", W.STOP_NET)
+    assert W.walk_tp([], E, te, 5.0)[0] == "UNPRICED" and W.walk_tp(b[:1], E, te, 5.0)[0] == "PENDING"
+    # 72 h time exit at the open
+    b4 = [bar(0, 100, 101, 99), [te + W.MAX_H * W.HOUR, 98.0, 98.0, 98.0, 98.0]]
+    w, v = W.walk_tp(b4, E, te, 5.0)
+    assert w == "TIME" and abs(v - (2.0 - W.TIME_FEE)) < 1e-9
+    # frozen ship read: needs ≥ 30 fills on ≥ 15 windows
+    assert W.tp6_verdict([1.0] * 29, list(range(29)))[0] == "COLLECTING"
+    assert W.tp6_verdict([1.0] * 40, [1] * 40)[0] == "COLLECTING"                     # one window only
+    assert W.tp6_verdict([1.0] * 30, list(range(30)))[0] == "SHIP CANDIDATE"
+    assert W.tp6_verdict([1.0] * 28 + [-15.0] * 2, list(range(30)))[0] == "NO SHIP"   # mean < 0
+    big = [0.0] * 28 + [20.0, 20.0]                                                      # all gain in the best 5 % → fails leave-best-out
+    assert W.tp6_verdict(big, list(range(30)))[0] == "NO SHIP"
+    assert W.tp6_verdict([np.nan] + [1.0] * 30, list(range(31)))[0] == "SHIP CANDIDATE"   # NaN drops with its window
+    src = open(os.path.join(ROOT, "scripts", "scout_flatbase_confirm_watch.py"), encoding="utf-8").read()
+    assert '("FB_TP6_SHADOW", lambda: tp6_lines(allc, now_ms' in src and W.TP6_DL == 604
+    # tp6_lines: a fill with no complete path 96 h after entry leaves the read (no stall); the read freezes ONCE
+    import pandas as pd
+    t0 = pd.Timestamp("2026-12-01 00:00:15")
+    rows = []
+    for i in range(31):
+        o = t0 + pd.Timedelta(hours=4 * i)
+        rows.append(dict(pair=f"P{i}USDT", o=o, te=int(o.value // 1_000_000), E=100.0, pct=4.94, closed_at="x", close_reason="FRENZY_TP"))
+    c = pd.DataFrame(rows)
+    def bars_fn(pair, te_, now):
+        if pair == "P0USDT":
+            return []                                                            # never priceable
+        b0 = te_ // m * m
+        return [[b0 + m, 100.0, 100.0, 93.0, 94.0]]                              # through −6 at once → Δ +1
+    now = int((t0 + pd.Timedelta(days=30)).value // 1_000_000)
+    st, saved = {}, []
+    monkey_save = W.NF.du_save_state
+    W.NF.du_save_state = lambda s_, p_: saved.append(dict(s_))
+    try:
+        fl = int(t0.value // 1_000_000) - 1
+        o0 = "\n".join(W.tp6_lines(c, now, st, "x.json", since_ms=fl, bars_fn=bars_fn))   # no export time → freezing deferred
+        assert "freezing deferred" in o0 and W.TP6_KEY not in st and not saved
+        o1 = "\n".join(W.tp6_lines(c, now, st, "x.json", since_ms=fl, newest=pd.Timestamp(now, unit="ms"),
+                                    bars_fn=lambda p_, t_, n_: None if p_ == "P5USDT" else bars_fn(p_, t_, n_)))
+        assert "P5USDT" in o1 and W.TP6_KEY not in st and not saved                       # a fetch stop holds, never drops, never freezes
+        out = "\n".join(W.tp6_lines(c, now, st, "x.json", since_ms=fl, bars_fn=bars_fn, newest=pd.Timestamp(now, unit="ms")))
+        assert "P0USDT" in out and "NOT_EVALUABLE" in out and st[W.TP6_KEY]["state"] == "SHIP CANDIDATE" and len(saved) == 1
+        st[W.TP6_KEY] = dict(state="NO SHIP", detail="frozen", run_at="t")             # a frozen record is never re-decided
+        out2 = "\n".join(W.tp6_lines(c, now, st, "x.json", since_ms=fl, bars_fn=bars_fn, newest=pd.Timestamp(now, unit="ms")))
+        assert "Frozen read (t): NO SHIP" in out2 and len(saved) == 1
+    finally:
+        W.NF.du_save_state = monkey_save

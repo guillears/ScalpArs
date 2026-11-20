@@ -31,6 +31,8 @@ FROZEN BAR (operator's aim: well above breakeven, same style as DL 416), read pe
            order — is "not a confirm entry"); no ledger row → unscored.
 📈 RE-SIZE  (operator 2026-11-02: "if FB_CONFIRM performs well, the re-sizing is next") a frozen KEEP opens the DL 363 ladder step
            0.2 → 0.5 invest for the operator (confirmed fills only, real-path DCR before → after, flatbase_max_open re-decided).
+🎯 TP6      (DECISION_LOG 604, observe) FB_TP6_SHADOW: every new real fill walked at TP −6 vs −5 (1m, real fill price); frozen ship read at
+           ≥ 30 fills on ≥ 15 windows: one-sided 95 % window bootstrap P(Δ > 0) ∧ mean Δ without the best 5 % > 0 → SHIP CANDIDATE (operator).
 STATE      reports/SCOUT_FB_CONFIRM.json (gitignored; the revert verdict under key FLATBASE_SHORT_REVERT).
 Usage: venv/bin/python -I scripts/scout_flatbase_confirm_watch.py
 """
@@ -194,7 +196,7 @@ def crossing_prefix(rows):
     return None
 
 
-def run(now_ms=None, paths=None, state_path=STATE, since_ms=None, bars_fn=None, ship_ms=None, dec_paths=None, m1_bars_fn=None):
+def run(now_ms=None, paths=None, state_path=STATE, since_ms=None, bars_fn=None, ship_ms=None, dec_paths=None, m1_bars_fn=None, tp6_bars_fn=None):
     """→ markdown lines. since_ms None → the DECISION_LOG 417 commit + 10 min (not in git → NOT EVALUABLE). state_path None → no write. bars_fn(pair, te, now_ms) → bars or None; None → public klines.
     ship_ms None → the DECISION_LOG 428 commit + 10 min (not in git yet → the observe line still runs, no revert gate); False → not shipped.
     dec_paths → the decisions exports for the SKIPPED side line (None → Downloads + exports_archive/)."""
@@ -280,6 +282,7 @@ def run(now_ms=None, paths=None, state_path=STATE, since_ms=None, bars_fn=None, 
                        ("higher-high gate", lambda: hh_lines(now_ms, st if ok else None, state_path if ok else None, dec_paths, bars_fn)),
                        ("near-base gate", lambda: nb_lines(now_ms, dec_paths, bars_fn)),
                        ("funding-above-base gate", lambda: fa_lines(now_ms, dec_paths, bars_fn)),
+                       ("FB_TP6_SHADOW", lambda: tp6_lines(allc, now_ms, st if ok else None, state_path if ok else None, None, tp6_bars_fn, newest)),
                        ("BANK-TYPE", lambda: bank_lines(post, now_ms, st if ok else None, state_path if ok else None, dec_paths, newest,
                                                         bars_fn=m1_bars_fn))):
             try:   # one section's failure never hides the others (the revert gate above all)
@@ -632,6 +635,130 @@ def fa_lines(now_ms, dec_paths=None, bars_fn=None):
         done.append(v); dw.append(w)
     state, detail = fa_verdict(done, dw)
     L.append(f"Now: {state} — {detail}")
+    return L + [""]
+
+
+TP6_DL, TP6_KEY = 604, "FB_TP6_SHADOW"   # 🎯 (DECISION_LOG 604, operator 2026-11-20 "register the FB_TP6_SHADOW watch line") — OBSERVE only
+TP6_TP, TP6_THRU = 6.0, 0.05            # the shadow TP (gross %) and the trade-through a resting maker TP needs (TP_GRID_2026-11-20_FB rule)
+TP6_N, TP6_WIN, TP6_P = 30, 15, 0.95    # 🔒 frozen ship read: ≥ 30 new real fills on ≥ 15 market windows → one-sided 95 % window bootstrap
+TP6_BOOT, TP6_SEED, TP6_TOP = 4000, 7, 0.05   # + leave-the-best-5 %-out mean Δ > 0 → SHIP CANDIDATE (operator decides; never automatic)
+TP6_FEE = TP_GROSS - TP_NET             # the live booked TP cost (gross 5 → net 4.94: 0.06)
+MIN1, TP6_PAGE = 60_000, 900
+
+
+def walk_tp(bars, E, te, tp_gross):
+    """FLATBASE exit at TP tp_gross % (resting, needs a trade ≥ TP6_THRU % through) / stop +10 % / 72 h, from the REAL fill price E at te,
+    on 1m CLOSED bars [[open ms, o, h, l, c], …] from the minute AFTER the fill's minute (the fill minute's high / low include pre-fill
+    prints — skipped; the same for −5 and −6, so the paired Δ is unaffected). Stop first on a bar touching both. → (why, net %); PENDING
+    when the path ends before an exit. PURE."""
+    b = [q for q in (bars or []) if int(q[0]) >= int(te) // MIN1 * MIN1 + MIN1]
+    if not b or not (E and E > 0):
+        return "UNPRICED", np.nan
+    stop, tp = E * (1 + STOP_GROSS / 100), E * (1 - (tp_gross + TP6_THRU) / 100)
+    for q in b:
+        if int(q[0]) >= te + MAX_H * HOUR:
+            return "TIME", float(-(q[1] / E - 1) * 100 - TIME_FEE)
+        if q[2] >= stop:
+            return "STOP", STOP_NET if q[1] < stop else float(-(q[1] / E - 1) * 100 - TIME_FEE)
+        if q[3] <= tp:
+            return "TP", float(tp_gross - TP6_FEE)
+    return "PENDING", np.nan
+
+
+def fetch_bars_1m(pair, te, now_ms, bud):
+    """1m closed bars from te's minute for 72 h + 1 bar (5 pages). → bars or None on a budget / error stop."""
+    start, end, out, e0 = int(te) // MIN1 * MIN1, int(te) + MAX_H * HOUR + MIN1, [], getattr(bud, "errors", 0)
+    while start <= min(end, now_ms):
+        pg = LS.fapi_klines(pair, "1m", start, TP6_PAGE, bud, CACHE, now_ms, fetch=True)
+        if pg is None or getattr(bud, "errors", 0) > e0:   # (604 review) only THIS fill's errors stop it — cached later fills still price
+            return None
+        out += [q[:5] for q in pg]
+        if len(pg) < TP6_PAGE:
+            break
+        start += TP6_PAGE * MIN1
+    return out
+
+
+def tp6_verdict(deltas, windows, seed=TP6_SEED):
+    """🔒 (604) the frozen ship read on the paired Δ = net(TP −6) − net(TP −5) per fill, in fill order: at the first k ≥ TP6_N fills that
+    span ≥ TP6_WIN windows → SHIP CANDIDATE iff the one-sided window-bootstrap P(mean Δ > 0) ≥ TP6_P ∧ the mean Δ without the best
+    TP6_TOP of fills > 0, else NO SHIP (keep −5). Alert only — never switches. PURE."""
+    pairs = [(float(d), w) for d, w in zip(deltas, windows) if d == d]
+    for k in range(TP6_N, len(pairs) + 1):
+        d = np.array([x for x, _ in pairs[:k]]); w = np.array([y for _, y in pairs[:k]])
+        if len(set(w.tolist())) < TP6_WIN:
+            continue
+        u = np.unique(w); g = [d[w == x] for x in u]
+        rng = np.random.default_rng(seed)
+        m = np.array([np.concatenate([g[i] for i in rng.integers(0, len(u), len(u))]).mean() for _ in range(TP6_BOOT)])
+        p = float((m > 0).mean())
+        cut = max(1, int(np.ceil(TP6_TOP * k)))
+        loo = float(np.sort(d)[:-cut].mean())
+        tag = "SHIP CANDIDATE (operator decides; never automatic)" if (p >= TP6_P and loo > 0) else "NO SHIP — keep TP −5"
+        return "NO SHIP" if tag.startswith("NO") else "SHIP CANDIDATE", (
+            f"{tag}: first {k} fills on {len(u)} windows · mean Δ {d.mean():+.2f} pts/fill · P(Δ > 0) {p:.2f} (need ≥ {TP6_P:.2f}) · "
+            f"without the best {cut} fill(s) {loo:+.2f} (need > 0)")
+    n = len(pairs)
+    return "COLLECTING", f"{n}/{TP6_N} fills priced on {len(set(w for _, w in pairs))}/{TP6_WIN} windows (mean Δ {(sum(x for x, _ in pairs) / n) if n else 0:+.2f})"
+
+
+def tp6_lines(c, now_ms, st=None, state_path=None, since_ms=None, bars_fn=None, newest=None):
+    """🎯 (604) FB_TP6_SHADOW: every new CLOSED FLATBASE fill walked at TP −6 and TP −5 (same 1m model, real fill price) → paired Δ +
+    the frozen ship read (frozen once into the state file). c = load()'s CLOSED fills, read in open order; the freeze waits for the newest export ≥
+    the last priced fill + 72 h and for a run with no fetch stop (DL 604)."""
+    L = [f"### 🎯 FB_TP6_SHADOW (DECISION_LOG {TP6_DL}, OBSERVE only) — TP −6 vs today's −5 on every new real FLATBASE fill (stop +10, 72 h; "
+         f"1m walk from the real fill price from the next minute, TP needs {TP6_THRU:g} % through, stop first on a bar touching both; no funding)", ""]
+    if since_ms is None:
+        since_ms = _GK.dl_deploy_ms(TP6_DL, lag_min=10, label="FB_TP6_SHADOW")
+    if since_ms is None:
+        return L + [f"⚠ NOT EVALUABLE — the DECISION_LOG {TP6_DL} commit is not in git yet; nothing is counted.", ""]
+    cc = c[c.o >= pd.Timestamp(int(since_ms), unit="ms")] if len(c) else c
+    keep, ox = _GK.split_operator_closed(cc) if len(cc) else (cc, cc)
+    rec = (st or {}).get(TP6_KEY)
+    if rec is not None and not (isinstance(rec, dict) and {"state", "detail", "run_at"} <= set(rec)):
+        return L + [f"⚠ frozen {TP6_KEY} record damaged — operator restore needed; not re-decided.", ""]
+    bud, D, W, O, par, gave, stopped = LS.Budget(), [], [], [], [], 0, False
+    for r in keep.itertuples():
+        bars = bars_fn(r.pair, int(r.te), now_ms) if bars_fn else fetch_bars_1m(r.pair, int(r.te), now_ms, bud)
+        stopped |= bars is None                                    # (604 review) a fetch stop = transient: hold, never drop, never freeze
+        w5, v5 = walk_tp(bars, float(r.E), int(r.te), TP_GROSS) if bars else ("UNPRICED", np.nan)
+        w6, v6 = walk_tp(bars, float(r.E), int(r.te), TP6_TP) if bars else ("UNPRICED", np.nan)
+        d = v6 - v5 if (v5 == v5 and v6 == v6) else np.nan
+        if d != d and bars is not None and now_ms > int(r.te) + (MAX_H + 24) * HOUR:   # (604 review, hh_lines rule) never priceable after the hold + 1 day → out
+            L.append(f"  · {r.pair} {r.o:%m-%d %H:%M} → NOT_EVALUABLE (no complete price path) — out of the read")
+            continue
+        if d != d:
+            L.append(f"  · {r.pair} {r.o:%m-%d %H:%M} booked {r.pct:+.2f} → {w5} / {w6} (pending / unpriced — holds the read)")
+            D.append(np.nan); W.append(int(r.te) // H4); O.append(r.o)
+            continue
+        gave += int(w5 == "TP" and w6 == "STOP")
+        par.append(abs(v5 - float(r.pct)))
+        D.append(d); W.append(int(r.te) // H4); O.append(r.o)
+        L.append(f"  · {r.pair} {r.o:%m-%d %H:%M} booked {r.pct:+.2f} · −5 {w5} {v5:+.2f} · −6 {w6} {v6:+.2f} · Δ {d:+.2f}")
+    done_d, done_w, done_o = [], [], []
+    for d, w, o in zip(D, W, O):                # in fill order; the read waits at the first unpriced fill
+        if d != d:
+            break
+        done_d.append(d); done_w.append(w); done_o.append(o)
+    state, detail = tp6_verdict(done_d, done_w)
+    hold = []                                   # (604 review) never freeze on an incomplete cohort
+    if stopped:
+        hold.append("a kline fetch stopped this run")
+    if done_o and (newest is None or newest < max(done_o) + pd.Timedelta(minutes=WAIT_MIN)):
+        hold.append(f"newest export < the last priced fill + {WAIT_MIN} min (an earlier-opened fill could still be open)")
+    if rec is None and state != "COLLECTING" and not hold and st is not None and state_path:
+        rec = dict(state=state, detail=detail, run_at=pd.Timestamp(now_ms, unit="ms").strftime("%Y-%m-%d %H:%M UTC"))
+        st[TP6_KEY] = rec
+        NF.du_save_state(st, state_path)
+    if not len(keep):
+        L.append("  no new fills yet.")
+    L.append(f"  cohort: CLOSED fills opened ≥ {pd.Timestamp(int(since_ms), unit='ms'):%Y-%m-%d %H:%M} UTC · {_GK.operator_closed_line(ox)} · priced {len(done_d)} · "
+             f"Σ Δ {sum(done_d):+.2f} pts · 'hit −5, then stopped at −6' {gave}" + (f" · parity −5 walk vs booked: median |diff| {np.median(par):.2f}" if par else ""))
+    L.append(f"**Frozen read ({rec['run_at']}): {rec['state']}** — {rec['detail']}" if rec else f"Now: ⏳ {state} — {detail}")
+    if hold and not rec and state != "COLLECTING":
+        L.append("  ⏸ freezing deferred: " + " · ".join(hold) + " — re-checked next run.")
+    L.append("  🔒 if −6 is ever shipped: revert to −5 when ≥ 3 of the first 20 fills under −6 'hit −5, then stopped', or Σ Δ vs the −5 shadow < −10 pts "
+             "(reports/TP_GRID_2026-11-20_FB.md §9).")
     return L + [""]
 
 

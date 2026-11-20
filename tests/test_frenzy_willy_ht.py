@@ -81,7 +81,7 @@ def test_turnover_only_refusal_opens_ht_and_ends_the_pending(monkeypatch):
     _cfg(monkeypatch, TE)
     e = _eng(TE, R=2.0)
     o, f = _run(e, TE)
-    assert o == [dict(willy="A", ht=True, note=o[0]["note"])] and "turnover 2.00× mcap → quarter size" in o[0]["note"]
+    assert o == [dict(willy="A", ht=True, note=o[0]["note"])] and "turnover 2.00× mcap → HT size" in o[0]["note"]
     assert "FRENZY_WILLY_TURNOVER" in e.blocks                                                    # the turnover shadow record is unchanged
     assert "FOOUSDT" not in (getattr(e, "_fz_willy_pending", None) or {}) and "FRENZY_WILLY_HT_TAKEN" in e.events
 

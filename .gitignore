@@ -157,3 +157,8 @@ reports/FAST_TP_2026-11-20_data/
 reports/HT_WILLY_2026-11-20_data/
 reports/DIST_FB_LOSERS_2026-11-20_data/
 reports/DIST_LOSERS2_2026-11-20_data/*_2D.csv
+reports/TP_GRID_2026-11-20_EXH_data/
+reports/TP_GRID_2026-11-20_FB_data/k1m/
+reports/TP_GRID_2026-11-20_FB_data/funding/
+reports/TP_GRID_2026-11-20_FB_data/*.pkl
+reports/TP_GRID_2026-11-20_DIST_data/funding_*.json

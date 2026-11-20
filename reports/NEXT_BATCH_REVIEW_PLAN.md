@@ -843,3 +843,26 @@ Review the ML SECOND CHANCE exit (DL 532, armed 11-11) on every ML fill since it
 shadow of the exit it replaced (`sc_base_pnl` = what RUNNER_TRAIL / HARD_TP_LADDER would have booked; `sc_armed_at`, `sc_high_pct`), Σ Δ, WR, one-size DCR
 before → after, LOO, per-day; plus its pre-committed revert gate (scripts/scout_* for DL 532). Path decomposition (path_labels) first, ENTRY × EXIT joint
 check, master over backtest. Also the 3 live ML longs of 11-15 13:23 (AVAX / INJ / ARB).
+
+### 🎯⚖️ DIST / EXH / FLATBASE TAKE PROFIT vs SIZE — operator 2026-11-20: "i have my doubts with this, what is safer" → DEEP REVIEW at this batch
+Context (2026-11-20, nothing shipped): reports/TP_GRID_2026-11-20_{DIST,EXH,FB}.md (DECISION_LOG 603). DIST backtest 1,547 fills at ONE size
+0.61 × equity: TP 10 (today) earns the most (+0.93 %/fill, DCR +0.59) but has the deepest drawdown (−55 %); TP 4–9 raise WR (43 → 60 %) and
+lower drawdown but earn less. RISK-MATCHED (`venv/bin/python scripts/TP_GRID_2026-11-20_DIST_risk.py`, size per TP for a −30 % max drawdown):
+ALL 2023–26 TP 5 +0.37 · 6 +0.36 · 8 +0.34 · 9 +0.37 vs 10 +0.31 %/day; HOLDOUT TP 5 +0.80 · 8 +0.57 vs 10 +0.46; 10-day-block bootstrap
+P(better than TP 10) ALL 0.35–0.52 (coin flip) · HOLDOUT 0.75–0.81 (range includes 0). Read at this batch, ONE sleeve at a time:
+① DIST, EXH, FLATBASE: TP (and FB SL) grid at EQUAL drawdown, not equal size — real fills (master + batch, re-walked) → backtest per block,
+  bootstrap P(better) per TP, worst day, Kelly; the size each TP needs for −20 / −30 % worst drawdown (incl. the Frenzy-cluster caveat).
+② The joint decision: TP level × ticket size (DIST is 0.61 × equity, 3–6× its Kelly range; size is on the pre-live list) — recommend ONE pair
+  per sleeve with a frozen revert gate; never a lower TP at today's size as the "safe" answer without the risk-matched read.
+③ The proposed observe line (needs operator OK first): DIST TP 5 / 8 vs 10 priced at equal drawdown on forward fills, read at 30 fills.
+Results in hand (2026-11-20; risk-matched scripts scripts/TP_GRID_2026-11-20_{DIST,EXH,FB}_risk.py → *_data/risk_matched*.csv):
+- EXH (reports/TP_GRID_2026-11-20_EXH.md, 4,307 fills): same size TP 10 +0.62 · DCR 0.97 · maxDD −72 · worst day −40 vs TP 8 +0.59 · 0.98 · −56 · −27
+  (Δ −0.03, CI −0.11…+0.04); equal −30 % DD: TP 8 +0.53 vs 10 +0.38 %/day ALL (P better 0.82), HOLDOUT 0.97 vs 0.66 (0.86); TP ≤ 6 worse
+  beyond luck; TP 7 equal-DD ALL +0.48 (P 0.75) · HOLDOUT +1.15 (P 0.91), same size Δ −0.06 (CI −0.16…+0.03) — 7 vs 8 a tie.
+  ⚠ the drawdown gap rests on two stop-cluster days. Lead: TP 7–8 (with size; operator: "EXH could even be 7 %"), not proven.
+- FB (reports/TP_GRID_2026-11-20_FB.md, 27 real · 545 backtest): stop +10 optimal (tighter refuted both ways); TP −6 / +10 Δ +0.24 (CI +0.03…+0.44),
+  equal-DD P better 0.80 ALL / 0.72 HOLDOUT, fails pick-the-best (p 0.32); +12-stop cells top the equal-DD read (−6/+12 P 0.96) but are NOT ROBUST
+  (per-trade edge negative without the best 5 %, flat on DESIGN). FB_TP6_SHADOW REGISTERED (DECISION_LOG 604, scout_flatbase_confirm_watch.py).
+- Before using any Kelly number: fix ONE Kelly definition (DIST_WL haircut Kelly 0.10–0.20 vs DL 586 1.15 / 0.71 / 0.43 notional vs EXH Wilson-floor ≈ 0.06 disagree).
+- FB real fills: 14 of the 27 are modelled confirm entries (B24 / B25), not real — the stop refutation's KAT / PARTI are modelled; only REAL rows test parity.
+- Every equal-drawdown read assumes no shared-book slot cap (the cluster days are partly unreachable live) — re-read with the 4-slot cap.

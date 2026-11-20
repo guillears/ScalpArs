@@ -12821,10 +12821,10 @@ class TradingEngine:
                 return "armed"
             _wb = int((int(bar_open) - int(pd_['armed'])) // 300_000)
             _ok = await self._frenzy_open(db, flag, ind, bar_open, willy=pd_['trig'], willy_ht=True,
-                                          willy_note=f"turnover {ratio:.2f}× mcap → quarter size · red candle ({float(ep.get('bar_ret_pct') or 0):+.2f}%) · {_wb} bars after the trigger",
+                                          willy_note=f"turnover {ratio:.2f}× mcap → HT size · red candle ({float(ep.get('bar_ret_pct') or 0):+.2f}%) · {_wb} bars after the trigger",
                                           willy_wait_bars=_wb)
             if _ok:
-                logger.info(f"[FRENZY_WILLY_HT] {pair}: WILLY {pd_.get('trig')} turnover-blocked (R={ratio:.2f}) → opened at quarter size")
+                logger.info(f"[FRENZY_WILLY_HT] {pair}: WILLY {pd_.get('trig')} turnover-blocked (R={ratio:.2f}) → opened at HT size (frenzy_willy_ht_size_frac × WILLY's ticket)")
                 self._willy_event("FRENZY_WILLY_HT_TAKEN", pair, reason=f"R={ratio:.3f} · {pd_.get('trig')}",
                                   price=(flag.get('live_price') or flag.get('price')))   # the pending entry ends here (not an expiry): journal + monitor tally
                 return "opened"

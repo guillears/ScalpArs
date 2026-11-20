@@ -52,6 +52,7 @@ from services.flatbase import (FLATBASE_SHORT, FLATBASE_CLASS, flatbase_enabled,
                                ST_SKIPPED, ACT_SKIP, CONFIRM_TAG, confirm_scan, BAR_MS as FLATBASE_BAR_MS)   # ✅ (DECISION_LOG 428) FB_CONFIRM
 from services.flatbase import higher_high_read, HH_TAG   # 🔺 (DECISION_LOG 540) FLATBASE_HIGHER_HIGH
 from services.flatbase import near_base_read, base_from_bars, NB_TAG, _fin as _fbs_fin   # 📏 (DECISION_LOG 577) FLATBASE_NEAR_BASE
+from services.flatbase import funding_above_read, FA_TAG   # 💸 (DECISION_LOG 601) FLATBASE_FUNDING_ABOVE_BASE
 from services import exhaustion as _exh_rules   # 🪫 (DECISION_LOG 578) EXHAUSTION_SHORT pure rules
 from services.exhaustion import (EXHAUSTION_SHORT, EXHAUSTION_CLASS, exhaustion_enabled, exhaustion_params, exhaustion_exit_for,   # 🪫 (578)
                                  max_hold_minutes as exhaustion_max_hold_minutes, ENTRY_MAX_LATE_S as EXH_ENTRY_MAX_LATE_S)
@@ -11037,6 +11038,24 @@ class TradingEngine:
                                                               f"below it")[:200], **feats)
             logger.warning(f"[FLATBASE_SHORT] {pair}: S4 signal at {float(scan['close']):g} → FB_CONFIRM wait ≤ {_cw:g} h for a 4-h close below it")
             return
+        if bool(getattr(th, 'flatbase_funding_above_base_block', False)):
+            # 💸 (DECISION_LOG 601, operator 2026-11-20 declared override) no order when the entry funding is STRICTLY above the cut (base
+            # +0.005 %): longs still pay to hold → demand still there. Judged at the ORDER decision (the confirm bar, or S4 with the wait off)
+            # on the same premiumIndex read stamped as entry_funding_rate. Unreadable → fail-open, counted.
+            _fa_cut = getattr(th, 'flatbase_max_entry_funding_rate', 0.00005)
+            _fa = funding_above_read(_fr, _fa_cut)
+            if _fa is True:
+                _frf = float(_fr)   # (601 review) funding_above_read already proved both are finite numbers
+                logger.info(f"[FLATBASE_SHORT] {pair}: FLATBASE_FUNDING_ABOVE_BASE — entry funding {_frf * 100:+.4f} % > {float(_fa_cut) * 100:+.4f} % "
+                            f"per settlement {_at} → no trade")
+                self._fbs_count("FLATBASE_FUNDING_ABOVE_BASE", pair)
+                await self._flatbase_finalize(pair, spike_ms, ST_SKIPPED,
+                                              f"{FA_TAG}: entry funding {_frf * 100:+.4f} % > {float(_fa_cut) * 100:+.4f} % per settlement {_at} "
+                                              f"→ no trade (FLATBASE_FUNDING_ABOVE_BASE, DECISION_LOG 601)", **feats)
+                return
+            if _fa is None:
+                self._fbs_count("FLATBASE_FUNDING_UNREAD", pair)
+                logger.warning(f"[FLATBASE_SHORT] {pair}: FLATBASE_FUNDING_ABOVE_BASE could not read the funding rate — traded as before (fail-open)")
         self._frenzy_open_refusal = None
         self._journal_pair = pair
         _p_close = float(_cfm['close']) if _cfm else float(scan['close'])

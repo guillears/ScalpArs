@@ -279,6 +279,7 @@ def run(now_ms=None, paths=None, state_path=STATE, since_ms=None, bars_fn=None, 
                        ("skipped side line", lambda: skipped_lines(ship, now_ms, dec_paths, bars_fn)),
                        ("higher-high gate", lambda: hh_lines(now_ms, st if ok else None, state_path if ok else None, dec_paths, bars_fn)),
                        ("near-base gate", lambda: nb_lines(now_ms, dec_paths, bars_fn)),
+                       ("funding-above-base gate", lambda: fa_lines(now_ms, dec_paths, bars_fn)),
                        ("BANK-TYPE", lambda: bank_lines(post, now_ms, st if ok else None, state_path if ok else None, dec_paths, newest,
                                                         bars_fn=m1_bars_fn))):
             try:   # one section's failure never hides the others (the revert gate above all)
@@ -495,6 +496,9 @@ NB_TAG = "NEAR_BASE"                # 📏 (DECISION_LOG 577) services.flatbase.
 NB_N, NB_EARLY_SUM = 10, 15.0          # 📏 (577) frozen revert gate: the first 10 priced skips Σ ≥ 0 → OFF; Σ > +15 pts earlier → OFF early
 HH_TAG = "HIGHER_HIGH"              # 🔺 (DECISION_LOG 540) services.flatbase.HH_TAG — the SKIPPED reason prefix of a higher-high refusal
 HH_KEY, HH_N, HH_EARLY_SUM = "FLATBASE_HIGHER_HIGH_REVERT", 5, 10.0
+FA_TAG = "FUNDING_ABOVE_BASE"       # 💸 (DECISION_LOG 601) services.flatbase.FA_TAG — the SKIPPED reason prefix of a funding-above-base refusal
+FA_N, FA_WIN, FA_EARLY_N = 8, 5, 4      # 💸 (601) TIGHT frozen revert gate (declared override, below the 95 % bar): the first ≥ 8 priced skips once they
+                                        # span ≥ 5 market windows (distinct 4-h decision closes) → avg ≥ 0 → REVERT, else KEEP · the first 4 all winners → REVIEW
 
 
 def walk_from(bars, te):
@@ -583,6 +587,54 @@ def nb_verdict(vals):
     return "COLLECTING", f"{len(v)}/{NB_N} skips priced (Σ {sum(v):+.2f})"
 
 
+def fa_verdict(vals, windows=None):
+    """💸 (601) the frozen revert rule on the priced funding-above-base skips, in skip order (positive = the skip cost money). vals = net %
+    per skip, windows = its market window (the 4-h decision close, ms; None → every skip its own window). Alert only — never switches."""
+    w0 = list(windows) if windows is not None else list(range(len(vals)))
+    pairs = [(x, y) for x, y in zip(vals, w0) if x == x]   # (601 review) drop NaN skips WITH their window — values and windows stay aligned
+    v, w = [x for x, _ in pairs], [y for _, y in pairs]
+    for k in range(FA_N, len(v) + 1):
+        if len(set(w[:k])) >= FA_WIN:
+            m = sum(v[:k]) / k
+            return (("REVERT", f"the first {k} skips ({len(set(w[:k]))} windows) averaged {m:+.2f} % ≥ 0 → set flatbase_funding_above_base_block OFF (operator)")
+                    if m >= 0 else ("KEEP", f"the first {k} skips ({len(set(w[:k]))} windows) averaged {m:+.2f} % < 0 → KEEP the filter"))
+    if len(v) >= FA_EARLY_N and all(x > 0 for x in v[:FA_EARLY_N]):
+        return "REVIEW", f"the first {FA_EARLY_N} skips all won ({', '.join(f'{x:+.2f}' for x in v[:FA_EARLY_N])}) → operator review (no switch)"
+    return "COLLECTING", f"{len(v)}/{FA_N} skips priced on {len(set(w))}/{FA_WIN} windows (avg {(sum(v) / len(v)) if v else 0:+.2f})"
+
+
+def fa_lines(now_ms, dec_paths=None, bars_fn=None):
+    """💸 (601) every FLATBASE_FUNDING_ABOVE_BASE refusal priced as if shorted at the decision close (next 5m open, today's exit) + the gate."""
+    L = ["### 💸 FLATBASE_FUNDING_ABOVE_BASE (DECISION_LOG 601, declared override) — the skipped trades priced as if traded (positive = the skip "
+         "cost money; 5m walk, no entry slippage; no funding — a short here would have RECEIVED funding → tilt toward KEEP, read by hand)", ""]
+    try:
+        import scout_flatbase_short as FS
+        led = FS.load_ledger(FS.read_decisions(dec_paths))
+        sk = led[(led.fb_status.astype(str) == "SKIPPED") & led.fb_reason.astype(str).str.startswith(FA_TAG) & led.s4_ms.notna()].sort_values("s4_ms")
+    except Exception as e:
+        return L + [f"  unreadable ({str(e)[:80]})", ""]
+    if not len(sk):
+        L.append("  none yet.")
+    bud, vals, wins = LS.Budget(), [], []
+    for r in sk.itertuples():
+        te = int(r.s4_ms) + M5                                            # the decision bar's close = the entry the filter refused
+        bars = bars_fn(r.pair, te, now_ms) if bars_fn else fetch_bars(r.pair, te, now_ms, bud)
+        v = walk_from(bars, te) if bars else np.nan
+        if v != v and now_ms > te + (MAX_H + 24) * HOUR:
+            L.append(f"  · {r.pair} {pd.Timestamp(int(r.s4_ms), unit='ms'):%m-%d %H:%M} → NOT_EVALUABLE (no price path) — out of the gate")
+            continue
+        vals.append(v); wins.append((int(r.s4_ms) + M5) // (4 * HOUR))
+        L.append(f"  · {r.pair} {pd.Timestamp(int(r.s4_ms), unit='ms'):%m-%d %H:%M} at {r.px} → " + (f"{v:+.2f} %" if v == v else "pending / unpriced"))
+    done, dw = [], []
+    for v, w in zip(vals, wins):
+        if v != v:
+            break
+        done.append(v); dw.append(w)
+    state, detail = fa_verdict(done, dw)
+    L.append(f"Now: {state} — {detail}")
+    return L + [""]
+
+
 def nb_lines(now_ms, dec_paths=None, bars_fn=None):
     """📏 (577) every FLATBASE_NEAR_BASE refusal priced as if shorted at the confirm close (next 5m open, today's exit) + the frozen revert gate."""
     L = ["### 📏 FLATBASE_NEAR_BASE (DECISION_LOG 577) — the skipped near-base confirms priced as if traded (positive = the skip cost money; "
@@ -623,7 +675,8 @@ def skipped_lines(ship, now_ms, dec_paths=None, bars_fn=None):
         led = FS.load_ledger(FS.read_decisions(dec_paths))
         sk = led[(led.fb_status.astype(str) == "SKIPPED") & led.s4_ms.notna() & (led.s4_ms >= ship.value // 10**6 - 30 * 3_600_000)
                  & ~led.fb_reason.astype(str).str.startswith(HH_TAG)     # 🔺 (540) higher-high skips have their own section (their entry = the confirm bar)
-                 & ~led.fb_reason.astype(str).str.startswith(NB_TAG)]    # 📏 (577) near-base skips too
+                 & ~led.fb_reason.astype(str).str.startswith(NB_TAG)     # 📏 (577) near-base skips too
+                 & ~led.fb_reason.astype(str).str.startswith(FA_TAG)]    # 💸 (601) funding-above-base skips too
     except Exception as e:
         return L + [f"  unreadable ({str(e)[:80]})", ""]
     if not len(sk):

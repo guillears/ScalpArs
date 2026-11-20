@@ -1665,6 +1665,18 @@ class SignalThresholds(BaseModel):
     # / 1 L; one-size DCR +1.61 → +1.25 %/day). Unreadable base → fail-open, counted (FLATBASE_NEAR_BASE_UNREAD). Runs on the FB_CONFIRM path only.
     # Code default 0 (off); trading_config.json 2.09.
     flatbase_min_dist_above_base_pct: float = 0.0
+    # 💸 FLATBASE_FUNDING_ABOVE_BASE (DECISION_LOG 601, operator 2026-11-20 declared override: "WE DO NOT WANT A BREAKEVEN BOT"): no order when
+    # the entry funding rate (per settlement, the premiumIndex rate stamped as entry_funding_rate) is STRICTLY above this cut — longs still pay
+    # more than Binance's base +0.005 % to hold (demand still there). Exactly 0.00005 trades. ONE flat cut for every settlement interval: 8 h coins
+    # at their own +0.01 % base are blocked (21 / 69 of the backtest blocked cohort, 62 % · −1.12 — they lose too), 1 h coins pass up to 4× their
+    # base. Evidence (reports/DIST_FB_LOSERS_2026-11-20 §7.2,
+    # cut frozen on DESIGN): backtest 614 (NEAR_BASE-kept rebuild, today's exit, real funding) +0.87 → +1.14 %/trade (DCR +0.31 → +0.38);
+    # blocked 69 · 59 % vs breakeven 68 % · −1.24, worse in 5 / 5 half-years, P(mean < 0) 0.92 (below the 95 % bar → declared override);
+    # real master + batch 31 · +3.02 → 27 · +3.84 (blocks BTR W, TAC W, DODOX L, PHAROS L; LOO without DODOX Δ 0). Unreadable rate → fail-open,
+    # counted (FLATBASE_FUNDING_UNREAD). 🔒 Tight revert gate (scripts/scout_flatbase_confirm_watch.py): the first 8 priced skips on ≥ 5 windows,
+    # avg ≥ 0 → REVERT candidate (alert only); the first 4 skips all winners → REVIEW. Code default off; trading_config.json on at 0.00005.
+    flatbase_funding_above_base_block: bool = False
+    flatbase_max_entry_funding_rate: float = 0.00005
     flatbase_invest_mult: float = 0.5             # DL 577 (operator 2026-11-17 "piece 1 at 0.5x 5x": the full-history Kelly-after-clustering size, ≈ 0.45–0.5× notional) · was 0.4 DL 528 C5 (5 % cap: one −10 stop ≈ 4.8 % of the account) · was 0.2 = momentum_long_invest_mult (DL 298): the margin share
     flatbase_lev_mult: float = 0.25               # × the STRONG_BUY leverage (20 × 0.25 = 5×; DL 544 operator early revert of the DL 533 8× step: one −10 stop at 8× ≈ 7.8 % of the account > the 5 %-per-trade limit, at 5× ≈ 4.9 %) — its own field; 8× is its MAX (−10 stop, backstop 10.5 % ≤ the 11.04 % liquidation-share cap; liquidation ≈ 12.0 %)
     # its OWN optional open cap ON TOP of the shared bot slots (DL 515), 0 = no cap. Operator decided 10 on 2026-10-22 (the DL 348 no-slot lane): the study's bursts reached 24 open

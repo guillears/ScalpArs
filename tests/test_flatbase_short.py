@@ -286,7 +286,7 @@ def test_track_flat_read_and_restart_resume(monkeypatch):
 
 
 def _run_bars(monkeypatch, rows, on, ks, *, flat=0.04, mcap=10e6, open_ok=True, held=False, existing_order=False, th_kw=None, fs_k=None,
-              status="TRACKING", restart_at=None, hold_from=None):
+              status="TRACKING", restart_at=None, hold_from=None, funding=-0.0003):
     """drives the REAL _flatbase_eval on each bar index of ks (the live window ending there) with a pre-seeded TRACKING episode; the
     exchange / mcap / funding reads and open_position are stubbed. → (engine, ledger rows, opens, blocks)."""
     import models
@@ -302,7 +302,9 @@ def _run_bars(monkeypatch, rows, on, ks, *, flat=0.04, mcap=10e6, open_ok=True, 
     monkeypatch.setattr(mcap_service, "fetch_pair_now", _fetch_now)
 
     async def fr(sym, max_age_s=None):
-        return -0.0003
+        if isinstance(funding, Exception):
+            raise funding
+        return funding
     monkeypatch.setattr(TE.binance_service, "fetch_funding_rate", fr)
     opens = []
 
@@ -1379,3 +1381,79 @@ def test_near_base_scout_section():
     assert W.nb_verdict([]) [0] == "COLLECTING"
     assert W.nb_verdict([20.0])[0] == "REVERT"                                   # Σ > +15 early → off
     assert W.nb_verdict([-1.0] * 10)[0] == "KEEP" and W.nb_verdict([1.0] * 5 + [-0.5] * 5)[0] == "REVERT"
+
+
+# ── 💸 (DECISION_LOG 601) FLATBASE_FUNDING_ABOVE_BASE ─────────────────────────────────────────────────────────────────────────────────
+
+def test_funding_above_read_pure():
+    assert FB.funding_above_read(0.00011, 0.00005) is True                   # PHAROS-like: longs pay above the base → skip
+    assert FB.funding_above_read(0.00005, 0.00005) is False                  # exactly the base trades (strict >)
+    assert FB.funding_above_read(0.0000500000001, 0.00005) is False          # float noise at the cut trades
+    assert FB.funding_above_read(-0.0003, 0.00005) is False
+    assert FB.funding_above_read(None, 0.00005) is None and FB.funding_above_read("x", 0.00005) is None
+    assert FB.funding_above_read(float("nan"), 0.00005) is None and FB.funding_above_read(0.001, None) is None
+
+
+def test_engine_funding_above_base_skips_at_the_confirm(monkeypatch):
+    rows, on = _series()
+    kw = dict(flatbase_confirm_hours=24.0, flatbase_higher_high_block=False, flatbase_min_dist_above_base_pct=0.0,
+              flatbase_funding_above_base_block=True, flatbase_max_entry_funding_rate=0.00005)
+    e, led, opens, blocks = _run_bars(monkeypatch, rows, on, range(on + 1, on + 121), th_kw=kw, funding=0.00011)
+    assert opens == [] and led[0].status == "SKIPPED" and led[0].reason.startswith(FB.FA_TAG)
+    assert blocks.count("FLATBASE_FUNDING_ABOVE_BASE") == 1
+    assert led[0].entry_price == rows[on + 120][4]                           # the skip records the decision (confirm) close the scout prices
+    e2, led2, opens2, _ = _run_bars(monkeypatch, rows, on, range(on + 1, on + 121), th_kw=kw, funding=0.00005)
+    assert len(opens2) == 1 and led2[0].status == "OPENED"                   # exactly the base → trades
+    e3, led3, opens3, _ = _run_bars(monkeypatch, rows, on, range(on + 1, on + 121), th_kw=dict(kw, flatbase_funding_above_base_block=False), funding=0.00011)
+    assert len(opens3) == 1 and opens3[0]["entry_funding_rate"] == 0.00011   # switched off → today's entry, same stamp
+    e4, led4, opens4, blocks4 = _run_bars(monkeypatch, rows, on, range(on + 1, on + 121), th_kw=kw, funding=RuntimeError("down"))
+    assert len(opens4) == 1 and "FLATBASE_FUNDING_UNREAD" in blocks4 and "FLATBASE_FUNDING_ABOVE_BASE" not in blocks4   # fail-open, counted
+
+
+def test_engine_funding_above_base_skips_at_s4_when_the_wait_is_off(monkeypatch):
+    rows, on = _series()
+    kw = dict(flatbase_confirm_hours=0.0, flatbase_higher_high_block=False, flatbase_min_dist_above_base_pct=0.0,
+              flatbase_funding_above_base_block=True, flatbase_max_entry_funding_rate=0.00005)
+    e, led, opens, blocks = _run_bars(monkeypatch, rows, on, range(on + 1, on + 75), th_kw=kw, funding=0.00011)
+    assert opens == [] and led[0].status == "SKIPPED" and led[0].reason.startswith(FB.FA_TAG) and "at the S4 bar" in led[0].reason
+    assert blocks.count("FLATBASE_FUNDING_ABOVE_BASE") == 1
+    e2, led2, opens2, _ = _run_bars(monkeypatch, rows, on, range(on + 1, on + 75), th_kw=kw, funding=-0.0003)
+    assert len(opens2) == 1 and led2[0].status == "OPENED"
+
+
+def test_funding_above_base_config_ui_exports():
+    import config as C
+    mf = type(C.trading_config.thresholds).model_fields
+    assert mf["flatbase_funding_above_base_block"].default is False and mf["flatbase_max_entry_funding_rate"].default == 0.00005
+    th_json = json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
+    assert th_json["flatbase_funding_above_base_block"] is True and th_json["flatbase_max_entry_funding_rate"] == 0.00005
+    html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
+    assert html.count('id="config-fbs-funding-above"') == 1 and html.count('id="config-fbs-max-funding"') == 1
+    assert "config.thresholds.flatbase_funding_above_base_block === true" in html
+    assert "flatbase_funding_above_base_block: document.getElementById('config-fbs-funding-above')?.checked ?? true" in html
+    assert "['config-fbs-max-funding', 'flatbase_max_entry_funding_rate', 0.00005]" in html     # FLATBASE_NUM_FIELDS = load AND save
+    assert "per settlement (DL 601)" in html                                                    # the shared config line (both exports)
+    import config
+    th = config.trading_config.thresholds
+    assert not [x for x in FB.flatbase_config_errors(th, 20.0) if "funding" in x]
+    bad = NS(**dict(th.model_dump(), flatbase_max_entry_funding_rate=0.5))
+    assert "flatbase_max_entry_funding_rate" in " | ".join(FB.flatbase_config_errors(bad, 20.0))
+    bad2 = NS(**dict(th.model_dump(), flatbase_funding_above_base_block="yes"))
+    assert "flatbase_funding_above_base_block must be true or false" in " | ".join(FB.flatbase_config_errors(bad2, 20.0))
+
+
+def test_funding_above_base_scout_gate():
+    sys.path.insert(0, os.path.join(ROOT, "scripts"))
+    import scout_flatbase_confirm_watch as W
+    assert W.FA_TAG == FB.FA_TAG
+    assert W.fa_verdict([])[0] == "COLLECTING" and W.fa_verdict([-10.0, 5.0])[0] == "COLLECTING"
+    assert W.fa_verdict([5.0, 5.0, 5.0, 5.0])[0] == "REVIEW"                                   # the first 4 all won → operator review
+    assert W.fa_verdict([5.0] * 6 + [-10.0, -10.0])[0] == "REVERT"                              # 8 on 8 windows, avg +1.25 ≥ 0
+    assert W.fa_verdict([5.0] * 5 + [-10.0] * 3)[0] == "KEEP"                                   # avg −0.63 < 0
+    one_win = [1] * 8                                                                           # 8 skips in ONE window → not decided yet
+    assert W.fa_verdict([-10.0] * 8, one_win)[0] == "COLLECTING"
+    assert W.fa_verdict([-10.0] * 8 + [5.0] * 4, one_win + [2, 3, 4, 5])[0] == "KEEP"          # decided at k = 12 (5 windows): avg −5.0
+    assert W.fa_verdict([5.0, float("nan")] + [-10.0] * 7, [1, 99, 2, 3, 4, 5, 6, 7, 8])[0] == "KEEP"   # a NaN drops with its window
+    src = open(os.path.join(ROOT, "scripts", "scout_flatbase_confirm_watch.py"), encoding="utf-8").read()
+    assert "~led.fb_reason.astype(str).str.startswith(FA_TAG)" in src                          # never priced as a FB_CONFIRM skip
+    assert '("funding-above-base gate", lambda: fa_lines(now_ms, dec_paths, bars_fn))' in src

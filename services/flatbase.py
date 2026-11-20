@@ -95,12 +95,16 @@ def flatbase_config_errors(th, base_leverage=20.0) -> list:
     """🩳 PUT /api/config refusals for the FLATBASE_SHORT fields (DECISION_LOG 348). The stop's exchange backstop at the sleeve's leverage
     (base_leverage × flatbase_lev_mult, the STRONG_BUY level the sleeves open at) must sit ≥ MANUAL_BACKSTOP_MIN_GAP_PCT beyond the stop."""
     errs = []
-    for k in ('flatbase_short_enabled', 'resting_tp_flatbase_enabled', 'flatbase_shares_bot_slots', 'flatbase_higher_high_block'):   # 🧺 (515) · 🔺 (540)
+    for k in ('flatbase_short_enabled', 'resting_tp_flatbase_enabled', 'flatbase_shares_bot_slots', 'flatbase_higher_high_block',
+              'flatbase_funding_above_base_block'):   # 🧺 (515) · 🔺 (540) · 💸 (601)
         if not isinstance(getattr(th, k, False), bool):
             errs.append(f"{k} must be true or false")
     _nb = _fin(getattr(th, 'flatbase_min_dist_above_base_pct', 0.0))   # 📏 (DECISION_LOG 577) the near-base skip
     if _nb is None or not 0 <= _nb <= 50:
         errs.append("flatbase_min_dist_above_base_pct must be a number ≥ 0 and ≤ 50 (price %; 0 = off)")
+    _fa = _fin(getattr(th, 'flatbase_max_entry_funding_rate', 0.00005))   # 💸 (DECISION_LOG 601) the funding-above-base cut
+    if _fa is None or not -FA_RATE_MAX <= _fa <= FA_RATE_MAX:
+        errs.append(f"flatbase_max_entry_funding_rate must be a number between −{FA_RATE_MAX:g} and {FA_RATE_MAX:g} (a rate per settlement; 0.00005 = +0.005 %)")
     rng = dict(flat_max=("a fraction > 0 and ≤ 5 (0.444 = a 44.4 % 14-day range)", lambda x: 0 < x <= 5.0),
                min_vol=("a number ≥ 0 (USD)", lambda x: x >= 0), turnover_min=("a number ≥ 0", lambda x: x >= 0),
                tp=("a number > 0 and < 100 (price %)", lambda x: 0 < x < 100), stop=("a number > 0 and < 100 (price %)", lambda x: 0 < x < 100),
@@ -329,6 +333,23 @@ def higher_high_check(bars, s4_close_ms, confirm_bar_open) -> Optional[bool]:
 
 
 NB_TAG = "NEAR_BASE"                     # 📏 (DECISION_LOG 577) the SKIPPED reason prefix of a near-base refusal
+FA_TAG = "FUNDING_ABOVE_BASE"            # 💸 (DECISION_LOG 601) the SKIPPED reason prefix of a funding-above-base refusal
+FA_RATE_MAX = 0.01                       # 💸 (601) sanity ceiling for flatbase_max_entry_funding_rate (1 % per settlement — Binance caps far below)
+
+
+def funding_above_read(rate, max_rate) -> Optional[bool]:
+    """💸 (DECISION_LOG 601, operator 2026-11-20 declared override) True when the entry funding rate (per settlement, the premiumIndex
+    rate the engine stamps as entry_funding_rate) is STRICTLY above max_rate — longs still pay more than Binance's base +0.005 % to hold,
+    demand is still there. Exactly 0.00005 trades. ONE flat cut for every settlement interval (DL 601 review): 8 h coins at their own +0.01 %
+    base are blocked (the backtest's 21 such blocked trades lost too, −1.12), 1 h coins pass up to 4× their base. False below / at the cut. None when the rate or the cut is unreadable →
+    fail-open: the caller trades as before and counts it. PURE, never raises."""
+    try:
+        r, m = float(rate), float(max_rate)
+        if not (math.isfinite(r) and math.isfinite(m)):
+            return None
+        return r > m + 1e-12   # (float noise: the cut itself trades)
+    except (TypeError, ValueError):
+        return None
 
 
 def base_from_bars(bars, spike_ts) -> Optional[float]:

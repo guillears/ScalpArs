@@ -632,3 +632,97 @@ def test_blocked_gate_waits_for_a_kept_fill(tmp_path):
                    pricer=lambda *a, **k: (2.5, "FRENZY_TP"), state_kept=str(tmp_path / "k.json"), state_blocked=str(tmp_path / "b.json"), cache_path=None)
     assert "BLOCKS_WINNERS" in txt and "(b) BLOCKED: FROZEN" not in txt and not os.path.exists(tmp_path / "b.json")
     assert "DIST_RSI1H_UNREAD blocks are not priced" in txt and "does not freeze until" in txt
+
+
+# ── ⚡ DECISION_LOG 599: the fast path (DISTRIBUTION judged at the start of a 15m-close pass) ─────────────────────────────────────────
+
+def _run_fast(monkeypatch, k=0, *, k15_ok=True, allowed=True, th_kw=None, then_pass=True):
+    import models
+    import services.trading_engine as TE
+    from sqlalchemy import select
+    pair, T, raw, k5, pos, m = _row(k)
+    sp = int(m[7])
+    _patch_th(monkeypatch, TE, **(th_kw or {}))
+    monkeypatch.setattr(TE, "_leash_time", NS(time=lambda: T / 1000.0 + 5.0))
+    calls = []
+
+    async def kl(pid, interval, limit, end_ms=None, spot=False):
+        calls.append((pid, interval, limit, end_ms))
+        return [r for r in raw if r[0] <= end_ms][-limit:] if k15_ok else None
+
+    async def pr(pid, end_ms, limit=60):
+        calls.append(("pos", pid))
+        return pos
+
+    async def fr(sym, max_age_s=None):
+        return 0.0001
+    monkeypatch.setattr(TE.binance_service, "fetch_exh_klines", kl)
+    monkeypatch.setattr(TE.binance_service, "fetch_exh_top_pos_ratio", pr)
+    monkeypatch.setattr(TE.binance_service, "fetch_funding_rate", fr)
+    monkeypatch.setattr(TE.binance_service, "exh_used_weight", 0, raising=False)
+    opens = []
+
+    async def go():
+        eng, SL = await _hold_db(monkeypatch)()
+        e = _engine(TE)
+        e._exh_loaded = True; e._exh_mode = True
+        e._exh_eps = {(pair, sp): dict(id=None, status="TRACKING", first_seen_ms=sp, universe="FRENZY")}
+
+        async def fake_open(db=None, **kw):
+            opens.append(kw)
+            return NS(id=88)
+        e.open_position = fake_open
+        closed = [r for r in k5 if r[0] + M5 <= T]
+        async with SL() as db:
+            await e._distribution_fast(db, T, ({pair} if allowed else set()), {})
+            claimed = (pair, T) in e.__dict__.get('_dist_judged', set())
+            if then_pass:   # the same bar's normal pass (pre-screen + queue) afterwards
+                await e._exhaustion_eval(db, pair, None, closed, {}, T)
+                await e._distribution_judge_queued(db)
+        async with SL() as s:
+            sig = (await s.execute(select(models.DistributionSignal))).scalars().all()
+        await eng.dispose()
+        return e, sig, claimed
+    e, sig, claimed = asyncio.run(go())
+    return e, opens, sig, calls, claimed, (pair, T)
+
+
+def test_fast_path_opens_once_and_the_pass_never_rejudges(monkeypatch):
+    e, opens, sig, calls, claimed, (pair, T) = _run_fast(monkeypatch, k=0)
+    assert len(opens) == 1 and opens[0]['distribution_short'] is True and opens[0]['distribution_bar_close_ms'] == T
+    assert len(sig) == 1 and sig[0].status == "OPENED" and sig[0].order_id == 88 and claimed
+    assert [c for c in calls if c[0] != "pos"] == [(pair, '15m', D.K15_LIMIT, T - 1), (pair, '5m', 301, T - 1)]   # the pass never re-reads
+    assert opens[0]['entry_atr_pct'] is not None                                               # (review M1) the stamp from a FRESH closed 5m read
+
+
+def test_fast_path_unread_coin_falls_back_to_the_pass(monkeypatch):
+    e, opens, sig, calls, claimed, _ = _run_fast(monkeypatch, k=0, k15_ok=False)
+    assert not claimed and opens == [] and len(sig) == 1 and sig[0].block == "DIST_NO_DATA"   # released → today's path judged it
+
+
+def test_fast_path_respects_the_pass_universe(monkeypatch):
+    e, opens, sig, calls, claimed, _ = _run_fast(monkeypatch, k=0, allowed=False, then_pass=False)
+    assert not claimed and opens == [] and sig == [] and calls == []                          # blacklisted / unlisted → no read
+
+
+def test_fast_path_below_prescreen_is_released(monkeypatch):
+    e, opens, sig, calls, claimed, _ = _run_fast(monkeypatch, k=0, th_kw=dict(distribution_vsw_vol_mult=50.0), then_pass=False)
+    assert not claimed and opens == [] and sig == [] and [c for c in calls if c[0] == "pos"] == []   # (review M2) the in-pass proxy decides
+
+
+def test_fast_path_failure_releases_its_claims(monkeypatch):
+    import services.trading_engine as TE
+
+    def boom(*a, **k):
+        raise RuntimeError("x")
+    monkeypatch.setattr(TE._dist_rules, "features", boom)
+    e, opens, sig, calls, claimed, _ = _run_fast(monkeypatch, k=0, then_pass=False)
+    assert not claimed and opens == []                                                        # (review L2) never claimed-but-unjudged
+
+
+def test_fast_path_runs_first_in_the_pass():
+    src = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
+    i = src.index("async def _update_frenzy_pass")
+    body = src[i:src.index("\n    async def ", i + 40)]
+    assert body.index("await self._distribution_fast(db, bar_open,") < body.index("_frenzy_kl_cache")   # before any FRENZY kline read
+    assert "bar_open % _dist_rules.M15_MS == 0" in body

@@ -1387,6 +1387,8 @@ EXH_EXTRA_READS_MAX = 60        # 🪫 (578) EXHAUSTION-tracked extra reads per 
 EXH_WEIGHT_STOP = 1500          # 🪫 (578) the EXH perp read waits (once, within the entry budget) while the IP's 1-min used weight is above this (cap 2,400; like REGIME_WEIGHT_STOP)
 EXH_SPOT_WEIGHT_STOP = 3000     # 🪫 (578) … spot API used weight (its own 6,000 / min budget), same wait-once rule
 EXH_SPOT_INFO_TTL_S = 6 * 3600  # 🪫 (578) the spot-market list (exchangeInfo, weight 20) is re-read at most this often
+DIST_FAST_CONC = 8              # ⚡ (DECISION_LOG 599) DIST fast path: concurrent 15m kline reads at the start of a 15m-close pass
+DIST_FAST_READ_S = 6.0          # ⚡ (599) per-read timeout — an unread coin falls back to the in-pass pre-screen (today's path)
 DIST_READ_RESERVE_S = 20        # 📉 (586 I4) seconds of the 300 s entry budget the reads + the order need — less left → DIST_LATE before any read
 EXH_WIDE_READS_MAX = 30         # 🌐 (585) WIDE-shortlist coins read per 15m close beyond the FRENZY read (biggest move first; the rest → EXH_WIDE_READ_CAP)
 
@@ -10158,6 +10160,9 @@ class TradingEngine:
             skip = set()
             for _src in (getattr(tc, 'pair_blacklist', ''), getattr(tc, 'no_trade_pairs', ''), getattr(th, 'frenzy_pair_blacklist', '')):
                 skip |= {x.strip().upper() for x in str(_src or '').split(',') if x.strip()}
+            if _dist and bar_open % _dist_rules.M15_MS == 0 and self.__dict__.get('_dist_fast_bar') != bar_open:
+                self._dist_fast_bar = bar_open   # ⚡ (DECISION_LOG 599) DISTRIBUTION judged FIRST on a 15m close — before the FRENZY reads (~20 s)
+                await self._distribution_fast(db, bar_open, {p for p in by if p.upper() not in skip}, by)
             vmin = float(getattr(th, 'frenzy_min_volume_usd', 20e6) or 0); chg = float(getattr(th, 'frenzy_shortlist_change_pct', 15.0) or 0)
             # |24 h change|: a pair deep into its episode can be DOWN on the day (MOVR −31 % on day 3) — the walk decides, not the sign.
             # 🔥 Oct-3: OR the 24 h low→high range — a pair that dumped then pumped back nets ~0 on the day (MOVR Oct-3: change −0.6 %, range 28 %,
@@ -11647,6 +11652,87 @@ class TradingEngine:
                 await self._dist_journal(pair, T, _dist_rules.ST_BLOCKED, _dist_rules.B_FAILED, f"judgement failed: {str(e)[:160]}", sp)   # (M1)
         self._journal_pair = None
 
+    async def _distribution_fast(self, db, T, allowed, by=None) -> None:
+        """⚡ (DECISION_LOG 599, operator 11-20 "build the faster DIST entry") — DISTRIBUTION judged at the START of a 15m-close pass.
+        Why: the in-pass path pre-screens a candle only when the FRENZY read reaches its coin and judges after the FRENZY decisions,
+        ~20–80 s after the close (KERNEL 11-20: 27 s, EVAA 82 s); the timing study (reports/DIST_ENTRY_TIMING_2026-11-20.md) prices the
+        delay at −0.32 %/trade per minute late (backtest entry = the first trade after the close). What it does: every coin with a TRACKING
+        FRENZY-universe episode inside DISTRIBUTION's window (not blacklisted, still listed) → its exchange 15m klines read NOW, concurrently
+        (≤ DIST_FAST_CONC, DIST_FAST_READ_S each) → the SAME pre-screen threshold on the exchange quote volume (red ∧ ≥ PRESCREEN_FRAC × the
+        multiple; below it: released to the in-pass proxy pre-screen, review M2) → _distribution_judge with those rows (the same rule, journal, guards and
+        order). The coin is CLAIMED for (pair, T) in _dist_judged, so the in-pass pre-screen never judges it twice; a coin whose read fails
+        (or whose klines do not reach the close yet) is released → the in-pass path (today's behaviour) still judges it. One position per
+        coin is unchanged; on a coin where both sleeves signal on the same close DISTRIBUTION now decides first (EXHAUSTION then sees the
+        pair held). The open delay is recorded on every fill (entry_order_lag_s). Never raises."""
+        th = config.trading_config.thresholds
+        try:
+            if not distribution_enabled(th) or _bs_ban_active():
+                return
+            if float(getattr(binance_service, 'exh_used_weight', 0) or 0) > EXH_WEIGHT_STOP \
+                    and _leash_time.time() - float(self.__dict__.get('_exh_last_read_t', 0) or 0) < 60.0:
+                return   # the IP's weight is high — the in-pass path (with its one budget wait) judges this close
+            if not await self._exhaustion_ready(db):
+                return
+            T = int(T)
+            cand = {}
+            for (p, sp), r in self._exh_state().items():
+                if r.get('status') != "TRACKING" or (r.get('universe') or _exh_rules.UNIV_FRENZY) == _exh_rules.UNIV_WIDE:
+                    continue
+                if p in allowed and _dist_rules.in_window(sp, T, th):
+                    cand[p] = max(int(sp), cand.get(p, int(sp)))
+            done = self.__dict__.setdefault('_dist_judged', set())
+            cand = {p: sp for p, sp in cand.items() if (p, T) not in done}
+            if not cand:
+                return
+            for p in cand:
+                done.add((p, T))   # claimed before any await: the in-pass pre-screen skips these coins
+            pending = set(cand)   # (599 review L2) a failure before a coin is processed releases it → the in-pass path judges it
+            if len(done) > 5000:   # (599 review L1) bounded — the in-pass pre-screen prunes only when it judges a coin itself
+                for k in [k for k in done if k[1] < T - 6 * 3_600_000]:
+                    done.discard(k)
+            sem = asyncio.Semaphore(DIST_FAST_CONC)
+
+            async def _read(p):
+                async with sem:
+                    try:
+                        return p, await asyncio.wait_for(binance_service.fetch_exh_klines(p, '15m', _dist_rules.K15_LIMIT, end_ms=T - 1), DIST_FAST_READ_S)
+                    except Exception:
+                        return p, None
+            res = await asyncio.gather(*[_read(p) for p in sorted(cand)])
+            self._exh_last_read_t = _leash_time.time()
+            _mult = distribution_params(th)['vsw_mult']
+            for p, rows in res:
+                f = _dist_rules.features(rows, T, th) if rows else None
+                if not f or f.get('close') is None:   # unread / the klines do not reach the close → today's path judges it
+                    done.discard((p, T))
+                    pending.discard(p)
+                    continue
+                if not (f.get('red') and (f.get('vsw_mult') or 0) >= _dist_rules.PRESCREEN_FRAC * _mult):
+                    done.discard((p, T))   # (599 review M2) below the pre-screen on a +4 s read → released: the in-pass proxy pre-screen
+                    pending.discard(p)     # decides exactly as before (a candle whose volume was not final yet is never lost)
+                    continue
+                pending.discard(p)
+                self._journal_pair = p
+                logger.info(f"[DISTRIBUTION_SHORT] {p}: red 15m candle, exchange volume {f['vsw_mult']:.1f}× the 20-candle mean "
+                            f"({_leash_time.time() - T / 1000.0:.1f}s after the close, fast path) — reading the top-trader positions")
+                try:
+                    await self._distribution_judge(db, p, cand[p], None, (by or {}).get(p), T, rows=rows)
+                except Exception as e:
+                    self._dist_count(_dist_rules.B_FAILED, p)
+                    logger.error(f"[DISTRIBUTION_SHORT] {p}: fast-path judgement failed ({str(e)[:160]})")
+                    try:
+                        await db.rollback()
+                    except Exception:
+                        pass
+                    await self._dist_journal(p, T, _dist_rules.ST_BLOCKED, _dist_rules.B_FAILED, f"judgement failed: {str(e)[:160]}", cand[p])
+            self._journal_pair = None
+        except Exception as e:
+            self._journal_pair = None
+            logger.error(f"[DISTRIBUTION_SHORT] fast path failed ({str(e)[:160]}) — the in-pass path judges this close")
+        finally:
+            for p in (locals().get('pending') or ()):
+                self.__dict__.setdefault('_dist_judged', set()).discard((p, int(T)))
+
     async def _dist_journal(self, pair, T, status, block, reason, sp, f=None, chg=None, ratio=None, tp=None, sl=None, order_id=None,
                             funding=None, cap=None, lags=None) -> None:
         """📉 (586) the decision journal: ONE row per evaluated signal (models.DistributionSignal) + a decision-journal line. Never raises."""
@@ -11674,10 +11760,11 @@ class TradingEngine:
         logger.info(f"[DISTRIBUTION_SHORT] {pair} signal {datetime.utcfromtimestamp(int(T) / 1000):%m-%d %H:%M} UTC: {status}"
                     + (f" ({block})" if block else "") + (f" — {reason}" if reason else ""))
 
-    async def _distribution_judge(self, db, pair, sp, closed, info, T) -> None:
+    async def _distribution_judge(self, db, pair, sp, closed, info, T, rows=None) -> None:
         """📉 (586) one pre-screened candle: ① one position per coin (any open position → DIST_PAIR_HELD, before any read) · ② the 15m klines
         (fail-closed DIST_NO_DATA) · ③ VSW15 + 24 h volume on the exchange's quote volume · ④ the top-trader position ratio (fail-closed
-        DIST_POS_UNREAD) and its 4 h change · ⑤ the order (open_position(distribution_short=True)). One journal row."""
+        DIST_POS_UNREAD) and its 4 h change · ⑤ the order (open_position(distribution_short=True)). One journal row.
+        ⚡ (599) rows = the 15m klines the fast path already read (② skipped); closed = None there → the 5m ATR stamp reads the FRENZY cache."""
         th = config.trading_config.thresholds
         try:
             _held = (await db.execute(select(Order.entry_strategy, Order.direction).where(and_(
@@ -11700,9 +11787,8 @@ class TradingEngine:
             await self._dist_journal(pair, T, _dist_rules.ST_REFUSED, _dist_rules.B_LATE,
                                      f"only {max(0.0, _left):.0f}s left of the {DIST_ENTRY_MAX_LATE_S}s entry budget — skipped before the reads", sp)
             return
-        _why = "Binance ban / cooldown" if _bs_ban_active() else await self._exh_budget_wait(T, spot=False)
-        rows = None
-        if _why is None:
+        _why = None if rows is not None else ("Binance ban / cooldown" if _bs_ban_active() else await self._exh_budget_wait(T, spot=False))
+        if rows is None and _why is None:
             try:
                 rows = await asyncio.wait_for(binance_service.fetch_exh_klines(pair, '15m', _dist_rules.K15_LIMIT, end_ms=int(T) - 1), 10.0)
             except Exception:
@@ -11710,7 +11796,8 @@ class TradingEngine:
             self._exh_last_read_t = _leash_time.time()
             if rows is None:
                 _why = "15m klines unreadable"
-        if _why is not None:
+        if _why is not None or rows is None:
+            _why = _why or "15m klines unreadable"
             self._dist_count(_dist_rules.B_NO_DATA, pair)
             await self._dist_journal(pair, T, _dist_rules.ST_BLOCKED, _dist_rules.B_NO_DATA, f"inputs unreadable: {_why} (fail-closed)", sp)
             return
@@ -11753,7 +11840,11 @@ class TradingEngine:
         except Exception:
             _fr = None
         try:
-            _atr5 = wilder_atr_pct(closed[-300:])
+            if not closed:   # ⚡ (599 review M1) the fast path runs before this bar's FRENZY read: a FRESH closed 5m window (one weight-2 read,
+                # only for a signal that passed every rule) — the FRENZY cache ends on a still-forming bar and would shrink the stamp's ATR
+                _k5 = await asyncio.wait_for(binance_service.fetch_exh_klines(pair, '5m', 301, end_ms=int(T) - 1), 4.0)
+                closed = [r for r in (_k5 or []) if int(r[0]) + 300_000 <= int(T)]
+            _atr5 = wilder_atr_pct(closed[-300:]) if closed else None
         except Exception:
             _atr5 = None
         self._frenzy_open_refusal = None

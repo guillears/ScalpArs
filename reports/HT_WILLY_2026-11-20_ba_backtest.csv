@@ -1,0 +1,13 @@
+set,cell,block,N,WR,avg,d,CI,usd,DCR,changed
+BACKTEST HT,T8_S3_H12,DESIGN,101,47.5 → 33.7,+0.256 → +0.570,0.314,"[np.float64(-0.45), np.float64(1.004)]","+1,579 → +3,512",+0.035 → +0.091,101 (53 saved-side / 48 cut-side)
+BACKTEST HT,T8_S3_H12,HOLDOUT,199,41.7 → 22.1,-0.270 → -0.636,-0.365,"[np.float64(-0.957), np.float64(0.209)]","-3,282 → -7,718",-0.125 → -0.264,199 (116 saved-side / 83 cut-side)
+BACKTEST HT,OLD2,DESIGN,101,47.5 → 67.3,+0.256 → +0.132,-0.125,"[np.float64(-0.794), np.float64(0.605)]","+1,579 → +812",+0.035 → +0.019,73 (25 saved-side / 48 cut-side)
+BACKTEST HT,OLD2,HOLDOUT,199,41.7 → 61.8,-0.270 → -0.305,-0.034,"[np.float64(-0.487), np.float64(0.41)]","-3,282 → -3,700",-0.125 → -0.129,128 (45 saved-side / 83 cut-side)
+BACKTEST HT,T5_S6_H24,DESIGN,101,47.5 → 53.5,+0.256 → -0.105,-0.361,"[np.float64(-0.838), np.float64(0.192)]","+1,579 → -646",+0.035 → -0.040,53 (53 saved-side / 0 cut-side)
+BACKTEST HT,T5_S6_H24,HOLDOUT,199,41.7 → 50.8,-0.270 → -0.460,-0.19,"[np.float64(-0.584), np.float64(0.241)]","-3,282 → -5,584",-0.125 → -0.210,116 (116 saved-side / 0 cut-side)
+BACKTEST HT,T4_S4_H24,DESIGN,101,47.5 → 55.4,+0.256 → +0.424,0.167,"[np.float64(-0.265), np.float64(0.651)]","+1,579 → +2,611",+0.035 → +0.071,56 (8 saved-side / 48 cut-side)
+BACKTEST HT,T4_S4_H24,HOLDOUT,199,41.7 → 46.2,-0.270 → -0.321,-0.051,"[np.float64(-0.294), np.float64(0.241)]","-3,282 → -3,898",-0.125 → -0.143,92 (9 saved-side / 83 cut-side)
+BACKTEST HT,T6_S4_H24,DESIGN,101,47.5 → 43.6,+0.256 → +0.348,0.091,"[np.float64(-0.305), np.float64(0.418)]","+1,579 → +2,141",+0.035 → +0.049,48 (0 saved-side / 48 cut-side)
+BACKTEST HT,T6_S4_H24,HOLDOUT,199,41.7 → 37.2,-0.270 → -0.304,-0.034,"[np.float64(-0.329), np.float64(0.223)]","-3,282 → -3,696",-0.125 → -0.144,83 (0 saved-side / 83 cut-side)
+BACKTEST HT,T5_S4_H12,DESIGN,101,47.5 → 47.5,+0.256 → +0.280,0.024,"[np.float64(0.0), np.float64(0.073)]","+1,579 → +1,725",+0.035 → +0.040,1 (1 saved-side / 0 cut-side)
+BACKTEST HT,T5_S4_H12,HOLDOUT,199,41.7 → 41.2,-0.270 → -0.287,-0.016,"[np.float64(-0.103), np.float64(0.048)]","-3,282 → -3,480",-0.125 → -0.131,2 (1 saved-side / 1 cut-side)

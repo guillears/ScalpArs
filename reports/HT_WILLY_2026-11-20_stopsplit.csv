@@ -1,0 +1,7 @@
+cell,block,N,stopped,saved,saved_sum,deeper,deeper_sum,new_stops,new_sum,d_avg,CI
+T5_S3_H24,DESIGN,101,53,53,52.1,0,0.0,48,-48.5,0.036,"[np.float64(-0.414), np.float64(0.418)]"
+T5_S3_H24,HOLDOUT,199,116,116,115.3,0,0.0,83,-156.4,-0.207,"[np.float64(-0.579), np.float64(0.143)]"
+T5_S5_H24,DESIGN,101,53,1,9.1,52,-50.8,48,-0.0,-0.413,"[np.float64(-0.585), np.float64(-0.179)]"
+T5_S5_H24,HOLDOUT,199,116,7,63.8,109,-108.4,83,-0.0,-0.224,"[np.float64(-0.458), np.float64(0.053)]"
+T5_S6_H24,DESIGN,101,53,6,54.6,47,-91.1,48,-0.0,-0.361,"[np.float64(-0.829), np.float64(0.181)]"
+T5_S6_H24,HOLDOUT,199,116,18,155.8,98,-193.5,83,-0.0,-0.19,"[np.float64(-0.565), np.float64(0.234)]"

@@ -1,0 +1,7 @@
+set,cell,N,WR,avg,usd,DCR,changed,open_marked
+CURRENT HT (post-587),T8_S3_H12,9,56 → 33,+0.964 → +0.089,+529 → +49,+2.634 → +0.079,9 (6 better / 3 worse),1
+CURRENT HT (post-587),OLD2,9,56 → 89,+0.964 → +1.617,+529 → +888,+2.634 → +4.439,8 (4 better / 4 worse),0
+CURRENT HT (post-587),T5_S6_H24,9,56 → 56,+0.964 → +0.076,+529 → +42,+2.634 → +0.196,4 (0 better / 4 worse),0
+CURRENT HT (post-587),T4_S4_H24,9,56 → 67,+0.964 → +1.310,+529 → +719,+2.634 → +3.530,6 (1 better / 5 worse),0
+CURRENT HT (post-587),T6_S4_H24,9,56 → 56,+0.964 → +1.521,+529 → +835,+2.634 → +4.159,5 (5 better / 0 worse),0
+CURRENT HT (post-587),T5_S4_H12,9,56 → 56,+0.964 → +0.964,+529 → +529,+2.634 → +2.634,0 (0 better / 0 worse),0

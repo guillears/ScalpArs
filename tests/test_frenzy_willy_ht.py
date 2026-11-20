@@ -484,3 +484,13 @@ def test_ht_resize_ladder():
     # a NaN pct never enters the frozen sample (the gate drops it too)
     t = j([(d % 10, 0.95, 0.25) for d in range(30)] + [(10, float("nan"), 0.25)])
     assert "current run at this size: 30 fills" in t and "✅ STEP-UP" in t
+
+
+def test_open_orders_badge_respects_ht_late_tp_switch_and_ht_hold():
+    """Operator 11-20 (EVAA HT showed '⏱ +0.25' while the engine had HT's late TP OFF): the Open Orders WILLY badge must apply
+    frenzy_willy_ht_late_tp_enabled (engine: frenzy.frenzy_willy_late_tp) and HT's own time cap (frenzy.frenzy_willy_ht_max_hold)."""
+    html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
+    i = html.index("const _wLateMin = Number(_rtTh.frenzy_willy_late_tp_minutes")
+    seg = html[i - 1500:i + 600]
+    assert "o.entry_strategy === 'FRENZY_WILLY_HT' && _rtTh.frenzy_willy_ht_late_tp_enabled === false" in seg
+    assert "frenzy_willy_ht_max_hold_minutes" in seg

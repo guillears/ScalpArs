@@ -1,0 +1,35 @@
+sleeve,control,block,fills,draws,beforeH_share,real,random,d,lo,hi
+HT,C_EP (all draws),ALL,300.0,15000.0,0.185,-0.093,0.222,-0.315,-0.855,0.23
+HT,C_EP (all draws),DESIGN,101.0,,,0.256,0.098,0.159,-0.8,1.093
+HT,C_EP (all draws),HOLDOUT,199.0,,,-0.27,0.284,-0.555,-1.248,0.148
+HT,C_EPD as run (dip vs fill H ≥ 1.4),ALL,296.0,11538.0,0.237,-0.162,0.871,-1.033,-1.559,-0.508
+HT,C_EPD as run (dip vs fill H ≥ 1.4),DESIGN,100.0,,,0.209,0.872,-0.663,-1.574,0.231
+HT,C_EPD as run (dip vs fill H ≥ 1.4),HOLDOUT,196.0,,,-0.351,0.871,-1.222,-1.865,-0.586
+HT,C_EPD clean (dip vs high known then ≥ 1.4),ALL,300.0,13763.0,0.167,-0.093,0.257,-0.35,-0.917,0.202
+HT,C_EPD clean (dip vs high known then ≥ 1.4),DESIGN,101.0,,,0.256,0.1,0.157,-0.805,1.109
+HT,C_EPD clean (dip vs high known then ≥ 1.4),HOLDOUT,199.0,,,-0.27,0.336,-0.607,-1.277,0.096
+HT,clean dip ≥ 4,ALL,296.0,10527.0,0.14,-0.131,0.454,-0.585,-1.191,0.038
+HT,clean dip ≥ 4,DESIGN,98.0,,,0.111,0.273,-0.162,-1.2,0.899
+HT,clean dip ≥ 4,HOLDOUT,198.0,,,-0.251,0.544,-0.795,-1.518,-0.047
+HT,clean dip 1.4–4,ALL,284.0,3236.0,0.255,0.004,0.083,-0.079,-0.599,0.426
+HT,clean dip 1.4–4,DESIGN,96.0,,,0.388,0.121,0.267,-0.737,1.24
+HT,clean dip 1.4–4,HOLDOUT,188.0,,,-0.192,0.064,-0.256,-0.871,0.364
+HT,H-dip draws BEFORE H's bar (look-ahead),ALL,,2739.0,,,1.907,,,
+HT,H-dip draws AFTER H's bar,ALL,,8799.0,,,-0.049,,,
+WILLY,C_EP (all draws),ALL,545.0,27250.0,0.024,-0.083,-0.22,0.137,-0.248,0.54
+WILLY,C_EP (all draws),DESIGN,267.0,,,-0.483,-0.241,-0.242,-0.735,0.269
+WILLY,C_EP (all draws),HOLDOUT,278.0,,,0.302,-0.199,0.501,0.013,1.065
+WILLY,C_EPD as run (dip vs fill H ≥ 1.4),ALL,521.0,16697.0,0.034,-0.197,0.409,-0.606,-1.069,-0.172
+WILLY,C_EPD as run (dip vs fill H ≥ 1.4),DESIGN,260.0,,,-0.553,0.409,-0.962,-1.698,-0.352
+WILLY,C_EPD as run (dip vs fill H ≥ 1.4),HOLDOUT,261.0,,,0.158,0.409,-0.251,-0.723,0.273
+WILLY,C_EPD clean (dip vs high known then ≥ 1.4),ALL,545.0,24455.0,0.012,-0.083,-0.224,0.141,-0.255,0.541
+WILLY,C_EPD clean (dip vs high known then ≥ 1.4),DESIGN,267.0,,,-0.483,-0.24,-0.243,-0.792,0.266
+WILLY,C_EPD clean (dip vs high known then ≥ 1.4),HOLDOUT,278.0,,,0.302,-0.208,0.51,0.01,1.103
+WILLY,clean dip ≥ 4,ALL,536.0,18141.0,0.006,-0.094,-0.068,-0.026,-0.48,0.405
+WILLY,clean dip ≥ 4,DESIGN,262.0,,,-0.502,-0.082,-0.42,-1.078,0.192
+WILLY,clean dip ≥ 4,HOLDOUT,274.0,,,0.295,-0.055,0.35,-0.184,0.954
+WILLY,clean dip 1.4–4,ALL,499.0,6314.0,0.029,0.154,-0.595,0.749,0.37,1.146
+WILLY,clean dip 1.4–4,DESIGN,239.0,,,-0.129,-0.808,0.679,0.179,1.181
+WILLY,clean dip 1.4–4,HOLDOUT,260.0,,,0.415,-0.4,0.814,0.278,1.423
+WILLY,H-dip draws BEFORE H's bar (look-ahead),ALL,,562.0,,,2.442,,,
+WILLY,H-dip draws AFTER H's bar,ALL,,16135.0,,,-0.293,,,

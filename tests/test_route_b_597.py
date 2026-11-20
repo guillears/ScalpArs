@@ -162,7 +162,7 @@ def test_deploy_script_is_safe_by_construction():
         s = f.read()
     assert "HttpTokens=required" in s and "BlockPublicAcls=true" in s and "authorize-security-group-ingress" not in s
     assert '"Resource\\":\\"arn:aws:s3:::$BUCKET/bot/*\\"' in s                # the bot may write ONLY bot/*
-    assert '\\"Action\\":[\\"s3:PutObject\\"],\\"Resource\\":[\\"arn:aws:s3:::$BUCKET/data/*\\",\\"arn:aws:s3:::$BUCKET/health/*\\"]' in s   # recorder: no code/* write
+    assert '\\"Action\\":[\\"s3:PutObject\\"],\\"Resource\\":[\\"arn:aws:s3:::$BUCKET/data/*\\",\\"arn:aws:s3:::$BUCKET/health/*\\",\\"arn:aws:s3:::$BUCKET/features/*\\"]' in s   # recorder: no code/* write
     assert "AbortIncompleteMultipartUpload" in s and "aws:SecureTransport" in s and "KillSignal=SIGTERM" in s
     assert "elasticbeanstalk" not in s.replace("aws-elasticbeanstalk-ec2-role", "")   # never touches the EB environment
     assert H.BUCKET in s
@@ -172,18 +172,55 @@ def test_deploy_script_is_safe_by_construction():
 
 def test_publish_payload_shape():
     from services import route_b_publish as P
-    d = P.payload(123, True, ["BUSDT", "AUSDT", "AUSDT"], {"XUSDT": {"spike_ts": 1_795_000_000_000}, "YUSDT": {}, "ZUSDT": None},
-                  {"CUSDT"}, ["XUSDT", "DUSDT"])
-    assert d["at"] == 123 and d["paper"] is True and d["open"] == ["AUSDT", "BUSDT"] and d["tracked"] == ["CUSDT"]
+    import datetime as dt
+    d = P.payload(123, True, [("BUSDT", "EXHAUSTION_SHORT", "SHORT", dt.datetime(2026, 11, 20, 1, 2, 3)), "AUSDT"],
+                  {"XUSDT": {"spike_ts": 1_795_000_000_000}, "YUSDT": {}, "ZUSDT": None}, {"CUSDT"}, ["XUSDT", "DUSDT"],
+                  sleeves={"EXHAUSTION_SHORT": True})
+    assert d["at"] == 123 and d["paper"] is True and d["tracked"] == ["CUSDT"] and d["sleeves"] == {"EXHAUSTION_SHORT": True}
+    assert d["open"]["BUSDT"] == {"s": "EXHAUSTION_SHORT", "e": "EXHAUSTION_SHORT", "d": "SHORT", "o": "2026-11-20T01:02:03"}
+    assert d["open"]["AUSDT"]["s"] is None and d["recent"] == {}
     assert d["flagged"]["XUSDT"].startswith("2026-") and d["flagged"]["YUSDT"] is None and d["flagged"]["ZUSDT"] is None
     assert d["followed"] == ["XUSDT", "DUSDT"]
-    assert R.bot_pairs(dict(d, at=10 ** 13), 10 ** 13) == ["AUSDT", "BUSDT", "XUSDT", "YUSDT", "ZUSDT", "CUSDT", "DUSDT"]   # the recorder reads it
+    assert R.bot_pairs(dict(d, at=10 ** 13), 10 ** 13) == ["BUSDT", "AUSDT", "XUSDT", "YUSDT", "ZUSDT", "CUSDT", "DUSDT"]   # the recorder reads it
+
+
+def test_sleeves_on_reads_the_live_switches():
+    from types import SimpleNamespace as NS
+    from services import route_b_publish as P
+    th = NS(exhaustion_short_enabled=True, frenzy_willy_enabled=True, frenzy_willy_ht_enabled=True, frenzy_willy_plain_entries_enabled=False)
+    on = P.sleeves_on(th)
+    assert on["EXHAUSTION_SHORT"] and on["FRENZY_WILLY_HT"] and not on["FRENZY_WILLY"] and not on["MOMENTUM_LONG"]
+    assert set(on) == {r[0] for r in P.SLEEVE_SWITCHES}
+    import json as _j
+    cfg = _j.load(open(os.path.join(ROOT, "trading_config.json")))
+    t = cfg.get("thresholds", cfg)
+    assert all(k in t for r in P.SLEEVE_SWITCHES for k in r[1])        # every switch name exists in the live config
+
+
+def test_sleeve_of_matches_the_engine_strategy_names():
+    from services import route_b_publish as P
+    assert P.sleeve_of("MOMENTUM", "LONG") == "MOMENTUM_LONG" and P.sleeve_of("MOMENTUM", "SHORT") == "MOMENTUM_SHORT"
+    assert P.sleeve_of("FLIP:FAN", "SHORT") == "FLIP" and P.sleeve_of("BULLRUN_LONG", "LONG") == "BULL_RUN"
+    assert P.sleeve_of("BEARRUN_SHORT", "SHORT") == "BEAR_RUN" and P.sleeve_of("FRENZY_WILLY_HT", "LONG") == "FRENZY_WILLY_HT"
+    assert P.sleeve_of("FRENZY_WILLY", "LONG") == "FRENZY_WILLY" and P.sleeve_of("MANUAL", "LONG") == "MANUAL"
+    assert P.sleeve_of("WHATEVER", "LONG") == "OTHER" and P.sleeve_of(None) == "OTHER"
+
+
+def test_recent_closes_ride_the_list():
+    import datetime as dt
+    from services import route_b_publish as P
+    rows = [("AUSDT", "FRENZY_WILLY", "LONG", dt.datetime(2026, 11, 20, 1, 0), "OPEN", None),
+            ("BUSDT", "MOMENTUM", "SHORT", dt.datetime(2026, 11, 20, 1, 1), "CLOSED", dt.datetime(2026, 11, 20, 1, 3))]
+    d = P.payload(1, False, rows, {}, [], [])
+    assert list(d["open"]) == ["AUSDT"]
+    assert d["recent"] == {"BUSDT|2026-11-20T01:01:00": {"p": "BUSDT", "s": "MOMENTUM_SHORT", "e": "MOMENTUM", "d": "SHORT",
+                                                         "o": "2026-11-20T01:01:00", "c": "2026-11-20T01:03:00"}}
 
 
 def test_publish_off_under_pytest_and_never_raises():
     from services import route_b_publish as P
     assert P.enabled() is False and P.due() is False and P.maybe_publish(False, None, {}, [], []) is False   # PYTEST_CURRENT_TEST → off
-    assert P.payload(1, False, 5, "x", None, None)["open"] == []                                         # junk in → empty lists, no raise
+    assert P.payload(1, False, 5, "x", None, None)["open"] == {}                                         # junk in → empty, no raise
 
 
 def test_publish_enabled_path_schedules_once_and_waits_for_the_thread(monkeypatch):
@@ -200,7 +237,7 @@ def test_publish_enabled_path_schedules_once_and_waits_for_the_thread(monkeypatc
     monkeypatch.setattr(P, "_put", fake_put)
 
     async def opens():
-        return ["OUSDT"]
+        return [("OUSDT", "FRENZY_WILLY_HT", "LONG", None)]
 
     async def go():
         assert P.maybe_publish(True, opens, {"AUSDT": {"spike_ts": 1_795_000_000_000}}, ["TUSDT"], ["AUSDT"], now_s=1000.0) is True
@@ -216,8 +253,10 @@ def test_publish_enabled_path_schedules_once_and_waits_for_the_thread(monkeypatc
         assert P.maybe_publish(False, boom, {}, [], [], now_s=1000.0 + P.PUBLISH_EVERY_S + 1) is True
         await P._state["task"]
     asyncio.run(go())
-    assert sent[0]["open"] == ["OUSDT"] and sent[0]["flagged"]["AUSDT"].startswith("2026-") and sent[0]["tracked"] == ["TUSDT"]
-    assert sent[1].get("open_unread") is True and sent[1]["open"] == []                    # an unreadable DB still publishes
+    assert sent[0]["open"] == {"OUSDT": {"s": "FRENZY_WILLY_HT", "e": "FRENZY_WILLY_HT", "d": "LONG", "o": None}}
+    assert sent[0]["flagged"]["AUSDT"].startswith("2026-")
+    assert sent[0]["tracked"] == ["TUSDT"]
+    assert sent[1].get("open_unread") is True and sent[1]["open"] == {}                    # an unreadable DB still publishes
     if P._pool is not None:
         P._pool.shutdown(wait=False)
         P._pool = None
@@ -234,3 +273,93 @@ def test_engine_hook_is_guarded_and_bounded():
     assert "async def _route_b_open_pairs(self)" in s
     from services import route_b_publish as P
     assert P.BUCKET == H.BUCKET and P.KEY == "bot/frenzy_list.json" and P.PUBLISH_EVERY_S <= R.HOT_REFRESH_S
+
+
+# ── hourly summaries + the daily report ────────────────────────────────────────────────────────────────────────────────────────
+
+def _hour_files(tmp_path, tag, h0):
+    w = R.Writer(str(tmp_path), tag=tag)
+    for i in range(130):
+        t = h0 + i * 1000
+        w.write("book", {"r": t, "s": "AUSDT", "E": t, "T": t, "b": [["99.9", "100"], ["99.5", "100"]], "a": [["100.1", "100"], ["100.6", "100"]]}, t)
+        w.write("trade", {"r": t, "d": {"s": "AUSDT", "p": "100", "q": "1", "T": t, "m": i % 3 == 0}}, t)
+    w.write("liq", {"r": h0, "d": {"o": {"s": "AUSDT", "S": "SELL", "ap": "100", "z": "5", "q": "5", "T": h0}}}, h0)
+    w.write("mark", {"r": h0, "E": h0, "m": [["AUSDT", "100", "100.01", "0.0001", 0]]}, h0)
+    w.close()
+
+
+def test_features_from_several_files_per_hour(tmp_path):
+    import features as F
+    h0 = 1_795_000_000_000 // 3_600_000 * 3_600_000
+    _hour_files(tmp_path, 1, h0)
+    _hour_files(tmp_path, 2, h0 + 200_000)                      # a restart in the same hour → a second file per kind
+    d, h = R.hour_key(h0)
+    g = R.hour_groups(R.closed_files(str(tmp_path), "2999-01-01", "00"))
+    assert set(g) == {(d, h)} and len(g[(d, h)]["book"]) == 2
+    rows = F.build(g[(d, h)]["book"], g[(d, h)]["trade"], g[(d, h)]["liq"], g[(d, h)]["mark"])
+    r0 = [r for r in rows if r["minute"] == h0][0]
+    assert r0["n_book"] == 60 and r0["n_trades"] == 60 and abs(r0["spread_bps"] - 20.0) < 1e-6
+    assert abs(r0["imb_05"] - (19940 - 10010) / 29950) < 1e-3          # 0.5 % band: both bids, only the first ask (100.6 is outside)
+    assert r0["liq_long_usd"] == 500.0 and r0["mark"] == "100"
+    assert abs(r0["sell_usd"] - 2000.0) < 1e-6 and abs(r0["buy_usd"] - 4000.0) < 1e-6   # every 3rd trade a taker sell
+    assert r0["cost_buy_2500"] != "" and r0["cost_buy_10000"] != ""
+    out = tmp_path / "f.csv.gz"
+    F.write(rows, str(out))
+    import pandas as pd
+    assert len(pd.read_csv(out, compression="gzip")) == len(rows)
+
+
+def test_walk_cost():
+    import features as F
+    asks = [["100.1", "10"], ["100.2", "100"]]
+    assert abs(F.walk_cost_bps(asks, 1001, 100.0, "buy") - 10.0) < 1e-6          # exactly the first level
+    assert F.walk_cost_bps(asks, 10 ** 9, 100.0, "buy") != F.walk_cost_bps(asks, 10 ** 9, 100.0, "buy")   # not enough → NaN
+
+
+def test_recorder_builds_the_summary_once_before_raw_files_go(tmp_path):
+    import asyncio
+    h0 = 1_795_000_000_000 // 3_600_000 * 3_600_000
+    _hour_files(tmp_path, 1, h0)
+    rec = R.Recorder(str(tmp_path), "", 10)
+    d, h = R.hour_key(h0)
+    g = R.hour_groups(R.closed_files(str(tmp_path), "2999-01-01", "00"))
+    assert asyncio.run(rec._features((d, h), g[(d, h)])) is True
+    assert os.path.exists(os.path.join(tmp_path, "_features", d, f"{h}.done")) and rec.feat_done == 1
+    assert asyncio.run(rec._features((d, h), g[(d, h)])) is True and rec.feat_done == 1      # once
+    assert R.hour_groups([("events", d, "05-1.jsonl.gz", "x")]) == {(d, "05"): {"events": ["x"]}}
+    assert asyncio.run(rec._features((d, "05"), {"events": ["x"]})) is True                   # events-only hour: nothing to build
+
+
+def test_recorder_gives_up_after_two_failed_summaries(tmp_path, monkeypatch):
+    import asyncio
+    rec = R.Recorder(str(tmp_path), "", 10)
+    bad = {"book": [str(tmp_path / "missing.jsonl.gz")]}
+    monkeypatch.setattr(R.sys, "executable", "/nonexistent-python")
+    assert asyncio.run(rec._features(("2026-01-01", "00"), bad)) is False       # first failure → raw files held
+    assert asyncio.run(rec._features(("2026-01-01", "00"), bad)) is True        # second → give up (raw stays in S3)
+    assert rec.feat_fail == 2
+
+
+def test_daily_report_positions_and_entry_book():
+    import pandas as pd
+    import daily_report as DR
+    ev = [{"ev": "bot", "r": 1, "open": {"AUSDT": {"s": "EXHAUSTION_SHORT", "d": "SHORT", "o": "2026-11-20T01:02:30"}}, "sleeves": {"EXHAUSTION_SHORT": True}},
+          {"ev": "bot", "r": 2, "open": {"AUSDT": {"s": "EXHAUSTION_SHORT", "d": "SHORT", "o": "2026-11-20T01:02:30"},
+                                         "BUSDT": {"s": "FRENZY_WILLY_HT", "d": "LONG", "o": "2026-11-20T03:00:00"}}, "flagged": ["BUSDT"]},
+          {"ev": "hot", "r": 3}]
+    p = DR.positions(ev)
+    assert len(p) == 2 and set(p.sleeve) == {"EXHAUSTION_SHORT", "FRENZY_WILLY_HT"}
+    m = int(pd.Timestamp("2026-11-20T01:02:00", tz="UTC").value // 1_000_000)
+    feats = pd.DataFrame([dict(sym="AUSDT", minute=m, n_book=100, cost_buy_2500=5.0, cost_sell_2500=6.0, cost_buy_10000=12.0, cost_sell_10000=14.0)])
+    e = DR.entry_book(p, feats).set_index("pair")
+    assert bool(e.loc["AUSDT", "recorded"]) and e.loc["AUSDT", "cost25"] == 6.0 and e.loc["AUSDT", "cost10"] == 14.0   # a SHORT sells in
+    assert not bool(e.loc["BUSDT", "recorded"])
+    assert DR.last_sleeves(ev) == {"EXHAUSTION_SHORT": True}
+
+
+def test_health_flags_lagging_summaries():
+    now = 10 ** 13
+    base = {"now": now - 60_000, "age_s": {"mark": 1, "book": 1, "trade": 1}, "bot_n": 5, "disk_free_gb": 20, "started": now - 10 * 3_600_000,
+            "features_done": 0, "features_last": None}
+    assert H.verdict(base, now)[0] == 1
+    assert H.verdict(dict(base, started=now - 3_600_000), now)[0] == 0                # young process: not judged yet

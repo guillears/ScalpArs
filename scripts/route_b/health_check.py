@@ -14,6 +14,7 @@ import json
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 
 REGION = "eu-west-1"
 BUCKET = "scalpars-route-b-recorder-euw1"
@@ -48,6 +49,14 @@ def verdict(st, now_ms):
         why.append(f"disk low: {st.get('disk_free_gb')} GB free")
     if st.get("writes_paused"):
         why.append(f"writes PAUSED (disk nearly full) — {st.get('writes_dropped')} messages dropped")
+    fl = st.get("features_last")
+    if "features_done" in st and (now_ms - int(st.get("started") or now_ms)) > 3 * 3_600_000:
+        try:
+            fl_ms = int(datetime.strptime(fl, "%Y-%m-%d %H").replace(tzinfo=timezone.utc).timestamp() * 1000) if fl else None
+        except (TypeError, ValueError):
+            fl_ms = None
+        if fl_ms is None or now_ms - fl_ms > 3 * 3_600_000:
+            why.append(f"hourly summaries behind (newest {fl or 'none'}, failed {st.get('features_fail')})")
     bl = st.get("upload_backlog_age_s")
     if bl is not None and float(bl) > BACKLOG_S:
         why.append(f"uploads are behind: the oldest finished file has waited {float(bl) / 3600:.1f} h (upload_fail {st.get('upload_fail')})")

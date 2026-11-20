@@ -27,6 +27,7 @@ You are the technical owner (engineering) **and** the quant analyst. The user is
 - End commit messages with: `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`
 
 ## Quant discipline (anti-overfit — non-negotiable)
+> *"That discipline is what turns data into money rather than into convincing stories."* (operator-chosen motto, 2026-11-20)
 - **Cross-batch dedup key = `(opened_at, pair, direction)`; CLOSED only; NEVER use `id`** (it resets on paper reset). Pool: `scripts/build_unified_pool.py` → `reports/dedupe_pool.csv`.
 - **Never ship a filter/multiplier from 1-sample evidence.** Need N≥30 (or ≥3-sample direction-consistent) cross-batch. 1-sample = watchlist only.
 - **Pre-committed gates do not move.** A locked "revert if WR≤40% on N≥10" with data at 41% = no-ship; never lower the bar at decision time. Discipline-override ships (N below gate) must be acknowledged transparently + carry a *tighter*-than-standard revert gate.

@@ -10200,7 +10200,7 @@ class TradingEngine:
             try:   # 📡 (DECISION_LOG 597) Route B: what the bot watches → the recorder records those coins in full (background, ≤ 1 / 4 min)
                 if _route_b.due():
                     _route_b.maybe_publish(self.is_paper_mode, self._route_b_open_pairs, _frenzy_flags,
-                                           sorted(self._exhaustion_pairs() | self._flatbase_pairs()), _fz_names)   # never awaits
+                                           sorted(self._exhaustion_pairs() | self._flatbase_pairs()), _fz_names, th=th)   # never awaits
             except Exception as _rb_err:
                 logger.debug(f"[ROUTE_B] publish skipped: {_rb_err}")
             _fbs_only, _fbs_seen = set(), set()
@@ -10573,9 +10573,13 @@ class TradingEngine:
             return []
 
     async def _route_b_open_pairs(self) -> list:
-        """📡 (DECISION_LOG 597) the OPEN positions' pairs (this mode) — read inside Route B's background task, its own session."""
+        """📡 (DECISION_LOG 597 / 598) this mode's OPEN positions + those CLOSED in the last _route_b.RECENT_CLOSED_S, as
+        (pair, entry_strategy, direction, opened_at, status, closed_at) — read inside Route B's background task, its own session."""
+        _since = datetime.utcnow() - timedelta(seconds=_route_b.RECENT_CLOSED_S)
         async with AsyncSessionLocal() as _rbs:
-            return [p for (p,) in (await _rbs.execute(select(Order.pair).where(and_(Order.status == "OPEN", Order.is_paper == self.is_paper_mode)))).all()]
+            return [tuple(r) for r in (await _rbs.execute(select(Order.pair, Order.entry_strategy, Order.direction, Order.opened_at,
+                                                                 Order.status, Order.closed_at).where(and_(
+                Order.is_paper == self.is_paper_mode, or_(Order.status == "OPEN", Order.closed_at >= _since))))).all()]
 
     def _flatbase_pairs(self) -> set:
         """pairs with a TRACKING episode now (the pass follows them like flagged pairs — never crowded out of the read)."""

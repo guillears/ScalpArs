@@ -5,7 +5,7 @@
 # instance role allowing PutObject to s3://$BUCKET/bot/* (the Frenzy list). NOTE: that role is shared by every EB environment of the account.
 #   bucket   s3://$BUCKET — private (public access blocked, HTTPS-only policy), SSE-S3, data/ → STANDARD_IA after 60 days,
 #            incomplete multipart uploads aborted after 7 days. No expiry (the research data is kept; decide a retention later).
-#   role     scalpars-recorder-role (+ instance profile): SSM managed core · Put data/* + health/* · Get code/* + bot/* (it cannot rewrite
+#   role     scalpars-recorder-role (+ instance profile): SSM managed core · Put data/* + health/* + features/* · Get code/* + bot/* (it cannot rewrite
 #            its own code)
 #   network  security group scalpars-recorder-sg in the default VPC: NO inbound rules (managed through SSM, no SSH keys)
 #   server   t4g.small, Amazon Linux 2023 arm64, 30 GB gp3 encrypted, IMDSv2 only, tag Name=scalpars-recorder,
@@ -42,6 +42,7 @@ Environment=DATA_DIR=/var/lib/scalpars-recorder
 Environment=MAX_HOT=$MAX_HOT
 Environment=AWS_DEFAULT_REGION=$REGION
 ExecStartPre=-/usr/bin/aws s3 cp --only-show-errors s3://$BUCKET/code/recorder.py /opt/scalpars-recorder/recorder.py
+ExecStartPre=-/usr/bin/aws s3 cp --only-show-errors s3://$BUCKET/code/features.py /opt/scalpars-recorder/features.py
 ExecStart=/usr/bin/python3.11 /opt/scalpars-recorder/recorder.py
 KillSignal=SIGTERM
 TimeoutStopSec=30
@@ -50,6 +51,11 @@ RestartSec=10
 [Install]
 WantedBy=multi-user.target
 UNIT
+}
+
+upload_code() {   # the recorder + the per-minute summary builder it runs every hour
+  $AWS s3 cp --only-show-errors "$HERE/recorder.py" "s3://$BUCKET/code/recorder.py"
+  $AWS s3 cp --only-show-errors "$HERE/features.py" "s3://$BUCKET/code/features.py"
 }
 
 ssm_run() {   # instance, commands (JSON array) → prints the command id; fails loudly
@@ -63,10 +69,9 @@ update_unit_and_restart() {
 }
 
 if [[ "${1:-}" == "--code" ]]; then
-  $AWS s3 cp --only-show-errors "$HERE/recorder.py" "s3://$BUCKET/code/recorder.py"      # a failed upload stops here (set -e)
+  upload_code                                                                             # a failed upload stops here (set -e)
   iid="$(instance_id)"; [[ -n "$iid" ]] || { echo "no running $NAME instance"; exit 1; }
-  cid="$(ssm_run "$iid" '["systemctl restart scalpars-recorder","sleep 5","systemctl is-active scalpars-recorder"]')"
-  echo "code uploaded; restart command $cid sent to $iid"; exit 0
+  echo "code uploaded; unit refreshed + restart command $(update_unit_and_restart "$iid") sent to $iid (IAM changes need the full run)"; exit 0
 fi
 
 # ── bucket ──
@@ -84,7 +89,7 @@ $AWS s3api put-bucket-lifecycle-configuration --bucket "$BUCKET" --lifecycle-con
 $AWS s3api put-bucket-policy --bucket "$BUCKET" --policy "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Sid\":\"HttpsOnly\",\"Effect\":\"Deny\",
   \"Principal\":\"*\",\"Action\":\"s3:*\",\"Resource\":[\"arn:aws:s3:::$BUCKET\",\"arn:aws:s3:::$BUCKET/*\"],
   \"Condition\":{\"Bool\":{\"aws:SecureTransport\":\"false\"}}}]}"
-$AWS s3 cp --only-show-errors "$HERE/recorder.py" "s3://$BUCKET/code/recorder.py"
+upload_code
 
 # ── IAM: the recorder's role ──
 if ! aws iam get-role --role-name "$ROLE" >/dev/null 2>&1; then
@@ -94,7 +99,7 @@ if ! aws iam get-role --role-name "$ROLE" >/dev/null 2>&1; then
   echo "role created: $ROLE"
 fi
 aws iam put-role-policy --role-name "$ROLE" --policy-name route-b-bucket --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[
-  {\"Effect\":\"Allow\",\"Action\":[\"s3:PutObject\"],\"Resource\":[\"arn:aws:s3:::$BUCKET/data/*\",\"arn:aws:s3:::$BUCKET/health/*\"]},
+  {\"Effect\":\"Allow\",\"Action\":[\"s3:PutObject\"],\"Resource\":[\"arn:aws:s3:::$BUCKET/data/*\",\"arn:aws:s3:::$BUCKET/health/*\",\"arn:aws:s3:::$BUCKET/features/*\"]},
   {\"Effect\":\"Allow\",\"Action\":[\"s3:GetObject\"],\"Resource\":[\"arn:aws:s3:::$BUCKET/code/*\",\"arn:aws:s3:::$BUCKET/bot/*\"]}]}"
 if ! aws iam get-instance-profile --instance-profile-name "$ROLE" >/dev/null 2>&1; then
   aws iam create-instance-profile --instance-profile-name "$ROLE" >/dev/null

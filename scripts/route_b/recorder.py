@@ -33,6 +33,7 @@ import shutil
 import signal
 import socket
 import time
+import sys
 import urllib.request
 from collections import deque
 
@@ -59,6 +60,9 @@ S3_TIMEOUT_S = 120
 UPLOAD_MAX_FILES = 20                             # per pass — a backlog never stalls housekeeping for long (status keeps flowing)
 MIN_FREE_GB = 1.0
 KINDS = ("liq", "mark", "book", "trade", "events")
+FEATURE_KINDS = ("book", "trade", "liq", "mark")   # the inputs of features.py (events are not)
+FEATURE_TIMEOUT_S = 600
+FEATURE_MAX_TRIES = 2                             # a hour whose summary fails twice is uploaded raw anyway (rebuildable from S3)
 
 
 def now_ms() -> int:
@@ -178,6 +182,15 @@ def file_hour(name):
     return name[:2]
 
 
+def hour_groups(files):
+    """closed_files() rows → {(date, HH): {kind: [paths]}}. Pure."""
+    out = {}
+    for kind, day, fn, path in files:
+        h = file_hour(fn)
+        out.setdefault((day, h), {}).setdefault(kind, []).append(path)
+    return out
+
+
 def closed_files(data_dir, cur_date, cur_hour):
     """every <kind>/<date>/<HH…>.jsonl.gz whose hour is before the current UTC hour. Pure on the file tree."""
     out = []
@@ -280,6 +293,12 @@ class Recorder:
         self.uploaded = 0
         self.upload_fail = 0
         self.hk_errors = 0
+        self.feat_tries = {}     # (date, HH) → failed attempts
+        self.feat_done = 0
+        self.feat_fail = 0
+        self.feat_last = None    # "date HH" of the newest summary uploaded
+        self.feat_build_s = None  # seconds the last summary took
+        self.bot_at = None       # the last bot list logged (its "at")
         self.stop = asyncio.Event()
 
     def event(self, what, **kw):
@@ -399,7 +418,13 @@ class Recorder:
                                      and s.get("quoteAsset") == "USDT" and s.get("status") == "TRADING"}
                     last_info = time.time()
                 tick = await asyncio.to_thread(self._get, "/fapi/v1/ticker/24hr")
-                bot = bot_pairs(await self._bot_list(), now_ms())
+                doc = await self._bot_list()
+                if isinstance(doc, dict) and doc.get("at") != self.bot_at:   # 📋 history of what the bot watched / held (the daily report)
+                    self.bot_at = doc.get("at")
+                    self.event("bot", at=doc.get("at"), paper=doc.get("paper"), open=doc.get("open"),
+                               flagged=sorted((doc.get("flagged") or {}).keys()) if isinstance(doc.get("flagged"), dict) else doc.get("flagged"),
+                               tracked=doc.get("tracked"), n_followed=len(doc.get("followed") or []), sleeves=doc.get("sleeves"))
+                bot = bot_pairs(doc, now_ms())
                 ms = now_ms()
                 new = pick_hot(tick, self.tradable, self.surge.active(ms), self.hot, self.added, ms, self.max_hot, bot)
                 self.bot_n = len(bot)
@@ -488,6 +513,7 @@ class Recorder:
                     reconnects=self.reconnects, day=self.day, day_n=self.day_n, day_gap_s={k: round(v, 1) for k, v in self.day_gap_s.items()},
                     day_hot_unique=len(self.day_hot), bytes_raw_total=self.w.bytes, disk_free_gb=free, writes_paused=self.w.paused,
                     writes_dropped=self.w.dropped, uploaded=self.uploaded, upload_fail=self.upload_fail, housekeeping_errors=self.hk_errors,
+                    features_done=self.feat_done, features_fail=self.feat_fail, features_last=self.feat_last, features_build_s=self.feat_build_s,
                     upload_backlog_age_s=self.backlog_age_s(),
                     note="day_* counters restart with the process (a mid-day restart under-counts that day)")
 
@@ -505,7 +531,13 @@ class Recorder:
         cd, ch = hour_key(now_ms())
         self.w.roll(cd, ch)                                          # same hour key as the pick below (no turn of the hour in between)
         busy = self.w.open_paths()
-        todo = sorted((x for x in closed_files(self.dir, cd, ch) if x[3] not in busy), key=lambda x: (x[1], x[2]))[:UPLOAD_MAX_FILES]
+        ready = [x for x in closed_files(self.dir, cd, ch) if x[3] not in busy]
+        groups = hour_groups(ready)
+        held = set()
+        for key in sorted(groups):                                   # 📊 raw files wait for their hour's summary (built by featurer())
+            if not self._summary_settled(key, groups[key]):
+                held.update(p for k, ps in groups[key].items() if k in FEATURE_KINDS for p in ps)
+        todo = sorted((x for x in ready if x[3] not in held), key=lambda x: (x[1], x[2]))[:UPLOAD_MAX_FILES]
         for kind, day, fn, path in todo:                             # never a file a writer still holds open
             if await self._s3_put(path, f"data/{kind}/{day}/{fn}"):
                 os.remove(path)
@@ -515,6 +547,114 @@ class Recorder:
         for f in sorted(x for x in os.listdir(self.dir) if x.startswith("daily_") and x.endswith(".json")):
             if await self._s3_put(os.path.join(self.dir, f), f"health/daily/{f[6:]}"):
                 os.remove(os.path.join(self.dir, f))
+
+    def _fpaths(self, key):
+        day, hh = key
+        fdir = os.path.join(self.dir, "_features", day)
+        return fdir, os.path.join(fdir, f"{hh}.done"), os.path.join(fdir, f"{hh}.csv.gz")
+
+    def _summary_settled(self, key, kinds):
+        """True when the hour's raw files may leave the disk: summary uploaded (marker), nothing to summarise, or the BUILD gave up."""
+        if not any(kinds.get(k) for k in FEATURE_KINDS):
+            return True
+        return os.path.exists(self._fpaths(key)[1]) or self.feat_tries.get(key, 0) >= FEATURE_MAX_TRIES
+
+    async def _features(self, key, kinds):
+        """(date, HH) → build features/<date>/<HH>.csv.gz once (low CPU priority) and upload it; a marker file remembers it. A failed
+        BUILD counts toward FEATURE_MAX_TRIES (then the hour goes raw-only, rebuildable from S3); a failed UPLOAD keeps the built file and
+        is simply retried next pass. Without a bucket (local run) the file is kept. → True when settled. Never raises."""
+        try:
+            day, hh = key
+            fdir, marker, out = self._fpaths(key)
+            if self._summary_settled(key, kinds):
+                return True
+            os.makedirs(fdir, exist_ok=True)
+            if not os.path.exists(out):
+                args = (["nice", "-n", "10"] if shutil.which("nice") else []) + [
+                    sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "features.py"), out + ".tmp.gz"]
+                for k in FEATURE_KINDS:
+                    if kinds.get(k):
+                        args += [f"--{k}"] + sorted(kinds[k])
+                ok, why, t0 = False, "", time.time()
+                try:
+                    p = await asyncio.create_subprocess_exec(*args, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
+                    try:
+                        _, err = await asyncio.wait_for(p.communicate(), FEATURE_TIMEOUT_S)
+                        ok, why = p.returncode == 0, (err or b"").decode(errors="replace")[-200:]
+                    except asyncio.TimeoutError:
+                        try:
+                            p.kill()
+                            await p.wait()
+                        except Exception:
+                            pass
+                        why = f"timeout after {FEATURE_TIMEOUT_S} s"
+                    except asyncio.CancelledError:          # shutdown mid-build: never leave the child running
+                        try:
+                            p.kill()
+                        except Exception:
+                            pass
+                        raise
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    why = f"{type(e).__name__}: {str(e)[:160]}"
+                self.feat_build_s = round(time.time() - t0, 1)
+                if not ok:
+                    self.feat_tries[key] = self.feat_tries.get(key, 0) + 1
+                    self.feat_fail += 1
+                    self.event("features_error", hour=f"{day} {hh}", tries=self.feat_tries[key], why=why)
+                    return self._summary_settled(key, kinds)
+                os.replace(out + ".tmp.gz", out)
+            if not self.bucket:
+                open(marker, "w").close()                            # local run: keep the summary file
+                self.feat_done += 1
+                self.feat_last = f"{day} {hh}"
+                return True
+            if await self._s3_put(out, f"features/{day}/{hh}.csv.gz"):
+                open(marker, "w").close()
+                os.remove(out)
+                self.feat_done += 1
+                self.feat_last = f"{day} {hh}"
+                return True
+            return False                                             # upload failed: retried next pass (the built file is kept)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            self.feat_fail += 1
+            self.event("features_error", hour=str(key), why=f"{type(e).__name__}: {str(e)[:160]}")
+            return False
+
+    def _prune_features(self, keep_days=3):
+        """drop _features/<day> folders (markers + leftovers) older than keep_days — their raw hours are long gone. Never raises."""
+        try:
+            root = os.path.join(self.dir, "_features")
+            cut = time.strftime("%Y-%m-%d", time.gmtime(time.time() - keep_days * 86400))
+            for d in os.listdir(root):
+                if d < cut:
+                    shutil.rmtree(os.path.join(root, d), ignore_errors=True)
+            for k in [k for k in self.feat_tries if k[0] < cut]:
+                del self.feat_tries[k]
+        except Exception:
+            pass
+
+    async def featurer(self):
+        """📊 the hourly per-minute summaries, OFF the housekeeping path: one closed hour per pass, oldest first, then a short pause."""
+        while not self.stop.is_set():
+            try:
+                cd, ch = hour_key(now_ms())
+                busy = self.w.open_paths()
+                groups = hour_groups([x for x in closed_files(self.dir, cd, ch) if x[3] not in busy])
+                pending = [k for k in sorted(groups) if not self._summary_settled(k, groups[k])]
+                if pending:
+                    await self._features(pending[0], groups[pending[0]])
+                    await self._sleep(5)
+                    continue
+                self._prune_features()
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                self.event("featurer_error", why=f"{type(e).__name__}: {str(e)[:160]}")
+            await self._sleep(60)
 
     def _write_json(self, name, obj):
         p = os.path.join(self.dir, name)
@@ -564,7 +704,7 @@ class Recorder:
             except (NotImplementedError, RuntimeError):
                 pass
         self.event("start", bucket=bool(self.bucket), max_hot=self.max_hot)
-        tasks = [asyncio.create_task(c) for c in (self.market(), self.hotconn("book"), self.hotconn("trade"), self.hot_manager(), self.housekeeping())]
+        tasks = [asyncio.create_task(c) for c in (self.market(), self.hotconn("book"), self.hotconn("trade"), self.hot_manager(), self.housekeeping(), self.featurer())]
         if self.stop_at:
             try:
                 await asyncio.wait_for(self.stop.wait(), max(0.0, self.stop_at - time.time()))

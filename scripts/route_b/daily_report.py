@@ -184,6 +184,65 @@ def load_features(keys):
     return a.sort_values("n_book").drop_duplicates(["sym", "minute"], keep="last").reset_index(drop=True)
 
 
+GREEN, YELLOW, RED, WHITE = "🟢", "🟡", "🔴", "⚪"
+LEGEND = ("Colours (fixed rules, data quality only — a day never makes a finding): 🟢 recorder healthy and ≥ 90 % of the sleeve's trades "
+          "had the order book recorded at entry · 🟡 recorder degraded, or 50–90 % recorded · 🔴 recorder down, or < 50 % recorded "
+          "(that day's data can't be used) · ⚪ no trades that day (Frenzy line: no flagged coins). Red wins over yellow. The recorder's "
+          "health is THAT DAY's (its daily record: > 1 h of gaps 🔴 · > 5 min, a restart or no bot list 🟡), the live one for today. "
+          "Hourly summaries: 🟢 24 · 🟡 20–23 · 🔴 fewer · ⚪ day still running.")
+
+
+def coverage_colour(health_code, n, recorded):
+    """the daily data-quality colour of one row. health_code = health_check.verdict code (0 ok · 1 degraded · 2 down). Pure."""
+    if health_code == 2:
+        return RED
+    if not n:
+        return WHITE
+    share = recorded / n
+    if share < 0.5:
+        return RED
+    if health_code == 1 or share < 0.9:
+        return YELLOW
+    return GREEN
+
+
+GAP_RED_S, GAP_YELLOW_S = 3600, 300
+
+
+def day_health(day, today, daily, now_code):
+    """the recorder's health code FOR THAT DAY (0 ok · 1 degraded · 2 down) + why. Today → the live verdict. A past day → its own daily
+    summary: none → 2 (the recorder never reached that day's rollover) · reconnect gaps > 1 h → 2 · > 5 min, a restart during the day
+    (the process started after its midnight — time down before a restart is not in the gap counters) or no bot list at rollover → 1. Pure."""
+    if day >= today:
+        return now_code, "live"
+    if not daily:
+        return 2, "no daily record (recorder not running at that day's end)"
+    gaps = sum(float(v or 0) for v in (daily.get("day_gap_s") or {}).values())
+    if gaps > GAP_RED_S:
+        return 2, f"{gaps / 60:.0f} min of gaps"
+    why = []
+    if gaps > GAP_YELLOW_S:
+        why.append(f"{gaps / 60:.0f} min of gaps")
+    try:
+        d0 = int(datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp() * 1000)
+        if int(daily.get("started") or 0) > d0:
+            why.append(f"recorder (re)started {datetime.fromtimestamp(int(daily['started']) / 1000, timezone.utc):%H:%M} UTC")
+    except (TypeError, ValueError):
+        pass
+    if not int(daily.get("bot_n") or 0):
+        why.append("no bot list at the day's end")
+    return (1, "; ".join(why)) if why else (0, "no gaps, ran all day")
+
+
+def summaries_colour(n_hours, day_complete=True):
+    """a finished day: 24 hourly summaries 🟢 · 20–23 🟡 · fewer 🔴 · a day still running ⚪ (not judged). Pure."""
+    if not day_complete:
+        return WHITE
+    if n_hours >= 24:
+        return GREEN
+    return YELLOW if n_hours >= 20 else RED
+
+
 def build(day=None):
     day = day or (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
     now_ms = int(time.time() * 1000)
@@ -210,26 +269,31 @@ def build(day=None):
     inactive = [s for s, on in sleeves.items() if not on]
     daily = H._json(f"health/daily/{day}.json") if hasattr(H, "_json") else None
     L = [f"# 📡 Route B — daily report {day} (UTC)", "",
-         f"**Health now: {label}**" + ("" if not why else " — " + "; ".join(why)), ""]
+         f"**Health now: {label}**" + ("" if not why else " — " + "; ".join(why)), "", f"*{LEGEND}*", ""]
     if daily:
         gaps = daily.get("day_gap_s") or {}
         L.append(f"- {day}: gaps (s) {gaps} · coins in full detail {daily.get('day_hot_unique')} · messages {daily.get('day_n')}")
     if st:
         L.append(f"- now: {st.get('hot_n')} coins in full detail ({st.get('bot_n')} from the bot's list) · summaries built "
                  f"{st.get('features_done')} (failed {st.get('features_fail')}, newest {st.get('features_last')}) · disk {st.get('disk_free_gb')} GB free")
-    fd = [k for k in feat_keys if f"/{day}/" in k]
-    L += [f"- per-minute summaries for {day}: {len(fd)} of 24 hours", "",
+    fd = {k for k in feat_keys if f"/{day}/" in k and k.endswith(".csv.gz")}
+    _today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    dcode, dwhy = day_health(day, _today, daily, code)
+    L += [f"- {[GREEN, YELLOW, RED][dcode]} recorder on {day}: {dwhy}",
+          f"- {summaries_colour(len(fd), day < _today)} per-minute summaries for {day}: {len(fd)} of 24 hours"
+          + (" (day still running)" if day >= _today else "") + (" (recording began this day)" if day == first_day else ""), "",
           "## Active sleeves — trades with the order book recorded at entry", "",
           f"Mode: {'PAPER' if mode else 'LIVE' if mode is not None else '—'} fills only. Trades = positions seen in the bot's list (open, or "
           "closed within the last 30 min of a publish) — a lower bound if the bot paused publishing.", "",
-          f"| Sleeve | trades {day} | book at entry | since {first_day} | book at entry (total) | median entry cost $2.5k / $10k (bps) | toward W/L ({WL_MIN}) |",
-          "|---|---|---|---|---|---|---|"]
+          f"| | Sleeve | trades {day} | book at entry | since {first_day} | book at entry (total) | median entry cost $2.5k / $10k (bps) | toward W/L ({WL_MIN}) |",
+          "|---|---|---|---|---|---|---|---|"]
     for s in active or ["(no bot list yet)"]:
         p = pos[pos.sleeve == s] if len(pos) else pos
         pd_ = p[p.day == day] if len(p) else p
         c25 = p.cost25.median() if len(p) and p.cost25.notna().any() else float("nan")
         c10 = p.cost10.median() if len(p) and p.cost10.notna().any() else float("nan")
-        L.append(f"| {s} | {len(pd_)} | {int(pd_.recorded.sum()) if len(pd_) else 0}/{len(pd_)} | {len(p)} | "
+        n_rec = int(pd_.recorded.sum()) if len(pd_) else 0
+        L.append(f"| {coverage_colour(dcode, len(pd_), n_rec)} | {s} | {len(pd_)} | {n_rec}/{len(pd_)} | {len(p)} | "
                  f"{int(p.recorded.sum()) if len(p) else 0}/{len(p)} | "
                  + ("–" if c25 != c25 else f"{c25:.1f}") + " / " + ("–" if c10 != c10 else f"{c10:.1f}")
                  + f" | {int(p.recorded.sum()) if len(p) else 0}/{WL_MIN} |")
@@ -237,13 +301,15 @@ def build(day=None):
     for lab, g in ((("manual (your own trades)"), other[other.sleeve == "MANUAL"] if len(other) else other),
                    ("sleeves off now / other", other[other.sleeve != "MANUAL"] if len(other) else other)):
         if len(g):
-            L.append(f"| {lab} | {len(g[g.day == day])} | – | {len(g)} | {int(g.recorded.sum())}/{len(g)} | – | – |")
+            gd = g[g.day == day]
+            L.append(f"| {coverage_colour(dcode, len(gd), int(gd.recorded.sum()))} | {lab} | {len(gd)} | {int(gd.recorded.sum())}/{len(gd)} | "
+                     f"{len(g)} | {int(g.recorded.sum())}/{len(g)} | – | – |")
     fl = flagged_on(ev, day)
     fday = feats_all[(pd.to_datetime(feats_all.minute, unit="ms", utc=True).dt.strftime("%Y-%m-%d") == day) & (feats_all.n_book > 0)] if len(feats_all) else feats_all
     rec_syms = set(fday.sym) if len(fday) else set()
     L += ["", "## Inactive sleeves — setups the bot saw but no sleeve trades", "",
           f"- Off now: {', '.join(inactive) if inactive else '—'}.",
-          f"- Frenzy-flagged coins on {day}: {len(fl)} · recorded in full detail: {len(fl & rec_syms)} "
+          f"- {coverage_colour(dcode, len(fl), len(fl & rec_syms))} Frenzy-flagged coins on {day}: {len(fl)} · recorded in full detail: {len(fl & rec_syms)} "
           + (f"(missing: {', '.join(sorted(fl - rec_syms))})" if fl - rec_syms else "(none missing)") + ". Their signals sit in the decision journal and can be priced "
           "with the recorded book at the weekly scan.", ""]
     if len(fday):

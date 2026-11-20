@@ -363,3 +363,30 @@ def test_health_flags_lagging_summaries():
             "features_done": 0, "features_last": None}
     assert H.verdict(base, now)[0] == 1
     assert H.verdict(dict(base, started=now - 3_600_000), now)[0] == 0                # young process: not judged yet
+
+
+def test_daily_colours_follow_fixed_rules():
+    import daily_report as DR
+    G, Y, R_, W = DR.GREEN, DR.YELLOW, DR.RED, DR.WHITE
+    assert DR.coverage_colour(0, 10, 10) == G and DR.coverage_colour(0, 10, 9) == G          # ≥ 90 %
+    assert DR.coverage_colour(0, 10, 8) == Y and DR.coverage_colour(0, 10, 5) == Y           # 50–90 %
+    assert DR.coverage_colour(0, 10, 4) == R_                                                 # < 50 %
+    assert DR.coverage_colour(1, 10, 10) == Y                                                 # recorder degraded
+    assert DR.coverage_colour(2, 10, 10) == R_ and DR.coverage_colour(2, 0, 0) == R_          # recorder down
+    assert DR.coverage_colour(0, 0, 0) == W                                                   # no trades
+    assert DR.summaries_colour(24) == G and DR.summaries_colour(21) == Y and DR.summaries_colour(5) == R_
+    assert DR.summaries_colour(3, day_complete=False) == W
+    assert DR.summaries_colour(20) == Y and DR.summaries_colour(19) == R_
+
+
+def test_day_health_uses_that_days_record():
+    import daily_report as DR
+    d0 = 1795046400000                                                   # 2026-11-19 00:00 UTC
+    ok = {"day_gap_s": {"market": 0, "book": 10, "trade": 0}, "started": d0 - 1000, "bot_n": 40}
+    assert DR.day_health("2026-11-19", "2026-11-20", ok, 2)[0] == 0                    # healthy that day, down now → still 🟢
+    assert DR.day_health("2026-11-19", "2026-11-20", None, 0)[0] == 2                  # no daily record
+    assert DR.day_health("2026-11-19", "2026-11-20", dict(ok, day_gap_s={"book": 4000}), 0)[0] == 2
+    assert DR.day_health("2026-11-19", "2026-11-20", dict(ok, day_gap_s={"book": 400}), 0)[0] == 1
+    assert DR.day_health("2026-11-19", "2026-11-20", dict(ok, started=d0 + 3_600_000), 0)[0] == 1   # restarted during the day
+    assert DR.day_health("2026-11-19", "2026-11-20", dict(ok, bot_n=0), 0)[0] == 1
+    assert DR.day_health("2026-11-20", "2026-11-20", None, 1) == (1, "live")             # today → the live verdict

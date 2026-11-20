@@ -1,0 +1,56 @@
+lead,block,N,windows,WR,BE_WR_sleeve,avg,rest_avg,avg_95hi,top_pair_loss_share
+thin coin (vol24 DESIGN T1 < 42.0M),DESIGN,186,173.0,35,34.0,0.0,1.54,0.68,6.0
+thin coin (vol24 DESIGN T1 < 42.0M),HOLDOUT,492,440.0,41,37.0,0.69,1.07,1.21,2.0
+thin coin (vol24 DESIGN T1 < 42.0M),2026,293,263.0,41,37.0,0.68,1.45,1.37,2.0
+thin coin (vol24 DESIGN T1 < 42.0M),ALL,678,613.0,39,36.0,0.5,1.27,0.93,1.0
+thin coin (vol24 DESIGN T1 < 42.0M),half 23-H2,35,,43,,1.07,3.66,,
+thin coin (vol24 DESIGN T1 < 42.0M),half 24-H1,43,,42,,0.44,0.7,,
+thin coin (vol24 DESIGN T1 < 42.0M),half 24-H2,48,,29,,-0.16,1.03,,
+thin coin (vol24 DESIGN T1 < 42.0M),half 25-H1,60,,30,,-0.8,1.56,,
+thin coin (vol24 DESIGN T1 < 42.0M),half 25-H2,199,,41,,0.71,0.72,,
+thin coin (vol24 DESIGN T1 < 42.0M),half 26-H1,159,,38,,0.26,0.88,,
+thin coin (vol24 DESIGN T1 < 42.0M),half 26-H2,134,,45,,1.17,2.24,,
+top-trader 1h pos change >= 0,DESIGN,33,33.0,58,34.0,3.38,0.88,5.43,18.0
+top-trader 1h pos change >= 0,HOLDOUT,105,103.0,47,37.0,1.46,0.81,2.71,4.0
+top-trader 1h pos change >= 0,2026,65,64.0,48,37.0,1.69,0.93,3.35,7.0
+top-trader 1h pos change >= 0,ALL,138,136.0,49,36.0,1.92,0.84,2.99,3.0
+top-trader 1h pos change >= 0,half 23-H2,11,,64,,4.57,2.47,,
+top-trader 1h pos change >= 0,half 24-H1,2,,50,,1.65,0.61,,
+top-trader 1h pos change >= 0,half 24-H2,4,,25,,-1.01,0.68,,
+top-trader 1h pos change >= 0,half 25-H1,16,,62,,3.87,0.44,,
+top-trader 1h pos change >= 0,half 25-H2,40,,45,,1.07,0.68,,
+top-trader 1h pos change >= 0,half 26-H1,41,,46,,1.47,0.4,,
+top-trader 1h pos change >= 0,half 26-H2,24,,50,,2.08,1.58,,
+top-trader 1h pos change < 0,DESIGN,526,442.0,41,34.0,0.88,3.38,1.37,3.0
+top-trader 1h pos change < 0,HOLDOUT,883,707.0,42,37.0,0.81,1.46,1.2,2.0
+top-trader 1h pos change < 0,2026,466,383.0,43,37.0,0.93,1.69,1.48,2.0
+top-trader 1h pos change < 0,ALL,1409,1149.0,42,36.0,0.84,1.92,1.15,1.0
+top-trader 1h pos change < 0,half 23-H2,85,,54,,2.47,4.57,,
+top-trader 1h pos change < 0,half 24-H1,141,,40,,0.61,1.65,,
+top-trader 1h pos change < 0,half 24-H2,140,,36,,0.68,-1.01,,
+top-trader 1h pos change < 0,half 25-H1,160,,39,,0.44,3.87,,
+top-trader 1h pos change < 0,half 25-H2,417,,41,,0.68,1.07,,
+top-trader 1h pos change < 0,half 26-H1,256,,40,,0.4,1.47,,
+top-trader 1h pos change < 0,half 26-H2,210,,48,,1.58,2.08,,
+"oi_chg30m DESIGN T2 [9.1, 24.6)",DESIGN,187,175.0,34,34.0,-0.03,1.56,0.72,3.0
+"oi_chg30m DESIGN T2 [9.1, 24.6)",HOLDOUT,287,268.0,38,37.0,0.18,1.17,0.86,2.0
+"oi_chg30m DESIGN T2 [9.1, 24.6)",2026,159,154.0,38,37.0,0.2,1.38,1.14,2.0
+"oi_chg30m DESIGN T2 [9.1, 24.6)",ALL,474,443.0,36,36.0,0.1,1.3,0.59,1.0
+"oi_chg30m DESIGN T2 [9.1, 24.6)",half 23-H2,33,,58,,2.08,3.05,,
+"oi_chg30m DESIGN T2 [9.1, 24.6)",half 24-H1,66,,27,,-0.92,1.94,,
+"oi_chg30m DESIGN T2 [9.1, 24.6)",half 24-H2,43,,35,,0.47,0.7,,
+"oi_chg30m DESIGN T2 [9.1, 24.6)",half 25-H1,45,,27,,-0.76,1.28,,
+"oi_chg30m DESIGN T2 [9.1, 24.6)",half 25-H2,128,,38,,0.16,0.93,,
+"oi_chg30m DESIGN T2 [9.1, 24.6)",half 26-H1,97,,37,,0.14,0.74,,
+"oi_chg30m DESIGN T2 [9.1, 24.6)",half 26-H2,62,,39,,0.29,2.11,,
+small 15m range (DESIGN T1 < 5.0 %),DESIGN,188,176.0,40,34.0,1.04,1.02,1.69,3.0
+small 15m range (DESIGN T1 < 5.0 %),HOLDOUT,121,114.0,38,37.0,0.9,0.88,1.82,4.0
+small 15m range (DESIGN T1 < 5.0 %),2026,63,61.0,33,37.0,0.22,1.13,1.49,6.0
+small 15m range (DESIGN T1 < 5.0 %),ALL,309,290.0,39,36.0,0.98,0.92,1.51,2.0
+small 15m range (DESIGN T1 < 5.0 %),half 23-H2,41,,44,,1.27,3.79,,
+small 15m range (DESIGN T1 < 5.0 %),half 24-H1,44,,45,,1.42,0.27,,
+small 15m range (DESIGN T1 < 5.0 %),half 24-H2,54,,39,,1.13,0.33,,
+small 15m range (DESIGN T1 < 5.0 %),half 25-H1,49,,33,,0.4,0.89,,
+small 15m range (DESIGN T1 < 5.0 %),half 25-H2,58,,43,,1.64,0.58,,
+small 15m range (DESIGN T1 < 5.0 %),half 26-H1,36,,33,,-0.13,0.64,,
+small 15m range (DESIGN T1 < 5.0 %),half 26-H2,27,,33,,0.69,1.75,,

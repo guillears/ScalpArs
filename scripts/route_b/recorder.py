@@ -9,12 +9,18 @@ WHAT  three websocket connections (public market data — no API key, no REST we
            liquidation per symbol per second, so it under-counts bursts) · !markPrice@arr@1s (mark / index / funding, one row per second)
         ② BOOK (hot coins, /public/stream): <sym>@depth20@500ms (top-20 book)
         ③ TRADE (hot coins, /market/stream): <sym>@aggTrade (every trade, taker side)
+        ④ FULL BOOK (the bot's PRIORITY coins, ≤ FULL_MAX, /public/stream): <sym>@depth@100ms diffs + a REST snapshot (limit 1000, weight
+           20) → a LOCAL full book per Binance's U / u / pu procedure (fullbook.py) → kinds fbook (derived, 1 s) + fsnap (±5 % levels, 30 s).
+           PRIORITY = the bot list's open · flagged · tracked (not 'followed'), read every FULL_REFRESH_S, sticky 30 min. Snapshot REST is
+           budgeted (FB_WEIGHT_PER_MIN), stops on 418 / 429 / a high X-MBX-USED-WEIGHT-1M. Without fullbook.py the recorder runs without ④.
+        ⑤ OPEN INTEREST (REST, every 60 s, priority + hot coins ≤ 150, weight 1 each) → kind oi · POSITIONING ratios (REST /futures/data,
+           every 5 min, latest 5m row of 4 endpoints, ≤ 500 requests / 5 min) → kind ratio (positioning.py; POS_OFF=1 turns ⑤ off).
       HOT list (≤ MAX_HOT), refreshed every 5 min, in this priority: BTC + ETH · the BOT's own list (s3://<BUCKET>/bot/frenzy_list.json,
       written by the bot during its FRENZY pass: open positions · FRENZY-flagged episodes · episodes EXHAUSTION / FLATBASE still track ·
       every pair FRENZY follows; ignored when > 30 min old) · coins already in (≥ 60 min, no churn) · SURGE coins (|move vs ≥ 30 min ago|
       ≥ 3 %, from stream ①, kept 6 h — the backup when the bot list is stale) · top 24 h movers (quote volume ≥ $5M) · top 24 h volume.
       REST: the 24 h ticker every 5 min (weight 40) + exchangeInfo once a day (weight 1).
-FILES <DATA_DIR>/<kind>/<UTC date>/<HH>-<process start ms>.jsonl.gz (kinds: liq · mark · book · trade · events), one JSON object per
+FILES <DATA_DIR>/<kind>/<UTC date>/<HH>-<process start ms>.jsonl.gz (kinds: liq · mark · book · trade · events · fbook · fsnap · oi · ratio), one JSON object per
       line {"r": local receive ms, ...payload}. ONE file per process and hour (a restart never appends to a file a killed process left
       half-written). A CLOSED hour's files go to s3://<BUCKET>/data/<kind>/<date>/<same name> and are deleted locally only after a
       successful upload. A reader should still tolerate a truncated last gzip member (power loss).
@@ -22,11 +28,14 @@ HEALTH status.json every 60 s (uploaded every 5 min → s3://<BUCKET>/health/sta
       health/daily/<date>.json · every disconnect / close / reconnect / start / stop → the events kind (the gap log).
 SAFETY SIGTERM / SIGINT close the files cleanly · a read silent for READ_TIMEOUT_S reconnects (half-open sockets) · every disconnect —
       clean close included — backs off · below MIN_FREE_GB of disk the recorder stops WRITING but keeps uploading (frees the disk).
-Env   BUCKET (empty → no upload / no bot list: local test) · DATA_DIR (default /var/lib/scalpars-recorder) · MAX_HOT (default 120).
+Env   BUCKET (empty → no upload / no bot list: local test) · DATA_DIR (default /var/lib/scalpars-recorder) · MAX_HOT (default 120) ·
+      FULL_MAX (default 30; 0 = no full book) · FULL_SYMS (comma list — a fixed priority set, local smoke tests only).
 Usage python3 recorder.py [--seconds N]   (N > 0 → stop after N seconds: a local smoke test)"""
 import argparse
 import asyncio
 import gzip
+import http.client
+import math
 import json
 import os
 import shutil
@@ -34,8 +43,23 @@ import signal
 import socket
 import time
 import sys
+import threading
+import urllib.error
+from concurrent.futures import ThreadPoolExecutor
 import urllib.request
 from collections import deque
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # the sibling modules, also under python -I
+
+try:                                              # ④ the full book (a missing file must never stop the rest of the recorder)
+    import fullbook as FB
+except Exception:                                 # pragma: no cover
+    FB = None
+
+try:                                              # ⑤ open interest + positioning (same rule)
+    import positioning as PS
+except Exception:                                 # pragma: no cover
+    PS = None
 
 try:                                              # websockets ≥ 13: the new asyncio client
     from websockets.asyncio.client import connect as ws_connect
@@ -45,6 +69,7 @@ except Exception:                                 # pragma: no cover — older w
 WS_MARKET = "wss://fstream.binance.com/market/stream"   # Binance's 2025 split (checked live 2026-11-19): aggTrade / markPrice / forceOrder
 WS_PUBLIC = "wss://fstream.binance.com/public/stream"   # … and the order book (depth); the legacy /stream no longer carries the /market ones
 REST = "https://fapi.binance.com"
+REST_HOST = "fapi.binance.com"
 MARKET_STREAMS = ("!forceOrder@arr", "!markPrice@arr@1s")
 HOT_CONNS = {"book": (WS_PUBLIC, "@depth20@500ms"), "trade": (WS_MARKET, "@aggTrade")}   # kind → (endpoint, stream suffix)
 CORE = ("BTCUSDT", "ETHUSDT")
@@ -59,8 +84,24 @@ READ_TIMEOUT_S = 60                               # mark arrives every second, B
 S3_TIMEOUT_S = 120
 UPLOAD_MAX_FILES = 20                             # per pass — a backlog never stalls housekeeping for long (status keeps flowing)
 MIN_FREE_GB = 1.0
-KINDS = ("liq", "mark", "book", "trade", "events")
-FEATURE_KINDS = ("book", "trade", "liq", "mark")   # the inputs of features.py (events are not)
+KINDS = ("liq", "mark", "book", "trade", "events", "fbook", "fsnap", "oi", "ratio")
+FEATURE_KINDS = ("book", "trade", "liq", "mark", "fbook", "oi", "ratio")   # the inputs of features.py (events / fsnap are not)
+FULL_REFRESH_S = 60                               # the priority set is re-read from the bot list every minute
+FB_REST_TIMEOUT_S = 10
+BOT_DOC_TTL_S = 55                                # in-process (boto3) bot-list read: once a minute for both managers …
+BOT_DOC_TTL_CLI_S = 300                           # … without boto3 the aws CLI is spawned at most every 5 min (the bot publishes every 4)
+OI_SLOW_S = 45                                    # health ⚠ when one OI sweep takes longer (it must fit its 60 s slot)
+FB_SYNC_FRESH_S = 10                              # "synced" in the status = an fbook line in the last 10 s
+PAUSE_FILE = "rest_pause.json"                    # a 418 / 429 pause (and the ratio 429 pause) survives a restart
+MAX_PAUSE_MS = 3 * 86_400_000                     # a saved / announced pause longer than 3 days is ignored / clamped
+_tls = threading.local()                          # one keep-alive HTTPS connection per REST worker thread
+
+
+def rest_pause_s(status, headers, now_s):
+    """seconds to stop the weight-counted REST reads after a response (fullbook.rest_pause_s; a minimal copy when that file is missing)."""
+    if FB is not None:
+        return FB.rest_pause_s(status, headers, now_s)
+    return 600.0 if status == 418 else 120.0 if status == 429 else 0.0
 FEATURE_TIMEOUT_S = 600
 FEATURE_MAX_TRIES = 2                             # a hour whose summary fails twice is uploaded raw anyway (rebuildable from S3)
 
@@ -222,6 +263,7 @@ class Writer:
         self.bytes = 0
         self.paused = False    # disk nearly full → drop writes (counted) until the uploader frees space
         self.dropped = 0
+        self.closed = set()    # (kind, date, hour) this process already closed — never reopened (it may be uploaded already)
 
     def write(self, kind, obj, ms=None):
         if self.paused:
@@ -229,10 +271,13 @@ class Writer:
             return
         ms = now_ms() if ms is None else ms
         d, h = hour_key(ms)
+        if (kind, d, h) in self.closed:                              # a late line for a closed (maybe uploaded) hour → file it NOW
+            d, h = hour_key(now_ms())
         cur = self.fh.get(kind)
         if cur is None or cur[0] != d or cur[1] != h:
             if cur is not None:
                 cur[2].close()
+                self.closed.add((kind, cur[0], cur[1]))
             p = os.path.join(self.dir, kind, d)
             os.makedirs(p, exist_ok=True)
             fp = os.path.join(p, f"{h}-{self.tag}.jsonl.gz")
@@ -259,7 +304,11 @@ class Writer:
                 try:
                     self.fh[k][2].close()
                 finally:
+                    self.closed.add((k, self.fh[k][0], self.fh[k][1]))
                     del self.fh[k]
+        if len(self.closed) > 5000:                                  # bounded: keep only today's and yesterday's keys
+            keep = {hour_key(now_ms() - x)[0] for x in (0, 86_400_000)}
+            self.closed = {c for c in self.closed if c[1] in keep}
 
     def close(self):
         for v in self.fh.values():
@@ -274,7 +323,7 @@ class Writer:
 
 
 class Recorder:
-    def __init__(self, data_dir, bucket, max_hot, stop_at=None):
+    def __init__(self, data_dir, bucket, max_hot, stop_at=None, full_max=None, full_syms=None):
         self.dir, self.bucket, self.max_hot, self.stop_at = data_dir, bucket, max_hot, stop_at
         self.started = now_ms()
         self.w = Writer(data_dir, self.started)
@@ -282,12 +331,12 @@ class Recorder:
         self.hot, self.added = [], {}
         self.tradable = None
         self.last = {k: None for k in KINDS}
-        self.reconnects = {"market": 0, "book": 0, "trade": 0}
+        self.reconnects = {"market": 0, "book": 0, "trade": 0, "fbook": 0}
         self.host = socket.gethostname()
         self.hot_ws = {}       # kind → the live websocket (book / trade)
         self.day = hour_key(self.started)[0]
         self.day_n = {k: 0 for k in KINDS}
-        self.day_gap_s = {"market": 0.0, "book": 0.0, "trade": 0.0}
+        self.day_gap_s = {"market": 0.0, "book": 0.0, "trade": 0.0, "fbook": 0.0}
         self.day_hot = set()
         self.bot_n = 0
         self.uploaded = 0
@@ -299,7 +348,49 @@ class Recorder:
         self.feat_last = None    # "date HH" of the newest summary uploaded
         self.feat_build_s = None  # seconds the last summary took
         self.bot_at = None       # the last bot list logged (its "at")
+        # ④ full book
+        self.full_req = (FB.FULL_MAX if FB else 30) if full_max is None else max(0, int(full_max))   # what the unit asked for
+        self.full_max = self.full_req if FB is not None else 0
+        self.full_on = FB is not None and self.full_max > 0
+        self.full_fixed = [s for s in (full_syms or []) if s]
+        self.full, self.full_seen, self.full_want_n = [], {}, 0
+        self.books = {}          # sym → FB.LocalBook
+        self.fb_bucket = FB.WeightBucket() if FB else None
+        self.fb_rest = {"paused_until": 0, "pause_why": None, "used_1m": None, "snapshots": 0, "weight": 0, "n429": 0, "n418": 0,
+                        "errors": 0}
+        self.snap_pool = None    # the snapshotter's own thread (sweeps never delay a snapshot)
+        self.sweep_pool = None   # the OI / ratio sweeps' own threads (never the default executor hot_manager uses)
+        self.s3 = None           # boto3 client for the bot list (None = not installed → the aws CLI every BOT_DOC_TTL_CLI_S)
+        self.bot_doc, self.bot_doc_ms = None, 0
+        self.last_tick = None    # the last 24 h ticker (reused during a REST pause)
+        self.fb_tot = self._fb_zero()
+        self.fb_day = self._fb_zero()
+        # ⑤ open interest + positioning
+        self.pos_off = os.environ.get("POS_OFF") == "1"
+        self.pos_on = PS is not None and not self.pos_off
+        self.oi_track = PS.OiTrack() if PS else None
+        self.ratio_win = PS.Rolling(300) if PS else None
+        self.ratio_paused_until = 0
+        self.pos = self._pos_zero()
+        self.pos_day = {"oi_want": 0, "oi_ok": 0, "ratio_want": 0, "ratio_ok": 0}
+        self._load_pause()
         self.stop = asyncio.Event()
+
+    @staticmethod
+    def _pos_zero():
+        return {"oi_sweeps": 0, "oi_last_ms": None, "oi_coins": 0, "oi_ok": 0, "oi_err": 0, "oi_skipped": 0, "oi_sweep_s": None,
+                "ratio_sweeps": 0, "ratio_last_ms": None, "ratio_tried_ms": None, "ratio_coins": 0, "ratio_ok": 0, "ratio_err": 0,
+                "ratio_skipped": 0, "ratio_unread": 0, "ratio_n429": 0}
+
+    @staticmethod
+    def _fb_zero():
+        return {"syncs": 0, "refreshes": 0, "gaps": 0, "stale": 0, "crossed": 0, "bad": 0, "silent": 0, "empty": 0, "snap_err": 0,
+                "want_s": 0, "synced_s": 0}
+
+    def _fb_count(self, what, n=1):
+        if what in self.fb_tot:
+            self.fb_tot[what] += n
+            self.fb_day[what] += n
 
     def event(self, what, **kw):
         try:
@@ -315,7 +406,7 @@ class Recorder:
         """the next message, or TimeoutError after READ_TIMEOUT_S of silence (a half-open socket)."""
         return await asyncio.wait_for(ws.recv(), READ_TIMEOUT_S)
 
-    async def _conn_loop(self, name, url, on_open, on_msg):
+    async def _conn_loop(self, name, url, on_open, on_msg, idle_ok=None):
         """connect → on_open(ws) → on_msg(raw) per message; ANY end (error, clean close, read timeout) → logged gap + backoff + reconnect."""
         down, n_fail = None, 0
         while not self.stop.is_set():
@@ -330,7 +421,13 @@ class Recorder:
                         self.day_gap_s[name] += gap
                     down, n_fail = None, 0
                     while not self.stop.is_set():
-                        on_msg(await self._read(ws))
+                        try:
+                            raw = await self._read(ws)
+                        except asyncio.TimeoutError:
+                            if idle_ok is not None and idle_ok():
+                                continue                             # nothing subscribed: silence is normal (pings keep it alive)
+                            raise
+                        on_msg(raw)
             except asyncio.CancelledError:
                 raise
             except asyncio.TimeoutError:
@@ -404,21 +501,81 @@ class Recorder:
             self._count(kind)
         await self._conn_loop(kind, url, on_open, on_msg)
 
-    def _get(self, path):
-        with urllib.request.urlopen(urllib.request.Request(REST + path, headers={"User-Agent": "route-b-recorder"}), timeout=20) as r:
-            return json.loads(r.read().decode())
+    async def _rest_json(self, path):
+        """a weight-counted REST read through the shared pause / used-weight bookkeeping → body; raises on any non-200 (the caller's
+        loop logs it and retries next pass)."""
+        status, headers, body = await self._in_pool("sweep", self._rest, path)
+        self._rest_result(status, headers)
+        if status != 200 or body is None:
+            raise RuntimeError(f"HTTP {status} on {path.split('?')[0]}")
+        return body
+
+    async def _bot_doc(self):
+        """the bot list, read at most once per BOT_DOC_TTL_S (hot_manager + full_manager share it)."""
+        ttl = BOT_DOC_TTL_S if self._boto() is not None else BOT_DOC_TTL_CLI_S
+        if self.bot_doc_ms and time.time() * 1000 - self.bot_doc_ms < ttl * 1000:
+            return self.bot_doc
+        self.bot_doc, self.bot_doc_ms = await self._bot_list(), now_ms()
+        return self.bot_doc
+
+    def _boto(self):
+        """a boto3 S3 client (instance-role credentials, short timeouts) or None when boto3 is not installed / no bucket."""
+        if self.s3 is None and self.bucket:
+            try:
+                import boto3
+                from botocore.config import Config
+                self.s3 = boto3.client("s3", config=Config(connect_timeout=3, read_timeout=5, retries={"max_attempts": 2}))
+            except Exception:
+                self.s3 = False
+        return self.s3 or None
+
+    def _load_pause(self):
+        """a 418 / 429 pause written by a previous process → honoured at start. Never raises."""
+        try:
+            with open(os.path.join(self.dir, PAUSE_FILE)) as f:
+                d = json.load(f)
+        except Exception:
+            return
+        if not isinstance(d, dict):
+            return
+        now = now_ms()
+
+        def ok(v):                                                   # finite, in the future, ≤ 3 days ahead (1e30 / garbage ignored)
+            try:
+                v = float(v)
+            except (TypeError, ValueError):
+                return None
+            return int(v) if math.isfinite(v) and now < v <= now + MAX_PAUSE_MS else None
+        u = ok(d.get("until"))
+        if u is not None:
+            self.fb_rest["paused_until"], self.fb_rest["pause_why"] = u, d.get("why")
+        r = ok(d.get("ratio_until"))
+        if r is not None:
+            self.ratio_paused_until = r
+
+    def _save_pause(self):
+        try:
+            os.makedirs(self.dir, exist_ok=True)
+            self._write_json(PAUSE_FILE, {"until": self.fb_rest["paused_until"], "why": self.fb_rest["pause_why"],
+                                          "ratio_until": self.ratio_paused_until})
+        except Exception:
+            pass
 
     async def hot_manager(self):
         last_info = 0
         while not self.stop.is_set():
             try:
-                if time.time() - last_info > INFO_REFRESH_S or self.tradable is None:
-                    info = await asyncio.to_thread(self._get, "/fapi/v1/exchangeInfo")
-                    self.tradable = {s["symbol"] for s in info.get("symbols", []) if s.get("contractType") == "PERPETUAL"
-                                     and s.get("quoteAsset") == "USDT" and s.get("status") == "TRADING"}
-                    last_info = time.time()
-                tick = await asyncio.to_thread(self._get, "/fapi/v1/ticker/24hr")
-                doc = await self._bot_list()
+                paused = now_ms() < self.fb_rest["paused_until"]
+                if paused:                                           # a 418 / 429 / weight pause: no REST — the websockets still
+                    tick = self.last_tick or []                      # record core + bot + surge coins (they cost no weight)
+                else:
+                    if time.time() - last_info > INFO_REFRESH_S or self.tradable is None:
+                        info = await self._rest_json("/fapi/v1/exchangeInfo")
+                        self.tradable = {s["symbol"] for s in info.get("symbols", []) if s.get("contractType") == "PERPETUAL"
+                                         and s.get("quoteAsset") == "USDT" and s.get("status") == "TRADING"}
+                        last_info = time.time()
+                    tick = self.last_tick = await self._rest_json("/fapi/v1/ticker/24hr")
+                doc = await self._bot_doc()
                 if isinstance(doc, dict) and doc.get("at") != self.bot_at:   # 📋 history of what the bot watched / held (the daily report)
                     self.bot_at = doc.get("at")
                     self.event("bot", at=doc.get("at"), paper=doc.get("paper"), open=doc.get("open"),
@@ -452,7 +609,395 @@ class Recorder:
                 raise
             except Exception as e:
                 self.event("hot_error", why=f"{type(e).__name__}: {str(e)[:160]}")
-            await self._sleep(HOT_REFRESH_S)
+            left = (self.fb_rest["paused_until"] - now_ms()) / 1000
+            await self._sleep(min(HOT_REFRESH_S, max(5.0, left)) if left > 0 else HOT_REFRESH_S)   # refresh soon after a pause ends
+
+    # ④ full book for the bot's priority coins ───────────────────────────────────────────────────────────────────────────────────
+    def full_status(self, ms=None):
+        """the health block: priority coins, how many have a synced book, sync / gap / resync counts, today's coverage, REST state."""
+        ms = now_ms() if ms is None else ms
+        synced = [s for s in self.full if s in self.books and self.books[s].synced
+                  and ms - self.books[s].last_emit_ms <= FB_SYNC_FRESH_S * 1000]       # synced = an fbook line in the last 10 s
+        d = self.fb_day
+        return {"on": self.full_on, "requested": self.full_req, "module": FB is not None, "cap": self.full_max,
+                "n_want": self.full_want_n, "n": len(self.full), "synced_n": len(synced),
+                "not_synced": [s for s in self.full if s not in synced][:40], "conn": "fbook" in self.hot_ws,
+                "silent_now": sum(1 for s in self.full if s in self.books and self.books[s].synced and self.books[s].last_ev_ms is not None
+                                  and ms - self.books[s].last_ev_ms > 60_000),
+                "totals": dict(self.fb_tot), "day": dict(d),
+                "coverage_day_pct": (round(100.0 * d["synced_s"] / d["want_s"], 1) if d["want_s"] else None),
+                "buffer_overflow": sum(b.overflow for b in self.books.values()),
+                "rest": dict(self.fb_rest, paused_s=max(0, round((self.fb_rest["paused_until"] - ms) / 1000)))}
+
+    def set_full(self, new):
+        """apply a new priority list → (added, dropped); books are created / dropped here (subscribe sends happen in full_manager)."""
+        add, drop = [s for s in new if s not in self.full], [s for s in self.full if s not in new]
+        for s in drop:
+            self.books.pop(s, None)
+        for s in add:
+            self.books[s] = FB.LocalBook(s)
+        self.full = list(new)
+        return add, drop
+
+    def on_fb_msg(self, raw):
+        """one /public/stream message of the full-book connection → its coin's LocalBook (no file write: the emitter writes)."""
+        try:
+            m = json.loads(raw)
+        except ValueError:
+            self._fb_count("bad")                    # one bad frame never resets the connection (= every book)
+            return
+        st = m.get("stream") if isinstance(m, dict) else None
+        if not st:
+            if isinstance(m, dict) and m.get("error"):
+                self.event("sub_error", conn="fbook", why=str(m.get("error"))[:200])
+            return
+        d = m.get("data") or {}
+        bk = self.books.get(d.get("s")) if isinstance(d, dict) else None
+        if bk is None:
+            return                                   # an unsubscribed coin's last events
+        ms = now_ms()
+        try:                                         # hold: no snapshot can come during a REST pause → keep 1 event, not a backlog
+            self._fb_result(bk.on_event(d, ms, hold=ms < self.fb_rest["paused_until"]))
+        except Exception:
+            bk.unsync()                              # anything unexpected: THIS coin resyncs, the other books are untouched
+            self._fb_count("bad")
+
+    def _fb_result(self, res):
+        """count what a LocalBook call returned."""
+        k = {"gap": "gaps", "synced": "syncs", "refreshed": "refreshes", "stale": "stale", "bad": "bad"}.get(res)
+        if k:
+            self._fb_count(k)
+
+    async def fullconn(self):
+        async def on_open(ws):
+            self.hot_ws["fbook"] = ws
+            for s in self.full:                      # a new connection = every book out of sync until its new snapshot
+                self.books[s] = FB.LocalBook(s)
+            if self.full:
+                await self._sub(ws, "SUBSCRIBE", hot_streams(list(self.full), FB.FB_SUFFIX))
+        while not self.stop.is_set() and not self.full:              # connect only once there are coins to subscribe
+            await self._sleep(2)
+        await self._conn_loop("fbook", WS_PUBLIC, on_open, self.on_fb_msg, idle_ok=lambda: not self.full)
+
+    async def full_manager(self):
+        """every FULL_REFRESH_S: the bot list → the priority set (pick_full) → subscribe / unsubscribe on the full-book connection."""
+        while not self.stop.is_set():
+            try:
+                ms = now_ms()
+                if self.full_fixed:
+                    new, self.full_want_n = self.full_fixed[:self.full_max], len(self.full_fixed)
+                else:
+                    doc = await self._bot_doc()
+                    new, self.full_want_n = FB.pick_full(doc, ms, self.full, self.full_seen, self.tradable, self.full_max)
+                add, drop = self.set_full(new)
+                ws = self.hot_ws.get("fbook")
+                if ws is not None:
+                    try:
+                        if drop:
+                            await self._sub(ws, "UNSUBSCRIBE", hot_streams(drop, FB.FB_SUFFIX))
+                        if add:
+                            await self._sub(ws, "SUBSCRIBE", hot_streams(add, FB.FB_SUFFIX))
+                    except Exception as e:
+                        self.event("sub_error", conn="fbook", why=f"{type(e).__name__}: {str(e)[:160]}")
+                if add or drop:
+                    self.event("full", add=add, drop=drop, n=len(new), n_want=self.full_want_n, cap=self.full_max)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                self.event("full_error", why=f"{type(e).__name__}: {str(e)[:160]}")
+            await self._sleep(FULL_REFRESH_S)
+
+    def _get_depth(self, sym):
+        """GET /fapi/v1/depth (limit 1000) → (HTTP status, headers dict, body or None). Never raises."""
+        return self._rest(f"/fapi/v1/depth?symbol={sym}&limit={FB.FB_LIMIT}")
+
+    async def _in_pool(self, which, fn, *args):
+        """run fn(*args) on the snapshotter's own thread ('snap') or the sweeps' threads ('sweep')."""
+        if which == "snap":
+            if self.snap_pool is None:
+                self.snap_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="fb-snap")
+            pool = self.snap_pool
+        else:
+            if self.sweep_pool is None:
+                self.sweep_pool = ThreadPoolExecutor(max_workers=PS.CONCURRENCY + 1 if PS else 2, thread_name_prefix="pos")
+            pool = self.sweep_pool
+        return await asyncio.get_running_loop().run_in_executor(pool, fn, *args)
+
+    def _rest(self, path):
+        """GET REST + path over a KEEP-ALIVE HTTPS connection (one per worker thread; from eu-west-1 a new TLS handshake to Binance
+        costs more than the request) → (HTTP status, headers dict, body or None); status 0 = network error. Never raises."""
+        for attempt in (0, 1):
+            conn = getattr(_tls, "conn", None)
+            if conn is None:
+                conn = _tls.conn = http.client.HTTPSConnection(REST_HOST, timeout=FB_REST_TIMEOUT_S)
+            try:
+                conn.request("GET", path, headers={"User-Agent": "route-b-recorder", "Connection": "keep-alive"})
+                r = conn.getresponse()
+                raw = r.read()
+                hdr = dict(r.getheaders())
+                if r.will_close:
+                    conn.close()
+                    _tls.conn = None
+            except (http.client.HTTPException, OSError):
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+                _tls.conn = None
+                if attempt:                                          # a stale kept-alive socket gets ONE fresh retry
+                    return 0, {}, None
+                continue
+            if r.status != 200:
+                return r.status, hdr, None
+            try:
+                return 200, hdr, json.loads(raw.decode())
+            except ValueError:
+                return 200, hdr, None
+        return 0, {}, None
+
+    def next_snapshot(self, ms):
+        """the priority coin to snapshot next: of those that need one, the one asked LONGEST ago (round-robin — a coin that keeps
+        failing or resyncing never starves the others); None when none."""
+        todo = [s for s in self.full if s in self.books and self.books[s].needs_snapshot(ms)]
+        return min(todo, key=lambda x: (self.books[x].last_req_ms, self.full.index(x))) if todo else None
+
+    async def snapshotter(self):
+        """one REST snapshot at a time for the first priority coin that needs one, inside the weight budget; 418 / 429 / high used weight
+        stop every snapshot for the time rest_pause_s() says (logged)."""
+        while not self.stop.is_set():
+            try:
+                ms = now_ms()
+                if "fbook" not in self.hot_ws or ms < self.fb_rest["paused_until"]:
+                    await self._sleep(1)
+                    continue
+                sym = self.next_snapshot(ms)
+                if sym is None or not self.fb_bucket.take(FB.FB_SNAP_WEIGHT, time.time()):
+                    await self._sleep(0.25)
+                    continue
+                self.books[sym].mark_requested(ms)
+                status, headers, body = await self._in_pool("snap", self._get_depth, sym)
+                self.fb_rest["snapshots"] += 1
+                self.fb_rest["weight"] += FB.FB_SNAP_WEIGHT
+                self._rest_result(status, headers)
+                bk = self.books.get(sym)
+                if bk is None:
+                    continue                                         # dropped from the set while the request ran
+                if status != 200 or body is None:
+                    self.fb_rest["errors"] += 1
+                    self._fb_count("snap_err")
+                    bk.request_failed(now_ms())                      # this coin backs off (5 s … 5 min); the others go on
+                    continue
+                self._fb_result(bk.on_snapshot(body, now_ms()))
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                self.fb_rest["errors"] += 1
+                self.event("snapshot_error", why=f"{type(e).__name__}: {str(e)[:160]}")
+                await self._sleep(1)
+
+    def fb_tick(self, ms):
+        """one emitter pass: per synced coin the fbook line (+ the fsnap line every FB_SNAP_S), coverage counters, crossed books → resync,
+        a book drifting toward its edge (or an hour old) → refresh. Returns lines written."""
+        conn = "fbook" in self.hot_ws
+        n = 0
+        self.fb_day["want_s"] += len(self.full)
+        self.fb_tot["want_s"] += len(self.full)
+        for s in list(self.full):
+            bk = self.books.get(s)
+            if bk is None or not bk.synced or not conn:
+                continue
+            if bk.stale(ms):                                         # its diff stream went silent: never emit a frozen book
+                bk.unsync()
+                self._fb_count("silent")
+                continue
+            snap_due = bk.snap_due(ms)
+            m = FB.book_metrics(bk.bids, bk.asks, bk.edge_bid, bk.edge_ask, with_levels=snap_due)
+            if m is None:
+                if FB.crossed(bk.bids, bk.asks):
+                    bk.unsync()
+                    self._fb_count("crossed")
+                elif bk.begin_refresh(ms):                           # a side emptied inside the trusted region (price beyond the
+                    self._fb_count("empty")                          # edge): re-snapshot — gated by the refresh backoff
+                continue
+            self.w.write("fbook", FB.fbook_record(bk, m, ms), ms)
+            bk.last_emit_ms = ms
+            n += 1
+            if snap_due:
+                self.w.write("fsnap", FB.fsnap_record(bk, m, ms), ms)
+                bk.mark_snap(ms)
+                self._count("fsnap")
+            if bk.refresh_due(ms, min(m["rb"], m["ra"])):
+                bk.begin_refresh(ms)
+        if n:
+            self.fb_day["synced_s"] += n
+            self.fb_tot["synced_s"] += n
+            self.last["fbook"] = ms
+            self.day_n["fbook"] += n
+        return n
+
+    async def fb_emitter(self):
+        nxt = time.time()
+        while not self.stop.is_set():
+            try:
+                self.fb_tick(now_ms())
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                self.event("fbook_error", why=f"{type(e).__name__}: {str(e)[:160]}")
+            nxt += FB.FB_EMIT_S
+            if nxt < time.time():                                    # fell behind (a slow pass): skip, never burst
+                nxt = time.time() + FB.FB_EMIT_S
+            await self._sleep(max(0.0, nxt - time.time()))
+
+    # ⑤ open interest + positioning ─────────────────────────────────────────────────────────────────────────────────────────────
+    def pos_status(self, ms=None):
+        ms = now_ms() if ms is None else ms
+        p, d = dict(self.pos), self.pos_day
+        p.update(on=self.pos_on, module=PS is not None, off=self.pos_off, oi_age_s=(None if p["oi_last_ms"] is None else round((ms - p["oi_last_ms"]) / 1000)),
+                 ratio_age_s=(None if p["ratio_last_ms"] is None else round((ms - p["ratio_last_ms"]) / 1000)), day=dict(d),
+                 oi_coverage_day_pct=(round(100.0 * d["oi_ok"] / d["oi_want"], 1) if d["oi_want"] else None),
+                 ratio_coverage_day_pct=(round(100.0 * d["ratio_ok"] / d["ratio_want"], 1) if d["ratio_want"] else None),
+                 ratio_paused_s=max(0, round((self.ratio_paused_until - ms) / 1000)),
+                 ratio_5m=(self.ratio_win.count(time.time()) if self.ratio_win else 0))
+        return p
+
+    def _rest_result(self, status, headers):
+        """bookkeeping of a WEIGHT-counted REST response (depth snapshots, open interest): used weight · 418 / 429 / high used weight →
+        pause every weight-counted read (rest_pause_s). → the pause in seconds."""
+        h = {str(k).lower(): v for k, v in (headers or {}).items()}
+        if h.get("x-mbx-used-weight-1m"):
+            self.fb_rest["used_1m"] = h["x-mbx-used-weight-1m"]
+        if status == 0:
+            return 0.0                                               # network error: no answer from Binance, nothing to obey
+        try:
+            pause = float(rest_pause_s(status, headers, time.time()))
+        except Exception:
+            pause = 600.0 if status == 418 else 120.0 if status == 429 else 0.0
+        if not math.isfinite(pause):
+            pause = 600.0
+        pause = min(max(0.0, pause), MAX_PAUSE_MS / 1000)
+        if pause > 0:
+            until = now_ms() + int(pause * 1000)
+            if until > self.fb_rest["paused_until"]:
+                self.fb_rest["paused_until"] = until
+                self.fb_rest["pause_why"] = FB.pause_reason(status, headers) if FB else status   # the CURRENT pause's cause
+        if status in (418, 429):
+            self.fb_rest["n418" if status == 418 else "n429"] += 1
+            self.event("rest_limit", status=status, pause_s=round(pause), used_1m=self.fb_rest["used_1m"])
+            self._save_pause()
+        return pause
+
+    async def oi_sweep(self, ms):
+        """one open-interest pass over the priority + hot coins (PS.CONCURRENCY requests at a time) → one 'oi' line. Stops asking on a
+        REST pause. → rows written."""
+        coins = PS.order_coins(self.full, self.hot, PS.OI_MAX_COINS)
+        minute = ms // 60_000
+        got, t0, sem = {}, time.time(), asyncio.Semaphore(PS.CONCURRENCY)
+
+        async def one(s):
+            async with sem:
+                if self.stop.is_set() or now_ms() < self.fb_rest["paused_until"]:
+                    return                                           # not asked → counted as skipped below
+                status, headers, body = await self._in_pool("sweep", self._rest, PS.OI_PATH.format(s))
+                self._rest_result(status, headers)
+                got[s] = PS.parse_oi(body) if status == 200 else None
+                await asyncio.sleep(PS.REQ_GAP_S)
+        res = await asyncio.gather(*(one(s) for s in coins), return_exceptions=True)
+        for s, r in zip(coins, res):                                 # a worker that raised = that coin unread (counted), others go on
+            if isinstance(r, BaseException) and not isinstance(r, asyncio.CancelledError):
+                got.setdefault(s, None)
+        rows = []
+        for s in coins:                                              # priority order kept
+            v = got.get(s)
+            if v is not None:
+                c1, c5 = self.oi_track.feed(s, v[0], minute)
+                rows.append([s, v[0], v[1], c1, c5])
+        err = sum(1 for s in coins if s in got and got[s] is None)  # asked, answered badly (a 400 delisted coin, 5xx): per coin
+        skipped = sum(1 for s in coins if s not in got)              # never asked (a REST pause / shutdown)
+        self.oi_track.prune(set(coins))
+        if rows:                                                     # file hour = NOW (a sweep crossing the hour never reopens an
+            self.w.write("oi", {"r": ms, "m": rows})                 # uploaded file); "r" keeps the sweep's minute
+            self._count("oi")
+        self.pos.update(oi_sweeps=self.pos["oi_sweeps"] + 1, oi_coins=len(coins), oi_ok=len(rows), oi_skipped=skipped,
+                        oi_err=self.pos["oi_err"] + err, oi_sweep_s=round(time.time() - t0, 1))
+        if rows:
+            self.pos["oi_last_ms"] = ms
+        self.pos_day["oi_want"] += len(coins)
+        self.pos_day["oi_ok"] += len(rows)
+        return len(rows)
+
+    async def ratio_sweep(self, ms):
+        """one positioning pass: 4 endpoints × the coins the 5-min budget allows (PS.CONCURRENCY coins at a time) → one 'ratio' line.
+        A /futures/data 429 pauses only these reads; a 418 pauses every REST read. → rows written."""
+        coins = PS.order_coins(self.full, self.hot, PS.OI_MAX_COINS)
+        take, skipped = PS.ratio_coins(coins, self.ratio_win.count(time.time()))
+        got, sem, halt = {}, asyncio.Semaphore(PS.CONCURRENCY), [False]
+
+        def blocked():
+            return halt[0] or self.stop.is_set() or now_ms() < self.ratio_paused_until or \
+                (now_ms() < self.fb_rest["paused_until"] and self.fb_rest["pause_why"] == 418)   # /fapi weight limits are not ours
+
+        async def one(s):
+            async with sem:
+                parsed = {}
+                for key, ep, field in PS.RATIO_ENDPOINTS:
+                    if blocked():
+                        break
+                    status, headers, body = await self._in_pool("sweep", self._rest, PS.ratio_path(ep, s))
+                    self.ratio_win.add(time.time())
+                    if status == 429:                                # the /futures/data limit (its own) → pause only these
+                        self.pos["ratio_n429"] += 1
+                        pause = min(max(rest_pause_s(429, headers, time.time()), PS.RATIO_PAUSE_429_S), MAX_PAUSE_MS / 1000)
+                        self.ratio_paused_until = max(self.ratio_paused_until, now_ms() + int(pause * 1000))
+                        self.event("rest_limit", status=429, conn="ratio", pause_s=round(pause))
+                        self._save_pause()
+                        halt[0] = True
+                        break
+                    if status == 418:                                # an IP ban stops every REST read
+                        self._rest_result(status, headers)
+                        halt[0] = True
+                        break
+                    parsed[key] = PS.parse_ratio(body, field) if status == 200 else None
+                    await asyncio.sleep(PS.REQ_GAP_S)
+                if parsed:
+                    got[s] = PS.ratio_row(s, parsed)
+        res = await asyncio.gather(*(one(s) for s in take), return_exceptions=True)
+        for s, r in zip(take, res):
+            if isinstance(r, BaseException) and not isinstance(r, asyncio.CancelledError):
+                got.setdefault(s, None)
+        rows = [got[s] for s in take if got.get(s) is not None]
+        err = sum(1 for s in take if s in got and got[s] is None)
+        if rows:
+            self.w.write("ratio", {"r": ms, "m": rows})              # file hour = NOW (see oi_sweep)
+            self._count("ratio")
+            self.pos["ratio_last_ms"] = ms                           # only a sweep that READ coins counts as the last one
+        self.pos.update(ratio_sweeps=self.pos["ratio_sweeps"] + 1, ratio_tried_ms=ms, ratio_coins=len(coins), ratio_ok=len(rows),
+                        ratio_err=self.pos["ratio_err"] + err, ratio_skipped=skipped, ratio_unread=len(take) - len(rows))
+        self.pos_day["ratio_want"] += len(coins)
+        self.pos_day["ratio_ok"] += len(rows)
+        return len(rows)
+
+    async def _every(self, period_s, fn, name, offset_s=0):
+        """run fn(sweep ms) at the start of every period (UTC-aligned + offset); a slow sweep skips the missed slot. Never dies."""
+        while not self.stop.is_set():
+            t = time.time()
+            nxt = (t - offset_s) // period_s * period_s + period_s + offset_s
+            await self._sleep(nxt - t)
+            if self.stop.is_set():
+                break
+            try:
+                if self.hot or self.full:
+                    await fn(now_ms())
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                self.event(f"{name}_error", why=f"{type(e).__name__}: {str(e)[:160]}")
+
+    async def oi_poller(self):
+        await self._every(PS.OI_EVERY_S, self.oi_sweep, "oi", offset_s=2)
+
+    async def ratio_poller(self):
+        await self._every(PS.RATIO_EVERY_S, self.ratio_sweep, "ratio", offset_s=20)   # the 5m row is published a little after the close
 
     async def _aws(self, *args, capture=False):
         """run the aws CLI with a hard timeout → (ok, stdout bytes, stderr text). Never raises."""
@@ -476,6 +1021,13 @@ class Recorder:
         """the bot's list from S3 (None when unreadable / no bucket)."""
         if not self.bucket:
             return None
+        cli = self._boto()
+        if cli is not None:                                          # in-process: no aws-CLI process per read
+            try:
+                body = await self._in_pool("sweep", lambda: cli.get_object(Bucket=self.bucket, Key="bot/frenzy_list.json")["Body"].read())
+                return json.loads(body.decode())
+            except Exception:
+                return None
         ok, out, _ = await self._aws("s3", "cp", "--only-show-errors", f"s3://{self.bucket}/bot/frenzy_list.json", "-", capture=True)
         if not ok:
             return None
@@ -514,7 +1066,7 @@ class Recorder:
                     day_hot_unique=len(self.day_hot), bytes_raw_total=self.w.bytes, disk_free_gb=free, writes_paused=self.w.paused,
                     writes_dropped=self.w.dropped, uploaded=self.uploaded, upload_fail=self.upload_fail, housekeeping_errors=self.hk_errors,
                     features_done=self.feat_done, features_fail=self.feat_fail, features_last=self.feat_last, features_build_s=self.feat_build_s,
-                    upload_backlog_age_s=self.backlog_age_s(),
+                    upload_backlog_age_s=self.backlog_age_s(), full=self.full_status(ms), pos=self.pos_status(ms),
                     note="day_* counters restart with the process (a mid-day restart under-counts that day)")
 
     async def _s3_put(self, src, key):
@@ -642,6 +1194,7 @@ class Recorder:
         while not self.stop.is_set():
             try:
                 cd, ch = hour_key(now_ms())
+                self.w.roll(cd, ch)                                  # close the past hour's handles first (as _upload does)
                 busy = self.w.open_paths()
                 groups = hour_groups([x for x in closed_files(self.dir, cd, ch) if x[3] not in busy])
                 pending = [k for k in sorted(groups) if not self._summary_settled(k, groups[k])]
@@ -683,6 +1236,8 @@ class Recorder:
                     self._write_json(f"daily_{self.day}.json", dict(self.status(), day=self.day, summary_at=now_ms()))
                     self.day, self.day_n = d, {k: 0 for k in KINDS}
                     self.day_gap_s, self.day_hot = {k: 0.0 for k in self.day_gap_s}, set(self.hot)
+                    self.fb_day = self._fb_zero()
+                    self.pos_day = {k: 0 for k in self.pos_day}
                 if time.time() - last_st >= STATUS_S:
                     last_st = time.time()
                     self._write_json("status.json", self.status())
@@ -703,8 +1258,15 @@ class Recorder:
                 loop.add_signal_handler(sig, self.stop.set)
             except (NotImplementedError, RuntimeError):
                 pass
-        self.event("start", bucket=bool(self.bucket), max_hot=self.max_hot)
-        tasks = [asyncio.create_task(c) for c in (self.market(), self.hotconn("book"), self.hotconn("trade"), self.hot_manager(), self.housekeeping(), self.featurer())]
+        for b in BAD_ENV:
+            self.event("bad_env", **b)
+        self.event("start", bucket=bool(self.bucket), max_hot=self.max_hot, full_max=self.full_max, full_on=self.full_on, pos_on=self.pos_on)
+        coros = [self.market(), self.hotconn("book"), self.hotconn("trade"), self.hot_manager(), self.housekeeping(), self.featurer()]
+        if self.full_on:
+            coros += [self.fullconn(), self.full_manager(), self.snapshotter(), self.fb_emitter()]
+        if self.pos_on:
+            coros += [self.oi_poller(), self.ratio_poller()]
+        tasks = [asyncio.create_task(c) for c in coros]
         if self.stop_at:
             try:
                 await asyncio.wait_for(self.stop.wait(), max(0.0, self.stop_at - time.time()))
@@ -720,6 +1282,9 @@ class Recorder:
         for t in tasks:
             t.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
+        for pool in (self.snap_pool, self.sweep_pool):
+            if pool is not None:
+                pool.shutdown(wait=False)
         self.event("stop")
         self.w.close()                                               # clean gzip trailers
         try:
@@ -728,12 +1293,29 @@ class Recorder:
             pass
 
 
+BAD_ENV = []
+
+
+def env_int(name, default):
+    """an int env var; a malformed one falls back to the default (logged as a 'bad_env' event at start) — never a crash loop."""
+    v = os.environ.get(name, "")
+    if not v.strip():
+        return default
+    try:
+        return max(0, int(float(v)))
+    except (TypeError, ValueError, OverflowError):
+        BAD_ENV.append({"name": name, "value": v[:40], "used": default})
+        return default
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--seconds", type=float, default=0.0)
     a = ap.parse_args()
     rec = Recorder(os.environ.get("DATA_DIR", "/var/lib/scalpars-recorder"), os.environ.get("BUCKET", ""),
-                   int(os.environ.get("MAX_HOT", "120")), (time.time() + a.seconds) if a.seconds > 0 else None)
+                   env_int("MAX_HOT", 120), (time.time() + a.seconds) if a.seconds > 0 else None,
+                   full_max=env_int("FULL_MAX", None),
+                   full_syms=[x.strip().upper() for x in os.environ.get("FULL_SYMS", "").split(",") if x.strip()])
     asyncio.run(rec.run())
 
 

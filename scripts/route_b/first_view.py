@@ -26,7 +26,25 @@ def load(paths):
         fr.append(d)
     a = pd.concat(fr, ignore_index=True)
     a = a[a.sym.astype(str).str.endswith("USDT")]          # USDT-M only (the liquidation stream also carries coin-margined contracts)
-    return merge_split_minutes(a).sort_values(["sym", "minute"]).reset_index(drop=True)
+    return ffill_ratios(merge_split_minutes(a).sort_values(["sym", "minute"]).reset_index(drop=True))
+
+
+RATIO_COLS = ("top_ls_acct", "top_ls_pos", "global_ls_acct", "taker_bs_ratio", "ratio_ts")
+RATIO_MAX_AGE_MS = 15 * 60_000
+
+
+def ffill_ratios(a, max_age_ms=RATIO_MAX_AGE_MS):
+    """the 5-min positioning ratios carried forward per coin ACROSS hourly files (each hour's summary only carries forward inside
+    itself, so minutes :00–:04 were blank) — never further than max_age_ms after the row's own period (ratio_ts). Pure."""
+    cols = [c for c in RATIO_COLS if c in a.columns]
+    if not len(a) or "ratio_ts" not in cols:
+        return a
+    a = a.sort_values(["sym", "minute"]).reset_index(drop=True)
+    f = a.groupby("sym")[cols].ffill()
+    fresh = (a["minute"] - pd.to_numeric(f["ratio_ts"], errors="coerce")) <= max_age_ms
+    for c in cols:
+        a[c] = a[c].where(a[c].notna(), f[c].where(fresh))
+    return a
 
 
 ADDITIVE = ("n_trades", "buy_usd", "sell_usd", "liq_long_usd", "liq_short_usd")
@@ -34,7 +52,7 @@ ADDITIVE = ("n_trades", "buy_usd", "sell_usd", "liq_long_usd", "liq_short_usd")
 
 def merge_split_minutes(a):
     """a coin-minute written into TWO hourly files (exchange time vs the hour it was received) → one row: the book / mark columns of
-    the row with more book snapshots, the trade / liquidation $ SUMMED, the biggest trade the max. Pure."""
+    the row with more book snapshots (the full-book fb_* columns: the row with more n_fbook), the trade / liquidation $ SUMMED, the biggest trade the max. Pure."""
     if not len(a):
         return a
     key = ["sym", "minute"]
@@ -47,6 +65,13 @@ def merge_split_minutes(a):
     best[sums.columns] = sums
     if "max_trade_usd" in d:
         best["max_trade_usd"] = d.groupby(key)["max_trade_usd"].max()
+    fb = [c for c in d.columns if c == "n_fbook" or c.startswith("fb_")]
+    if fb:                                    # the full-book columns come from the row with more full-book seconds
+        best[fb] = d.sort_values("n_fbook", na_position="first").drop_duplicates(key, keep="last").set_index(key)[fb]
+    pos = [c for c in ("oi", "oi_chg_1m", "oi_chg_5m", "top_ls_acct", "top_ls_pos", "global_ls_acct", "taker_bs_ratio", "ratio_ts")
+           if c in d.columns]
+    if pos:                                   # OI / ratio lines are filed by write time: a minute's value may sit in the next hour's file
+        best[pos] = d.groupby(key)[pos].first()
     return pd.concat([a[~dup], best.reset_index()], ignore_index=True)
 
 

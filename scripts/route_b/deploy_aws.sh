@@ -3,7 +3,8 @@
 # Idempotent: re-running updates the bucket settings, the policies, the code in S3 and the systemd unit on the existing server (via SSM)
 # and restarts the service. Nothing the bot runs on is created, rebuilt or replaced — the ONLY bot-side change is an inline policy on its
 # instance role allowing PutObject to s3://$BUCKET/bot/* (the Frenzy list). NOTE: that role is shared by every EB environment of the account.
-#   bucket   s3://$BUCKET — private (public access blocked, HTTPS-only policy), SSE-S3, data/ → STANDARD_IA after 60 days,
+#   bucket   s3://$BUCKET — private (public access blocked, HTTPS-only policy), SSE-S3, data/ → DEEP_ARCHIVE after 30 days (the live
+#            rule raw-data-to-deep-archive-30d; a raw file older than 30 days needs a 12–48 h restore before a study reads it),
 #            incomplete multipart uploads aborted after 7 days. No expiry (the research data is kept; decide a retention later).
 #   role     scalpars-recorder-role (+ instance profile): SSM managed core · Put data/* + health/* + features/* · Get code/* + bot/* (it cannot rewrite
 #            its own code)
@@ -12,6 +13,14 @@
 #            systemd service scalpars-recorder (Restart=always, SIGTERM → clean file close; pulls code/recorder.py from S3 on every start)
 # Usage: scripts/route_b/deploy_aws.sh            (create or update everything)
 #        scripts/route_b/deploy_aws.sh --code     (upload the code + restart the service only)
+# Verify:   ~10 min after a --code run: venv/bin/python -I scripts/route_b/health_check.py → "full book: synced N / N" and "open interest /
+#           positioning" lines, no ⚠ about them; after the next full hour: features/<date>/<HH>.csv.gz carries the fb_* / oi / ratio columns.
+# Off-switch (no code change): FULL_MAX=0 POS_OFF=1 scripts/route_b/deploy_aws.sh --code   (back on: run --code again without them)
+# Rollback: git checkout <previous commit> -- scripts/route_b/ && scripts/route_b/deploy_aws.sh --code, THEN delete the new kinds the old
+#           recorder never uploads (through SSM): rm -rf /var/lib/scalpars-recorder/{fbook,fsnap,oi,ratio} — after checking they are
+#           uploaded or not needed. fullbook.py / positioning.py left in code/ are ignored by the old recorder.
+# Weekly scan: raw data/ (fbook / fsnap / oi / ratio included) moves to DEEP_ARCHIVE after 30 days — studies read features/ summaries,
+#           or restore the raw hours in advance (12–48 h).
 set -euo pipefail
 REGION=eu-west-1
 BUCKET=scalpars-route-b-recorder-euw1
@@ -20,7 +29,10 @@ SG=scalpars-recorder-sg
 NAME=scalpars-recorder
 BOT_ROLE=aws-elasticbeanstalk-ec2-role
 WEBSOCKETS=13.1
+BOTO3=1.35.36          # the recorder reads the bot list in-process (no aws-CLI spawn per minute); missing → CLI every 5 min
 MAX_HOT=120
+FULL_MAX=${FULL_MAX:-30}   # full order book for at most 30 of the bot's coins (fullbook.py; 0 = off)
+POS_OFF=${POS_OFF:-0}      # 1 = no open interest / positioning reads (positioning.py)
 HERE="$(cd "$(dirname "$0")" && pwd)"
 AWS="aws --region $REGION"
 
@@ -40,9 +52,13 @@ StartLimitIntervalSec=0
 Environment=BUCKET=$BUCKET
 Environment=DATA_DIR=/var/lib/scalpars-recorder
 Environment=MAX_HOT=$MAX_HOT
+Environment=FULL_MAX=$FULL_MAX
+Environment=POS_OFF=$POS_OFF
 Environment=AWS_DEFAULT_REGION=$REGION
 ExecStartPre=-/usr/bin/aws s3 cp --only-show-errors s3://$BUCKET/code/recorder.py /opt/scalpars-recorder/recorder.py
 ExecStartPre=-/usr/bin/aws s3 cp --only-show-errors s3://$BUCKET/code/features.py /opt/scalpars-recorder/features.py
+ExecStartPre=-/usr/bin/aws s3 cp --only-show-errors s3://$BUCKET/code/fullbook.py /opt/scalpars-recorder/fullbook.py
+ExecStartPre=-/usr/bin/aws s3 cp --only-show-errors s3://$BUCKET/code/positioning.py /opt/scalpars-recorder/positioning.py
 ExecStart=/usr/bin/python3.11 /opt/scalpars-recorder/recorder.py
 KillSignal=SIGTERM
 TimeoutStopSec=30
@@ -53,9 +69,12 @@ WantedBy=multi-user.target
 UNIT
 }
 
-upload_code() {   # the recorder + the per-minute summary builder it runs every hour
-  $AWS s3 cp --only-show-errors "$HERE/recorder.py" "s3://$BUCKET/code/recorder.py"
+upload_code() {   # the recorder + the per-minute summary builder it runs every hour + the full-book and OI / positioning logic
+  # the modules recorder.py imports / runs FIRST, recorder.py LAST (a half-finished upload never leaves a new recorder with old helpers)
+  $AWS s3 cp --only-show-errors "$HERE/fullbook.py" "s3://$BUCKET/code/fullbook.py"
+  $AWS s3 cp --only-show-errors "$HERE/positioning.py" "s3://$BUCKET/code/positioning.py"
   $AWS s3 cp --only-show-errors "$HERE/features.py" "s3://$BUCKET/code/features.py"
+  $AWS s3 cp --only-show-errors "$HERE/recorder.py" "s3://$BUCKET/code/recorder.py"
 }
 
 ssm_run() {   # instance, commands (JSON array) → prints the command id; fails loudly
@@ -65,7 +84,7 @@ ssm_run() {   # instance, commands (JSON array) → prints the command id; fails
 update_unit_and_restart() {
   local iid="$1" b64
   b64="$(unit_text | base64 | tr -d '\n')"
-  ssm_run "$iid" "[\"echo $b64 | base64 -d > /etc/systemd/system/scalpars-recorder.service\",\"systemctl daemon-reload\",\"systemctl restart scalpars-recorder\",\"sleep 5\",\"systemctl is-active scalpars-recorder\"]"
+  ssm_run "$iid" "[\"python3.11 -m pip install -q 'boto3==$BOTO3' || true\",\"echo $b64 | base64 -d > /etc/systemd/system/scalpars-recorder.service\",\"systemctl daemon-reload\",\"systemctl restart scalpars-recorder\",\"sleep 5\",\"systemctl is-active scalpars-recorder\"]"
 }
 
 if [[ "${1:-}" == "--code" ]]; then
@@ -84,7 +103,7 @@ $AWS s3api put-public-access-block --bucket "$BUCKET" --public-access-block-conf
 $AWS s3api put-bucket-encryption --bucket "$BUCKET" --server-side-encryption-configuration \
   '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}'
 $AWS s3api put-bucket-lifecycle-configuration --bucket "$BUCKET" --lifecycle-configuration \
-  '{"Rules":[{"ID":"data-to-ia-60d","Status":"Enabled","Filter":{"Prefix":"data/"},"Transitions":[{"Days":60,"StorageClass":"STANDARD_IA"}]},
+  '{"Rules":[{"ID":"raw-data-to-deep-archive-30d","Status":"Enabled","Filter":{"Prefix":"data/"},"Transitions":[{"Days":30,"StorageClass":"DEEP_ARCHIVE"}]},
              {"ID":"abort-mpu-7d","Status":"Enabled","Filter":{"Prefix":""},"AbortIncompleteMultipartUpload":{"DaysAfterInitiation":7}}]}' >/dev/null
 $AWS s3api put-bucket-policy --bucket "$BUCKET" --policy "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Sid\":\"HttpsOnly\",\"Effect\":\"Deny\",
   \"Principal\":\"*\",\"Action\":\"s3:*\",\"Resource\":[\"arn:aws:s3:::$BUCKET\",\"arn:aws:s3:::$BUCKET/*\"],
@@ -132,6 +151,7 @@ if [[ -z "$IID" ]]; then
     echo 'set -e'
     echo 'dnf install -y python3.11 python3.11-pip'
     echo "python3.11 -m pip install 'websockets==$WEBSOCKETS'"
+    echo "python3.11 -m pip install 'boto3==$BOTO3' || true"
     echo 'mkdir -p /opt/scalpars-recorder /var/lib/scalpars-recorder'
     echo "sed -i 's/^#\\?SystemMaxUse=.*/SystemMaxUse=500M/' /etc/systemd/journald.conf && systemctl restart systemd-journald"
     echo "echo $(unit_text | base64 | tr -d '\n') | base64 -d > /etc/systemd/system/scalpars-recorder.service"

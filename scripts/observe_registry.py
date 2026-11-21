@@ -99,6 +99,9 @@ EXIT = {
 }
 # 🔂 (532) the second-chance revert gate: today's-exit shadow (sc_base_pnl) is the runner trail / ladder level at the trigger; the
 # booked side is the second chance at the shipped knobs → a change to either makes the line STALE
+# 🎯👁 (605) DIST_TP_SHADOW walks real DIST fills at TP 5 / 8 vs today's Exit B TP with the fill's own stop, 24 h → pinned to Exit B
+EXIT["scout_dist_tp_shadow.py"] = dict(dl="605", sleeves="DISTRIBUTION_SHORT", walks={"distribution_tp_atr_mult": 20.0, "distribution_tp_cap_pct": 10.0,
+                                       "distribution_sl_atr_mult": 1.5, "distribution_sl_cap_pct": 6.0, "distribution_max_hold_hours": 24.0})
 EXIT["scout_ml_second_chance.py"] = dict(dl="532", sleeves="MOMENTUM LONG (ADX falling at entry)", walks={
     **EXIT["scout_ml_fixed_tp_watch.py"]["walks"]})
 # 🧱💲 (DECISION_LOG 529) the blocked-trade pricer reads every sleeve's exit from trading_config.json AT RUN TIME (never a pinned era) → no walks to

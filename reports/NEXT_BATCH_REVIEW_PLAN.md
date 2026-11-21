@@ -854,7 +854,7 @@ P(better than TP 10) ALL 0.35–0.52 (coin flip) · HOLDOUT 0.75–0.81 (range i
   bootstrap P(better) per TP, worst day, Kelly; the size each TP needs for −20 / −30 % worst drawdown (incl. the Frenzy-cluster caveat).
 ② The joint decision: TP level × ticket size (DIST is 0.61 × equity, 3–6× its Kelly range; size is on the pre-live list) — recommend ONE pair
   per sleeve with a frozen revert gate; never a lower TP at today's size as the "safe" answer without the risk-matched read.
-③ The proposed observe line (needs operator OK first): DIST TP 5 / 8 vs 10 priced at equal drawdown on forward fills, read at 30 fills.
+③ DIST TP 5 / 8 vs 10 observe line → REGISTERED as DIST_TP_SHADOW (DECISION_LOG 605, scripts/scout_dist_tp_shadow.py; frozen read at 30 fills / 10 days + risk read).
 Results in hand (2026-11-20; risk-matched scripts scripts/TP_GRID_2026-11-20_{DIST,EXH,FB}_risk.py → *_data/risk_matched*.csv):
 - EXH (reports/TP_GRID_2026-11-20_EXH.md, 4,307 fills): same size TP 10 +0.62 · DCR 0.97 · maxDD −72 · worst day −40 vs TP 8 +0.59 · 0.98 · −56 · −27
   (Δ −0.03, CI −0.11…+0.04); equal −30 % DD: TP 8 +0.53 vs 10 +0.38 %/day ALL (P better 0.82), HOLDOUT 0.97 vs 0.66 (0.86); TP ≤ 6 worse

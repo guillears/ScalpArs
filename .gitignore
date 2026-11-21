@@ -162,3 +162,4 @@ reports/TP_GRID_2026-11-20_FB_data/k1m/
 reports/TP_GRID_2026-11-20_FB_data/funding/
 reports/TP_GRID_2026-11-20_FB_data/*.pkl
 reports/TP_GRID_2026-11-20_DIST_data/funding_*.json
+reports/SCOUT_DIST_TP_SHADOW.json

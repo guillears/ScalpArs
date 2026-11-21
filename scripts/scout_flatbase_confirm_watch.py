@@ -702,6 +702,14 @@ def tp6_verdict(deltas, windows, seed=TP6_SEED):
     return "COLLECTING", f"{n}/{TP6_N} fills priced on {len(set(w for _, w in pairs))}/{TP6_WIN} windows (mean Δ {(sum(x for x, _ in pairs) / n) if n else 0:+.2f})"
 
 
+def tp6_prefix_k(windows):
+    """the read's prefix length: the first k ≥ TP6_N spanning ≥ TP6_WIN windows, or None. PURE."""
+    for k in range(TP6_N, len(windows) + 1):
+        if len(set(windows[:k])) >= TP6_WIN:
+            return k
+    return None
+
+
 def tp6_lines(c, now_ms, st=None, state_path=None, since_ms=None, bars_fn=None, newest=None):
     """🎯 (604) FB_TP6_SHADOW: every new CLOSED FLATBASE fill walked at TP −6 and TP −5 (same 1m model, real fill price) → paired Δ +
     the frozen ship read (frozen once into the state file). c = load()'s CLOSED fills, read in open order; the freeze waits for the newest export ≥
@@ -744,7 +752,8 @@ def tp6_lines(c, now_ms, st=None, state_path=None, since_ms=None, bars_fn=None, 
     hold = []                                   # (604 review) never freeze on an incomplete cohort
     if stopped:
         hold.append("a kline fetch stopped this run")
-    if done_o and (newest is None or newest < max(done_o) + pd.Timedelta(minutes=WAIT_MIN)):
+    kk = tp6_prefix_k(done_w)                    # (605 review) only fills up to the read's prefix can change it
+    if kk and (newest is None or newest < max(done_o[:kk]) + pd.Timedelta(minutes=WAIT_MIN)):
         hold.append(f"newest export < the last priced fill + {WAIT_MIN} min (an earlier-opened fill could still be open)")
     if rec is None and state != "COLLECTING" and not hold and st is not None and state_path:
         rec = dict(state=state, detail=detail, run_at=pd.Timestamp(now_ms, unit="ms").strftime("%Y-%m-%d %H:%M UTC"))

@@ -1603,6 +1603,14 @@ def run():
     except Exception as _ds586_e:
         log(f"DL 586 DISTRIBUTION gate failed: {_ds586_e}")
         _rg_sec += ["## 📉 DL 586 DISTRIBUTION_SHORT", "", f"Unavailable this run ({str(_ds586_e)[:120]}).", ""]
+    try:   # 🎯👁 (DECISION_LOG 605) DIST TP 5 / 8 vs today's TP on real fills — observe only
+        _sd = os.path.dirname(os.path.abspath(__file__))
+        _sd in sys.path or sys.path.insert(0, _sd)
+        import scout_dist_tp_shadow as _dtp605
+        _rg_sec += _dtp605.report(now_ms=now_ms)
+    except Exception as _dtp605_e:
+        log(f"DL 605 DIST_TP_SHADOW failed: {_dtp605_e}")
+        _rg_sec += ["## 🎯👁 DL 605 DIST_TP_SHADOW", "", f"Unavailable this run ({str(_dtp605_e)[:120]}).", ""]
     try:                                               # 👁 Oct-30 FADE_NOSTRETCH — SPIKE_FADE with no overshoot to revert, frozen expectancy bar (DECISION_LOG 413; forward)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

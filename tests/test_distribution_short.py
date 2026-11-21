@@ -726,3 +726,58 @@ def test_fast_path_runs_first_in_the_pass():
     body = src[i:src.index("\n    async def ", i + 40)]
     assert body.index("await self._distribution_fast(db, bar_open,") < body.index("_frenzy_kl_cache")   # before any FRENZY kline read
     assert "bar_open % _dist_rules.M15_MS == 0" in body
+
+
+def test_dist_tp_shadow_605():
+    """🎯👁 (DECISION_LOG 605) DIST_TP_SHADOW — observe-only TP 5 / 8 vs today's TP on real DIST fills: walk, read, freeze, holds."""
+    import numpy as np
+    import pandas as pd
+    sys.path.insert(0, os.path.join(ROOT, "scripts"))
+    import scout_dist_tp_shadow as S
+    import observe_registry as R
+    m, te, E = 60_000, 1_800_000_000_000, 100.0
+    bar = lambda k, o, h, l: [te // m * m + (k + 1) * m, o, h, l, o]
+    assert S.walk([[te // m * m, 100, 200, 1, 100]], E, te, 10, 6)[0] == "UNPRICED"          # the fill minute is never read
+    b = [bar(0, 100, 100, 94.9), bar(1, 95, 95, 89.9)]
+    assert S.walk(b, E, te, 5, 6) == ("TP", 5 - S.FEE_IN - S.FEE_MK) and S.walk(b, E, te, 10, 6) == ("TP", 10 - S.FEE_IN - S.FEE_MK)
+    assert S.walk([bar(0, 100, 100, 95.0)], E, te, 5, 6)[0] == "PENDING"                      # a touch is not a fill (needs 0.05 % through)
+    w, v = S.walk([bar(0, 100, 106.5, 90)], E, te, 5, 6, slip=0.1)                           # stop first on a bar touching both
+    assert w == "STOP" and abs(v - (-6 - S.FEE_IN - S.FEE_TK - 0.2)) < 1e-9
+    w, v = S.walk([bar(0, 108, 109, 107)], E, te, 5, 6)                                      # a gap through the stop books the open
+    assert w == "STOP" and abs(v - (-8 - S.FEE_IN - S.FEE_TK - S.EXIT_SLIP_MIN)) < 1e-9       # a taker exit pays ≥ 0.10 slip
+    w, v = S.walk([bar(0, 100, 101, 99), [te + 24 * S.HOUR, 97.0, 97, 97, 97]], E, te, 5, 6)
+    assert w == "TIME" and abs(v - (3 - S.FEE_IN - S.FEE_TK - S.EXIT_SLIP_MIN)) < 1e-9
+    w, v = S.walk([bar(0, 100, 106.5, 90)], E, te, 5, 6, slip=0.3, entry_slip=0.1)         # impact fill: only the entry leg still owed
+    assert abs(v - (-6 - S.FEE_IN - S.FEE_TK - 0.1 - 0.3)) < 1e-9
+    assert S.prefix([(d,) for d in range(29)]) is None and S.prefix([(1,)] * 40) is None and S.prefix([(d,) for d in range(30)]) == 30
+    assert S.arm_verdict([1.0] * 30, list(range(30)))[0] == "SHIP CANDIDATE"
+    assert S.arm_verdict([-1.0] * 30, list(range(30)))[0] == "NO SHIP"
+    assert S.arm_verdict([0.0] * 28 + [20.0, 20.0], list(range(30)))[0] == "NO SHIP"        # all gain in the best 5 %
+    # report(): a stopped fetch holds and never freezes; NOT_EVALUABLE leaves; the read freezes ONCE
+    t0 = pd.Timestamp("2026-12-01 00:00:20")
+    fr = pd.DataFrame([dict(pair=f"P{i}USDT", o=t0 + pd.Timedelta(hours=10 * i), entry_price=100.0, entry_dist_tp_pct=10.0, entry_dist_sl_pct=6.0,
+                            entry_dist_model_slip_pct=0.1, pnl_percentage=9.0, close_reason="TP") for i in range(35)])
+    def bars_fn(p, t, now):
+        if p == "P0USDT":
+            return []
+        return [[t // m * m + m, 100.0, 100.0, 89.0, 90.0]]                                  # straight through −10
+    now = int((t0 + pd.Timedelta(days=40)).value // 1_000_000)
+    fl = int(t0.value // 1_000_000) - 1
+    import tempfile
+    sp = os.path.join(tempfile.mkdtemp(), "s.json")
+    o1 = "\n".join(S.report(frame=fr, since_ms=fl, state_path=sp, now_ms=now, newest=pd.Timestamp(now, unit="ms"),
+                            bars_fn=lambda p, t, n: None if p == "P3USDT" else bars_fn(p, t, n)))
+    assert "COLLECTING — 2/30" in o1                                                           # P0 out (no path), the read waits at the held P3
+    # risk_read buckets each arm by its OWN close day; equal-drawdown n/a when an arm never loses
+    rr = S.risk_read([((1, 0, 0), -6.0, 4.0, 7.0), ((2, 2, 2), 9.0, 4.0, 7.0)], 0, 2)
+    assert rr["TODAY"]["worst"] < 0 and rr["TP5"]["worst"] == 0 and rr["TP5"]["eq_dcr"] is None and rr["TODAY"]["eq_dcr"] is not None
+    assert not os.path.exists(sp)
+    o2 = "\n".join(S.report(frame=fr, since_ms=fl, state_path=sp, now_ms=now, newest=pd.Timestamp(now, unit="ms"), bars_fn=bars_fn))
+    assert "P0USDT" in o2 and "NOT_EVALUABLE" in o2 and "Frozen read" in o2 and "TP 5: NO SHIP" in o2
+    st = json.load(open(sp))
+    st[S.KEY]["arms"]["TP 5"]["state"] = "X"
+    json.dump(st, open(sp, "w"))
+    o3 = "\n".join(S.report(frame=fr, since_ms=fl, state_path=sp, now_ms=now, newest=pd.Timestamp(now, unit="ms"), bars_fn=bars_fn))
+    assert "TP 5: X" in o3                                                                    # frozen once, never re-decided
+    assert R.EXIT["scout_dist_tp_shadow.py"]["dl"] == "605" and S.DL == 605
+    assert "import scout_dist_tp_shadow as _dtp605" in open(os.path.join(ROOT, "scripts", "opportunity_scout.py"), encoding="utf-8").read()

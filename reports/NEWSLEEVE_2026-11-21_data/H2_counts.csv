@@ -1,0 +1,9 @@
+variant,period,possibilities,windows15,days,coins
+|r15|≥5% dOI≤−1%,DESIGN,224,133,108,158
+|r15|≥5% dOI≤−1%,HOLDOUT,360,255,184,235
+|r15|≥5% dOI≤−3%,DESIGN,118,67,59,91
+|r15|≥5% dOI≤−3%,HOLDOUT,217,143,112,167
+|r15|≥8% dOI≤−1%,DESIGN,53,29,26,51
+|r15|≥8% dOI≤−1%,HOLDOUT,175,109,93,140
+|r15|≥8% dOI≤−3%,DESIGN,28,17,16,26
+|r15|≥8% dOI≤−3%,HOLDOUT,122,73,64,105

@@ -27,14 +27,15 @@ _NO_LITE_C = {"frenzy_lite_c_enabled": False}                     # LITE walked 
 EXIT = {
     "scout_flatbase_confirm_watch.py": dict(dl="417 · 428 · 604 · 607", sleeves="FLATBASE_SHORT", walks={"flatbase_tp_pct": 5.0, "flatbase_stop_pct": 10.0, "flatbase_max_hold_hours": 72.0,
                                                                                          "flatbase_confirm_hours": 24.0}),   # ✅ (428) the revert gate reads confirmed fills
-    # 🎯 (579) the EXHAUSTION exit-override revert gate: prices the override vs the shipped exit on the same fills — valid only while the
-    # override runs (a revert or another exit change → ⚠ STALE → retire)
-    "scout_exh_exit_override.py": dict(dl="579", sleeves="EXHAUSTION_SHORT", walks={"exhaustion_tp_atr_mult": 20.0, "exhaustion_tp_cap_pct": 10.0,
-                                                                                   "exhaustion_sl_atr_mult": 1.5, "exhaustion_sl_cap_pct": 6.0,
-                                                                                   "exhaustion_max_hold_hours": 24.0}),
+    # ⛔ (609) the DL 579 EXHAUSTION exit-override gate (TP 10 vs the study's TP 5) RETIRED 2026-11-21 — the sleeve runs TP 7 now; the module
+    # stays as the shared pricing library (scout_exh_ssc_oivol / scout_distribution_586 / scout_exh_tp7_609 import it) → listed in NONE
+    # 🎯🔒 (609) EXH_TP7: real EXH fills walked at TP 7 (the row's level) vs TP 10 → pinned to the TP-7 exit (another change → ⚠ STALE)
+    "scout_exh_tp7_609.py": dict(dl="609", sleeves="EXHAUSTION_SHORT", walks={"exhaustion_tp_atr_mult": 20.0, "exhaustion_tp_cap_pct": 7.0,
+                                                                         "exhaustion_sl_atr_mult": 1.5, "exhaustion_sl_cap_pct": 6.0,
+                                                                         "exhaustion_max_hold_hours": 24.0}),
     # 🧯 (582) the EXH_SSC_OIVOL shadow revert gate prices every blocked signal with the live EXHAUSTION exit (DL 579) → STALE on an exit change
-    "scout_exh_ssc_oivol.py": dict(dl="582", sleeves="EXHAUSTION_SHORT (blocked EXH_SSC_OIVOL signals)", walks={"exhaustion_tp_atr_mult": 20.0,
-                                   "exhaustion_tp_cap_pct": 10.0, "exhaustion_sl_atr_mult": 1.5, "exhaustion_sl_cap_pct": 6.0,
+    "scout_exh_ssc_oivol.py": dict(dl="582 · 609", sleeves="EXHAUSTION_SHORT (blocked EXH_SSC_OIVOL signals)", walks={"exhaustion_tp_atr_mult": 20.0,
+                                   "exhaustion_tp_cap_pct": 7.0, "exhaustion_sl_atr_mult": 1.5, "exhaustion_sl_cap_pct": 6.0,
                                    "exhaustion_max_hold_hours": 24.0}),
     "scout_willy_timecap.py": dict(dl="264 · 278 · 281 · 285 · 290 · 297", sleeves="FRENZY_WILLY", walks=_OLD_WILLY),
     # 🔁 (409) re-based 2026-10-29: every fill walked under today's V2b exit (the old +1.25 / −4 / 90 ruler printed as context only)
@@ -108,31 +109,31 @@ EXIT["scout_ml_second_chance.py"] = dict(dl="532", sleeves="MOMENTUM LONG (ADX f
 # go stale; its frozen gate verdicts carry their run date
 # FRENZY / fade exits are read live and every stored price carries its exit era (re-priced on a change); the momentum-long replica
 # (RP.BASE) is PINNED — registered here so an ML exit change shows ⚠ STALE (review M2)
-EXIT["scout_blocked_filters.py"] = dict(dl="527 · 529 · 532", sleeves="the 7 armed-filter sleeves", walks={**EXIT["scout_ml_fixed_tp_watch.py"]["walks"],
+EXIT["scout_blocked_filters.py"] = dict(dl="527 · 529 · 532 · 608", sleeves="the 7 armed-filter sleeves", walks={**EXIT["scout_ml_fixed_tp_watch.py"]["walks"],
     # 🔂 (532) re-based the day of the ship: its ML legs price RP.BASE + the live second chance (MM.apply_second_chance, era-keyed on the knobs)
     "ml_second_chance_enabled": True,
     # the WILLY V2b target is built by the pinned scout_frenzy_v2b_shadow.V2B_TH (review LOW-2) — a live change shows ⚠ STALE
     "frenzy_willy_high_target_enabled": True, "frenzy_willy_tp_pct": 1.25, "frenzy_willy_high_k_pct": 1.0, "frenzy_willy_high_tp_max_pct": 8.0,
-    # 🎲 (587 exit, re-based 2026-11-19) HT is priced on its OWN exit (scout_blocked_filters.ht_exit, read live; every stored HT price re-priced on
-    # a change via era_of) and its gate state is namespaced FRENZY_WILLY_HT@587 → a later HT exit change shows ⚠ STALE (re-namespace / re-base)
-    "frenzy_willy_ht_tp_pct": 5.0, "frenzy_willy_ht_high_target_enabled": False, "frenzy_willy_ht_late_tp_enabled": False,
+    # 🎲 (587 exit; 🎯 re-based again 2026-11-21 at DL 608, TP +6) HT is priced on its OWN exit (scout_blocked_filters.ht_exit, read live; every
+    # stored HT price re-priced on a change via era_of) and its gate state is namespaced FRENZY_WILLY_HT@608 → a later HT exit change shows ⚠ STALE
+    "frenzy_willy_ht_tp_pct": 6.0, "frenzy_willy_ht_high_target_enabled": False, "frenzy_willy_ht_late_tp_enabled": False,
     "frenzy_willy_ht_max_hold_minutes": 1440.0, "frenzy_willy_stop_pct": 4.0})
 PROXY = {"scout_bearrun_v2.py": "359", "scout_bearrun_r24.py": "369",
          "scout_g51_band1_watch.py": "463"}   # 👁 (463) refused band-① signals on the audit's +0.40 / −0.70 ruler, never the live exit
 BOOKED = {   # booked P&L — `era` = drops fills by WILLY exit era (registered on the old +1.25 exit)
     # 🪫 (578) the EXHAUSTION_SHORT revert gate reads booked fills (re-priced with the modelled slippage) → pinned to the exit the sleeve runs
     # 🔁 (579) re-based 2026-11-18 on the exit override (TP 10 % / SL ≤ 6 %): it counts only fills of that exit era
-    "scout_exhaustion_short.py": {"exhaustion_tp_atr_mult": 20.0, "exhaustion_tp_cap_pct": 10.0, "exhaustion_sl_atr_mult": 1.5,
+    "scout_exhaustion_short.py": {"exhaustion_tp_atr_mult": 20.0, "exhaustion_tp_cap_pct": 7.0, "exhaustion_sl_atr_mult": 1.5,
                                   "exhaustion_sl_cap_pct": 6.0, "exhaustion_max_hold_hours": 24.0},
     # 📉 (596) EXH_AFTER_DROP judges booked EXHAUSTION fills (−10 … −5 % hour vs the rest) against the frozen 35 % breakeven → the same exit pins
-    "scout_exh_after_drop.py": {"exhaustion_tp_atr_mult": 20.0, "exhaustion_tp_cap_pct": 10.0, "exhaustion_sl_atr_mult": 1.5,
+    "scout_exh_after_drop.py": {"exhaustion_tp_atr_mult": 20.0, "exhaustion_tp_cap_pct": 7.0, "exhaustion_sl_atr_mult": 1.5,
                                 "exhaustion_sl_cap_pct": 6.0, "exhaustion_max_hold_hours": 24.0},
     # 📖 (583) the depth-guard band gate reads booked $ and slippage of shrunk band fills (exit-agnostic: same trade, smaller size)
     "scout_depth_band_583.py": None,
     # 📖📐 (584) the impact-mode gate reads the ENTRY cost only (realised entry slippage vs the stamped modelled walk) — exit-agnostic
     "scout_depth_impact_584.py": None,
     # 🌐 (585) the WIDE-universe revert gate reads booked (re-priced) WIDE fills → pinned to the EXHAUSTION exit they run (DL 579)
-    "scout_exh_wide_585.py": {"exhaustion_tp_atr_mult": 20.0, "exhaustion_tp_cap_pct": 10.0, "exhaustion_sl_atr_mult": 1.5,
+    "scout_exh_wide_585.py": {"exhaustion_tp_atr_mult": 20.0, "exhaustion_tp_cap_pct": 7.0, "exhaustion_sl_atr_mult": 1.5,
                               "exhaustion_sl_cap_pct": 6.0, "exhaustion_max_hold_hours": 24.0},
     # 📉 (586) the DISTRIBUTION_SHORT revert gate (booked, re-priced) + the 🔒 RSI1h filter's two gates (kept fills booked · blocked signals
     # priced with Exit B on 1m klines) → pinned to Exit B AND the filter cut (a change to either → ⚠ STALE)
@@ -172,17 +173,20 @@ BOOKED = {   # booked P&L — `era` = drops fills by WILLY exit era (registered 
     "scout_surge_wl_watch.py": {"surge_long_exit_no_lock": True, "surge_max_hold_minutes": 240, "sl_atr_multiplier": 1.5, "sl_atr_widen_floor_pct": -1.2, "bullrun_base_sl_pct": -0.7, "bullrun_be_arm_pct": 1.0, "surge_long_trail_atr_mult": 1.0},
     # (509) WILLY_FAILED_SPIKE + the WILLY OFF trigger judge booked WR against the same frozen V2b breakeven (69.0 %) → the same pins
     # 👁 (580) CROWDED_LONGS · NEAR_SPIKE_HIGH · REANCHORED judge booked WILLY / HT P&L against frozen breakevens → the same V2b pins
-    # 📊 (596) + HT PRE_VOL_SURGE · BTC5M_UP (booked HT P&L, the same frozen 44.4 % breakeven, from the DL 596 commit) → the same pins
+    # 📊 (596) + HT PRE_VOL_SURGE · BTC5M_UP (booked HT P&L, the same frozen HT breakeven — 40.0 % since DL 608; from the HT floor) → the same pins
     "scout_willy_ht_lines.py": {"frenzy_willy_high_target_enabled": True, "frenzy_willy_stop_pct": 4.0, "frenzy_willy_high_k_pct": 1.0,
-                                "frenzy_willy_high_tp_max_pct": 8.0, "frenzy_willy_max_hold_minutes": 90, "frenzy_willy_ht_tp_pct": 5.0,   # 🔁 (587) re-based
+                                "frenzy_willy_high_tp_max_pct": 8.0, "frenzy_willy_max_hold_minutes": 90, "frenzy_willy_ht_tp_pct": 6.0,   # 🔁 (587 → 608) re-based
                                 "frenzy_willy_ht_late_tp_enabled": False, "frenzy_willy_ht_high_target_enabled": False, "frenzy_willy_ht_max_hold_minutes": 1440.0,
                                 "frenzy_willy_late_tp_minutes": 30.0, "frenzy_willy_late_tp_pct": 0.25},
-    # 🔁 (587 exit, re-based 2026-11-19) the HT half: HT fills ≥ the DL 587 commit + 10 min vs the frozen 44.4 % (+5 / −4) breakeven → the HT exit keys
+    # 🔁 (608 exit, re-based 2026-11-21; 587 before) the HT half: HT fills ≥ the DL 608 commit + 10 min vs the frozen 40.0 % (+6 / −4) breakeven → the HT exit keys
     "scout_willy_failed_spike_watch.py": {"frenzy_willy_high_target_enabled": True, "frenzy_willy_stop_pct": 4.0, "frenzy_willy_high_k_pct": 1.0,
                                   "frenzy_willy_high_tp_max_pct": 8.0, "frenzy_willy_max_hold_minutes": 90,
                                   "frenzy_willy_late_tp_minutes": 30.0, "frenzy_willy_late_tp_pct": 0.25,
-                                  "frenzy_willy_ht_tp_pct": 5.0, "frenzy_willy_ht_high_target_enabled": False,
+                                  "frenzy_willy_ht_tp_pct": 6.0, "frenzy_willy_ht_high_target_enabled": False,
                                   "frenzy_willy_ht_late_tp_enabled": False, "frenzy_willy_ht_max_hold_minutes": 1440.0},
+    # 🎯🔒 (608) HT_TP6: booked HT fills that reached +5 net (Σ booked − 5) → pinned to the HT +6 / −4 / 24 h exit
+    "scout_ht_tp6_608.py": {"frenzy_willy_ht_tp_pct": 6.0, "frenzy_willy_ht_high_target_enabled": False, "frenzy_willy_ht_late_tp_enabled": False,
+                            "frenzy_willy_ht_max_hold_minutes": 1440.0, "frenzy_willy_stop_pct": 4.0},
     "scout_ml_turn.py": None, "scout_rebound.py": None, "scout_willy_hold_off.py": None,
     "scout_willy_ht.py": _OLD_WILLY, "scout_willy_nomiss.py": _OLD_WILLY,
     # (496) FRENZY max-duration read: fills that closed before X keep their BOOKED % → the read is tied to today's FRENZY / WILLY TP + stop
@@ -197,6 +201,8 @@ NONE = {"scout_features.py", "scout_features_parity.py", "scout_gatekit.py", "sc
         # ⛔ (DECISION_LOG 526) RETIRED lines — no outcome read any more: LONG_ADX35 (unhooked) · LONG_STOP4 (its DL 317 gate decided REVERT;
         # the module stays as the shared budgeted-kline / path library other scouts import)
         "scout_long_adx35_watch.py", "scout_long_stop4.py",
+        # ⛔ (DECISION_LOG 609) RETIRED 2026-11-21 — the DL 579 EXHAUSTION exit-override gate (unhooked; the module stays as the shared library)
+        "scout_exh_exit_override.py",
         # ⛔ (DECISION_LOG 530) RETIRED 2026-11-11 — unhooked from the opportunity scout, no outcome read any more:
         # decided / stale exit lines (WILLY_TP125 · WILLY_STOP · WILLY_BTC1H · WILLY_5X · FRENZY_WILLY_TP grid · LITE_C revert · LITE_LATE_BTCFALL ·
         # LITE stretch re-entry · ML regime lines · SURGE obs · heat × regime) and the 6 ARMED lines (DL 527) whose verdict now lives in

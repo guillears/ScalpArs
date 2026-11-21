@@ -37,8 +37,8 @@ COHORT     CLOSED FRENZY_WILLY and FRENZY_WILLY_HT LONG fills from the orders ex
            read and decided SEPARATELY (never pooled).
 FROZEN BAR the WILLY_FAILED_SPIKE / WILLY_GAP bar (DL 414 / 509), per sleeve: at the first prefix where a line's ZONE reaches N ≥ 15 on ≥ 8 UTC
            days, decided ONCE — zone avg ≥ rest avg or ≥ 0 → RETIRED · FILTER CANDIDATE (operator decides; never automatic) iff zone WR <
-           the sleeve's breakeven (WILLY 69.0 % · HT 66.7 % → 44.4 % re-based at DL 587, TP +5 / SL −4; HT cohort from the 587 commit) ∧ zone mean < 0 at day-bootstrap P(mean < 0) ≥ 0.95 ∧ no day / pair ≥ 50 % of
-           the zone's gross loss · else KEEP OBSERVING. ⚠ HT's 44.4 % is frozen from THEORY (+5 / −4 net = 4 ÷ 9 — no stop slippage, no
+           the sleeve's breakeven (WILLY 69.0 % · HT 66.7 % → 44.4 % at DL 587 → 40.0 % re-based at DL 608, TP +6 / SL −4; HT cohort from the 608 commit) ∧ zone mean < 0 at day-bootstrap P(mean < 0) ≥ 0.95 ∧ no day / pair ≥ 50 % of
+           the zone's gross loss · else KEEP OBSERVING. ⚠ HT's 40.0 % is frozen from THEORY (+6 / −4 net = 4 ÷ 10 — no stop slippage, no
            24 h time exits), WILLY's 69.0 % from real fills (V2b, N 50). Booked P&L → pinned to the WILLY / HT exit keys in observe_registry.
 STATE      reports/SCOUT_WILLY_HT_LINES.json (gitignored).
 Usage: venv/bin/python -I scripts/scout_willy_ht_lines.py"""
@@ -64,12 +64,12 @@ import scout_willy_failed_spike_watch as WF   # noqa: E402  (the loader + the fr
 DL = 580
 DL_ARMED_NEAR_HIGH = 594   # 🧱 (DECISION_LOG 594) NEAR_SPIKE_HIGH ARMED for WILLY_HT (the engine refuses the zone; the blocked-trade pricer decides)
 DL_596 = 596   # 📊 (DECISION_LOG 596) PRE_VOL_SURGE + BTC5M_UP registered 2026-11-19 — HT only, forward from that commit
-DL_HT = 587   # 🔁 (DECISION_LOG 587) RE-BASED 2026-11-18: HT's exit changed (TP +2 → +5 net, stop −4) → HT counts only fills ≥ the DL 587 commit + 10 min
+DL_HT = 608   # 🔁 (DECISION_LOG 608) RE-BASED 2026-11-21: HT's TP +5 → +6 net (stop −4; was 587: +2 → +5) → HT counts only fills ≥ the DL 608 commit + 10 min
 SLEEVES = ("FRENZY_WILLY", "FRENZY_WILLY_HT")
-# FROZEN breakevens: WILLY V2b (DL 509) · HT re-based at DL 587 = the +5 / −4 exit: |loss| ÷ (win + |loss|) = 4 ÷ 9 (was 0.667 at +2 / −4)
-BE_WR = {"FRENZY_WILLY": 0.690, "FRENZY_WILLY_HT": 0.444}
-BE_NOTE = WF.BE_NOTE   # HT's 44.4 % is frozen from theory (+5 / −4 net), WILLY's 69.0 % from real fills
-STATE_KEY = {"FRENZY_WILLY": "FRENZY_WILLY", "FRENZY_WILLY_HT": "FRENZY_WILLY_HT@587"}   # the HT verdicts of the +2 era are never read again
+# FROZEN breakevens: WILLY V2b (DL 509) · HT re-based at DL 608 = the +6 / −4 exit: |loss| ÷ (win + |loss|) = 4 ÷ 10 (0.444 at +5 / −4, 0.667 at +2 / −4)
+BE_WR = {"FRENZY_WILLY": 0.690, "FRENZY_WILLY_HT": 0.400}
+BE_NOTE = WF.BE_NOTE   # HT's 40.0 % is frozen from theory (+6 / −4 net), WILLY's 69.0 % from real fills
+STATE_KEY = {"FRENZY_WILLY": "FRENZY_WILLY", "FRENZY_WILLY_HT": "FRENZY_WILLY_HT@608"}   # the HT verdicts of the +2 / +5 eras are never read again
 TOP_ACC_CUT, GLOB_ACC_CUT, OFF_PEAK_CUT, REANCHOR_H = 1.19, 1.0624, -1.4, 1.0
 PRE_VOL_CUT, BTC_GAP_CUT = 1.60, 0.0   # 📊 (596) FROZEN — the WL594 cuts (never re-fit)
 LINES = ("CROWDED_LONGS", "NEAR_SPIKE_HIGH", "REANCHORED", "PRE_VOL_SURGE", "BTC5M_UP")
@@ -314,17 +314,17 @@ def run(now_ms=None, paths=None, state_path=STATE, since_ms=None, fetch=True):
           f"each sleeve × line decided separately · {_GK.operator_closed_line(ox)}.", ""]
     if stop:
         L += [f"⚠ ratio fetching stopped this run ({stop}) — later fills stay UNSCORED for CROWDED_LONGS and no CROWDED_LONGS verdict is frozen this run.", ""]
-    ht_floor = (_GK.dl_deploy_ms(DL_HT, lag_min=10, label="WILLY_HT lines (re-based, DL 587)") if given is None else since_ms)
+    ht_floor = (_GK.dl_deploy_ms(DL_HT, lag_min=10, label="WILLY_HT lines (re-based, DL 608)") if given is None else since_ms)
     floor_596 = (_GK.dl_deploy_ms(DL_596, lag_min=10, label="WILLY_HT PRE_VOL_SURGE / BTC5M_UP (DL 596)") if given is None else since_ms)
     for es in SLEEVES:
         s = keep[keep.entry_strategy.astype(str) == es] if len(keep) else keep
         L += [f"### {es}", ""]
-        if es == "FRENZY_WILLY_HT":   # 🔁 (587) re-based on the +5 / −4 exit
+        if es == "FRENZY_WILLY_HT":   # 🔁 (608) re-based on the +6 / −4 exit
             if ht_floor is None:
-                L += [f"⚠ HT re-based on the DECISION_LOG {DL_HT} exit (TP +5 / SL −4) — NOT EVALUABLE until that commit is in git.", ""]
+                L += [f"⚠ HT re-based on the DECISION_LOG {DL_HT} exit (TP +6 / SL −4) — NOT EVALUABLE until that commit is in git.", ""]
                 continue
             s = s[s.o >= pd.Timestamp(int(ht_floor), unit="ms")] if len(s) else s
-            L += [f"(re-based: HT fills opened ≥ {pd.Timestamp(int(ht_floor), unit='ms'):%Y-%m-%d %H:%M} UTC — the DL {DL_HT} TP +5 / SL −4 exit; breakeven 44.4 %)", f"⚠ {BE_NOTE}.",
+            L += [f"(re-based: HT fills opened ≥ {pd.Timestamp(int(ht_floor), unit='ms'):%Y-%m-%d %H:%M} UTC — the DL {DL_HT} TP +6 / SL −4 exit; breakeven 40.0 %)", f"⚠ {BE_NOTE}.",
                   f"⚠ NEAR_SPIKE_HIGH is ARMED for WILLY_HT since DECISION_LOG {DL_ARMED_NEAR_HIGH} (frenzy_willy_ht_min_dip_pct) — zone entries are REFUSED, "
                   "so forward HT zone fills should be ~0 and its table mostly shows rest-side fills. The filter's forward verdict is the blocked-trade "
                   "pricer (scout_blocked_filters: FRENZY_WILLY_HT · WILLY_HT_NEAR_HIGH — the refused zone trades priced on HT's live exit).", ""]

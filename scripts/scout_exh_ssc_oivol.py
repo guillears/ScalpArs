@@ -49,9 +49,10 @@ DL = 582
 BLOCK = "EXH_SSC_OIVOL"
 GATE_N, GATE_DAYS = 30, 10
 HOLD_MIN = XO.HOLD_MIN
-LIVE_EXIT = XO.OVERRIDE                       # the DL 579 exit the sleeve runs (pinned in observe_registry → ⚠ STALE on a change)
+LIVE_EXIT = dict(XO.OVERRIDE, tp_cap=7.0)     # 🔁 (609) the exit the sleeve runs: TP min(20 × ATR, 7 %) (pinned in observe_registry → ⚠ STALE on a change)
+DL_EXIT = 609                                  # 🔁 the count starts at the DL 609 commit (fresh state file)
 CACHE = os.path.join(_R, "reports", ".exh_ssc_oivol_cache.json")
-STATE = os.path.join(_R, "reports", "SCOUT_EXH_SSC_OIVOL.json")
+STATE = os.path.join(_R, "reports", "SCOUT_EXH_SSC_OIVOL_609.json")
 
 
 def _f(v):
@@ -198,9 +199,9 @@ def report(journal, fills=None, now_ms=None, state_path=STATE, floor_ms="auto"):
            "unseen 2026-H2 119 · −0.16, 5 of 7 half-years negative, luck p 0.45"]
     if floor_ms == "auto":
         import scout_gatekit as GK
-        floor_ms = GK.dl_deploy_ms(DL, label=f"EXH_SSC_OIVOL (DECISION_LOG {DL})")
+        floor_ms = GK.dl_deploy_ms(DL_EXIT, label=f"EXH_SSC_OIVOL (DECISION_LOG {DL}, re-based on DL {DL_EXIT})")
     if floor_ms is None:
-        out.append(f"  ⚠ NOT EVALUABLE — the DECISION_LOG {DL} commit is not in git yet: nothing counted")
+        out.append(f"  ⚠ NOT EVALUABLE — the DECISION_LOG {DL_EXIT} commit is not in git yet: nothing counted")
         return "\n".join(out)
     XO._weight_hit[0] = False
     cache = _load(CACHE) or {}

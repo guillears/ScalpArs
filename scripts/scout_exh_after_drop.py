@@ -10,13 +10,14 @@ WHY        operator 11-19 (after the YB short): "what do we have in exhaustion �
 LINE       zone = entry_exh_ret_1h_pct in [−10, −5] — the signal 15m close vs the 5m close 1 h earlier (services.exhaustion.features
            ret_1h, stamped at the open since DL 596) · rest = every other scored fill · NULL stamp → UNSCORED, never counted.
 COHORT     CLOSED EXHAUSTION_SHORT fills, FRENZY universe (scout_exhaustion_short.load_fills: dedup, CLOSED wins, operator-closed out; WIDE
-           fills are a different universe and are not read here), opened ≥ the DECISION_LOG 596 commit + 10 min (forward only — YB 11-19,
+           fills are a different universe and are not read here), opened ≥ the DECISION_LOG 609 commit + 10 min since the TP-7 re-base (596 before; forward only — YB 11-19,
            the motivating fill, is in-sample and never counted). Booked pnl_percentage.
 FROZEN BAR at the first prefix where the ZONE reaches N ≥ 15 on ≥ 8 UTC days, decided ONCE (the shared watch-line bar, DL 414 / 509):
-           zone avg ≥ 0 or ≥ the rest avg → RETIRED · FILTER CANDIDATE (operator decides; never automatic) iff zone WR < 35.0 % (the sleeve's
-           breakeven, FROZEN from the study's DESIGN set: avg win +8.39 / avg loss −4.51) ∧ zone mean < 0 at day-bootstrap P(mean < 0) ≥ 0.95
+           zone avg ≥ 0 or ≥ the rest avg → RETIRED · FILTER CANDIDATE (operator decides; never automatic) iff zone WR < 42.2 % (the sleeve's
+           breakeven at TP 7, FROZEN from TP_GRID_2026-11-20_EXH; 35.0 % at TP 10 before the DL 609 re-base) ∧ zone mean < 0 at day-bootstrap P(mean < 0) ≥ 0.95
            ∧ no day / pair ≥ 50 % of the zone's gross loss · else KEEP OBSERVING. Booked P&L → pinned to the EXH exit keys in observe_registry.
-STATE      reports/SCOUT_EXH_AFTER_DROP.json (gitignored).
+STATE      reports/SCOUT_EXH_AFTER_DROP_609.json (gitignored).
+🔁 RE-BASED 2026-11-21 (DECISION_LOG 609): fills opened ≥ the DL 609 commit + 10 min, TP-7 breakeven 42.2 % (nothing had frozen).
 Usage: venv/bin/python -I scripts/scout_exh_after_drop.py"""
 import math
 import os
@@ -34,13 +35,14 @@ import scout_exhaustion_short as XS             # noqa: E402  (the EXH fill load
 DL = 596
 LINE = "EXH_AFTER_DROP"
 ZONE_LO, ZONE_HI = -10.0, -5.0      # FROZEN band (inclusive)
-BE_WR = 0.350                       # FROZEN breakeven (EXH_BADDAY DESIGN: 8.39 / 4.51 → 4.51 ÷ 12.90)
+BE_WR = 0.422                       # 🔁 (609) FROZEN breakeven at TP 7: TP_GRID_2026-11-20_EXH TODAY set, TP 7 % row (BE WR 42.2 %; was 35.0 % at TP 10)
+DL_EXIT = 609                       # 🔁 the count starts at the DL 609 commit (EXH TP cap 10 → 7)
 N_MIN, DAYS_MIN, P_MIN, SHARE_MAX, BOOT_N, BOOT_SEED = 15, 8, 0.95, 0.50, 4000, 596
 HOLD_MIN = 24 * 60                  # the verdict freezes once a LATER EXH fill opened ≥ the crossing fill + the 24 h cap (conservative: every counted fill has closed)
 COL = "entry_exh_ret_1h_pct"
 CANDIDATE = "FILTER CANDIDATE (operator decides; never automatic)"
 _ROOT = os.path.dirname(_D)
-STATE = os.path.join(_ROOT, "reports", "SCOUT_EXH_AFTER_DROP.json")
+STATE = os.path.join(_ROOT, "reports", "SCOUT_EXH_AFTER_DROP_609.json")
 
 
 def _f(x):
@@ -113,9 +115,9 @@ def run(now_ms=None, paths=None, state_path=STATE, since_ms=None):
     L = [f"## 📉 {LINE} — EXHAUSTION shorts after a −5 … −10 % hour (registered 2026-11-19, DECISION_LOG {DL}, OBSERVE only)", ""]
     given = since_ms
     if since_ms is None:
-        since_ms = _GK.dl_deploy_ms(DL, lag_min=10, label=f"{LINE} (DL {DL})")
+        since_ms = _GK.dl_deploy_ms(DL_EXIT, lag_min=10, label=f"{LINE} (DL {DL}, re-based on DL {DL_EXIT})")
     if since_ms is None:
-        return L + [f"⚠ NOT EVALUABLE — the DECISION_LOG {DL} commit is not in git yet; nothing is counted.", ""]
+        return L + [f"⚠ NOT EVALUABLE — the DECISION_LOG {DL_EXIT} commit is not in git yet; nothing is counted.", ""]
     since = pd.Timestamp(int(since_ms), unit="ms")
     a = load(paths)
     newest = a.o.max() if len(a) else None

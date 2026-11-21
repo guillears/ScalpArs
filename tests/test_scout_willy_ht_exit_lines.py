@@ -56,7 +56,7 @@ def test_engine_config_ui_wiring():
     import config
     assert config.SignalThresholds().frenzy_willy_ht_tp_pct == 0.0                               # code default OFF, the JSON arms 2.0
     cfg = json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
-    assert cfg["frenzy_willy_ht_tp_pct"] == 5.0 and cfg["frenzy_willy_tp_pct"] == 1.25          # DL 587: HT +5 (was 2.0); WILLY unchanged
+    assert cfg["frenzy_willy_ht_tp_pct"] == 6.0 and cfg["frenzy_willy_tp_pct"] == 1.25          # DL 608: HT +6 (587: +5, was 2.0); WILLY unchanged
     eng = open(os.path.join(ROOT, "services", "trading_engine.py")).read()
     i = eng.index("HT's OWN base take profit: T_used = max(HT TP")
     assert "_fz_es == FRENZY_WILLY_HT" in eng[i:i + 800] and "frenzy_willy_ht_target(_wv2_tp, _ht_tp)" in eng[i:i + 2000]   # (587: + the flat-TP branch)

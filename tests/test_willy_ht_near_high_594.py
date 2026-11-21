@@ -183,7 +183,7 @@ def test_scout_line_and_gate():
     S = _S()
     assert "WILLY_HT_NEAR_HIGH" in S.LINES["FRENZY_WILLY_HT"] and S.ABS_GATE["WILLY_HT_NEAR_HIGH"] == (15, 8)
     assert S.LINES["FRENZY_LITE_RETRY"] == ("RETRY_BTC1H",) and S.LINES["FRENZY_WILLY"] == ("WILLY_GAP", "WILLY_FAILED_SPIKE")   # review: no line lost
-    assert "WILLY_HT_NEAR_HIGH" in S.SOLE_GATED and S.GATE_KEY["FRENZY_WILLY_HT"] == "FRENZY_WILLY_HT@587"
+    assert "WILLY_HT_NEAR_HIGH" in S.SOLE_GATED and S.GATE_KEY["FRENZY_WILLY_HT"] == "FRENZY_WILLY_HT@608"   # 🎯 (608) re-namespaced
     K = pd.DataFrame(columns=["te", "status", "pct", "sleeve"])                       # no kept fills needed (absolute gate)
     g = lambda B, **k: S.gate_read(B, K, "WILLY_HT_NEAR_HIGH", **k)[0]
     assert g(_B([-1.0] * 14)) == "COLLECTING"
@@ -214,7 +214,7 @@ def test_scout_run_freezes_both_keys(tmp_path, monkeypatch):
     st = tmp_path / "g.json"
     txt = "\n".join(S.run(now_ms=since + 30 * 86_400_000, dec_paths=[str(p)], ord_paths=[], state_path=str(st), store_path=None, since_ms=since))
     g = json.load(open(st))
-    assert g["FRENZY_WILLY_HT@587:WILLY_HT_NEAR_HIGH"]["state"] == "KEEP" and g["FRENZY_WILLY_HT@587:WILLY_HT_NEAR_HIGH|sole"]["state"] == "KEEP"
+    assert g["FRENZY_WILLY_HT@608:WILLY_HT_NEAR_HIGH"]["state"] == "KEEP" and g["FRENZY_WILLY_HT@608:WILLY_HT_NEAR_HIGH|sole"]["state"] == "KEEP"
     assert "FRENZY_WILLY_HT · WILLY_HT_NEAR_HIGH (sole)" in txt and "ABSOLUTE gate" in txt
 
 

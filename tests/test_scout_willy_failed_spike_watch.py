@@ -34,9 +34,9 @@ def _write(tmp_path, df, stamp="2026-12-30_00-00-00"):
 def test_frozen_constants_and_gitignore():
     assert (V.DL, V.VWAP_CUT, V.N_MIN, V.DAYS_MIN, V.BE_WR, V.P_MIN, V.SHARE_MAX, V.MIN_VWAP_KEPT) == (509, 0.0, 15, 8, 0.690, 0.95, 0.50, 5)
     assert V.SLEEVES == ("FRENZY_WILLY", "FRENZY_WILLY_HT") and V.HT_DL == 511 and V.ZONE_COL == "entry_frenzy_vs_vwap_pct"
-    # 🔁 (DL 587 exit, re-based 2026-11-19) HT: own floor, frozen 4 ÷ 9 breakeven, namespaced verdict key; WILLY unchanged
-    assert V.HT_EXIT_DL == 587 and V.HT_BE_WR == 0.444 and V.BE_BY == {"FRENZY_WILLY": 0.690, "FRENZY_WILLY_HT": 0.444}
-    assert V.STATE_KEY == {"FRENZY_WILLY": "FRENZY_WILLY", "FRENZY_WILLY_HT": "FRENZY_WILLY_HT@587"}
+    # 🔁 (DL 608 exit, re-based 2026-11-21; first 587) HT: own floor, frozen 4 ÷ 10 breakeven, namespaced verdict key; WILLY unchanged
+    assert V.HT_EXIT_DL == 608 and V.HT_BE_WR == 0.400 and V.BE_BY == {"FRENZY_WILLY": 0.690, "FRENZY_WILLY_HT": 0.400}
+    assert V.STATE_KEY == {"FRENZY_WILLY": "FRENZY_WILLY", "FRENZY_WILLY_HT": "FRENZY_WILLY_HT@608"}
     assert "reports/SCOUT_WILLY_FAILED_SPIKE.json" in open(os.path.join(ROOT, ".gitignore")).read().split("\n")
 
 
@@ -76,9 +76,9 @@ def test_hook_registry_and_zone():
     assert "scout_willy_failed_spike_watch.py" in R.BOOKED and R.diffs(R.BOOKED["scout_willy_failed_spike_watch.py"], R.thresholds()) == [] and "scout_willy_gap_watch.py" in R.NONE
     pin = R.BOOKED["scout_willy_failed_spike_watch.py"]
     assert {k: pin[k] for k in ("frenzy_willy_ht_tp_pct", "frenzy_willy_ht_high_target_enabled", "frenzy_willy_ht_late_tp_enabled",
-                                "frenzy_willy_ht_max_hold_minutes")} == {"frenzy_willy_ht_tp_pct": 5.0, "frenzy_willy_ht_high_target_enabled": False,
+                                "frenzy_willy_ht_max_hold_minutes")} == {"frenzy_willy_ht_tp_pct": 6.0, "frenzy_willy_ht_high_target_enabled": False,
                                                                          "frenzy_willy_ht_late_tp_enabled": False, "frenzy_willy_ht_max_hold_minutes": 1440.0}
-    for k, v in (("frenzy_willy_ht_tp_pct", 6.0), ("frenzy_willy_ht_high_target_enabled", True), ("frenzy_willy_ht_late_tp_enabled", True),
+    for k, v in (("frenzy_willy_ht_tp_pct", 5.0), ("frenzy_willy_ht_high_target_enabled", True), ("frenzy_willy_ht_late_tp_enabled", True),
                  ("frenzy_willy_ht_max_hold_minutes", 240.0)):
         assert [d[0] for d in R.diffs(pin, dict(R.thresholds(), **{k: v}))] == [k]          # an HT exit change → ⚠ STALE
     d = pd.DataFrame(dict(entry_frenzy_vs_vwap_pct=[-0.1, 0.0, 0.2, None]))
@@ -117,10 +117,10 @@ def test_off_trigger_reads_gap_state_without_side_effects_and_freezes_once(tmp_p
 
 
 def test_ht_counts_from_its_own_commit_and_best_case_freeze(tmp_path, monkeypatch):
-    """HT counts from ITS floor — since the 11-19 re-base the DL 587 commit (its TP +5 / SL −4 / 24 h exit): an HT fill between the 509 and
-    587 floors is NOT counted; WILLY's is. The best case freezes HT at 587 too."""
+    """HT counts from ITS floor — since the 11-21 re-base the DL 608 commit (its TP +6 / SL −4 / 24 h exit; 587 before): an HT fill between
+    the 509 and the HT floor is NOT counted; WILLY's is."""
     f509, f587 = T0, T0 + pd.Timedelta(days=2)
-    monkeypatch.setattr(V._GK, "dl_deploy_ms", lambda dl, **k: int((f509 if dl == 509 else f587 if dl == 587 else T0).value // 10**6))
+    monkeypatch.setattr(V._GK, "dl_deploy_ms", lambda dl, **k: int((f509 if dl == 509 else f587 if dl == V.HT_EXIT_DL else T0).value // 10**6))
     df = pd.concat([_fills([(1, "AUSDT", -1.0, 30, -4.0)]), _fills([(1, "BUSDT", -1.0, 30, -4.0)], es="FRENZY_WILLY_HT"),
                     _fills([(3, "CUSDT", -1.0, 30, -4.0)], es="FRENZY_WILLY_HT")])
     out = "\n".join(V.run(now_ms=int((T0 + pd.Timedelta(days=30)).value // 10**6), paths=_write(tmp_path, df), state_path=None))
@@ -128,7 +128,7 @@ def test_ht_counts_from_its_own_commit_and_best_case_freeze(tmp_path, monkeypatc
     assert "| **zone** | 1 |" in w.split("### FRENZY_WILLY")[1] and "| **zone** | 1 |" in h      # HT: day 1 out, day 3 in
     sys.path.insert(0, os.path.join(ROOT, "scripts", "best_case"))
     import confidence as CF
-    assert CF.freeze_spec("WILLY_FAILED_SPIKE", "FRENZY_WILLY_HT") == 587 == V.HT_EXIT_DL and CF.freeze_spec("WILLY_FAILED_SPIKE", "FRENZY_WILLY") == 509
+    assert CF.freeze_spec("WILLY_FAILED_SPIKE", "FRENZY_WILLY_HT") == 608 == V.HT_EXIT_DL and CF.freeze_spec("WILLY_FAILED_SPIKE", "FRENZY_WILLY") == 509
 
 
 def test_off_trigger_v2_both_filters_cohort_freezes_once(tmp_path):
@@ -154,14 +154,14 @@ def test_off_trigger_v2_both_filters_cohort_freezes_once(tmp_path):
     assert "RETIRED (DL 531)" in o2 and "MET — old" in o2 and "WILLY OFF trigger v2" in o2
 
 
-def test_ht_rebased_587_breakeven_namespaced_state_and_ht_cap(tmp_path, monkeypatch):
-    """(DL 587 exit) the HT verdict uses the frozen 44.4 % breakeven (WILLY 69.0 %), freezes under FRENZY_WILLY_HT@587 (the old +2-era
+def test_ht_rebased_608_breakeven_namespaced_state_and_ht_cap(tmp_path, monkeypatch):
+    """(DL 608 exit) the HT verdict uses the frozen 40.0 % breakeven (WILLY 69.0 %), freezes under FRENZY_WILLY_HT@608 (the old +2-era
     FRENZY_WILLY_HT record stays, shown as history), waits HT's own 24 h cap before freezing, and says FAILED_SPIKE is ARMED for HT."""
     import json
     zone = pd.DataFrame(dict(pct=[-4.0] * 7 + [1.0] * 8, day=[f"d{i % 8}" for i in range(15)], pair=[f"P{i}" for i in range(15)]))
     rest = pd.DataFrame(dict(pct=[1.2] * 10, day=["d0"] * 10, pair=["R"] * 10))
     assert V.verdict(zone, rest)[0] == V.CANDIDATE                                    # 53 % < 69.0 % (WILLY)
-    assert V.verdict(zone, rest, V.BE_BY["FRENZY_WILLY_HT"])[0] == "KEEP OBSERVING"   # 53 % ≥ 44.4 % (HT, +5 / −4)
+    assert V.verdict(zone, rest, V.BE_BY["FRENZY_WILLY_HT"])[0] == "KEEP OBSERVING"   # 53 % ≥ 40.0 % (HT, +6 / −4)
     assert "breakeven 44.4%" in V.verdict(zone, rest, 0.444)[1]
     cfg = tmp_path / "cfg.json"
     cfg.write_text(json.dumps({"thresholds": {"frenzy_willy_max_hold_minutes": 90, "frenzy_willy_ht_max_hold_minutes": 1440.0}}))
@@ -178,11 +178,11 @@ def test_ht_rebased_587_breakeven_namespaced_state_and_ht_cap(tmp_path, monkeypa
     own.write_text(json.dumps({"FRENZY_WILLY_HT": old}))
     early = _write(tmp_path, ht, stamp=(last + pd.Timedelta(minutes=600)).strftime("%Y-%m-%d_%H-%M-%S"))   # > +90 min, < +24 h
     out = "\n".join(V.run(now_ms=since + 30 * 86_400_000, paths=early, state_path=str(own), since_ms=since))
-    assert "+ 1440 min (a fill could still be open)" in out and "FRENZY_WILLY_HT@587" not in json.load(open(own))
+    assert "+ 1440 min (a fill could still be open)" in out and "FRENZY_WILLY_HT@608" not in json.load(open(own))
     assert "ARMED for WILLY_HT since DECISION_LOG 527" in out and "scout_blocked_filters" in out and "rest-side fills" in out
-    assert "plain WILLY entries back ON since DECISION_LOG 595" in out and "History only (pre-DL 587" in out
+    assert "plain WILLY entries back ON since DECISION_LOG 595" in out and "History only (pre-DL 608" in out
     late = _write(tmp_path, ht, stamp=(last + pd.Timedelta(days=2)).strftime("%Y-%m-%d_%H-%M-%S"))
     out = "\n".join(V.run(now_ms=since + 30 * 86_400_000, paths=late, state_path=str(own), since_ms=since))
     st = json.load(open(own))
-    assert st["FRENZY_WILLY_HT@587"]["state"] == "KEEP OBSERVING" and "breakeven 44.4%" in st["FRENZY_WILLY_HT@587"]["detail"]
+    assert st["FRENZY_WILLY_HT@608"]["state"] == "KEEP OBSERVING" and "breakeven 40.0%" in st["FRENZY_WILLY_HT@608"]["detail"]
     assert st["FRENZY_WILLY_HT"] == old and "FRENZY_WILLY" not in st                   # old era kept for history, never overwritten

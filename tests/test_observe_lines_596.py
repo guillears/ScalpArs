@@ -165,10 +165,10 @@ def test_ht_596_lines_ht_only_and_forward(monkeypatch):
 
 def test_registry_and_scout_hooks():
     assert "scout_exh_after_drop.py" in OR.classified()
-    assert OR.BOOKED["scout_exh_after_drop.py"]["exhaustion_tp_cap_pct"] == 10.0
+    assert OR.BOOKED["scout_exh_after_drop.py"]["exhaustion_tp_cap_pct"] == 7.0   # 🔁 (609)
     op = _src("scripts/opportunity_scout.py")
     assert "import scout_exh_after_drop as _ead" in op and "_rg_sec += _ead.run(now_ms)" in op
-    assert "reports/SCOUT_EXH_AFTER_DROP.json" in _src(".gitignore")
+    assert "reports/SCOUT_EXH_AFTER_DROP_609.json" in _src(".gitignore")   # 🔁 (609) re-based state file
 
 
 def test_btc5m_up_counts_window_units():

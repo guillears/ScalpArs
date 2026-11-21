@@ -2361,6 +2361,26 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
                     _stop_read_basis = "price_funding"
             else:
                 _stop_read_pct, _stop_read_basis = round(pnl_pct, 2), "net"
+        # 🪧 (DECISION_LOG 610) the stop LEVEL the line names ("stop at −X %"), on the same basis as the number it reads: FLATBASE the config
+        # stop · EXHAUSTION / DISTRIBUTION the row's own level (row_levels: the stamp, clamped to today's cap) · WILLY / WILLY_HT the net stop ·
+        # anything else None (the line shows no level)
+        _stop_at_pct = None
+        try:
+            _es_sa = getattr(o, 'entry_strategy', None) or ""
+            _th_sa = config.trading_config.thresholds
+            if _es_sa in _FB_CLS:
+                _stop_at_pct = float(getattr(_th_sa, 'flatbase_stop_pct', 0) or 0) or None
+            elif _es_sa in _EXH_CLS:
+                from services.exhaustion import row_levels as _exh_rl
+                _stop_at_pct = _exh_rl(o, _th_sa)[1]
+            elif _es_sa in _DIST_CLS:
+                from services.distribution import row_levels as _dist_rl
+                _stop_at_pct = _dist_rl(o, _th_sa)[1]
+            elif _es_sa in ("FRENZY_WILLY", "FRENZY_WILLY_HT"):
+                _stop_at_pct = float(getattr(_th_sa, 'frenzy_willy_stop_pct', 0) or 0) or None
+            _stop_at_pct = round(float(_stop_at_pct), 2) if _stop_at_pct else None
+        except Exception:
+            _stop_at_pct = None
         # 💸 (DECISION_LOG 539) the shown current % includes the funding accrued so far (best / worst stay price-only, clamped around it)
         _pct_shown = pnl_pct + (float(getattr(o, 'funding_fee_usd', None) or 0.0) / (o.entry_price * o.quantity) * 100
                                 if o.entry_price and o.quantity else 0.0)
@@ -2458,6 +2478,7 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
             # the GROSS price move (*_exit_for; FLATBASE minus the funding paid under DL 607), every other sleeve on price + fees
             "pnl_price_pct": _stop_read_pct,
             "stop_read_basis": _stop_read_basis,
+            "stop_at_pct": _stop_at_pct,   # 🪧 (DECISION_LOG 610) the stop level the Open Orders line names
             "duration": f"{hours:02d}:{minutes:02d}:{seconds:02d}",
             "duration_seconds": duration_seconds,
             "opened_at": o.opened_at.isoformat(),
@@ -10232,16 +10253,16 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 except Exception as _fbe:
                     logger.debug(f"[PERF] flatbase ledger tally skipped: {_fbe}")
             if _fz_es == "EXHAUSTION_SHORT":   # 🪫 (578) the frozen revert gate (re-priced with the modelled slippage; operator-closed out) + the journal tally
-                from services.exhaustion import exhaustion_gate as _exg, exit_era_579 as _exera, entry_leg_slip as _exels
+                from services.exhaustion import exhaustion_gate as _exg, exit_era_609 as _exera, entry_leg_slip as _exels   # 🔁 (609) the TP-7 era
                 _ex_q = select(Order.opened_at, Order.pnl_percentage, Order.close_reason, Order.entry_exh_model_slip_pct,
                                Order.entry_exh_tp_pct, Order.entry_exh_atr_pct, Order.entry_depth_mode, Order.entry_depth_walk_pct).where(and_(
                     Order.entry_strategy == "EXHAUSTION_SHORT", Order.status == 'CLOSED', Order.is_paper == trading_engine.is_paper_mode,
                     Order.pnl_percentage.isnot(None), or_(Order.entry_exh_universe.is_(None), Order.entry_exh_universe != "WIDE")))   # 🌐 (585 I2) WIDE out
-                # 🔁 (579) re-based on the exit override: only fills of that exit era count (the scout's rule, services.exhaustion.exit_era_579)
+                # 🔁 (579 → 609) re-based on each exit change: only fills of the TP-7 era count (the scout's rule, services.exhaustion.exit_era_609)
                 _ex_bot = [(a, p_, r, s_, _exels(s_, dm_, wk_)) for a, p_, r, s_, tp_, at_, dm_, wk_ in (await db.execute(_ex_q)).all()   # 📖📐 (584 I2)
-                           if _exera(tp_, at_)
+                           if _exera(tp_, at_, a)   # 🔁 (609) stamp + the era's date floor
                            and not (str(r or '').upper().split(' ')[0] in ('MANUAL', 'EXTERNAL_CLOSE') or str(r or '').upper().startswith('MANUAL_'))]
-                _fz_gate = _exg(_ex_bot)[1] + " · counts DL 579 exit-era fills only"
+                _fz_gate = _exg(_ex_bot)[1] + " · counts DL 609 (TP 7) exit-era fills only"
                 try:
                     _ex_led = (await db.execute(select(func.coalesce(ExhaustionSignal.block, ExhaustionSignal.status), func.count(ExhaustionSignal.id)).where(
                         ExhaustionSignal.is_paper == trading_engine.is_paper_mode).group_by(func.coalesce(ExhaustionSignal.block, ExhaustionSignal.status)))).all()
@@ -10252,11 +10273,12 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 try:   # 🌐 (DECISION_LOG 585) the WIDE universe's frozen gate (scripts/scout_exh_wide_585.py's rule) + WIDE vs FRENZY rows below
                     from services.distribution import upper_bound_gate as _ubg
                     _wq = select(Order.opened_at, Order.pnl_percentage, Order.close_reason, Order.entry_exh_model_slip_pct, Order.entry_depth_mode,
-                                 Order.entry_depth_walk_pct).where(and_(Order.entry_strategy == "EXHAUSTION_SHORT", Order.entry_exh_universe == "WIDE",
+                                 Order.entry_depth_walk_pct, Order.entry_exh_tp_pct, Order.entry_exh_atr_pct).where(and_(Order.entry_strategy == "EXHAUSTION_SHORT", Order.entry_exh_universe == "WIDE",
                                  Order.status == 'CLOSED', Order.is_paper == trading_engine.is_paper_mode, Order.pnl_percentage.isnot(None)))
                     from services.exhaustion import gate_net_pct as _gnp
-                    _wf = [(a, _gnp(p_, r, s_, _exels(s_, dm_, wk_))) for a, p_, r, s_, dm_, wk_ in (await db.execute(_wq)).all()
-                           if not (str(r or '').upper().split(' ')[0] in ('MANUAL', 'EXTERNAL_CLOSE') or str(r or '').upper().startswith('MANUAL_'))]
+                    _wf = [(a, _gnp(p_, r, s_, _exels(s_, dm_, wk_))) for a, p_, r, s_, dm_, wk_, tp_, at_ in (await db.execute(_wq)).all()
+                           if _exera(tp_, at_, a)   # 🔁 (609) the WIDE gate re-based on the TP-7 era too (scout_exh_wide_585: the same rule)
+                           and not (str(r or '').upper().split(' ')[0] in ('MANUAL', 'EXTERNAL_CLOSE') or str(r or '').upper().startswith('MANUAL_'))]
                     _fz_gate += " · 🌐 WIDE gate (DL 585) — running (the scout's frozen read decides): " + _ubg(_wf, "WIDE universe", "exhaustion_wide_enabled", 585)[1]
                 except Exception as _wge:
                     logger.debug(f"[PERF] WIDE gate skipped: {_wge}")

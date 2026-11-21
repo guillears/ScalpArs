@@ -65,7 +65,7 @@ def test_ht_tp5_target_and_the_exit_it_runs():
                                  frenzy_willy_ht_config_errors)
     cfg = json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
     th = NS(**cfg)
-    assert cfg["frenzy_willy_ht_tp_pct"] == 5.0 and cfg["frenzy_willy_stop_pct"] == 4.0 and frenzy_willy_ht_tp(th) == 5.0
+    assert cfg["frenzy_willy_ht_tp_pct"] == 6.0 and cfg["frenzy_willy_stop_pct"] == 4.0 and frenzy_willy_ht_tp(th) == 6.0   # 🎯 DL 608: +5 → +6
     assert not frenzy_willy_ht_config_errors(th)
     assert frenzy_willy_ht_target(1.25, 5.0) == 5.0 and frenzy_willy_ht_target(6.8, 5.0) == 6.8   # a spike-high target above +5 (≤ +8) is kept
     row = dict(frenzy_willy_tp_target_pct=5.0)
@@ -105,12 +105,12 @@ def test_config_json_ui_exports_and_registry():
     sys.path.insert(0, os.path.join(ROOT, "scripts"))
     import observe_registry as OR
     assert "scout_willy_ht_exit_lines.py" in OR.NONE and "scout_willy_ht_exit_lines.py" not in OR.EXIT       # retired (it priced the +2 exit)
-    assert OR.BOOKED["scout_willy_ht_lines.py"]["frenzy_willy_ht_tp_pct"] == 5.0                              # re-based
+    assert OR.BOOKED["scout_willy_ht_lines.py"]["frenzy_willy_ht_tp_pct"] == 6.0                              # re-based (DL 608)
     row = [r for r in OR.status() if r[0] == "scout_willy_ht_lines.py"][0]
     assert row[4] == "OK", row[5]
     assert "import scout_willy_ht_exit_lines" not in open(os.path.join(ROOT, "scripts", "opportunity_scout.py"), encoding="utf-8").read()
     import scout_willy_ht_lines as W
-    assert W.BE_WR["FRENZY_WILLY_HT"] == pytest.approx(4 / 9, abs=1e-3) and W.DL_HT == 587 and W.STATE_KEY["FRENZY_WILLY_HT"].endswith("@587")
+    assert W.BE_WR["FRENZY_WILLY_HT"] == pytest.approx(4 / 10, abs=1e-3) and W.DL_HT == 608 and W.STATE_KEY["FRENZY_WILLY_HT"].endswith("@608")
 
 
 # ── ⑤ the FINAL HT exit (operator 11-18): flat TP +5 · stop −4 · no late TP · 24 h — WILLY unchanged ────────────────────────────────
@@ -144,7 +144,7 @@ def test_ht_exit_is_a_plain_tp5_sl4_24h_and_willy_keeps_its_exit():
     assert frenzy_willy_exit_for(0.3, 0.3, on, held_minutes=31, row=ht)[:2] == (True, "WILLY_LATE_TP") and frenzy_willy_levels(on, "FRENZY_WILLY_HT")[2] == 90
 
 
-@pytest.mark.parametrize("high_on,want", [(False, 5.0), (True, 8.0)])
+@pytest.mark.parametrize("high_on,want", [(False, 6.0), (True, 8.0)])   # 🎯 DL 608: the flat target is the JSON +6
 def test_open_path_stores_the_flat_target_and_rests_the_limit_there(monkeypatch, high_on, want):
     import config as C
     monkeypatch.setattr(C.trading_config.thresholds, "frenzy_willy_ht_high_target_enabled", high_on, raising=False)

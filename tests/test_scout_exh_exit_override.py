@@ -170,20 +170,24 @@ def test_load_extra_columns_and_rebased_report(tmp_path):
     plain = SC.load_fills(paths)
     assert "entry_price" not in plain.columns                 # the default loader is unchanged
     txt = SC.report(plain, SC.load_journal([]))
-    assert "shipped-exit era, not counted" in txt and "ZKPUSDT" in txt and "1/20" in txt
+    # 🔁 (609) the 578 gate now counts the TP-7 era: the TP-5 (ZKP) and TP-10 (AAA) fills are listed, not counted
+    assert "earlier exit era (TP 5 / TP 10), not counted" in txt and "ZKPUSDT" in txt and "AAAUSDT" in txt
 
 
 def test_registry_and_config_pins():
-    assert "scout_exh_exit_override.py" in OR.classified()
+    # ⛔ (DECISION_LOG 609) the DL 579 gate is RETIRED (the sleeve runs TP 7): classified NONE, unhooked; the module stays as the shared library
+    assert "scout_exh_exit_override.py" in OR.classified() and "scout_exh_exit_override.py" in OR.NONE and "scout_exh_exit_override.py" not in OR.EXIT
     cfg = json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
     rows = {r[0]: r for r in OR.status(cfg)}
-    assert rows["scout_exh_exit_override.py"][4] == "OK" and rows["scout_exhaustion_short.py"][4] == "OK"
-    for k, v in (("exhaustion_tp_atr_mult", 20.0), ("exhaustion_tp_cap_pct", 10.0), ("exhaustion_sl_atr_mult", 1.5), ("exhaustion_sl_cap_pct", 6.0),
+    assert rows["scout_exhaustion_short.py"][4] == "OK" and rows["scout_exh_tp7_609.py"][4] == "OK"
+    for k, v in (("exhaustion_tp_atr_mult", 20.0), ("exhaustion_tp_cap_pct", 7.0), ("exhaustion_sl_atr_mult", 1.5), ("exhaustion_sl_cap_pct", 6.0),
                  ("exhaustion_max_hold_hours", 24.0)):
-        assert cfg[k] == v and X.OVERRIDE[{"exhaustion_tp_atr_mult": "tp_atr", "exhaustion_tp_cap_pct": "tp_cap", "exhaustion_sl_atr_mult": "sl_atr",
-                                           "exhaustion_sl_cap_pct": "sl_cap", "exhaustion_max_hold_hours": "hold_h"}[k]] == v
+        assert cfg[k] == v
+    assert X.OVERRIDE == dict(tp_atr=20.0, tp_cap=10.0, sl_atr=1.5, sl_cap=6.0, hold_h=24.0)   # the TP-10 levels (history; the library constant)
     src = open(os.path.join(ROOT, "config.py"), encoding="utf-8").read()
-    assert "DECISION_LOG 579" in src
+    assert "DECISION_LOG 579" in src and "DECISION_LOG 609" in src
+    sc = open(os.path.join(ROOT, "scripts", "opportunity_scout.py"), encoding="utf-8").read()
+    assert "_exo.report(" not in sc and "import scout_exh_tp7_609 as _tp7" in sc
 
 
 def test_config_accepts_the_override():
@@ -195,7 +199,7 @@ def test_config_accepts_the_override():
     t = NS(**dict(th.model_dump(), **{k: v for k, v in cfg.items() if k.startswith("exhaustion_")}))
     assert exhaustion_config_errors(t) == []
     p = exhaustion_params(t)
-    assert p["tp_atr"] == 20.0 and p["tp_cap"] == 10.0 and p["sl_cap"] == 6.0
+    assert p["tp_atr"] == 20.0 and p["tp_cap"] == 7.0 and p["sl_cap"] == 6.0   # 🎯 (609)
 
 
 def test_replica_check_and_booked_kind():

@@ -17,16 +17,16 @@ FROZEN BAR the WILLY_GAP bar (DL 414), never re-fit: at the first prefix where t
            ① zone avg ≥ rest avg, OR zone avg ≥ 0 → RETIRED; ② else FILTER CANDIDATE (operator decides; never automatic) iff zone WR < 69.0 %
            ∧ day-bootstrap P(mean < 0) ≥ 0.95 ∧ no single day / pair ≥ 50 % of the zone's gross loss; ③ else KEEP OBSERVING. Pinned to the V2b
            exit keys in observe_registry.
-🔁 HT RE-BASED 2026-11-19 (DECISION_LOG 587 exit, CLAUDE.md entry × exit ④): WILLY_HT runs its OWN exit since DL 587 — flat TP +5 net
+🔁 HT RE-BASED 2026-11-21 (DECISION_LOG 608 exit, CLAUDE.md entry × exit ④; first re-base 11-19 at DL 587): WILLY_HT runs its OWN exit — flat TP +6 net
            (resting maker) · stop −4 net · 24 h cap · no late TP · no spike-high target. The HT half now counts only HT fills opened ≥ the
-           DL 587 commit + 10 min, judges WR against the FROZEN HT breakeven 4 ÷ 9 = 44.4 % (WILLY keeps 69.0 %), freezes under the state key
-           FRENZY_WILLY_HT@587 (the old FRENZY_WILLY_HT record of the +2 / V2b era stays in the file for history and is never read as the new
+           DL 608 commit + 10 min, judges WR against the FROZEN HT breakeven 4 ÷ 10 = 40.0 % (WILLY keeps 69.0 %), freezes under the state key
+           FRENZY_WILLY_HT@608 (the old FRENZY_WILLY_HT record of the +2 / V2b era stays in the file for history and is never read as the new
            verdict) and defers freezing until the newest export is ≥ the crossing fill + HT's own max hold. The registry pin carries the HT exit
            keys → a later HT exit change shows ⚠ STALE. Plain FRENZY_WILLY entries are OFF since DL 587 → the WILLY half collects no new fills.
            ⚠ FAILED_SPIKE is ARMED for WILLY_HT since DL 527 (zone entries are REFUSED) → forward HT zone fills should be ~0 and this line mostly
            shows rest-side fills; the filter's forward verdict is the blocked-trade pricer (scout_blocked_filters.py, FRENZY_WILLY_HT ·
            WILLY_FAILED_SPIKE), which prices the refused zone trades on HT's live exit.
-           ⚠ HT's 44.4 % breakeven is frozen from THEORY (+5 / −4 net = 4 ÷ 9 — no stop slippage, no 24 h time exits), while WILLY's 69.0 %
+           ⚠ HT's 40.0 % breakeven is frozen from THEORY (+6 / −4 net = 4 ÷ 10 — no stop slippage, no 24 h time exits), while WILLY's 69.0 %
            came from real fills (V2b, N 50).
 🔒 WILLY OFF TRIGGER (DL 509, pre-committed, operator 11-09): read when WILLY_GAP's FRENZY_WILLY verdict freezes (reports/SCOUT_WILLY_GAP.json) —
            the forward fills KEPT by WILLY_GAP (outside its zone, since DL 414) and KEPT by WILLY_FAILED_SPIKE (stamp > 0, since DL 509): if BOTH have
@@ -59,15 +59,15 @@ import scout_willy_gap_watch as WG  # noqa: E402  (the WILLY_GAP zone cuts, for 
 DL = 509
 SLEEVES = ("FRENZY_WILLY", "FRENZY_WILLY_HT")   # each read and decided SEPARATELY (never pooled); HT added by DL 511, counted from ITS commit
 HT_DL = 511                        # HT's registration (history)
-HT_EXIT_DL = 587                   # 🔁 HT re-based on its own TP +5 / SL −4 / 24 h exit: HT counts from THIS commit + 10 min
+HT_EXIT_DL = 608                   # 🔁 HT re-based on its own TP +6 / SL −4 / 24 h exit (DL 608; first 587 at +5): HT counts from THIS commit + 10 min
 VWAP_CUT = 0.0
 MIN_VWAP_KEPT = 5
 N_MIN, DAYS_MIN = 15, 8
 BE_WR = 0.690                      # FROZEN 2026-10-29: WILLY V2b breakeven WR (avg win +1.806 / loss −4.009, N 50)
-HT_BE_WR = 0.444                   # FROZEN 2026-11-19 (DL 587 exit): HT breakeven = |loss| ÷ (win + |loss|) = 4 ÷ 9 at TP +5 / SL −4 net
-BE_NOTE = "HT's 44.4 % breakeven is FROZEN FROM THEORY (+5 / −4 net = 4 ÷ 9; no stop slippage, no 24 h time exits counted), while WILLY's 69.0 % came from real fills (V2b, N 50)"
+HT_BE_WR = 0.400                   # FROZEN 2026-11-21 (DL 608 exit): HT breakeven = |loss| ÷ (win + |loss|) = 4 ÷ 10 at TP +6 / SL −4 net (0.444 at +5)
+BE_NOTE = "HT's 40.0 % breakeven is FROZEN FROM THEORY (+6 / −4 net = 4 ÷ 10; no stop slippage, no 24 h time exits counted), while WILLY's 69.0 % came from real fills (V2b, N 50)"
 BE_BY = {"FRENZY_WILLY": BE_WR, "FRENZY_WILLY_HT": HT_BE_WR}
-STATE_KEY = {"FRENZY_WILLY": "FRENZY_WILLY", "FRENZY_WILLY_HT": "FRENZY_WILLY_HT@587"}   # the pre-587 HT verdict is never read as the new one
+STATE_KEY = {"FRENZY_WILLY": "FRENZY_WILLY", "FRENZY_WILLY_HT": "FRENZY_WILLY_HT@608"}   # the pre-608 HT verdicts are never read as the new one
 P_MIN, SHARE_MAX = 0.95, 0.50
 BOOT_N, BOOT_SEED = 4000, 7
 CAP_DEFAULT = 90                   # WILLY's live max hold (frenzy_willy_max_hold_minutes) — read from the config at run time
@@ -199,19 +199,19 @@ def run(now_ms=None, paths=None, state_path=STATE, since_ms=None):
     keep, ox = _GK.split_operator_closed(c) if len(c) else (c, c)
     st, ok = NF.du_load_state(state_path, now_ms) if state_path else ({}, True)
     changed = False
-    L += [f"Cohort: CLOSED fills opened ≥ {since:%Y-%m-%d %H:%M} UTC ({'DL ' + str(DL) + ' commit + 10 min' if since_given is None else 'floor given'}) · zone = {ZONE_COL} ≤ {VWAP_CUT:g} · WILLY and WILLY_HT decided separately (HT re-based: from the DL {HT_EXIT_DL} commit + 10 min, its TP +5 / SL −4 / 24 h exit) · {_GK.operator_closed_line(ox)}.", ""]
-    ht_since = (_GK.dl_deploy_ms(HT_EXIT_DL, lag_min=10, label="WILLY_FAILED_SPIKE (WILLY_HT, re-based DL 587) watch line") if since_given is None else since_ms)
+    L += [f"Cohort: CLOSED fills opened ≥ {since:%Y-%m-%d %H:%M} UTC ({'DL ' + str(DL) + ' commit + 10 min' if since_given is None else 'floor given'}) · zone = {ZONE_COL} ≤ {VWAP_CUT:g} · WILLY and WILLY_HT decided separately (HT re-based: from the DL {HT_EXIT_DL} commit + 10 min, its TP +6 / SL −4 / 24 h exit) · {_GK.operator_closed_line(ox)}.", ""]
+    ht_since = (_GK.dl_deploy_ms(HT_EXIT_DL, lag_min=10, label="WILLY_FAILED_SPIKE (WILLY_HT, re-based DL 608) watch line") if since_given is None else since_ms)
     for es in SLEEVES:
         s = keep[keep.entry_strategy.astype(str) == es] if len(keep) else keep
         cap, be = cap_minutes(es=es), BE_BY[es]
         notes = []
         if es == "FRENZY_WILLY_HT":
             if ht_since is None:
-                L += [f"### {es}", "", f"⚠ HT re-based on the DECISION_LOG {HT_EXIT_DL} exit (TP +5 / SL −4 / 24 h) — NOT EVALUABLE until that commit is in git; nothing is counted for WILLY_HT.", ""]
+                L += [f"### {es}", "", f"⚠ HT re-based on the DECISION_LOG {HT_EXIT_DL} exit (TP +6 / SL −4 / 24 h) — NOT EVALUABLE until that commit is in git; nothing is counted for WILLY_HT.", ""]
                 continue
             s = s[s.o >= pd.Timestamp(int(ht_since), unit="ms")] if len(s) else s
-            notes = [f"(re-based: HT fills opened ≥ {pd.Timestamp(int(ht_since), unit='ms'):%Y-%m-%d %H:%M} UTC — the DL {HT_EXIT_DL} exit TP +5 net "
-                     f"(resting maker) / SL −4 / {cap:.0f} min cap / no late TP; frozen HT breakeven {be:.1%} = 4 ÷ 9; verdict key {STATE_KEY[es]})",
+            notes = [f"(re-based: HT fills opened ≥ {pd.Timestamp(int(ht_since), unit='ms'):%Y-%m-%d %H:%M} UTC — the DL {HT_EXIT_DL} exit TP +6 net "
+                     f"(resting maker) / SL −4 / {cap:.0f} min cap / no late TP; frozen HT breakeven {be:.1%} = 4 ÷ 10; verdict key {STATE_KEY[es]})",
                      f"⚠ {BE_NOTE}.",
                      f"⚠ FAILED_SPIKE is ARMED for WILLY_HT since DECISION_LOG 527 — zone entries are REFUSED, so forward zone fills should be ~0 "
                      "and this table mostly shows rest-side fills. The filter's forward verdict is the blocked-trade pricer "

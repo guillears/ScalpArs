@@ -26,6 +26,7 @@ import json
 import os
 import sys
 import time
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -64,6 +65,7 @@ def _thresholds():
 
 
 _TH = _thresholds()
+_TH_NS = SimpleNamespace(**_TH)   # (DL 609 deep review) the services read thresholds by getattr — a dict would fall back to the code defaults
 STALE_H = 48
 
 
@@ -210,7 +212,7 @@ def report(frame=None, since_ms=None, state_path=STATE, now_ms=None, bars_fn=Non
     bud, rows, par, stopped = LS.Budget(), [], [], False
     for r in a.itertuples():
         E, slip = _f(r.entry_price), _f(getattr(r, "entry_dist_model_slip_pct", None)) or 0.0
-        tp0, sl = row_levels(r, _TH)                    # the stamps, else the caps — the levels the engine ran (services.distribution)
+        tp0, sl = row_levels(r, _TH_NS)                 # the stamps, else the caps — the levels the engine ran (services.distribution)
         es = entry_leg_slip(slip, getattr(r, "entry_depth_mode", None), _f(getattr(r, "entry_depth_walk_pct", None)))
         te = int(r.o.value // 1_000_000)
         bars = bars_fn(r.pair, te, now_ms) if bars_fn else fetch_bars(r.pair, te, now_ms, bud)

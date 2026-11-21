@@ -1554,14 +1554,24 @@ def run():
     except Exception as _ead_e:
         log(f"EXH_AFTER_DROP line failed: {_ead_e}")
         _rg_sec += ["## 📉 EXH_AFTER_DROP", "", f"Unavailable this run ({str(_ead_e)[:120]}).", ""]
-    try:                                               # 🎯 Nov-18 EXHAUSTION exit override revert gate (DECISION_LOG 579; paired re-pricing)
-        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
-            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        import scout_exh_exit_override as _exo
-        _rg_sec += ["## 🎯 EXHAUSTION exit override (DL 579)", "", "```", _exo.report(_exo.load(), now_ms=now_ms), "```", ""]
-    except Exception as _exo_e:
-        log(f"EXHAUSTION exit-override gate failed: {_exo_e}")
-        _rg_sec += ["## 🎯 EXHAUSTION exit override (DL 579)", "", f"Unavailable this run ({str(_exo_e)[:120]}).", ""]
+    # ⛔ (DECISION_LOG 609) the DL 579 exit-override gate (TP 10 vs the study's TP 5) is RETIRED — the sleeve no longer runs TP 10
+    # (scout_exh_exit_override.py stays as the shared pricing library); its successor is the EXH_TP7 gate below
+    try:                                               # 🎯🔒 (DECISION_LOG 609) EXH TP 7 vs TP 10 on real fills — the revert gate of the TP-7 change
+        _sd = os.path.dirname(os.path.abspath(__file__))
+        _sd in sys.path or sys.path.insert(0, _sd)
+        import scout_exh_tp7_609 as _tp7
+        _rg_sec += _tp7.report(now_ms=now_ms)
+    except Exception as _tp7_e:
+        log(f"DL 609 EXH_TP7 gate failed: {_tp7_e}")
+        _rg_sec += ["## 🎯🔒 DL 609 EXH_TP7", "", f"Unavailable this run ({str(_tp7_e)[:120]}).", ""]
+    try:                                               # 🎯🔒 (DECISION_LOG 608) WILLY_HT TP +6 vs +5 — the revert gate of the TP +6 change
+        _sd = os.path.dirname(os.path.abspath(__file__))
+        _sd in sys.path or sys.path.insert(0, _sd)
+        import scout_ht_tp6_608 as _ht6
+        _rg_sec += _ht6.report(now_ms=now_ms)
+    except Exception as _ht6_e:
+        log(f"DL 608 HT_TP6 gate failed: {_ht6_e}")
+        _rg_sec += ["## 🎯🔒 DL 608 HT_TP6", "", f"Unavailable this run ({str(_ht6_e)[:120]}).", ""]
     try:                                               # 🧯 Nov-18 EXH_SSC_OIVOL shadow revert gate (DECISION_LOG 582; blocked signals priced with the live exit)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

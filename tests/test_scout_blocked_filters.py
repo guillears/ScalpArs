@@ -296,7 +296,7 @@ def test_ht_exit_of_flat_tp_own_cap_no_late_tp():
     assert on == dict(sl=4.0, cap=90, late=30.0, ltp=0.25, flat=False)                  # switches on / 0 → WILLY's V2b behaviour
     assert S.exit_of("FRENZY_WILLY_HT", dict(HT_T, frenzy_willy_ht_tp_pct=0))["tp"] == 1.25   # HT TP 0 → WILLY's base TP (engine)
     live = S.exit_of("FRENZY_WILLY_HT", S.th())
-    assert live["cap"] == 1440 and live["late"] is None and live.get("flat") is True and live["tp"] == 5.0   # today's trading_config.json
+    assert live["cap"] == 1440 and live["late"] is None and live.get("flat") is True and live["tp"] == 6.0   # today's trading_config.json (DL 608: +6)
 
 
 def test_ht_era_changes_with_every_ht_exit_field_willy_era_does_not():
@@ -311,7 +311,7 @@ def test_ht_era_changes_with_every_ht_exit_field_willy_era_does_not():
     import observe_registry as OR
     w = OR.EXIT["scout_blocked_filters.py"]["walks"]
     assert OR.diffs(w, OR.thresholds()) == [] and all(k in w for k in S.HT_KEYS)
-    assert [d[0] for d in OR.diffs(w, dict(OR.thresholds(), frenzy_willy_ht_tp_pct=6.0))] == ["frenzy_willy_ht_tp_pct"]   # → ⚠ STALE
+    assert [d[0] for d in OR.diffs(w, dict(OR.thresholds(), frenzy_willy_ht_tp_pct=5.0))] == ["frenzy_willy_ht_tp_pct"]   # → ⚠ STALE (the +5 era)
 
 
 def test_ht_flat_price_needs_no_spike_high_and_runs_24h(monkeypatch):
@@ -335,8 +335,8 @@ def test_ht_flat_price_needs_no_spike_high_and_runs_24h(monkeypatch):
     assert S.price_frenzy(r, HT_T, te + 3 * 86_400_000, {}, {}, None)[:3] == (0.0, "CAP", "PRICED")   # no late +0.25 at minute 31
 
 
-def test_ht_gate_state_namespaced_587(tmp_path, monkeypatch):
-    assert S.GATE_KEY == {"FRENZY_WILLY_HT": "FRENZY_WILLY_HT@587"} and S.SPAN_MAX <= 1497
+def test_ht_gate_state_namespaced_608(tmp_path, monkeypatch):
+    assert S.GATE_KEY == {"FRENZY_WILLY_HT": "FRENZY_WILLY_HT@608"} and S.SPAN_MAX <= 1497   # 🎯 (608) re-namespaced from @587
     rows = [(i // 2, f"P{i}USDT", "FRENZY_WILLY_HT", "WILLY_FAILED_SPIKE", 1.0, True, "LONG") for i in range(16)]
     paths = _dec(tmp_path, rows)
     k = [dict(opened_at=(T0 + pd.Timedelta(hours=i)).strftime("%Y-%m-%dT%H:%M:%S"), closed_at="", pair=f"K{i}USDT", direction="LONG",
@@ -345,11 +345,13 @@ def test_ht_gate_state_namespaced_587(tmp_path, monkeypatch):
     pd.DataFrame(k).to_csv(op, index=False)
     monkeypatch.setattr(S, "price_all", lambda B, now_ms, fetch=True, store_path=None: B.assign(pct=-1.0, why="STOP", status="PRICED", exit_ms=B.te + 60_000))
     st = tmp_path / "g.json"
-    st.write_text(json.dumps({"FRENZY_WILLY_HT:WILLY_FAILED_SPIKE": dict(state="REVERT CANDIDATE (old era)", detail="+2 exit", at="x")}))
+    st.write_text(json.dumps({"FRENZY_WILLY_HT:WILLY_FAILED_SPIKE": dict(state="REVERT CANDIDATE (old era)", detail="+2 exit", at="x"),
+                              "FRENZY_WILLY_HT@587:WILLY_FAILED_SPIKE": dict(state="REVERT CANDIDATE (old era)", detail="+5 exit", at="y")}))
     out = "\n".join(S.run(now_ms=SINCE + 30 * 86_400_000, dec_paths=paths, ord_paths=[str(op)], state_path=str(st), store_path=None, since_ms=SINCE))
     g = json.load(open(st))
-    assert g["FRENZY_WILLY_HT@587:WILLY_FAILED_SPIKE"]["state"] == "KEEP" and g["FRENZY_WILLY_HT:WILLY_FAILED_SPIKE"]["detail"] == "+2 exit"
-    assert "old era" not in out                                                          # the pre-587 record is never read as the HT verdict
+    assert g["FRENZY_WILLY_HT@608:WILLY_FAILED_SPIKE"]["state"] == "KEEP" and g["FRENZY_WILLY_HT:WILLY_FAILED_SPIKE"]["detail"] == "+2 exit"
+    assert g["FRENZY_WILLY_HT@587:WILLY_FAILED_SPIKE"]["detail"] == "+5 exit"            # the +5-era record stays for history
+    assert "old era" not in out                                                          # the pre-608 records are never read as the HT verdict
 
 
 def test_ht_exit_error_is_never_priced_on_willys_exit(tmp_path, monkeypatch):

@@ -24,7 +24,7 @@ _D in sys.path or sys.path.insert(0, _D)
 _R = os.path.dirname(_D)
 _R in sys.path or sys.path.insert(0, _R)
 import export_glob as _EG                                    # noqa: E402  🗄 (DECISION_LOG 409) Downloads + exports_archive/
-from services.exhaustion import EXHAUSTION_SHORT, exhaustion_gate, model_slip_pct, gate_net_pct, entry_leg_slip, GATE_N, exit_era_579   # noqa: E402
+from services.exhaustion import EXHAUSTION_SHORT, exhaustion_gate, model_slip_pct, gate_net_pct, entry_leg_slip, GATE_N, exit_era_579, exit_era_609   # noqa: E402
 
 DL = 578
 ORDER_PATTERN = os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")
@@ -102,14 +102,14 @@ def load_journal(paths=None) -> pd.DataFrame:
 
 
 def report(fills: pd.DataFrame, journal: pd.DataFrame) -> str:
-    out = [f"🪫 EXHAUSTION_SHORT revert gate (DECISION_LOG {DL}, paper, declared override) — 🔁 re-based 2026-11-18 on the DL 579 exit "
-           "(TP ≈ 10 % / SL ≤ 6 %): the count starts at the first fill of that exit · 🌐 FRENZY universe only (WIDE: DL 585 gate)"]
+    out = [f"🪫 EXHAUSTION_SHORT revert gate (DECISION_LOG {DL}, paper, declared override) — 🔁 re-based 2026-11-21 on the DL 609 exit "
+           "(TP min(20 × ATR, 7 %) / SL ≤ 6 %; was DL 579 TP ≈ 10 %): the count starts at the first fill of that exit · 🌐 FRENZY universe only (WIDE: DL 585 gate)"]
     fills = frenzy_universe(fills, "entry_exh_universe")   # 🌐 (585 review I2)
     journal = frenzy_universe(journal, "exh_universe")
     if len(fills):
-        era = fills.apply(lambda r: exit_era_579(r.entry_exh_tp_pct, r.entry_exh_atr_pct), axis=1).astype(bool)
+        era = fills.apply(lambda r: exit_era_609(r.entry_exh_tp_pct, r.entry_exh_atr_pct, r.o), axis=1).astype(bool)   # 🔁 (609) the TP-7 era (stamp + date)
         for r in fills[~era].itertuples():
-            tag = "shipped-exit era" if pd.notna(pd.to_numeric(r.entry_exh_tp_pct, errors="coerce")) else "unstamped"
+            tag = "earlier exit era (TP 5 / TP 10)" if pd.notna(pd.to_numeric(r.entry_exh_tp_pct, errors="coerce")) else "unstamped"
             out.append(f"  ({tag}, not counted) {str(r.o)[:16]} {r.pair} {float(r.pnl_percentage):+.2f}% {r.close_reason}")
         fills = fills[era]
     rows = [(r.o, float(r.pnl_percentage), r.close_reason, r.slip, entry_leg_slip(r.slip, r.entry_depth_mode, r.entry_depth_walk_pct))

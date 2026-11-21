@@ -196,9 +196,14 @@ def test_stop_reads_line_and_closed_funding_column():
     assert '"funding_usd": (round(float(o.funding_fee_usd), 4) if getattr(o, \'funding_fee_usd\', None) is not None else None),' in m
     assert '"funding_in_pnl": getattr(o, \'funding_in_pnl\', None),' in m
     h = _src("templates/index.html")
-    assert "stop reads ${lbl}${pp >= 0 ? '+' : ''}${pp.toFixed(2)}% · funding ${fmtFunding(fu)}${fpct}" in h
+    # 🪧 (DECISION_LOG 610) the plain-words line: "Price +X% · stop at −Y% · funding paid $Z (W%)"
+    assert "${lbl} ${pp >= 0 ? '+' : ''}${pp.toFixed(2)}%${stopTxt}${fuTxt}" in h and "stop reads ${lbl}" not in h
+    assert "if (!stopTxt && !fuTxt) return '';" in h and "const hasFu = isFinite(fu) && Math.abs(fu) >= 0.01;" in h   # the stop level shows before any funding
+    assert "const lbl = o.stop_read_basis === 'price_funding' ? 'Price − funding' : o.stop_read_basis === 'price' ? 'Price' : 'Price + fees';" in h
+    assert "` · stop at −${+sa.toFixed(2)}%`" in h and "` · funding paid $${Math.abs(fu).toFixed(2)}" in h and "` · funding received $${fu.toFixed(2)}" in h
+    assert '"stop_at_pct": _stop_at_pct,' in m and "_stop_at_pct = _exh_rl(o, _th_sa)[1]" in m and "_stop_at_pct = _dist_rl(o, _th_sa)[1]" in m
     assert "_stop_read_basis = \"price_funding\"" in m and "_fb_paid_funding_pct(getattr(o, 'funding_fee_usd', None), o.entry_price, o.quantity)" in m
-    assert "if (o.pnl_price_pct == null || o.funding_usd == null) return '';" in h
+    assert "if (o.pnl_price_pct == null) return '';" in h
     assert '>Funding</th>' in h and '${fmtFunding(o.funding_usd)}</td>' in h
     i = h.index('id="content-closed"'); j = h.index('</thead>', i)
     assert h[i:j].count('<th ') == 21                                   # header count == the row's cell count

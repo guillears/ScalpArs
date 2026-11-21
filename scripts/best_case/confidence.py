@@ -53,9 +53,9 @@ LINES = {
     "LONG_WEAK_FRENZY": (525, 15, 8, "not run"),   # (DL 525) counts from its commit + 10 min (the −3 stop of DL 524)
 }
 # (DECISION_LOG 511) a line registered for one sleeve and LATER added to another counts that sleeve from its own commit (never the first one's)
-# 🔁 (DL 587 exit, re-based 2026-11-19) HT counts from the DL 587 commit + 10 min (its TP +5 / SL −4 / 24 h exit) — the same floor as
+# 🔁 (DL 608 exit, re-based 2026-11-21; 587 before) HT counts from the DL 608 commit + 10 min (its TP +6 / SL −4 / 24 h exit) — the same floor as
 # scripts/scout_willy_failed_spike_watch.py HT_EXIT_DL; registered at DL 511 (THEORY below). WILLY keeps LINES' 509.
-FREEZE_BY_SLEEVE = {("FRENZY_WILLY_HT", "WILLY_FAILED_SPIKE"): 587}
+FREEZE_BY_SLEEVE = {("FRENZY_WILLY_HT", "WILLY_FAILED_SPIKE"): 608}
 THEORY_BY_SLEEVE = {("FRENZY_WILLY_HT", "WILLY_FAILED_SPIKE"): "first (pre-registered transfer test, DL 511)"}
 LUCK_NOTE_BY_SLEEVE = {("FRENZY_WILLY_HT", "WILLY_FAILED_SPIKE"): "cut fixed on WILLY; one pre-registered HT test — the single-test p is the closer read"}
 

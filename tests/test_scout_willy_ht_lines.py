@@ -115,7 +115,8 @@ def test_verdict_bar_per_sleeve():
     z = pd.DataFrame([dict(pct=(-4.0 if i % 3 else 1.0), day=f"d{i % 12}", pair=f"P{i % 9}") for i in range(24)])
     r = pd.DataFrame([dict(pct=1.5, day=f"d{i % 10}", pair="R") for i in range(20)])
     assert W.verdict(z, r, 0.667)[0] == W.CANDIDATE
-    assert W.BE_WR == {"FRENZY_WILLY": 0.690, "FRENZY_WILLY_HT": 0.444}   # 🔁 (587) HT re-based on TP +5 / SL −4 (was 0.667 at +2 / −4)
+    assert W.BE_WR == {"FRENZY_WILLY": 0.690, "FRENZY_WILLY_HT": 0.400}   # 🔁 (608) HT re-based on TP +6 / SL −4 (0.444 at +5, 0.667 at +2)
+    assert W.DL_HT == 608 and W.STATE_KEY["FRENZY_WILLY_HT"] == "FRENZY_WILLY_HT@608"
 
 
 def test_not_evaluable_without_the_commit(monkeypatch):
@@ -145,9 +146,9 @@ def test_run_on_a_fixture(tmp_path):
 
 def test_registry_and_hook():
     assert "scout_willy_ht_lines.py" in OR.classified()
-    assert OR.BOOKED["scout_willy_ht_lines.py"]["frenzy_willy_ht_tp_pct"] == 5.0   # 🔁 re-based DL 587
+    assert OR.BOOKED["scout_willy_ht_lines.py"]["frenzy_willy_ht_tp_pct"] == 6.0   # 🔁 re-based DL 608 (587: 5.0)
     src = open(os.path.join(ROOT, "scripts", "opportunity_scout.py"), encoding="utf-8").read()
-    assert "import scout_willy_ht_lines" in src and "import scout_exh_exit_override" in src
+    assert "import scout_willy_ht_lines" in src and "import scout_exh_tp7_609" in src and "import scout_ht_tp6_608" in src   # (609: the 579 gate retired)
     gi = open(os.path.join(ROOT, ".gitignore"), encoding="utf-8").read()
     for f in ("reports/SCOUT_WILLY_HT_LINES.json", "reports/.willy_ht_lines_cache.json", "reports/.exh_exit_override_cache.json"):
         assert f in gi
@@ -170,7 +171,7 @@ def test_ht_freeze_waits_for_hts_own_max_hold(tmp_path, monkeypatch):
         df.to_csv(p, index=False)
         W.run(paths=[str(p)], state_path=str(st), since_ms=since, now_ms=int(pd.Timestamp("2026-12-30").value // 1_000_000), fetch=False)
         saved = json.load(open(st)) if st.exists() else {}
-        assert ("FRENZY_WILLY_HT@587|NEAR_SPIKE_HIGH" in saved) is frozen
+        assert ("FRENZY_WILLY_HT@608|NEAR_SPIKE_HIGH" in saved) is frozen
     cfg = tmp_path / "c.json"
     cfg.write_text(json.dumps({"thresholds": {"frenzy_willy_max_hold_minutes": 90, "frenzy_willy_ht_max_hold_minutes": 0}}))
     monkeypatch.undo()

@@ -1599,6 +1599,11 @@ class SignalThresholds(BaseModel):
     # 🎯 DL 587 (operator 11-18, operator-declared): the JSON arms 5.0 (was 2.0) and, with the HT-only fields below (high target OFF, late TP
     # OFF, 1440-min cap), HT runs a FLAT +5 net take profit (resting maker) / −4 stop / 24 h. The DL 537 TP2 revert lines
     # (scripts/scout_willy_ht_exit_lines.py) are RETIRED with this change.
+    # 🎯 DL 608 (operator 11-21 "build 1", operator-declared): the JSON arms 6.0 (was 5.0). Evidence reports/HT_EXIT_RERUN_2026-11-21.md:
+    # +6 pays only if P(reach +6 | reached +5) > ≈ 90 % (a miss ≈ −9 pts, a hit +1) — real kept fills 16 / 16, backtest 118 / 131 = 90 %
+    # (= breakeven, long-run ≈ 0 … +0.06 %/fill); master (12, today's filters) +3.63 → +4.46, batch (12) +0.45 → +0.95 %/fill; DL 587's +5 was
+    # an operator pick between +2 and the study's +6. 🔒 REVERT (alert only, scripts/scout_ht_tp6_608.py): the first 10 HT fills that reach
+    # +5 net → Σ (booked − 5) < 0 → REVERT to 5.0.
     frenzy_willy_ht_tp_pct: float = 0.0
     # 🎲 HT-ONLY EXIT (DECISION_LOG 587, operator 11-18, operator-declared): a plain TP +5 / SL −4 / 24 h for FRENZY_WILLY_HT; WILLY's own
     # fields untouched. Evidence reports/HT_TP6_WL_2026-11-18.md: on the rebuild 29 % of HT trades reach +6 before −4 within 90 min vs 36 %
@@ -1724,6 +1729,13 @@ class SignalThresholds(BaseModel):
     # fresh holdout 2023-H1 +0.46 vs +0.11; after a 5 % TP fill price fell a median 7.1 % further within 24 h. It FAILS the family-wise null
     # (p 0.37) → override. 🔒 REVERT (scripts/scout_exh_exit_override.py, alert only): read once at 40 · 80 · 120 fills → the 90 % upper
     # bound of the paired Δ (this exit − the shipped exit re-priced on the same fills) < 0 → flag REVERT to 3 / 5 / 1.5 / 5 (on a flat book).
+    # ⛔ that DL 579 revert gate is RETIRED by DL 609 (the sleeve no longer runs TP 10).
+    # 🎯 2026-11-21 TP 7 (DECISION_LOG 609, operator "build … 2 with TP 7", operator-declared): trading_config.json exhaustion_tp_cap_pct
+    # 10 → 7 (TP min(20 × ATR, 7 %); SL / 24 h unchanged). Evidence reports/TP_GRID_2026-11-20_EXH.md (FRENZY ∪ WIDE 4,307 fills): TP 7
+    # Δ −0.06 %/fill vs 10 (CI −0.16 … +0.03), daily compound 0.95 vs 0.97, max DD −58 vs −72 %, worst day −28 vs −40 %; holds ≈ 40 % shorter
+    # (less funding); batch 10 fills +2.27 → +3.88 (one knife-edge RARE). A risk / hold-time choice at ≈ equal return, NOT an edge.
+    # 🔒 REVERT (alert only, scripts/scout_exh_tp7_609.py): the first 20 fills walked at TP 7 vs TP 10 on 1m → the one-sided 90 % upper
+    # bound of mean Δ < 0 (TP 7 shown worse) → REVERT to 10. Open rows at the deploy are clamped to the new cap (row_levels) — intended.
     exhaustion_max_hours_after_spike: float = 72.0   # the signal bar must close ≤ this long after the spike bar's close (≤ 100)
     exhaustion_min_vol_usd: float = 20e6          # 24 h quote volume (Σ of the 288 5m bars ending at the signal bar, exchange quote volume)
     exhaustion_invest_mult: float = 0.5           # absolute-assign margin share — the Flatbase size (DL 577)

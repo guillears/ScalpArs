@@ -54,6 +54,10 @@ def _patch_reads(monkeypatch, kl=None, fr=0.00012, ndi=31.5):
     monkeypatch.setattr(TE, "_current_btc_rsi", 55.5)
     monkeypatch.setattr(TE, "_current_btc_adx", 22.0)
     monkeypatch.setattr(TE, "_current_btc_price", 101_000.0)
+    # (DL 593) a recent market scan → the backfill never waits STAMP_AWAIT_SCAN_S (300 s) for the "first scan after a restart"; without it
+    # this file waited 5 min per test whenever no earlier test had set _market_stamps_at (a test-isolation flake, found 2026-11-21)
+    import time as _t
+    monkeypatch.setattr(TE, "_market_stamps_at", _t.time(), raising=False)
 
 
 def _run(monkeypatch, row):

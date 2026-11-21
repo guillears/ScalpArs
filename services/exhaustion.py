@@ -613,7 +613,27 @@ def exit_era_579(tp_stamp, atr_stamp=None) -> bool:
     if tp > 5.0 + 1e-4:
         return True
     return a is not None and a > 0 and tp > 3.0 * a * (1 + 1e-4) + 1e-4
-TAKER_EXIT_FREE = (TP_REASON,)              # a resting maker TP pays no slippage (the study's TP: maker strictly through by 1 tick)
+
+
+ERA_609_TP_CAP = 7.0
+ERA_609_FROM = "2026-11-21 20:25:00"   # UTC — the DL 609 commit time (deep review #6); no TP-7 fill opens earlier (the scouts also floor on the commit)
+
+
+def exit_era_609(tp_stamp, atr_stamp=None, opened_at=None) -> bool:
+    """🎯 (DECISION_LOG 609) True when the fill ran the TP-7 exit (TP min(20 × ATR, 7 %) / SL min(1.5 × ATR, 6 %)): an override-era stamp
+    (exit_era_579) that is ≤ 7 %. A DL 579-era (TP-10) stamp is > 7 % whenever 20 × ATR > 7 % (ATR > 0.35 %); below that the two eras stamp
+    the same 20 × ATR and are indistinguishable (rare on FRENZY coins; the scouts also floor on the DL 609 commit time). A row OPEN at the
+    deploy keeps its TP-10 stamp (it ran TP 10, then the clamped cap) → not counted. opened_at (datetime / ISO text, UTC): a fill opened
+    before ERA_609_FROM is never TP-7 era — closes the low-ATR gap (review); None skips the date check. Pure."""
+    tp = _fin(tp_stamp)
+    if opened_at is not None:
+        try:
+            if str(opened_at).replace("T", " ")[:19] < ERA_609_FROM:
+                return False
+        except Exception:
+            return False
+    return bool(exit_era_579(tp_stamp, atr_stamp)) and tp is not None and tp <= ERA_609_TP_CAP + 1e-4
+TAKER_EXIT_FREE = (TP_REASON,)             # a resting maker TP pays no slippage (the study's TP: maker strictly through by 1 tick)
 
 
 def entry_leg_slip(model_slip, depth_mode=None, walk_pct=None) -> Optional[float]:
@@ -675,7 +695,7 @@ def exhaustion_gate(fills) -> Tuple[str, str]:
 # frenzy_spike_ret_pct ∧ last-hour quote volume ≥ X × the pair's normal hour ∧ ≥ frenzy_spike_min_hour_usd, verified, ≤ frenzy_max_hours old)
 # with X = exhaustion_wide_spike_vol_mult (15) instead of frenzy_spike_vol_mult (20), on coins whose 24 h quote volume is ≥
 # exhaustion_wide_min_vol_usd ($5M) at the signal. A FRENZY-flagged episode is always universe FRENZY (its $20M floor unchanged). Everything
-# else (RSI cross, vol_decay, spot market + spot share, DL 582, DL 579 exit, one position per pair, the 72 h window) is EXHAUSTION's.
+# else (RSI cross, vol_decay, spot market + spot share, DL 582, DL 609 exit (TP 7; DL 579 before), one position per pair, the 72 h window) is EXHAUSTION's.
 UNIV_FRENZY, UNIV_WIDE = "FRENZY", "WIDE"
 B_WIDE_READ_CAP = "EXH_WIDE_READ_CAP"      # WIDE shortlist coins not read on a 15m close (count only — no episode known yet)
 

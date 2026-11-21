@@ -11,7 +11,9 @@ NET         each fill re-priced with the study's modelled slippage (services.exh
 GATE        decided ONCE (services.distribution.upper_bound_gate): the first 30 WIDE fills by OPEN time, extended until they span ≥ 10 days →
             the one-sided 80 % UPPER bound of their mean net (day-block bootstrap, seeded) < 0 → flag "switch exhaustion_wide_enabled off" ·
             else KEEP. Before that: COLLECTING. Also printed: WIDE vs FRENZY N · WR · avg (running, information only).
-STATE       reports/SCOUT_EXH_WIDE_585.json (gitignored) — the verdict frozen once.
+STATE       reports/SCOUT_EXH_WIDE_585_609.json (gitignored) — the verdict frozen once.
+🔁 RE-BASED 2026-11-21 (DECISION_LOG 609, EXH TP cap 10 → 7): the count starts at the DL 609 commit + 10 min (fresh state file; the TP-10
+            era had not frozen).
 NETWORK     none. Usage: venv/bin/python -I scripts/scout_exh_wide_585.py"""
 import json
 import math
@@ -28,13 +30,15 @@ _R in sys.path or sys.path.insert(0, _R)
 import export_glob as _EG          # noqa: E402
 import scout_gatekit as _GK        # noqa: E402
 from services.distribution import upper_bound_gate          # noqa: E402
-from services.exhaustion import gate_net_pct, entry_leg_slip, model_slip_pct   # noqa: E402
+from services.exhaustion import gate_net_pct, entry_leg_slip, model_slip_pct, exit_era_609   # noqa: E402
 
 DL = 585
 PATTERNS = (os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv"), os.path.expanduser("~/Downloads/scalpars_orders_live_*.csv"))
 COLS = ("opened_at", "pair", "direction", "status", "entry_strategy", "pnl", "pnl_percentage", "close_reason", "notional_value",
-        "entry_exh_universe", "entry_exh_model_slip_pct", "entry_exh_q5_usd", "entry_depth_mode", "entry_depth_walk_pct")
-STATE = os.path.join(_R, "reports", "SCOUT_EXH_WIDE_585.json")
+        "entry_exh_universe", "entry_exh_model_slip_pct", "entry_exh_q5_usd", "entry_depth_mode", "entry_depth_walk_pct",
+        "entry_exh_tp_pct", "entry_exh_atr_pct")   # 🔁 (609) the era rule reads the stamps
+STATE = os.path.join(_R, "reports", "SCOUT_EXH_WIDE_585_609.json")
+DL_EXIT = 609   # 🔁 the exit era the gate counts
 SLEEVE = "EXHAUSTION_SHORT"
 
 
@@ -105,12 +109,15 @@ def _row(lbl, nets):
 def report(frame=None, since_ms=None, state_path=STATE, now_ms=None):
     out = [f"## 🌐 DL {DL} EXHAUSTION WIDE universe (15× / $5M) — revert gate (alert only)"]
     if since_ms is None:
-        since_ms = _GK.dl_deploy_ms(DL, lag_min=10, label="DL 585 EXHAUSTION WIDE")
+        since_ms = _GK.dl_deploy_ms(DL_EXIT, lag_min=10, label="DL 585 EXHAUSTION WIDE (re-based on the DL 609 exit)")
     if since_ms is None:
-        return "\n".join(out + [f"⚠ NOT EVALUABLE — the DECISION_LOG {DL} commit is not in git yet; nothing is counted."])
+        return "\n".join(out + [f"⚠ NOT EVALUABLE — the DECISION_LOG {DL_EXIT} commit is not in git yet; nothing is counted."])
     a = load() if frame is None else frame
     a = a[a.o >= pd.Timestamp(int(since_ms), unit="ms")] if len(a) else a
     uni = a.entry_exh_universe.fillna("FRENZY").astype(str) if len(a) else pd.Series(dtype=str)
+    if len(a) and "entry_exh_tp_pct" in a.columns:   # 🔁 (609) the dashboard's rule too: TP-7 stamps only (a row OPEN at the deploy kept its TP-10 stamp)
+        a = a[a.apply(lambda r: exit_era_609(r.entry_exh_tp_pct, r.entry_exh_atr_pct, r.o), axis=1).astype(bool)]
+        uni = a.entry_exh_universe.fillna("FRENZY").astype(str) if len(a) else pd.Series(dtype=str)
     wide = a[uni == "WIDE"] if len(a) else a
     fz = a[uni != "WIDE"] if len(a) else a
     rows = [(r.o.to_pydatetime(), net_of(r)) for r in wide.itertuples() if net_of(r) is not None]

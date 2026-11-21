@@ -261,7 +261,7 @@ def test_price_signal_live_exit_with_slip_on_the_entry(monkeypatch):
     c = {}
     assert S.price_signal("CUSDT", T0, 100.0, 10.0, 6.0, 0.0, c, now_ms=T0 + 40 * 3_600_000) == "NO_DATA" and c
     assert S.price_signal("DUSDT", T0, None, 10.0, 6.0, 0.0, {}, now_ms=T0 + 40 * 3_600_000) == "NO_DATA"
-    assert S.row_levels(10.0, 6.0, 1.0) == (10.0, 6.0) and S.row_levels(None, 6.0, 2.0) == (10.0, 3.0) and S.row_levels(None, None, None) is None
+    assert S.row_levels(10.0, 6.0, 1.0) == (10.0, 6.0) and S.row_levels(None, 6.0, 2.0) == (7.0, 3.0) and S.row_levels(None, None, None) is None   # 🔁 (609) the TP-7 cap
 
 
 def test_gate_read_rule():
@@ -347,13 +347,13 @@ def test_registry_hook_and_gitignore():
     rows = {r[0]: r for r in OR.status(cfg)}
     assert rows["scout_exh_ssc_oivol.py"][4] == "OK"
     w = OR.EXIT["scout_exh_ssc_oivol.py"]["walks"]
-    assert w == {"exhaustion_tp_atr_mult": 20.0, "exhaustion_tp_cap_pct": 10.0, "exhaustion_sl_atr_mult": 1.5, "exhaustion_sl_cap_pct": 6.0,
+    assert w == {"exhaustion_tp_atr_mult": 20.0, "exhaustion_tp_cap_pct": 7.0, "exhaustion_sl_atr_mult": 1.5, "exhaustion_sl_cap_pct": 6.0,
                  "exhaustion_max_hold_hours": 24.0}
-    assert S.LIVE_EXIT == dict(tp_atr=20.0, tp_cap=10.0, sl_atr=1.5, sl_cap=6.0, hold_h=24.0)
+    assert S.LIVE_EXIT == dict(tp_atr=20.0, tp_cap=7.0, sl_atr=1.5, sl_cap=6.0, hold_h=24.0) and S.DL_EXIT == 609
     src = open(os.path.join(ROOT, "scripts", "opportunity_scout.py"), encoding="utf-8").read()
     assert "import scout_exh_ssc_oivol as _sso" in src and "_rg_sec += _sso.run(now_ms)" in src
     gi = open(os.path.join(ROOT, ".gitignore"), encoding="utf-8").read().split()
-    assert "reports/.exh_ssc_oivol_cache.json" in gi and "reports/SCOUT_EXH_SSC_OIVOL.json" in gi
+    assert "reports/.exh_ssc_oivol_cache.json" in gi and "reports/SCOUT_EXH_SSC_OIVOL_609.json" in gi
     assert S.DL == 582 and S.GATE_N == 30 and S.GATE_DAYS == 10
 
 

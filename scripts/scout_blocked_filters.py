@@ -30,8 +30,8 @@ RULER    entry = the refusal + 8 s at the decision price moved 0.10 % against th
          Final prices are cached (reports/SCOUT_BLOCKED_FILTERS.csv) WITH the exit era they were priced on: when a sleeve's exit changes,
          its stored prices are re-priced on the new exit (never two exit eras in one gate prefix — CLAUDE.md entry × exit ④).
          🎲 (DL 587, re-based 2026-11-19) HT's era carries its own exit fields (HT_KEYS): every stored HT price of the +2 / V2b / 90-min exit
-         is re-priced on TP +5 / SL −4 / 24 h — blocked AND kept, so the DL 527 window stays ONE exit era; HT's gate state is namespaced
-         FRENZY_WILLY_HT@587 (GATE_KEY). A 24 h hold keeps an HT row PENDING up to a day (1m top-up pages ≤ 1,500 bars per call).
+         is re-priced on HT's live exit (TP +6 / SL −4 / 24 h since DL 608) — blocked AND kept, so the DL 527 window stays ONE exit era; HT's gate state is namespaced
+         FRENZY_WILLY_HT@608 (GATE_KEY; @587 until the DL 608 TP +6). A 24 h hold keeps an HT row PENDING up to a day (1m top-up pages ≤ 1,500 bars per call).
 EPISODES The engine records one refusal per (pair, sleeve, bar) — a setup that stays blocked for 2 h gives ~24 ML rows. Only one shadow per
          (pair, sleeve) is open at a time (live holds one position per pair): a refusal inside an earlier blocked shadow's life (its priced
          exit; still PENDING = open) is SHADOWED — listed, never counted.
@@ -47,7 +47,7 @@ COHORT   BLOCKED rows from every decisions export (export_glob: Downloads + expo
          is shown beside (the line's own effect).
          🧱 (DL 594) WILLY_HT_NEAR_HIGH (FRENZY_WILLY_HT, operator-declared): an ABSOLUTE gate instead — first 15 priced refusals on ≥ 8
          days, avg net on HT's exit ≥ 0 → REVERT CANDIDATE (frenzy_willy_ht_min_dip_pct → 0), else KEEP; also frozen on its sole refusals
-         (key FRENZY_WILLY_HT@587:WILLY_HT_NEAR_HIGH|sole).
+         (key FRENZY_WILLY_HT@608:WILLY_HT_NEAR_HIGH|sole since DL 608).
 PARITY   on B25 real CLOSED fills (deep review 2026-11-11): FRENZY LITE / RETRY / WILLY / HT exact (corr 1.000, bias ≤ 0.01 %/fill) ·
          momentum long 53 / 53 priced with the top-up, corr 0.97, bias −0.01 · SPIKE_FADE 29 / 30, same sign 90 %, corr 0.71, bias +0.07,
          median |Δ| 0.08 — without TLM (+0.31 booked, +3.44 priced: an intra-minute trail exit 1m bars cannot see) corr 0.78, bias −0.04,
@@ -769,10 +769,11 @@ LINES = {"FRENZY_WILLY": ("WILLY_GAP", "WILLY_FAILED_SPIKE"), "FRENZY_WILLY_HT":
 # (skipped trades still profitable) — weigh it against the drawdown it avoided; never an automatic revert
 
 
-# 🎲 (DECISION_LOG 587) gate-state namespace per exit era: HT's verdict is read on its TP +5 / SL −4 / 24 h exit only — a record frozen under the
+# 🎲 (DECISION_LOG 587 → 608) gate-state namespace per exit era: HT's verdict is read on its live exit only (TP +6 / SL −4 / 24 h since DL 608) — a record frozen under the
 # plain key (the +2 / V2b era) is never read as it (none had frozen at the re-base, 2026-11-19). Every HT price, blocked AND kept, is re-priced
 # on today's exit (era_of carries HT_KEYS), so the whole DL 527 window is ONE exit era — the window keeps the DL 527 floor.
-GATE_KEY = {"FRENZY_WILLY_HT": "FRENZY_WILLY_HT@587"}
+# 🎯 (DECISION_LOG 608) HT TP +5 → +6: the +5-era HT gate records (none frozen at the re-base, 2026-11-21) are never read as the +6 verdict
+GATE_KEY = {"FRENZY_WILLY_HT": "FRENZY_WILLY_HT@608"}
 
 
 def _load_state(path):

@@ -72,7 +72,8 @@ STATE = os.path.join(_ROOT, "reports", "SCOUT_FB_CONFIRM.json")
 CACHE = os.path.join(_ROOT, "reports", "backtest_cache", "scout_fb_confirm")
 EXPORT_GLOB = os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")
 COLS = ("opened_at", "closed_at", "pair", "direction", "entry_strategy", "status", "entry_price", "pnl_percentage", "pnl", "close_reason",
-        "entry_frenzy_spike_at", "entry_frenzy_vwap", "entry_frenzy_vs_vwap_pct")   # 🏦 (429) the S4 close = vwap × (1 + vs_vwap %)
+        "entry_frenzy_spike_at", "entry_frenzy_vwap", "entry_frenzy_vs_vwap_pct",   # 🏦 (429) the S4 close = vwap × (1 + vs_vwap %)
+        "exit_price", "funding_fee_usd", "quantity")   # 💸 (607) the funding-fired stop read
 CANDIDATE = "ENTRY CANDIDATE (operator decides; never automatic)"
 REGISTRATION = ("in-sample at registration (NEVER counted): B25 16 signals at +5 / −10 · −0.62 % → 12 finished · 92 % · +3.75 %, removes 5 of 6 stops; 2026 backtest +1.25 → +1.30 %/trade, total +670 → +601, holds longer")
 
@@ -283,6 +284,7 @@ def run(now_ms=None, paths=None, state_path=STATE, since_ms=None, bars_fn=None, 
                        ("near-base gate", lambda: nb_lines(now_ms, dec_paths, bars_fn)),
                        ("funding-above-base gate", lambda: fa_lines(now_ms, dec_paths, bars_fn)),
                        ("FB_TP6_SHADOW", lambda: tp6_lines(allc, now_ms, st if ok else None, state_path if ok else None, None, tp6_bars_fn, newest)),
+                       ("FB funding stop", lambda: fs_lines(allc, now_ms, st if ok else None, state_path if ok else None, None, tp6_bars_fn, newest)),
                        ("BANK-TYPE", lambda: bank_lines(post, now_ms, st if ok else None, state_path if ok else None, dec_paths, newest,
                                                         bars_fn=m1_bars_fn))):
             try:   # one section's failure never hides the others (the revert gate above all)
@@ -827,6 +829,111 @@ def skipped_lines(ship, now_ms, dec_paths=None, bars_fn=None):
     x = pd.Series(got).dropna()
     if len(x):
         L.append(f"  priced {len(x)} · WR {(x > 0).mean():.0%} · avg {x.mean():+.2f} % (positive = the skip cost money)")
+    return L + [""]
+
+
+
+
+FS_DL, FS_KEY = 607, "FB_FUNDING_STOP"   # 💸 (DECISION_LOG 607, operator 2026-11-21 "yes, build it for flatbase") — ARMED, tight revert gate
+FS_N = 5                                 # 🔒 frozen: the first 5 funding-fired stops → Σ Δ < 0 → REVERT · any CUT → REVIEW · else KEEP (alert only)
+FS_EPS = 0.02                            # a STOP_LOSS whose exit sits ≥ this many points inside the +10 % price level = fired by the funding paid
+
+
+def fs_fired(r) -> bool:
+    """💸 (607) a CLOSED FLATBASE row the funding-inclusive stop closed: STOP_LOSS, funding PAID, and the exit price below the +10 % price level
+    (the price-only stop could not have fired there). A market exit's slippage only lifts the exit price (a short buys back higher), so a
+    price-level stop never lands inside by more than FS_EPS. PURE."""
+    try:
+        E, x, f = float(r.E), float(r.exit_price), float(r.funding_fee_usd)
+    except (TypeError, ValueError, AttributeError):
+        return False
+    if str(getattr(r, "close_reason", "")) != "STOP_LOSS" or not (E > 0 and x > 0) or not (f < 0):
+        return False
+    return (x / E - 1) * 100 < STOP_GROSS - FS_EPS
+
+
+def fs_verdict(deltas, cuts):
+    """🔒 (607) the frozen revert read on the first FS_N funding-fired stops (fill order): Δ = booked − the price-only stop on the same fill.
+    Σ Δ < 0 → REVERT · any CUT (the price-only stop would have ended in profit) → REVIEW · else KEEP. Alert only. PURE."""
+    d, c = [float(x) for x in deltas[:FS_N]], list(cuts[:FS_N])
+    if len(d) < FS_N:
+        return "COLLECTING", f"{len(d)}/{FS_N} funding-fired stops priced (Σ Δ {sum(d):+.2f} pts · cuts {sum(c)})"
+    tot, nc = sum(d), sum(c)
+    if tot < 0:
+        return "REVERT", f"REVERT candidate (operator decides; never automatic): first {FS_N} Σ Δ {tot:+.2f} pts < 0 · cuts {nc}"
+    if nc:
+        return "REVIEW", f"REVIEW: {nc} of the first {FS_N} would have ended in profit under the price-only stop · Σ Δ {tot:+.2f} pts"
+    return "KEEP", f"KEEP: first {FS_N} Σ Δ {tot:+.2f} pts ≥ 0 · no cut"
+
+
+def fs_lines(c, now_ms, st=None, state_path=None, since_ms=None, bars_fn=None, newest=None):
+    """💸 (607) FB_FUNDING_STOP revert gate: every CLOSED FLATBASE fill since the DL 607 deploy that the funding-inclusive stop closed, re-walked
+    under the price-only stop (+10 % / TP −5 resting / 72 h, walk_tp's 1m model from the real fill price) → Δ = booked − price-only. The
+    price-only side is charged only the funding the row paid up to its real exit (the settlements after it are not fetched) — that flatters
+    the price-only stop, i.e. errs toward REVERT. Frozen once at the first FS_N priced fired stops; the read waits at the first unpriced one."""
+    L = [f"### 💸 FB_FUNDING_STOP (DECISION_LOG {FS_DL}, ARMED · alert-only revert gate) — the +10 % stop counts the funding paid; each "
+         f"funding-fired stop vs the price-only stop on the same fill", ""]
+    if since_ms is None:
+        since_ms = _GK.dl_deploy_ms(FS_DL, lag_min=10, label="FB_FUNDING_STOP")
+    if since_ms is None:
+        return L + [f"⚠ NOT EVALUABLE — the DECISION_LOG {FS_DL} commit is not in git yet; nothing is counted.", ""]
+    cc = c[c.o >= pd.Timestamp(int(since_ms), unit="ms")] if len(c) else c
+    keep, ox = _GK.split_operator_closed(cc) if len(cc) else (cc, cc)
+    rec = (st or {}).get(FS_KEY)
+    if rec is not None and not (isinstance(rec, dict) and {"state", "detail", "run_at"} <= set(rec)):
+        return L + [f"⚠ frozen {FS_KEY} record damaged — operator restore needed; not re-decided.", ""]
+    n_stop = int((keep.close_reason.astype(str) == "STOP_LOSS").sum()) if len(keep) else 0
+    fired = [r for r in keep.itertuples() if fs_fired(r)]
+    bud, D, C, O, stopped = LS.Budget(), [], [], [], False
+    for r in fired:
+        bars = bars_fn(r.pair, int(r.te), now_ms) if bars_fn else fetch_bars_1m(r.pair, int(r.te), now_ms, bud)
+        stopped |= bars is None
+        why, v = walk_tp(bars, float(r.E), int(r.te), TP_GROSS) if bars else ("UNPRICED", np.nan)
+        q = pd.to_numeric(r.quantity, errors="coerce")
+        paid = float(r.funding_fee_usd) / (float(r.E) * float(q)) * 100 if (q == q and q > 0) else np.nan
+        tc = pd.to_datetime(str(r.closed_at).replace(" ", "T")[:19], format="ISO8601", errors="coerce")
+        if bars and tc == tc:   # (607 review) a 1m high ≥ the +10 % level from the fill through the exit minute = a price-level stop (or a wick
+            ce = int(tc.value // 1_000_000) // MIN1 * MIN1   # live polling rode through) — not a funding-fired stop: out, never counted
+            lvl = float(r.E) * (1 + STOP_GROSS / 100)
+            if any(int(b[0]) <= ce and float(b[2]) >= lvl for b in bars if int(b[0]) >= int(r.te) // MIN1 * MIN1 + MIN1):
+                L.append(f"  · {r.pair} {r.o:%m-%d %H:%M} booked {r.pct:+.2f} → the +10 % level traded before / at the exit — a price-level stop, not counted")
+                continue
+        if bars is not None and paid != paid and now_ms > int(r.te) + (MAX_H + 24) * HOUR:
+            L.append(f"  · {r.pair} {r.o:%m-%d %H:%M} → NOT_EVALUABLE (no quantity on the row) — out of the read")
+            continue
+        if v == v and paid == paid:
+            a = v + paid                                       # the price-only stop's net, charged the funding this row paid (≤ the real one)
+            d, cut = float(r.pct) - a, a > 0
+            D.append(d); C.append(cut); O.append(r.o)
+            L.append(f"  · {r.pair} {r.o:%m-%d %H:%M} booked {r.pct:+.2f} (funding {paid:+.2f}) · price-only {why} {a:+.2f} · Δ {d:+.2f}" + (" · CUT" if cut else ""))
+            continue
+        if bars is not None and paid == paid and now_ms > int(r.te) + (MAX_H + 24) * HOUR:
+            L.append(f"  · {r.pair} {r.o:%m-%d %H:%M} → NOT_EVALUABLE (no complete price path) — out of the read")
+            continue
+        L.append(f"  · {r.pair} {r.o:%m-%d %H:%M} booked {r.pct:+.2f} → {why} (pending / unpriced — holds the read)")
+        D.append(np.nan); C.append(False); O.append(r.o)
+    dd, cc2, oo = [], [], []
+    for d, cu, o in zip(D, C, O):
+        if d != d:
+            break
+        dd.append(d); cc2.append(cu); oo.append(o)
+    state, detail = fs_verdict(dd, cc2)
+    hold = []
+    if stopped:
+        hold.append("a kline fetch stopped this run")
+    if len(dd) >= FS_N and (newest is None or newest < max(oo[:FS_N]) + pd.Timedelta(minutes=WAIT_MIN)):
+        hold.append(f"newest export < the last read fill + {WAIT_MIN} min (an earlier-opened fill could still be open)")
+    if rec is None and state != "COLLECTING" and not hold and st is not None and state_path:
+        rec = dict(state=state, detail=detail, run_at=pd.Timestamp(now_ms, unit="ms").strftime("%Y-%m-%d %H:%M UTC"))
+        st[FS_KEY] = rec
+        NF.du_save_state(st, state_path)
+    L.append(f"  cohort: CLOSED fills opened ≥ {pd.Timestamp(int(since_ms), unit='ms'):%Y-%m-%d %H:%M} UTC · {_GK.operator_closed_line(ox)} · "
+             f"stops {n_stop} · funding-fired {len(fired)} · priced {len(dd)}")
+    L.append(f"**Frozen read ({rec['run_at']}): {rec['state']}** — {rec['detail']}" if rec else f"Now: ⏳ {state} — {detail}")
+    if hold and not rec and state != "COLLECTING":
+        L.append("  ⏸ freezing deferred: " + " · ".join(hold) + " — re-checked next run.")
+    L.append("  Evidence (never counted): reports/FUNDING_STOP_2026-11-21.md — real 28 · +3.09 → +3.14 (KERNEL only) · backtest 545 · +1.14 → +1.15 %/fill, "
+             "max drawdown −41.3 → −37.5 %, 74 saved / 1 cut.")
     return L + [""]
 
 

@@ -14,7 +14,7 @@ def test_open_row_badge_is_in_pnl_terms():
 
 def test_export_config_line_and_hover_name_both_terms():
     assert "· exit TP +${_bt.flatbase_tp_pct ?? 5}% (price −${_bt.flatbase_tp_pct ?? 5}%)" in HTML
-    assert "SL −${_bt.flatbase_stop_pct ?? 10}% (price +${_bt.flatbase_stop_pct ?? 10}%)" in HTML
+    assert "SL −${_bt.flatbase_stop_pct ?? 10}% (price +${_bt.flatbase_stop_pct ?? 10}%${_bt.flatbase_stop_counts_funding === true ? ' incl. funding paid, DL 607' : ''})" in HTML   # 💸 (607)
     assert "· exit: TP +${_n(_fb.flatbase_tp_pct, 5)} % (price −${_n(_fb.flatbase_tp_pct, 5)} %)" in HTML
 
 

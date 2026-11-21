@@ -1524,3 +1524,105 @@ def test_fb_tp6_shadow_walk_and_gate():
         assert "Frozen read (t): NO SHIP" in out2 and len(saved) == 1
     finally:
         W.NF.du_save_state = monkey_save
+
+
+def test_flatbase_stop_counts_funding_607():
+    """💸 (DECISION_LOG 607) FLATBASE_STOP_COUNTS_FUNDING: the +10 % stop reads price move − funding PAID (received never widens it);
+    config / UI / engine wiring / the accrual view; the FB_FUNDING_STOP revert gate."""
+    th = _th(flatbase_stop_pct=10.0, flatbase_tp_pct=5.0, flatbase_stop_counts_funding=True)
+    off = _th(flatbase_stop_pct=10.0, flatbase_tp_pct=5.0, flatbase_stop_counts_funding=False)
+    # paid funding: % of entry notional, received / unreadable → 0
+    assert abs(FB.paid_funding_pct(-108.4, 0.04419, 153354.6) - 108.4 / (0.04419 * 153354.6) * 100) < 1e-9
+    assert FB.paid_funding_pct(25.0, 1.0, 100.0) == 0.0 and FB.paid_funding_pct(None, 1.0, 100.0) == 0.0
+    assert FB.paid_funding_pct(-1.0, None, 100.0) == 0.0 and FB.paid_funding_pct(-1.0, 1.0, 0) == 0.0
+    # price +8.5 % with 1.6 % paid → fires ON, not OFF; the line stays the stop level
+    assert FB.flatbase_exit_for(100.0, 108.5, 10, th, funding_paid_pct=1.6) == (True, "STOP_LOSS", -10.0)
+    assert FB.flatbase_exit_for(100.0, 108.5, 10, off, funding_paid_pct=1.6)[0] is False
+    assert FB.flatbase_exit_for(100.0, 108.3, 10, th, funding_paid_pct=1.6)[0] is False
+    # nothing paid / received / garbage → today's price stop exactly
+    for fp in (None, 0.0, -2.0, float("nan"), "x", 150.0):
+        assert FB.flatbase_exit_for(100.0, 109.9, 10, th, funding_paid_pct=fp)[0] is False
+        assert FB.flatbase_exit_for(100.0, 110.0, 10, th, funding_paid_pct=fp) == (True, "STOP_LOSS", -10.0)
+    # the TP and the time cap never read funding
+    assert FB.flatbase_exit_for(100.0, 95.0, 10, th, funding_paid_pct=3.0) == (True, "FRENZY_TP", 5.0)
+    assert FB.flatbase_exit_for(100.0, 101.0, 72 * 60, th, funding_paid_pct=3.0)[1] == "MAX_HOLD_TIME"
+    assert "flatbase_stop_counts_funding must be true or false" in " | ".join(FB.flatbase_config_errors(NS(flatbase_stop_counts_funding="yes"), 20.0))
+    # the accrual view
+    from services import funding_accrual as FA
+    FA.OPEN_FUNDING_USD.clear()
+    assert FA.open_funding_usd(7, -3.0) == -3.0
+    FA.OPEN_FUNDING_USD[7] = -5.0
+    assert FA.open_funding_usd(7, -3.0) == -5.0
+    FA.OPEN_FUNDING_USD.clear()
+    fa = open(os.path.join(ROOT, "services", "funding_accrual.py"), encoding="utf-8").read()
+    assert "OPEN_FUNDING_USD[r.id] = float(r.funding_fee_usd or 0.0) + float(add)" in fa and "Order.entry_price, Order.funding_fee_usd)" in fa
+    assert "OPEN_FUNDING_USD.pop(k, None)" in fa
+    # engine: both FLATBASE exit sites pass the paid funding
+    eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
+    assert eng.count("funding_paid_pct=paid_funding_pct(") == 2
+    assert "funding_paid_pct=paid_funding_pct(getattr(order, 'funding_fee_usd', None) if getattr(order, 'funding_fee_usd', None) is not None" in eng
+    assert "funding_paid_pct=paid_funding_pct(open_funding_usd(order_id), entry_price, quantity))" in eng
+    assert "_FA_OPEN_FUNDING.pop(order_id, None)" in eng                               # size adoption re-reads the row
+    assert "_LAST_READ.pop(r.id, None)" in fa and "OPEN_FUNDING_USD.pop(r.id, None)" in fa   # re-read next pass · reused ids clean
+    FA.OPEN_FUNDING_USD[3] = -1.0; FA._LAST_READ[3] = 1
+    FA.clear_open_funding()
+    assert not FA.OPEN_FUNDING_USD and not FA._LAST_READ
+    mp = open(os.path.join(ROOT, "main.py"), encoding="utf-8").read()
+    assert mp.count("_clear_open_funding()   # 💸 (607 review)") == 2                    # reset + delete
+    # D11: config default off · json on · UI toggle + load + save + export line
+    import config as C
+    mf = type(C.trading_config.thresholds).model_fields
+    assert mf["flatbase_stop_counts_funding"].default is False
+    assert json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]["flatbase_stop_counts_funding"] is True
+    html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
+    assert html.count('id="config-fbs-stop-funding"') == 1
+    assert "config.thresholds.flatbase_stop_counts_funding === true" in html
+    assert "flatbase_stop_counts_funding: document.getElementById('config-fbs-stop-funding')?.checked ?? true" in html
+    assert "incl. funding paid, DL 607" in html
+    # the revert gate
+    import scout_flatbase_confirm_watch as W
+    R = lambda **k: NS(**dict(dict(E=100.0, exit_price=108.6, funding_fee_usd=-16.0, close_reason="STOP_LOSS"), **k))
+    assert W.fs_fired(R()) and not W.fs_fired(R(exit_price=110.05)) and not W.fs_fired(R(funding_fee_usd=2.0))
+    assert not W.fs_fired(R(close_reason="FRENZY_TP")) and not W.fs_fired(R(exit_price="x")) and not W.fs_fired(R(exit_price=109.99))
+    assert W.fs_verdict([1.0] * 4, [False] * 4)[0] == "COLLECTING"
+    assert W.fs_verdict([1.0] * 5, [False] * 5)[0] == "KEEP"
+    assert W.fs_verdict([1.0] * 4 + [-5.0], [False] * 5)[0] == "REVERT"
+    assert W.fs_verdict([1.0] * 5, [False] * 4 + [True])[0] == "REVIEW"
+    assert W.fs_verdict([1.0] * 5 + [-99.0], [False] * 6)[0] == "KEEP"            # only the first 5 decide
+    t0 = pd.Timestamp("2026-12-01 00:00:15"); m = 60_000
+    rows = []
+    for i in range(6):
+        o = t0 + pd.Timedelta(hours=4 * i)
+        rows.append(dict(pair=f"P{i}USDT", o=o, te=int(o.value // 1_000_000), E=100.0, pct=-10.5, closed_at="x", close_reason="STOP_LOSS",
+                         exit_price=108.8, funding_fee_usd=-15.0, quantity=10.0))          # paid 1.5 % of $1,000
+    rows.append(dict(pair="QUSDT", o=t0, te=int(t0.value // 1_000_000), E=100.0, pct=-10.1, closed_at="x", close_reason="STOP_LOSS",
+                     exit_price=110.0, funding_fee_usd=-1.0, quantity=10.0))               # a price-level stop: not fired by funding
+    c = pd.DataFrame(rows)
+    def bars_fn(pair, te_, now):
+        b0 = te_ // m * m
+        return [[b0 + m, 100.0, 111.0, 99.0, 110.0]]                                    # the price-only stop fires next minute
+    now = int((t0 + pd.Timedelta(days=30)).value // 1_000_000)
+    st, saved = {}, []
+    sv = W.NF.du_save_state
+    W.NF.du_save_state = lambda s_, p_: saved.append(dict(s_))
+    try:
+        fl = int(t0.value // 1_000_000) - 1
+        out = "\n".join(W.fs_lines(c, now, st, "x.json", since_ms=fl, bars_fn=bars_fn, newest=pd.Timestamp(now, unit="ms")))
+        assert "stops 7 · funding-fired 6 · priced 6" in out
+        # price-only: STOP_NET −10.09 − 1.5 funding = −11.59 → Δ = −10.5 − (−11.59) = +1.09 each → KEEP
+        assert st[W.FS_KEY]["state"] == "KEEP" and len(saved) == 1 and "Δ +1.09" in out
+        st[W.FS_KEY] = dict(state="REVERT", detail="frozen", run_at="t")
+        out2 = "\n".join(W.fs_lines(c, now, st, "x.json", since_ms=fl, bars_fn=bars_fn, newest=pd.Timestamp(now, unit="ms")))
+        assert "Frozen read (t): REVERT" in out2 and len(saved) == 1                       # frozen once, never re-decided
+        st2 = {}
+        o3 = "\n".join(W.fs_lines(c, now, st2, "x.json", since_ms=fl, bars_fn=lambda p_, t_, n_: None if p_ == "P2USDT" else bars_fn(p_, t_, n_),
+                                  newest=pd.Timestamp(now, unit="ms")))
+        assert W.FS_KEY not in st2 and "P2USDT" in o3 and "pending / unpriced" in o3       # a fetch stop holds, never drops
+        # the +10 % level traded at / before the exit minute → a price-level stop (or a wick live rode through): not counted
+        c4 = c.assign(closed_at=[(o + pd.Timedelta(minutes=5)).isoformat() for o in c.o])
+        o4 = "\n".join(W.fs_lines(c4, now, {}, None, since_ms=fl, bars_fn=bars_fn, newest=pd.Timestamp(now, unit="ms")))
+        assert o4.count("a price-level stop, not counted") == 6 and "priced 0" in o4
+    finally:
+        W.NF.du_save_state = sv
+    src = open(os.path.join(ROOT, "scripts", "scout_flatbase_confirm_watch.py"), encoding="utf-8").read()
+    assert '("FB funding stop", lambda: fs_lines(allc, now_ms' in src and W.FS_DL == 607

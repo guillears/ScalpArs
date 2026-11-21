@@ -852,6 +852,7 @@
     "flatbase_min_dist_above_base_pct": 2.09,
     "flatbase_funding_above_base_block": true,
     "flatbase_max_entry_funding_rate": 5e-05,
+    "flatbase_stop_counts_funding": true,
     "flatbase_invest_mult": 0.5,
     "flatbase_lev_mult": 0.25,
     "flatbase_max_open": 0,

@@ -44,7 +44,8 @@ PAPER_EXIT_SLIP_SANE_PCT = 3.0   # 💸 (539) a paper exit book read further tha
 from services.watch_filters import ht_min_dip as watch_ht_min_dip, ht_dip_pct as watch_ht_dip_pct   # 🧱 (DECISION_LOG 594) WILLY_HT_NEAR_HIGH
 from services.watch_filters import frenzy_blocks as watch_frenzy_blocks, ml_blocks as watch_ml_blocks, fade_blocks as watch_fade_blocks, ms_blocks as watch_ms_blocks, block_code as watch_block_code   # 🧱 (DECISION_LOG 527 · 561 ms) armed watch-line filters
 from services.frenzy import FRENZY_WILLY_HT, WILLY_EXIT_CLASS, frenzy_willy_ht_frac   # 🎲¼ (DECISION_LOG 341) the quarter-size WILLY
-from services.flatbase import (FLATBASE_SHORT, FLATBASE_CLASS, flatbase_enabled, flatbase_params, flatbase_exit_for,   # 🩳 (DECISION_LOG 348)
+from services.funding_accrual import open_funding_usd, OPEN_FUNDING_USD as _FA_OPEN_FUNDING   # 💸 (DECISION_LOG 607) the accrued funding the FLATBASE stop reads
+from services.flatbase import (FLATBASE_SHORT, FLATBASE_CLASS, flatbase_enabled, flatbase_params, flatbase_exit_for, paid_funding_pct,   # 🩳 (DECISION_LOG 348)
                                flat14_from_bars, flat_ok, s4_scan, is_boundary_close, turnover_route, base_close_ms, max_hold_minutes as flatbase_max_hold_minutes,
                                FLAT_PAGES, FLAT_PAGE_LIMIT, FLAT_MAX_ATTEMPTS, FLAT_TF, FLAT_EXPECTED, ENTRY_MAX_LATE_S as FLATBASE_ENTRY_MAX_LATE_S,
                                ST_TRACKING, ST_OPENED, ST_SHADOW, ST_MISSED, ST_EXPIRED, ST_NOT_FLAT, ST_UNREADABLE, ST_REFUSED,
@@ -4112,6 +4113,8 @@ class TradingEngine:
                 _conds.append(Order.funding_accrued_ms.is_(None) if _am is None else Order.funding_accrued_ms == _am)
             res = await s.execute(update(Order).where(and_(*_conds)).values(**vals).execution_options(synchronize_session=False))
             await locked_commit(s)
+            if res.rowcount:
+                _FA_OPEN_FUNDING.pop(order_id, None)   # 💸 (607 review) the new size's funding is re-read from the row (never old Σ ÷ new qty)
             if not (res.rowcount or 0):
                 logger.warning(f"[POSITION_SIZE_ADOPT] #{order_id}: row changed / closing meanwhile — not adopted")
                 if had_tp:
@@ -22482,7 +22485,9 @@ class TradingEngine:
                                                                               config.trading_config.thresholds, row=order, resting_tp=_rtp_on_m)
                     elif (order.entry_strategy or "") in FLATBASE_CLASS:   # 🩳 (348) its OWN exit on PRICE levels: −5 % TP (resting maker limit) · +10 % stop · 72 h (DL 408; was −8 / +15)
                         _br_close, _br_reason, _br_stop = flatbase_exit_for(order.entry_price, current_price, _held_minutes(order.opened_at),
-                                                                            config.trading_config.thresholds, resting_tp=_rtp_on_m)
+                                                                            config.trading_config.thresholds, resting_tp=_rtp_on_m,
+                                                                            funding_paid_pct=paid_funding_pct(getattr(order, 'funding_fee_usd', None) if getattr(order, 'funding_fee_usd', None) is not None
+                                                                                                              else open_funding_usd(order.id), order.entry_price, order.quantity))   # 💸 (607) the row (fresh read) first
                     elif (order.entry_strategy or "") in WILLY_EXIT_CLASS:   # 🎲¼ (341) + HT · 🎲 Oct-8 (251): its OWN exit — frenzy_willy_tp_pct / frenzy_willy_stop_pct / frenzy_willy_max_hold_minutes (+1.25 / −4 / 90 since DL 281; never FRENZY's TP3) · ⏰ late TP (297)
                         _br_close, _br_reason, _br_stop = frenzy_willy_exit_for(_br_pnl, _br_peak, config.trading_config.thresholds,
                                                                                 _held_minutes(order.opened_at), None, resting_tp=_rtp_on_m, row=order)   # 271: no hidden floor — WILLY's own frenzy_willy_stop_pct, paper = live · 🎲² (356) the row's own TP · 🎲²ᵇ (358) no profit floor
@@ -22500,7 +22505,7 @@ class TradingEngine:
                             _br_close, _br_reason, _br_stop = True, _rtp_g[1], _br_pnl
                             logger.warning(f"[RESTING_TP] {order.pair} #{order.id}: {_rtp_g[0]} → close {_rtp_g[1]} (monitor)")
                     if _br_close:
-                        logger.info(f"[BULLRUN_EXIT] {order.pair} {order.entry_strategy}: {_br_reason} fire pnl={_br_pnl:.2f}% peak={_br_peak:.2f}% stop_line={_br_stop:.2f}%")
+                        logger.info(f"[BULLRUN_EXIT] {order.pair} {order.entry_strategy}: {_br_reason} fire pnl={_br_pnl:.2f}% peak={_br_peak:.2f}% stop_line={_br_stop:.2f}%" + (f" funding_paid={paid_funding_pct(order.funding_fee_usd if order.funding_fee_usd is not None else open_funding_usd(order.id), order.entry_price, order.quantity):.2f}% (DL 607)" if (order.entry_strategy or "") in FLATBASE_CLASS else ""))
                         closed_order = await self.close_position(db, order, current_price, _br_reason)
                         if closed_order:
                             updates.append({
@@ -26496,7 +26501,8 @@ class TradingEngine:
                                                                               config.trading_config.thresholds, row=order_info, resting_tp=_rtp_on_rt)
                     elif (order_info.get('entry_strategy') or '') in FLATBASE_CLASS:   # 🩳 (348) its OWN exit on every tick (price levels) · 72 h
                         _br_close, _br_reason, _br_stop = flatbase_exit_for(entry_price, current_price, _held_minutes(order_info.get('opened_at')),
-                                                                            config.trading_config.thresholds, resting_tp=_rtp_on_rt)
+                                                                            config.trading_config.thresholds, resting_tp=_rtp_on_rt,
+                                                                            funding_paid_pct=paid_funding_pct(open_funding_usd(order_id), entry_price, quantity))   # 💸 (607) the accrual view (the monitor covers a restart gap)
                     elif (order_info.get('entry_strategy') or '') in WILLY_EXIT_CLASS:   # 🎲¼ (341) + HT · 🎲 Oct-8 (251): its OWN exit on every tick — frenzy_willy_tp_pct / _stop_pct / _max_hold_minutes (+1.25 / −4 / 90 since DL 281) · ⏰ late TP (297)
                         _br_close, _br_reason, _br_stop = frenzy_willy_exit_for(pnl_pct, _br_peak_rt, config.trading_config.thresholds,
                                                                                 _held_minutes(order_info.get('opened_at')), None, resting_tp=_rtp_on_rt, row=order_info)   # 271: no hidden floor — WILLY's own frenzy_willy_stop_pct, paper = live · 🎲² (356) the row's own TP · 🎲²ᵇ (358) no profit floor
@@ -26515,7 +26521,9 @@ class TradingEngine:
                             logger.warning(f"[RESTING_TP] {pair} #{order_id}: {_rtp_g[0]} → close {_rtp_g[1]} (realtime)")
                     if _br_close and not order_info.get('_closing_in_progress'):
                         order_info['_closing_in_progress'] = True
-                        logger.warning(f"[REALTIME_BULLRUN_EXIT] {pair} {direction} {order_info.get('entry_strategy')}: {_br_reason} pnl={pnl_pct:.4f}% peak={_br_peak_rt:.4f}% stop_line={_br_stop:.2f}% - CLOSING NOW!")
+                        logger.warning(f"[REALTIME_BULLRUN_EXIT] {pair} {direction} {order_info.get('entry_strategy')}: {_br_reason} pnl={pnl_pct:.4f}% peak={_br_peak_rt:.4f}% stop_line={_br_stop:.2f}%"
+                                       + (f" funding_paid={paid_funding_pct(open_funding_usd(order_id), entry_price, quantity):.2f}% (DL 607)" if (order_info.get('entry_strategy') or '') in FLATBASE_CLASS else "")
+                                       + " - CLOSING NOW!")
                         try:
                             async with AsyncSessionLocal() as _br_db:
                                 _br_res = await _br_db.execute(

@@ -88,9 +88,10 @@ def test_open_orders_prefer_the_fresher_cache(monkeypatch):
 def test_both_tables_have_the_column_and_matching_colspans():
     h = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
     assert h.count(">Worst P&L %</th>") == 2 and h.count("o.trough_pnl == null ? '—'") == 2
-    assert 'colspan="19"' not in h and h.count('colspan="20"') == 5
-    for tb in ("open-orders-table-body", "closed-orders-table-body"):
+    # 💸 (2026-11-21) Closed Orders gained the Funding column: open 20 columns, closed 21
+    assert 'colspan="19"' not in h and h.count('colspan="20"') == 2 and h.count('colspan="21"') >= 3
+    for tb, n_cols in (("open-orders-table-body", 20), ("closed-orders-table-body", 21)):
         i = h.index(f'<tbody id="{tb}"')
         head = h[h.rindex("<thead", 0, i):i]
         import re
-        assert len(re.findall(r"<th[ >]", head)) == 20, (tb, len(re.findall(r"<th[ >]", head)))
+        assert len(re.findall(r"<th[ >]", head)) == n_cols, (tb, len(re.findall(r"<th[ >]", head)))

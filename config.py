@@ -1677,6 +1677,13 @@ class SignalThresholds(BaseModel):
     # avg ≥ 0 → REVERT candidate (alert only); the first 4 skips all winners → REVIEW. Code default off; trading_config.json on at 0.00005.
     flatbase_funding_above_base_block: bool = False
     flatbase_max_entry_funding_rate: float = 0.00005
+    # 💸 FLATBASE_STOP_COUNTS_FUNDING (DECISION_LOG 607, operator 2026-11-21 "yes, build it for flatbase"): ON = the +10 % stop reads the price
+    # move MINUS the funding PAID so far (% of the entry notional; received funding never widens it) — KERNEL #25 booked −11.7 % on a −10 % stop
+    # (1.6 % hourly funding). Study reports/FUNDING_STOP_2026-11-21.md: real 28 · +3.09 → +3.14 (gain = KERNEL only) · backtest 545 · +1.14 → +1.15
+    # %/fill, max drawdown −41.3 → −37.5 %, 74 saved / 1 cut; a risk-cap guard, ≈ 0 expectancy after the haircut. EXH / DIST NOT (their ~6 % stops:
+    # cuts > saves). 🔒 Revert gate (alert only, scripts/scout_flatbase_confirm_watch.py FS lines): the first 5 funding-fired stops vs the price-only
+    # stop on the same fill — Σ Δ < 0 → REVERT · any CUT (the price-only stop would have ended in profit) → REVIEW. Code default off.
+    flatbase_stop_counts_funding: bool = False
     flatbase_invest_mult: float = 0.5             # DL 577 (operator 2026-11-17 "piece 1 at 0.5x 5x": the full-history Kelly-after-clustering size, ≈ 0.45–0.5× notional) · was 0.4 DL 528 C5 (5 % cap: one −10 stop ≈ 4.8 % of the account) · was 0.2 = momentum_long_invest_mult (DL 298): the margin share
     flatbase_lev_mult: float = 0.25               # × the STRONG_BUY leverage (20 × 0.25 = 5×; DL 544 operator early revert of the DL 533 8× step: one −10 stop at 8× ≈ 7.8 % of the account > the 5 %-per-trade limit, at 5× ≈ 4.9 %) — its own field; 8× is its MAX (−10 stop, backstop 10.5 % ≤ the 11.04 % liquidation-share cap; liquidation ≈ 12.0 %)
     # its OWN optional open cap ON TOP of the shared bot slots (DL 515), 0 = no cap. Operator decided 10 on 2026-10-22 (the DL 348 no-slot lane): the study's bursts reached 24 open

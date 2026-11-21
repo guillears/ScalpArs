@@ -185,3 +185,21 @@ def test_m1_never_takes_the_confirm_bar_as_s4():
     te = s4_close_ms + H4
     # the S4 bar is still found (the confirm bar is excluded) → the 24 h window runs from S4, no ≥ 1 % close → SKIP
     assert W.price_m1(_bars(t0, px), 100.0, te, 10**15) == ("SKIP", 0.0)
+
+
+def test_stop_reads_line_and_closed_funding_column():
+    """💸 (2026-11-21, KERNEL #25) Open Orders shows the price-only % the stops read next to the funding-inclusive %; Closed Orders has a Funding column."""
+    m = _src("main.py")
+    assert '"pnl_price_pct": _stop_read_pct,' in m and '"stop_read_basis": _stop_read_basis,' in m
+    assert "_PRICE_LEVEL_STOP_CLASS = tuple(_FB_CLS) + tuple(_EXH_CLS) + tuple(_DIST_CLS)" in m
+    assert "_stop_read_pct, _stop_read_basis = round(_gm if o.direction == \"LONG\" else -_gm, 2), \"price\"" in m
+    assert '"funding_usd": (round(float(o.funding_fee_usd), 4) if getattr(o, \'funding_fee_usd\', None) is not None else None),' in m
+    assert '"funding_in_pnl": getattr(o, \'funding_in_pnl\', None),' in m
+    h = _src("templates/index.html")
+    assert "stop reads ${lbl}${pp >= 0 ? '+' : ''}${pp.toFixed(2)}% · funding ${fmtFunding(fu)}${fpct}" in h
+    assert "_stop_read_basis = \"price_funding\"" in m and "_fb_paid_funding_pct(getattr(o, 'funding_fee_usd', None), o.entry_price, o.quantity)" in m
+    assert "if (o.pnl_price_pct == null || o.funding_usd == null) return '';" in h
+    assert '>Funding</th>' in h and '${fmtFunding(o.funding_usd)}</td>' in h
+    i = h.index('id="content-closed"'); j = h.index('</thead>', i)
+    assert h[i:j].count('<th ') == 21                                   # header count == the row's cell count
+    assert 'colspan="20"' not in h[h.index('id="content-closed"'):h.index('id="closed-orders-table-body"') + 200]

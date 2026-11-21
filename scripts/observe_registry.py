@@ -25,7 +25,7 @@ _FZ_STOP3 = {"frenzy_long_stop_pct": 3.0}                         # FRENZY_LONG 
 _NO_LITE_C = {"frenzy_lite_c_enabled": False}                     # LITE walked at +3 for every fill (live LITE C +2 out of zone, DL 301)
 
 EXIT = {
-    "scout_flatbase_confirm_watch.py": dict(dl="417 · 428 · 604", sleeves="FLATBASE_SHORT", walks={"flatbase_tp_pct": 5.0, "flatbase_stop_pct": 10.0, "flatbase_max_hold_hours": 72.0,
+    "scout_flatbase_confirm_watch.py": dict(dl="417 · 428 · 604 · 607", sleeves="FLATBASE_SHORT", walks={"flatbase_tp_pct": 5.0, "flatbase_stop_pct": 10.0, "flatbase_max_hold_hours": 72.0,
                                                                                          "flatbase_confirm_hours": 24.0}),   # ✅ (428) the revert gate reads confirmed fills
     # 🎯 (579) the EXHAUSTION exit-override revert gate: prices the override vs the shipped exit on the same fills — valid only while the
     # override runs (a revert or another exit change → ⚠ STALE → retire)

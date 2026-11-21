@@ -41,6 +41,11 @@ DEPTH_CAP_ORDER_FIELDS = ('entry_cap_planned_usd', 'entry_cap_entry_side_usd', '
                           'entry_book_usd_1', 'entry_book_exit_usd_02', 'entry_book_exit_usd_05', 'entry_book_exit_usd_1')   # 📖📊 (584) order rows → the 📖 badge
 from services.position_add import add_exit_refusal as _add_exit_refusal   # ➕ (DECISION_LOG 324)
 from services.resting_tp import RTP_SLEEVES as _RTP_SLEEVES   # 🎯 (DECISION_LOG 296)
+from services.funding_accrual import clear_open_funding as _clear_open_funding   # 💸 (DECISION_LOG 607)
+from services.flatbase import FLATBASE_CLASS as _FB_CLS, paid_funding_pct as _fb_paid_funding_pct   # 💸 (2026-11-21 · DL 607) sleeves whose stop reads the GROSS price move
+from services.exhaustion import EXHAUSTION_CLASS as _EXH_CLS
+from services.distribution import DISTRIBUTION_CLASS as _DIST_CLS
+_PRICE_LEVEL_STOP_CLASS = tuple(_FB_CLS) + tuple(_EXH_CLS) + tuple(_DIST_CLS)
 from services.golive_guards import RECONCILE_INTERVAL_TICKS, RECONCILE_FALLBACK_AFTER_SKIPS, RECONCILE_FALLBACK_EVERY   # 🔎 (DECISION_LOG 321)
 from services.indicators import calculate_indicators, get_signal
 from services.websocket_tracker import websocket_tracker
@@ -1488,6 +1493,7 @@ async def reset_trading(direction: str = "ALL", db: AsyncSession = Depends(get_d
         trading_engine._last_bnb_check = None
         trading_engine._bnb_usd_last = None  # Sep-11 (review M-1): reset clears the live BNB cache like every other BNB field
         trading_engine.rtp_clear_all()   # 🎯 (296) a reset (order ids restart) never inherits resting-TP realtime state
+        _clear_open_funding()   # 💸 (607 review) …nor the FLATBASE funding-stop view
 
         # Reset Filter Block counters (in-memory + persisted)
         trading_engine._filter_block_counts = {}
@@ -1539,6 +1545,7 @@ async def reset_trading(direction: str = "ALL", db: AsyncSession = Depends(get_d
             await _flatbase_reset_state(db, is_paper)
             await _exhaustion_reset_state(db, is_paper)   # 🪫 (578) SHORT-only too
         trading_engine.rtp_clear_all()   # 🎯 (296) deleted rows never leave resting-TP realtime state behind
+        _clear_open_funding()   # 💸 (607 review) …nor the FLATBASE funding-stop view
 
         await locked_commit(db)
 
@@ -2340,6 +2347,20 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
             pnl = 0
             pnl_pct = 0
             estimated_exit_fee = 0
+        # 💸 (2026-11-21, KERNEL #25) what the stop reads: price-level sleeves = the gross move (FLATBASE − the funding paid when DL 607 is on),
+        # the rest = price + fees (no funding); None without a price
+        _stop_read_pct, _stop_read_basis = None, None
+        if current_price and o.entry_price:
+            if (getattr(o, 'entry_strategy', None) or "") in _PRICE_LEVEL_STOP_CLASS:
+                _gm = (current_price / o.entry_price - 1.0) * 100.0
+                _stop_read_pct, _stop_read_basis = round(_gm if o.direction == "LONG" else -_gm, 2), "price"
+                if ((getattr(o, 'entry_strategy', None) or "") in _FB_CLS
+                        and bool(getattr(config.trading_config.thresholds, 'flatbase_stop_counts_funding', False))):
+                    # 💸 (DECISION_LOG 607) the FLATBASE stop reads the move MINUS the funding paid (the engine's own helper)
+                    _stop_read_pct = round(_stop_read_pct - _fb_paid_funding_pct(getattr(o, 'funding_fee_usd', None), o.entry_price, o.quantity), 2)
+                    _stop_read_basis = "price_funding"
+            else:
+                _stop_read_pct, _stop_read_basis = round(pnl_pct, 2), "net"
         # 💸 (DECISION_LOG 539) the shown current % includes the funding accrued so far (best / worst stay price-only, clamped around it)
         _pct_shown = pnl_pct + (float(getattr(o, 'funding_fee_usd', None) or 0.0) / (o.entry_price * o.quantity) * 100
                                 if o.entry_price and o.quantity else 0.0)
@@ -2433,6 +2454,10 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
             "pnl": round(pnl + float(getattr(o, 'funding_fee_usd', None) or 0.0), 2),
             "pnl_percentage": round(_pct_shown, 2),
             "funding_usd": round(float(getattr(o, 'funding_fee_usd', None) or 0.0), 4),
+            # 💸 (2026-11-21, KERNEL #25) the % the stop reads (the shown % above adds fees + the accrued funding): FLATBASE / EXH / DIST stop on
+            # the GROSS price move (*_exit_for; FLATBASE minus the funding paid under DL 607), every other sleeve on price + fees
+            "pnl_price_pct": _stop_read_pct,
+            "stop_read_basis": _stop_read_basis,
             "duration": f"{hours:02d}:{minutes:02d}:{seconds:02d}",
             "duration_seconds": duration_seconds,
             "opened_at": o.opened_at.isoformat(),
@@ -3079,6 +3104,9 @@ async def get_closed_orders(db: AsyncSession = Depends(get_db)):
             "entry_fee": round(o.entry_fee, 4),
             "exit_fee": round(o.exit_fee or 0, 4),
             "total_fee": round(o.total_fee or 0, 4),
+            # 💸 (2026-11-21) funding paid (−) / received (+) while open; funding_in_pnl True = already inside pnl (NULL on rows before DL 539)
+            "funding_usd": (round(float(o.funding_fee_usd), 4) if getattr(o, 'funding_fee_usd', None) is not None else None),
+            "funding_in_pnl": getattr(o, 'funding_in_pnl', None),
             "pnl": round(o.pnl or 0, 2),
             "pnl_percentage": round(o.pnl_percentage or 0, 2),
             "peak_pnl": round(o.peak_pnl or 0, 2),

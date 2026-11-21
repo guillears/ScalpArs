@@ -96,7 +96,7 @@ def flatbase_config_errors(th, base_leverage=20.0) -> list:
     (base_leverage × flatbase_lev_mult, the STRONG_BUY level the sleeves open at) must sit ≥ MANUAL_BACKSTOP_MIN_GAP_PCT beyond the stop."""
     errs = []
     for k in ('flatbase_short_enabled', 'resting_tp_flatbase_enabled', 'flatbase_shares_bot_slots', 'flatbase_higher_high_block',
-              'flatbase_funding_above_base_block'):   # 🧺 (515) · 🔺 (540) · 💸 (601)
+              'flatbase_funding_above_base_block', 'flatbase_stop_counts_funding'):   # 🧺 (515) · 🔺 (540) · 💸 (601) · 💸 (607)
         if not isinstance(getattr(th, k, False), bool):
             errs.append(f"{k} must be true or false")
     _nb = _fin(getattr(th, 'flatbase_min_dist_above_base_pct', 0.0))   # 📏 (DECISION_LOG 577) the near-base skip
@@ -417,15 +417,31 @@ def short_move_pct(entry_px, price) -> Optional[float]:
     return (1.0 - x / e) * 100.0
 
 
-def flatbase_exit_for(entry_px, price, held_minutes, th, resting_tp=False) -> Tuple[bool, str, Optional[float]]:
+def paid_funding_pct(funding_usd, entry_px, quantity) -> float:
+    """💸 (DECISION_LOG 607) the funding PAID so far, % of the entry notional (entry price × quantity), ≥ 0. Received funding (+) → 0: it
+    never widens the stop past the price level. Unreadable → 0 (the price stop runs unchanged)."""
+    f, e, q = _fin(funding_usd), _fin(entry_px), _fin(quantity)
+    if f is None or f >= 0 or not (e and e > 0 and q and q > 0):
+        return 0.0
+    return -f / (e * q) * 100.0
+
+
+def flatbase_exit_for(entry_px, price, held_minutes, th, resting_tp=False, funding_paid_pct=None) -> Tuple[bool, str, Optional[float]]:
     """FLATBASE_SHORT's own exit → (close, reason, line) on PRICE levels from the fill (the sim's gross levels):
     price ≤ fill × (1 − tp %) → FRENZY_TP (the resting maker limit books it; resting_tp=True → the software TP stays off and the engine's
     resting-TP gate is the safety net) · price ≥ fill × (1 + stop %) → STOP_LOSS · held ≥ max hold → MAX_HOLD_TIME. Unknown move → no close
-    (the backstop and the time cap still run). line = the price move % that fired (TP / stop) or the current move (time)."""
+    (the backstop and the time cap still run). line = the price move % that fired (TP / stop) or the current move (time).
+    💸 (DECISION_LOG 607, operator 2026-11-21) flatbase_stop_counts_funding ON → the stop reads the price move MINUS the funding PAID so far
+    (funding_paid_pct ≥ 0, % of the entry notional; received funding never counts): STOP_LOSS when move − paid ≤ −stop % (KERNEL #25: price
+    +10 % plus 1.6 % hourly funding booked −11.7 %). The TP and the time cap are unchanged."""
     p = flatbase_params(th)
     try:
         mv = short_move_pct(entry_px, price)
-        if mv is not None and mv <= -p['stop'] + 1e-9:   # (1e-9: a price exactly ON the level fires — float noise never holds it open)
+        _paid = 0.0
+        if bool(getattr(th, 'flatbase_stop_counts_funding', False)):
+            _fp = _fin(funding_paid_pct)
+            _paid = _fp if (_fp is not None and 0 < _fp < 100) else 0.0
+        if mv is not None and mv - _paid <= -p['stop'] + 1e-9:   # (1e-9: a price exactly ON the level fires — float noise never holds it open)
             return True, "STOP_LOSS", -p['stop']
         if mv is not None and mv >= p['tp'] - 1e-9 and not resting_tp:
             return True, "FRENZY_TP", p['tp']

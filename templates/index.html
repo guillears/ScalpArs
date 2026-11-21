@@ -20725,16 +20725,21 @@
                                 if (o.pnl_price_pct == null) return '';
                                 const fu = Number(o.funding_usd ?? 0), pp = Number(o.pnl_price_pct), nv = Number(o.entry_price) * Number(o.quantity);
                                 if (!isFinite(pp)) return '';
-                                const hasFu = isFinite(fu) && Math.abs(fu) >= 0.01;   // 🪧 (610 review) the stop level shows even before any funding
-                                // 🪧 (DECISION_LOG 610, operator 11-21 "simpler") plain words: the number the stop checks · where the stop sits · funding paid / received
+                                // 🪧 (DECISION_LOG 617, operator "C + B with the $") two short lines, so the P&L column stays narrow: line 1 = the number the stop
+                                // checks (no "stop at" — the 🎯 flag shows the row's own stop since DL 615); line 2 = funding, only when it is ≥ 0.1 % of
+                                // the notional (B), with the $. The exact $ / % and the stop level stay in the hover.
+                                const fuPct = (isFinite(fu) && nv > 0) ? fu / nv * 100 : NaN;
+                                const showFu = isFinite(fuPct) && Math.abs(fuPct) >= 0.1;
+                                // 🪧 (DECISION_LOG 610, operator 11-21 "simpler") plain words: the number the stop checks
                                 const basis = o.stop_read_basis === 'price_funding' ? 'the price move from the fill MINUS the funding paid (no fees; DECISION_LOG 607)'
                                     : o.stop_read_basis === 'price' ? 'the price move from the fill (no fees, no funding)' : 'the price move + fees (no funding)';
                                 const lbl = o.stop_read_basis === 'price_funding' ? 'Price − funding' : o.stop_read_basis === 'price' ? 'Price' : 'Price + fees';
-                                const sa = Number(o.stop_at_pct), stopTxt = (isFinite(sa) && sa > 0) ? ` · stop at −${+sa.toFixed(2)}%` : '';
-                                const fuTxt = !hasFu ? '' : fu < 0 ? ` · funding paid $${Math.abs(fu).toFixed(2)}${nv > 0 ? ` (${Math.abs(fu / nv * 100).toFixed(2)}%)` : ''}`
-                                    : ` · funding received $${fu.toFixed(2)}${nv > 0 ? ` (${(fu / nv * 100).toFixed(2)}%)` : ''}`;
-                                if (!stopTxt && !fuTxt) return '';   // nothing to add beyond the P&L above
-                                return `<div class="text-[10px] text-gray-400 font-normal whitespace-nowrap cursor-help" title="The P&L above includes fees and the funding so far. The stop checks ${basis}: it closes the trade when that number reaches the stop level.">${lbl} ${pp >= 0 ? '+' : ''}${pp.toFixed(2)}%${stopTxt}${fuTxt}</div>`;
+                                const sa = Number(o.stop_at_pct), hasStop = isFinite(sa) && sa > 0;
+                                if (!hasStop && !showFu) return '';   // nothing to add beyond the P&L above
+                                const fuLine = !showFu ? '' : `<div class="${fu < 0 ? 'text-red-400/80' : 'text-emerald-400/80'}">Funding ${fu < 0 ? '−' : '+'}${Math.abs(fuPct).toFixed(2)}% ($${Math.abs(fu).toFixed(Math.abs(fu) < 10 ? 2 : 0)})</div>`;   /* < $10 → cents (never "$0") */
+                                const tip = `The P&L above includes fees and the funding so far. The stop checks ${basis}${hasStop ? `: it closes the trade when that number reaches −${+sa.toFixed(2)}%` : ''}.`
+                                    + ((isFinite(fu) && Math.abs(fu) >= 0.01) ? ` Funding ${fu < 0 ? 'paid' : 'received'} so far: $${Math.abs(fu).toFixed(2)}${isFinite(fuPct) ? ` (${Math.abs(fuPct).toFixed(2)}% of the notional)` : ''}${(o.stop_read_basis === 'price_funding' && fu < 0) ? ' — already taken out of the Price − funding number above' : ''}.` : '');
+                                return `<div class="text-[10px] text-gray-400 font-normal whitespace-nowrap cursor-help" title="${tip}"><div>${lbl} ${pp >= 0 ? '+' : ''}${pp.toFixed(2)}%</div>${fuLine}</div>`;
                             })()}</td>
                             <td class="px-4 py-3 text-center">${(flagBadge || tpTierBadge) ? (flagBadge + tpTierBadge) : beBadge}</td>
                             <td class="px-4 py-3 text-right font-mono">${Number.isFinite(+o.duration_seconds) && o.duration_seconds !== null ? `<span class="oo-dur" data-s="${(+o.duration_seconds).toFixed(3)}" data-t="${Date.now()}">${o.duration}</span>` : o.duration}</td>

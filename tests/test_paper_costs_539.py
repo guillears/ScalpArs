@@ -196,11 +196,17 @@ def test_stop_reads_line_and_closed_funding_column():
     assert '"funding_usd": (round(float(o.funding_fee_usd), 4) if getattr(o, \'funding_fee_usd\', None) is not None else None),' in m
     assert '"funding_in_pnl": getattr(o, \'funding_in_pnl\', None),' in m
     h = _src("templates/index.html")
-    # 🪧 (DECISION_LOG 610) the plain-words line: "Price +X% · stop at −Y% · funding paid $Z (W%)"
-    assert "${lbl} ${pp >= 0 ? '+' : ''}${pp.toFixed(2)}%${stopTxt}${fuTxt}" in h and "stop reads ${lbl}" not in h
-    assert "if (!stopTxt && !fuTxt) return '';" in h and "const hasFu = isFinite(fu) && Math.abs(fu) >= 0.01;" in h   # the stop level shows before any funding
+    # 🪧 (DECISION_LOG 610 → 617) two short lines under the P&L: "Price +X%" and, only when funding ≥ 0.1 % of notional, "Funding −W% ($Z)";
+    # no "stop at" (the 🎯 flag shows the row's own stop since DL 615) — the stop level and the exact $ stay in the hover
+    assert "<div>${lbl} ${pp >= 0 ? '+' : ''}${pp.toFixed(2)}%</div>${fuLine}</div>" in h and "stop reads ${lbl}" not in h
+    assert "const showFu = isFinite(fuPct) && Math.abs(fuPct) >= 0.1;" in h and "if (!hasStop && !showFu) return '';" in h
+    assert "Funding ${fu < 0 ? '−' : '+'}${Math.abs(fuPct).toFixed(2)}% ($${Math.abs(fu).toFixed(Math.abs(fu) < 10 ? 2 : 0)})" in h
+    assert "it closes the trade when that number reaches −${+sa.toFixed(2)}%" in h                        # the stop level lives in the hover
     assert "const lbl = o.stop_read_basis === 'price_funding' ? 'Price − funding' : o.stop_read_basis === 'price' ? 'Price' : 'Price + fees';" in h
-    assert "` · stop at −${+sa.toFixed(2)}%`" in h and "` · funding paid $${Math.abs(fu).toFixed(2)}" in h and "` · funding received $${fu.toFixed(2)}" in h
+    assert "${stopTxt}${fuTxt}" not in h and "` · stop at −${+sa.toFixed(2)}%`" not in h                     # the old one-liner is gone
+    assert "const fuPct = (isFinite(fu) && nv > 0) ? fu / nv * 100 : NaN;" in h                                 # no notional → no % line
+    assert "${fu < 0 ? 'text-red-400/80' : 'text-emerald-400/80'}" in h                                        # paid red · received green
+    assert "already taken out of the Price − funding number above" in h                                       # FLATBASE: not counted twice
     assert '"stop_at_pct": _stop_at_pct,' in m and "_exit_lv = _exh_rl(o, _th_sa)" in m and "_exit_lv = _dist_rl(o, _th_sa)" in m and m.count("_stop_at_pct = _exit_lv[1]") == 2
     assert "_stop_read_basis = \"price_funding\"" in m and "_fb_paid_funding_pct(getattr(o, 'funding_fee_usd', None), o.entry_price, o.quantity)" in m
     assert "if (o.pnl_price_pct == null) return '';" in h

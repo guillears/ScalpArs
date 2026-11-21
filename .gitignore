@@ -176,3 +176,6 @@ reports/NEWSLEEVE_2026-11-21_data/k5m/
 reports/NEWSLEEVE_2026-11-21_data/met/
 reports/NEWSLEEVE_2026-11-21_data/*.pkl
 reports/NEWSLEEVE_2026-11-21_data/*.log
+
+# 💸 (DL 616) funding-rate / kline cache of the funding study
+reports/.funding_cache/

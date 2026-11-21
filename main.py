@@ -2362,7 +2362,7 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
                     _stop_read_basis = "price_funding"
             else:
                 _stop_read_pct, _stop_read_basis = round(pnl_pct, 2), "net"
-        # 🪧 (DECISION_LOG 610) the stop LEVEL the line names ("stop at −X %"), on the same basis as the number it reads: FLATBASE the config
+        # 🪧 (DECISION_LOG 610 / 617) the stop LEVEL the P&L hover names ("closes the trade when that number reaches −X %"), on the same basis as the number it reads: FLATBASE the config
         # stop · EXHAUSTION / DISTRIBUTION the row's own level (row_levels: the stamp, clamped to today's cap) · WILLY / WILLY_HT the net stop ·
         # anything else None (the line shows no level)
         _stop_at_pct = None

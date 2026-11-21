@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""👁 Scout — WILLY / WILLY_HT watch lines (three registered 2026-11-18, DECISION_LOG 580 · two HT lines 2026-11-19, DL 596; OBSERVE ONLY — never changes config, no bot API).
+"""👁 Scout — WILLY / WILLY_HT watch lines (three registered 2026-11-18, DECISION_LOG 580 · two HT lines 2026-11-19, DL 596 · HT BURST_REJECTION
+2026-11-21, DL 618; OBSERVE ONLY — never changes config, no bot API).
 
 WHY        operator 11-18: "Build the 3 WILLY / HT observe lines" after reports/HT_TP6_WL_2026-11-18.md (no filter passes: best 1D/2D luck
            p 0.08, Kelly floor ≤ 0) and reports/WILLY_BACKTEST_AUDIT_2026-11-18.md (the rebuild matches the real fills; HT re-anchored
@@ -32,6 +33,20 @@ LINES      (zone = the entries the line would block; rest = the scored others; a
                    24 · 75 % · +2.73; the BACKTEST FLIPPED it in both periods → a REFUTE line: it is expected to retire). MARKET-WIDE → counted in
                    WINDOW units: its zone needs ≥ 15 distinct UTC days (LINE_DAYS_MIN), not just 15 fills.
                    Both 596 lines count only HT fills opened ≥ the DECISION_LOG 596 commit + 10 min (the NEAR_HIGH-filtered era, forward only).
+  BURST_REJECTION  (WILLY_HT only · registered 2026-11-21, DECISION_LOG 618) zone = PRE_VOL_SURGE (pre_vol15_vs60 > 1.60) AND cloc15 < 0.50 —
+                   the 15 one-minute bars CLOSED before the fill minute (the same window as pre_vol) ended in the LOWER half of their high–low
+                   range: a volume burst whose buying was sold back down before we bought (theory: a climax absorbed, not fresh demand).
+                   Pre-registered in reports/WILLY_HT_THEORY_2D_2026-11-21_PREREG.md (V4); evidence reports/WILLY_HT_THEORY_2D_2026-11-21.md:
+                   real 24 → 3 blocked, all −4.10 (master 1 · batch 2); backtest HOLDOUT 267 → 38 blocked · −0.62 (+$720), P(mean<0) 0.78,
+                   permutation p ≈ 0.20, best-of-6 p 0.61, flips at the median cut → NOT a filter. rest = every other scored HT fill (no burst,
+                   or a burst that closed in the upper half). cloc15 is NOT stamped by the engine: the scout reads Binance 1m klines
+                   (GET /fapi/v1/klines, weight 1, endTime = fill minute − 1 ms, 15 bars), cached per fill in the lines cache; a burst
+                   fill whose bars are unreadable (network / HTTP) → UNSCORED and no BURST_REJECTION verdict is frozen that run; an answer with
+                   < 15 closed bars, a flat range or an HTTP 400 (invalid / delisted symbol) is cached as "SHORT" (terminal: UNSCORED,
+                   never blocks the freeze). Only HT burst fills
+                   opened ≥ the DECISION_LOG 618 commit + 10 min are fetched and counted. The scout needs ≥ 15 prior bars (the study dropped
+                   fills with < 300 — differs only on coins listed minutes before the fill). Cut strict: cloc15 < 0.50 (the PREREG; the study's
+                   evaluator used ≤ — no fill sits exactly at 0.50 in the evidence).
 COHORT     CLOSED FRENZY_WILLY and FRENZY_WILLY_HT LONG fills from the orders exports (scout_willy_failed_spike_watch.load: dedup, CLOSED beats
            OPEN, newest export wins), operator-closed out, opened ≥ the DECISION_LOG 580 commit + 10 min (forward only). Each sleeve × line
            read and decided SEPARATELY (never pooled).
@@ -64,6 +79,7 @@ import scout_willy_failed_spike_watch as WF   # noqa: E402  (the loader + the fr
 DL = 580
 DL_ARMED_NEAR_HIGH = 594   # 🧱 (DECISION_LOG 594) NEAR_SPIKE_HIGH ARMED for WILLY_HT (the engine refuses the zone; the blocked-trade pricer decides)
 DL_596 = 596   # 📊 (DECISION_LOG 596) PRE_VOL_SURGE + BTC5M_UP registered 2026-11-19 — HT only, forward from that commit
+DL_618 = 618   # 💥 (DECISION_LOG 618) BURST_REJECTION registered 2026-11-21 — HT only, forward from that commit
 DL_HT = 608   # 🔁 (DECISION_LOG 608) RE-BASED 2026-11-21: HT's TP +5 → +6 net (stop −4; was 587: +2 → +5) → HT counts only fills ≥ the DL 608 commit + 10 min
 SLEEVES = ("FRENZY_WILLY", "FRENZY_WILLY_HT")
 # FROZEN breakevens: WILLY V2b (DL 509) · HT re-based at DL 608 = the +6 / −4 exit: |loss| ÷ (win + |loss|) = 4 ÷ 10 (0.444 at +5 / −4, 0.667 at +2 / −4)
@@ -72,8 +88,10 @@ BE_NOTE = WF.BE_NOTE   # HT's 40.0 % is frozen from theory (+6 / −4 net), WILL
 STATE_KEY = {"FRENZY_WILLY": "FRENZY_WILLY", "FRENZY_WILLY_HT": "FRENZY_WILLY_HT@608"}   # the HT verdicts of the +2 / +5 eras are never read again
 TOP_ACC_CUT, GLOB_ACC_CUT, OFF_PEAK_CUT, REANCHOR_H = 1.19, 1.0624, -1.4, 1.0
 PRE_VOL_CUT, BTC_GAP_CUT = 1.60, 0.0   # 📊 (596) FROZEN — the WL594 cuts (never re-fit)
-LINES = ("CROWDED_LONGS", "NEAR_SPIKE_HIGH", "REANCHORED", "PRE_VOL_SURGE", "BTC5M_UP")
+CLOC_CUT, CLOC_BARS = 0.50, 15         # 💥 (618) FROZEN — the pre-registered V4 cut (never re-fit) · the pre_vol "recent" window
+LINES = ("CROWDED_LONGS", "NEAR_SPIKE_HIGH", "REANCHORED", "PRE_VOL_SURGE", "BTC5M_UP", "BURST_REJECTION")
 LINES_596 = ("PRE_VOL_SURGE", "BTC5M_UP")   # HT only, floor = the DL 596 commit + 10 min
+LINES_618 = ("BURST_REJECTION",)            # HT only, floor = the DL 618 commit + 10 min
 LINE_DAYS_MIN = {"BTC5M_UP": 15}   # 📊 (596 review) market-wide → WINDOW units: the zone needs ≥ 15 distinct UTC days (not 15 fills)
 N_MIN, DAYS_MIN, P_MIN, SHARE_MAX, BOOT_N, BOOT_SEED = 15, 8, 0.95, 0.50, 4000, 7
 LAG_MS = 60_000
@@ -144,6 +162,37 @@ def zone_above(v, cut):
     return "zone" if x > cut else "rest"
 
 
+def cloc15(rows_1m, fill_ms):
+    """💥 (618) close location of the 15 one-minute bars CLOSED before the fill minute: (last close − low) ÷ (high − low) over those bars
+    (the study's cloc15; bars opened before the fill minute = the pre_vol "recent" window). rows_1m = Binance 1m klines
+    [open_ms, o, h, l, c, v, …]. → float in [0, 1], or None (fewer than 15 such bars / flat range / unreadable). Pure, never raises."""
+    try:
+        m0 = (int(fill_ms) // 60_000) * 60_000
+        pre = sorted((r for r in (rows_1m or []) if int(r[0]) < m0), key=lambda r: int(r[0]))[-CLOC_BARS:]
+        if len(pre) < CLOC_BARS:
+            return None
+        hi, lo, c = max(float(r[2]) for r in pre), min(float(r[3]) for r in pre), float(pre[-1][4])
+        if not (hi > lo) or any(x != x for x in (hi, lo, c)):
+            return None
+        return round((c - lo) / (hi - lo), 6)
+    except (TypeError, ValueError, IndexError):
+        return None
+
+
+def zone_burst_rejection(pre_vol, cloc):
+    """💥 (618) burst (pre_vol > 1.60) AND cloc < 0.50 → zone · no burst → rest (cloc not needed) · burst with cloc ≥ 0.50 → rest ·
+    pre_vol missing, or a burst whose cloc is missing → unscored. Pure."""
+    pv = _f(pre_vol)
+    if pv is None:
+        return "unscored"
+    if pv <= PRE_VOL_CUT:
+        return "rest"
+    c = _f(cloc)
+    if c is None:
+        return "unscored"
+    return "zone" if c < CLOC_CUT else "rest"
+
+
 # ── the long/short ratios (network, lag-safe) ───────────────────────────────────────────────────────────────────────────────────────
 
 _last = [0.0]
@@ -200,6 +249,29 @@ def ratios(pair, entry_ms, cache, now_ms):
     return top, glob
 
 
+def burst_cloc(pair, entry_ms, cache):
+    """💥 (618) cloc15 for one burst fill from Binance 1m klines, cached per fill. → float, or None when Binance ANSWERED but the window is
+    short / flat (cached as the terminal "SHORT" → UNSCORED, never retried, never blocks the freeze). Network / HTTP errors raise (→ UNSCORED
+    this run, no BURST_REJECTION freeze, retried next run)."""
+    key = f"cloc|{pair}|{int(entry_ms)}"
+    if key in cache:
+        v = cache[key]
+        return float(v) if isinstance(v, (int, float)) else None
+    m0 = (int(entry_ms) // 60_000) * 60_000
+    try:
+        rows = _get("/fapi/v1/klines", dict(symbol=pair, interval="1m", endTime=int(m0 - 1), limit=CLOC_BARS + 5))
+    except urllib.error.HTTPError as e:
+        if e.code == 400:                      # (618 review) invalid / delisted symbol (Binance −1121) → terminal, never blocks the freeze
+            cache[key] = "SHORT"
+            return None
+        raise
+    if not isinstance(rows, list):
+        raise ValueError(f"unreadable kline answer for {pair}")
+    v = cloc15(rows, entry_ms)
+    cache[key] = v if v is not None else "SHORT"
+    return v
+
+
 def _load_cache():
     try:
         with open(CACHE) as f:
@@ -223,8 +295,9 @@ def load(paths=None):
     return WF.load(paths, extra=EXTRA)
 
 
-def score(c, now_ms, fetch=True):
-    """add zone columns for every line. fetch False → CROWDED_LONGS from the cache only."""
+def score(c, now_ms, fetch=True, br_floor_ms=None):
+    """add zone columns for every line. fetch False → CROWDED_LONGS / BURST_REJECTION from the cache only. br_floor_ms → BURST_REJECTION
+    reads klines only for HT fills opened ≥ it (the DL 618 floor; earlier fills are never counted); None → every HT burst fill."""
     cache = _load_cache()
     _calls[0] = 0
     stop = None
@@ -254,6 +327,34 @@ def score(c, now_ms, fetch=True):
     c["z_REANCHORED"] = [zone_reanchored(a, b) for a, b in zip(c.get("entry_frenzy_willy_trigger", [None] * len(c)), c.get("entry_frenzy_hours", [None] * len(c)))]
     c["z_PRE_VOL_SURGE"] = [zone_above(v, PRE_VOL_CUT) for v in c.get("entry_frenzy_pre_vol15_vs60", [None] * len(c))]   # 📊 (596)
     c["z_BTC5M_UP"] = [zone_above(v, BTC_GAP_CUT) for v in c.get("entry_btc_trend_gap_pct", [None] * len(c))]
+    # 💥 (618) BURST_REJECTION — cloc15 only for the burst fills (the others are "rest" without it); its own stop flag
+    clocs, br_stop, br_failed = [], None, []
+    for r, pv in zip(c.itertuples(), c.get("entry_frenzy_pre_vol15_vs60", [None] * len(c))):
+        x = None
+        ems = int(r.o.value // 1_000_000)
+        if ((_f(pv) or 0.0) > PRE_VOL_CUT and str(getattr(r, "entry_strategy", "")) == "FRENZY_WILLY_HT"
+                and (br_floor_ms is None or ems >= int(br_floor_ms))):
+            v = cache.get(f"cloc|{r.pair}|{ems}")
+            if isinstance(v, (int, float)):
+                x = float(v)
+            elif v == "SHORT":
+                x = None                                                  # terminal: Binance answered, no complete window → UNSCORED
+            elif fetch and br_stop is None:
+                try:
+                    x = burst_cloc(r.pair, ems, cache)
+                except NetStop as e:
+                    br_stop = str(e)
+                except (urllib.error.URLError, OSError, ValueError) as e:
+                    br_failed.append(f"{type(e).__name__} on {r.pair}")
+            elif not fetch:
+                br_failed.append(f"not cached: {r.pair}")
+        clocs.append(x)
+    _save_cache(cache)
+    if br_failed and not br_stop:
+        br_stop = f"{len(br_failed)} burst fill(s) not readable ({br_failed[0]}{' …' if len(br_failed) > 1 else ''})"
+    c["cloc15"] = clocs
+    c["z_BURST_REJECTION"] = [zone_burst_rejection(pv, x) for pv, x in zip(c.get("entry_frenzy_pre_vol15_vs60", [None] * len(c)), clocs)]
+    c.attrs["br_stop"] = br_stop
     return c, stop
 
 
@@ -297,7 +398,7 @@ def run(now_ms=None, paths=None, state_path=STATE, since_ms=None, fetch=True):
     """→ markdown lines. since_ms None → the DECISION_LOG 580 commit + 10 min (not in git → NOT EVALUABLE). state_path None → no write."""
     now_ms = int(time.time() * 1000) if now_ms is None else int(now_ms)
     L = [f"## 👁 WILLY / WILLY_HT lines — CROWDED_LONGS · NEAR_SPIKE_HIGH · REANCHORED (registered 2026-11-18, DECISION_LOG {DL}) · "
-         f"HT PRE_VOL_SURGE · BTC5M_UP (2026-11-19, DECISION_LOG {DL_596}) — OBSERVE only", ""]
+         f"HT PRE_VOL_SURGE · BTC5M_UP (2026-11-19, DECISION_LOG {DL_596}) · HT BURST_REJECTION (2026-11-21, DECISION_LOG {DL_618}) — OBSERVE only", ""]
     given = since_ms
     if since_ms is None:
         since_ms = _GK.dl_deploy_ms(DL, lag_min=10, label="WILLY / HT lines")
@@ -307,13 +408,18 @@ def run(now_ms=None, paths=None, state_path=STATE, since_ms=None, fetch=True):
     c, newest = load(paths)
     c = c[c.o >= since] if len(c) else c
     keep, ox = _GK.split_operator_closed(c) if len(c) else (c, c)
-    keep, stop = score(keep, now_ms, fetch) if len(keep) else (keep, None)
+    floor_618 = (_GK.dl_deploy_ms(DL_618, lag_min=10, label="WILLY_HT BURST_REJECTION (DL 618)") if given is None else since_ms)
+    br_floor = floor_618 if floor_618 is not None else 2 ** 62   # 💥 (618) no commit yet → fetch nothing for BURST_REJECTION
+    keep, stop = score(keep, now_ms, fetch, br_floor_ms=br_floor) if len(keep) else (keep, None)
+    br_stop = keep.attrs.get("br_stop") if len(keep) else None   # 💥 (618)
     st, ok = NF.du_load_state(state_path, now_ms) if state_path else ({}, True)
     changed = False
     L += [f"Cohort: CLOSED fills opened ≥ {since:%Y-%m-%d %H:%M} UTC ({'DL ' + str(DL) + ' commit + 10 min' if given is None else 'floor given'}) · "
           f"each sleeve × line decided separately · {_GK.operator_closed_line(ox)}.", ""]
     if stop:
         L += [f"⚠ ratio fetching stopped this run ({stop}) — later fills stay UNSCORED for CROWDED_LONGS and no CROWDED_LONGS verdict is frozen this run.", ""]
+    if br_stop:
+        L += [f"⚠ 1m kline reads incomplete this run ({br_stop}) — those burst fills stay UNSCORED for BURST_REJECTION and no BURST_REJECTION verdict is frozen this run.", ""]
     ht_floor = (_GK.dl_deploy_ms(DL_HT, lag_min=10, label="WILLY_HT lines (re-based, DL 608)") if given is None else since_ms)
     floor_596 = (_GK.dl_deploy_ms(DL_596, lag_min=10, label="WILLY_HT PRE_VOL_SURGE / BTC5M_UP (DL 596)") if given is None else since_ms)
     for es in SLEEVES:
@@ -340,6 +446,13 @@ def run(now_ms=None, paths=None, state_path=STATE, since_ms=None, fetch=True):
                     L += [f"**{ln}** — ⚠ NOT EVALUABLE until the DECISION_LOG {DL_596} commit is in git.", ""]
                     continue
                 s_ln = s[s.o >= pd.Timestamp(int(floor_596), unit="ms")] if len(s) else s
+            if ln in LINES_618:   # 💥 (618) HT only, forward from the DL 618 commit
+                if es != "FRENZY_WILLY_HT":
+                    continue
+                if floor_618 is None:
+                    L += [f"**{ln}** — ⚠ NOT EVALUABLE until the DECISION_LOG {DL_618} commit is in git.", ""]
+                    continue
+                s_ln = s[s.o >= pd.Timestamp(int(floor_618), unit="ms")] if len(s) else s
             if not len(s_ln) or col not in s_ln:
                 L += [f"**{ln}** — no counted fills yet.", ""]
                 continue
@@ -351,7 +464,7 @@ def run(now_ms=None, paths=None, state_path=STATE, since_ms=None, fetch=True):
             rec = st.get(key) if ok else None
             if rec is not None and not (isinstance(rec, dict) and {"state", "detail", "at", "run_at"} <= set(rec)):
                 rec, ok = None, False
-            if not rec and ok and not (ln == "CROWDED_LONGS" and stop):
+            if not rec and ok and not (ln == "CROWDED_LONGS" and stop) and not (ln == "BURST_REJECTION" and br_stop):
                 dmin = LINE_DAYS_MIN.get(ln, DAYS_MIN)
                 pre = crossing_prefix(sc, col, dmin)
                 if pre is not None:
@@ -376,7 +489,9 @@ def run(now_ms=None, paths=None, state_path=STATE, since_ms=None, fetch=True):
     L += [f"FROZEN cuts: CROWDED_LONGS top-trader account L/S > {TOP_ACC_CUT} or global account L/S > {GLOB_ACC_CUT} (5m period ended ≤ fill − 1 min) · "
           f"NEAR_SPIKE_HIGH off_peak > {OFF_PEAK_CUT} % on the real fill · REANCHORED entry A > {REANCHOR_H:g} h after the spike · "
           f"PRE_VOL_SURGE pre_vol15_vs60 > {PRE_VOL_CUT:g} · BTC5M_UP BTC 5m EMA13−EMA50 gap > {BTC_GAP_CUT:g} (both HT-only, from the DL {DL_596} commit; "
-          "BTC5M_UP is market-wide and already refuted on the backtest — a refute line). "
+          "BTC5M_UP is market-wide and already refuted on the backtest — a refute line) · "
+          f"BURST_REJECTION pre_vol15_vs60 > {PRE_VOL_CUT:g} AND cloc15 < {CLOC_CUT:g} (the 15 1m bars before the fill closed in the lower half; "
+          f"HT-only, from the DL {DL_618} commit; read from Binance 1m klines, not stamped). "
           f"Bar: zone N ≥ {N_MIN} on ≥ {DAYS_MIN} days (BTC5M_UP: ≥ {LINE_DAYS_MIN['BTC5M_UP']} days — window units), decided once (RETIRED / {CANDIDATE} / KEEP OBSERVING). In-sample evidence at "
           "registration (never counted): reports/HT_TP6_WL_2026-11-18.md, reports/WILLY_BACKTEST_AUDIT_2026-11-18.md.", ""]
     return L

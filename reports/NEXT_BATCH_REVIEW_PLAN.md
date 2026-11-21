@@ -71,6 +71,7 @@ the review must beat the null, not just pass both eras.
    while a WILLY was open (≥ the DL 340 deploy, frozen once reached) average < 0 AND Σ ≤ −4 pts → ALERT: review turning the hold back ON.
    Reference (hold ON, reports/SCOUT_WILLY_HOLD.csv): 13 blocked 10-09 → 10-17 = 5 WILLY entries (still slot-blocked) + the 8 non-WILLY
    setups the switch frees: 8 · 50 % · −0.56 %/trade · Σ −4.5 pts (one window, inconclusive). Operator override below the evidence bar.
+②e0 **💥 WILLY_HT · HT_BURST_REJECTION (DECISION_LOG 618, 2026-11-21, OBSERVE — operator: "make sure the next batch analysis or WILLY_HT analysis we see this again")** — at EVERY batch review and every WILLY_HT read: run scripts/scout_willy_ht_lines.py, show the BURST_REJECTION zone vs rest (N · days · WR · avg %) on HT fills since the DL 618 commit, the per-fill cloc15 / pre_vol, and the frozen verdict once zone N ≥ 15 on ≥ 8 days. ⏸ Operator wants it ARMED before going live → raise it at the go-live review with this forward read (reports/WILLY_HT_THEORY_2D_2026-11-21.md).
 ②e **🎲¼ FRENZY_WILLY_HT (DECISION_LOG 341, 2026-10-21, alert-only)** — quarter-size WILLY fills on turnover-only refusals: run
    scripts/scout_willy_ht.py (also in the opportunity scout). Per fill: R (entry_vol_mcap_ratio), mcap, 24 h volume, size check (notional ≈ ¼ of
    the same-period WILLY tickets at the same leverage), exit reason vs WILLY's. Three blocks: ① batch HT vs WILLY · ② master per batch (HT is

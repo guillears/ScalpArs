@@ -178,3 +178,122 @@ def test_btc5m_up_counts_window_units():
     assert W.verdict(z, z.iloc[:0], 0.444)[0] != "COLLECTING"
     sc = z.assign(z_X=["zone"] * 20)
     assert W.crossing_prefix(sc, "z_X", 15) is None and W.crossing_prefix(sc, "z_X") is not None
+
+
+# ── WILLY_HT BURST_REJECTION (DECISION_LOG 618) ──────────────────────────────────────────────────────────────────────────────────
+
+def _k(t0, rows):
+    """1m klines from t0: rows = [(high, low, close)] → [open_ms, o, h, l, c, v]."""
+    return [[t0 + i * 60_000, c, h, l, c, 1.0] for i, (h, l, c) in enumerate(rows)]
+
+
+def test_ht_618_cloc15_pure():
+    t0 = 1_800_000_000_000 // 60_000 * 60_000
+    fill = t0 + 15 * 60_000 + 7_000                                          # 7 s into the 16th minute → the 15 bars before it count
+    bars = _k(t0, [(10.0, 9.0, 9.5)] * 14 + [(10.0, 9.0, 9.2)]) + _k(t0 + 15 * 60_000, [(99.0, 1.0, 50.0)])   # the fill-minute bar is ignored
+    assert W.cloc15(bars, fill) == pytest.approx(0.2)
+    assert W.cloc15(bars[:14], fill) is None                                 # fewer than 15 closed bars → unscored
+    assert W.cloc15(_k(t0, [(5.0, 5.0, 5.0)] * 15), fill) is None             # flat range
+    assert W.cloc15(None, fill) is None and W.cloc15([["x"]], fill) is None
+    assert W.CLOC_CUT == 0.50 and W.CLOC_BARS == 15 and "BURST_REJECTION" in W.LINES and W.LINES_618 == ("BURST_REJECTION",)
+
+
+def test_ht_618_zone_rules():
+    z = W.zone_burst_rejection
+    assert z(2.0, 0.49) == "zone" and z(2.0, 0.50) == "rest" and z(2.0, None) == "unscored"
+    assert z(1.60, None) == "rest" and z(1.0, 0.1) == "rest"                  # no burst → rest without cloc
+    assert z(None, 0.1) == "unscored"
+
+
+def test_ht_618_score_reads_cloc_only_for_ht_bursts(monkeypatch):
+    calls = []
+    monkeypatch.setattr(W, "_load_cache", lambda: {})
+    monkeypatch.setattr(W, "_save_cache", lambda c: None)
+    monkeypatch.setattr(W, "ratios", lambda *a, **k: (1.0, 1.0))
+    def fake_get(path, params):
+        calls.append((path, params.get("symbol"), params))
+        if path == "/fapi/v1/klines":
+            t0 = (params["endTime"] + 1) - 15 * 60_000
+            return _k(t0, [(10.0, 9.0, 9.5)] * 14 + [(10.0, 9.0, 9.1)])
+        return []
+    monkeypatch.setattr(W, "_get", fake_get)
+    c = pd.DataFrame(dict(pair=["AUSDT", "BUSDT", "CUSDT"], entry_strategy=["FRENZY_WILLY_HT", "FRENZY_WILLY_HT", "FRENZY_WILLY"],
+                          o=pd.to_datetime(["2026-12-01 10:00:30", "2026-12-02 00:00:00", "2026-12-03 00:00:00"]),
+                          entry_frenzy_pre_vol15_vs60=[2.0, 1.0, 3.0], entry_btc_trend_gap_pct=[0.1, -0.1, 0.0]))
+    sc, _ = W.score(c, int(pd.Timestamp("2026-12-04").value // 10**6), fetch=True)
+    assert list(sc.z_BURST_REJECTION) == ["zone", "rest", "unscored"]                    # plain WILLY: never fetched → unscored
+    assert [k[:2] for k in calls if k[0] == "/fapi/v1/klines"] == [("/fapi/v1/klines", "AUSDT")]   # only the HT burst fill is fetched
+    p = [k[2] for k in calls if k[0] == "/fapi/v1/klines"][0]
+    m0 = int(pd.Timestamp("2026-12-01 10:00:00").value // 10**6)
+    assert p["endTime"] == m0 - 1 and p["limit"] == 20 and p["interval"] == "1m"          # only bars opened before the fill minute
+    assert sc.cloc15.iloc[0] == pytest.approx(0.1) and sc.attrs.get("br_stop") is None
+
+
+def test_ht_618_unreadable_burst_is_unscored_and_blocks_the_freeze(monkeypatch):
+    monkeypatch.setattr(W, "_load_cache", lambda: {})
+    monkeypatch.setattr(W, "_save_cache", lambda c: None)
+    def boom(path, params):
+        raise W.urllib.error.URLError("network down")                       # a network failure (not an answered-but-short window)
+    monkeypatch.setattr(W, "_get", boom)
+    monkeypatch.setattr(W, "ratios", lambda *a, **k: (1.0, 1.0))
+    c = pd.DataFrame(dict(pair=["AUSDT"], entry_strategy=["FRENZY_WILLY_HT"], o=pd.to_datetime(["2026-12-01"]),
+                          entry_frenzy_pre_vol15_vs60=[2.0], entry_btc_trend_gap_pct=[0.1]))
+    sc, _ = W.score(c, int(pd.Timestamp("2026-12-04").value // 10**6), fetch=True)
+    assert list(sc.z_BURST_REJECTION) == ["unscored"] and "not readable" in sc.attrs["br_stop"]
+    src = _src("scripts/scout_willy_ht_lines.py")
+    assert 'and not (ln == "BURST_REJECTION" and br_stop)' in src
+    assert 's_ln = s[s.o >= pd.Timestamp(int(floor_618), unit="ms")]' in src
+
+
+def test_ht_618_not_evaluable_before_the_commit(monkeypatch):
+    real = W._GK.dl_deploy_ms
+    monkeypatch.setattr(W._GK, "dl_deploy_ms", lambda dl, *a, **k: None if dl == 618 else real(dl, *a, **k))
+    c = pd.DataFrame(dict(pair=["AUSDT"], entry_strategy=["FRENZY_WILLY_HT"], o=pd.to_datetime(["2026-12-01"]), status=["CLOSED"],
+                          pct=[1.0], entry_frenzy_pre_vol15_vs60=[1.0], entry_btc_trend_gap_pct=[0.1]))
+    monkeypatch.setattr(W, "load", lambda paths=None: (c.assign(day=c.o.dt.floor("D")), pd.Timestamp("2026-12-30")))
+    monkeypatch.setattr(W._GK, "split_operator_closed", lambda d: (d, d.iloc[0:0]))
+    monkeypatch.setattr(W._GK, "operator_closed_line", lambda d: "0 operator-closed")
+    out = "\n".join(W.run(now_ms=int(pd.Timestamp("2026-12-31").value // 10**6), state_path=None, fetch=False))
+    assert "**BURST_REJECTION** — ⚠ NOT EVALUABLE until the DECISION_LOG 618 commit is in git." in out
+
+
+def test_ht_618_cache_hit_short_marker_fetch_false_and_floor(monkeypatch):
+    ms = int(pd.Timestamp("2026-12-01").value // 10**6)
+    calls = []
+    monkeypatch.setattr(W, "_save_cache", lambda c: None)
+    monkeypatch.setattr(W, "_get", lambda path, params: calls.append(path) or [])
+    monkeypatch.setattr(W, "ratios", lambda *a, **k: (1.0, 1.0))                  # CROWDED_LONGS reads are not under test here
+    mk = lambda pairs, days: pd.DataFrame(dict(pair=pairs, entry_strategy=["FRENZY_WILLY_HT"] * len(pairs), o=pd.to_datetime(days),
+                                              entry_frenzy_pre_vol15_vs60=[2.0] * len(pairs), entry_btc_trend_gap_pct=[0.1] * len(pairs)))
+    # cache hit → no call, no stop · terminal SHORT → unscored, no stop
+    monkeypatch.setattr(W, "_load_cache", lambda: {f"cloc|AUSDT|{ms}": 0.3, f"cloc|BUSDT|{ms}": "SHORT"})
+    sc, _ = W.score(mk(["AUSDT", "BUSDT"], ["2026-12-01", "2026-12-01"]), ms + 10**9, fetch=True)
+    assert list(sc.z_BURST_REJECTION) == ["zone", "unscored"] and sc.attrs["br_stop"] is None and calls == []
+    # an answered-but-short window → cached SHORT, unscored, no stop
+    cache = {}
+    monkeypatch.setattr(W, "_load_cache", lambda: cache)
+    sc, _ = W.score(mk(["CUSDT"], ["2026-12-01"]), ms + 10**9, fetch=True)
+    assert list(sc.z_BURST_REJECTION) == ["unscored"] and sc.attrs["br_stop"] is None and cache[f"cloc|CUSDT|{ms}"] == "SHORT"
+    # fetch=False with nothing cached → unscored AND the freeze is blocked
+    monkeypatch.setattr(W, "_load_cache", lambda: {})
+    sc, _ = W.score(mk(["DUSDT"], ["2026-12-01"]), ms + 10**9, fetch=False)
+    assert list(sc.z_BURST_REJECTION) == ["unscored"] and "not cached" in sc.attrs["br_stop"]
+    # fills before the DL 618 floor are never fetched and never block the freeze
+    calls.clear()
+    sc, _ = W.score(mk(["EUSDT"], ["2026-12-01"]), ms + 10**9, fetch=True, br_floor_ms=ms + 1)
+    assert calls == [] and sc.attrs["br_stop"] is None and list(sc.z_BURST_REJECTION) == ["unscored"]
+
+
+def test_ht_618_delisted_symbol_is_terminal_not_a_freeze_block(monkeypatch):
+    cache = {}
+    monkeypatch.setattr(W, "_load_cache", lambda: cache)
+    monkeypatch.setattr(W, "_save_cache", lambda c: None)
+    monkeypatch.setattr(W, "ratios", lambda *a, **k: (1.0, 1.0))
+    def bad(path, params):
+        raise W.urllib.error.HTTPError("u", 400, "Invalid symbol.", None, None)
+    monkeypatch.setattr(W, "_get", bad)
+    ms = int(pd.Timestamp("2026-12-01").value // 10**6)
+    c = pd.DataFrame(dict(pair=["ZZZUSDT"], entry_strategy=["FRENZY_WILLY_HT"], o=pd.to_datetime(["2026-12-01"]),
+                          entry_frenzy_pre_vol15_vs60=[2.0], entry_btc_trend_gap_pct=[0.1]))
+    sc, _ = W.score(c, ms + 10**9, fetch=True)
+    assert list(sc.z_BURST_REJECTION) == ["unscored"] and sc.attrs["br_stop"] is None and cache[f"cloc|ZZZUSDT|{ms}"] == "SHORT"

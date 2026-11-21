@@ -1538,7 +1538,7 @@ def run():
     except Exception as _wvw_e:
         log(f"WILLY_FAILED_SPIKE line failed: {_wvw_e}")
         _rg_sec += ["## 👁 WILLY_FAILED_SPIKE", "", f"Unavailable this run ({str(_wvw_e)[:120]}).", ""]
-    try:                                               # 👁 Nov-18 WILLY / HT lines — CROWDED_LONGS · NEAR_SPIKE_HIGH · REANCHORED (DECISION_LOG 580) + HT PRE_VOL_SURGE · BTC5M_UP (596; forward)
+    try:                                               # 👁 Nov-18 WILLY / HT lines (+ DL 596 PRE_VOL_SURGE · BTC5M_UP, DL 618 BURST_REJECTION) — CROWDED_LONGS · NEAR_SPIKE_HIGH · REANCHORED (DECISION_LOG 580) + HT PRE_VOL_SURGE · BTC5M_UP (596; forward)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         import scout_willy_ht_lines as _whl

@@ -133,6 +133,61 @@ def test_exh_tp7_hold_watches_the_last_fill_of_the_cut():
     assert X.gate_k(rows[:20])[2] is None
 
 
+def test_exh_tp7_funding_read():
+    """💸 (DECISION_LOG 613) booked funding as % of the entry notional + the hold — information only."""
+    import scout_exh_tp7_609 as X
+    pct, h = X.funding_read(-87.38, 0.01563, 338877.0, "2026-11-21T14:30:40", "2026-11-21T21:19:04.1")
+    assert pct == pytest.approx(-87.38 / (0.01563 * 338877.0) * 100, abs=0.006) and h == pytest.approx(6.807, abs=0.01)
+    assert X.funding_read(None, 1.0, 1.0, "2026-11-21T00:00:00", None) == (None, None)
+    assert X.funding_read(5.0, 0.0, 1.0, "x", "y") == (None, None)
+    assert X.funding_read(-1.0, 1.0, 100.0, "2026-11-21T00:00:00", pd.NaT)[1] is None                # NaT closed_at
+    assert X.funding_read(-1.0, 1.0, 100.0, "2026-11-21T05:00:00", "2026-11-21T00:00:00")[1] is None  # closed before opened
+    assert X.funding_read(-1.0, 1.0, 50.0, "a", "b", 50.0)[0] == pytest.approx(-1.0)                  # the partial-close base
+
+
+def _exh_fill_rows(n, funding):
+    T0 = pd.Timestamp("2026-11-25")
+    return pd.DataFrame([dict(opened_at=(T0 + pd.Timedelta(hours=5 * i)).strftime("%Y-%m-%dT%H:%M:%S"),
+                              closed_at=(T0 + pd.Timedelta(hours=5 * i + 2)).strftime("%Y-%m-%dT%H:%M:%S"), pair=f"P{i}USDT", direction="SHORT",
+                              status="CLOSED", entry_strategy="EXHAUSTION_SHORT", pnl_percentage=6.9, close_reason="FRENZY_TP", entry_price=100.0,
+                              entry_exh_tp_pct=7.0, entry_exh_sl_pct=6.0, entry_exh_atr_pct=3.0, entry_exh_model_slip_pct=0.1, entry_depth_mode=None,
+                              entry_depth_walk_pct=None, funding_fee_usd=funding, quantity=50.0) for i in range(n)]).assign(o=lambda d: pd.to_datetime(d.opened_at))
+
+
+def test_exh_tp7_funding_never_changes_the_verdict(tmp_path):
+    """💸 (613) the funding read is information only — same verdict / frozen record / state file whatever the funding column holds."""
+    import json
+    import re
+    import config as C
+    import scout_exh_tp7_609 as X
+    th = NS(**dict(C.SignalThresholds().model_dump(), **_cfg()))
+    since = int(pd.Timestamp("2026-11-24").value // 10**6)
+    outs, states = [], []
+    for j, fu in enumerate((-10.0, float("nan"), +25.0)):
+        sp = tmp_path / f"s{j}.json"
+        out = X.report(frame=_exh_fill_rows(24, fu), since_ms=since, state_path=str(sp), now_ms=since + 60 * 86_400_000,
+                       bars_fn=lambda p, te, n: _bars(te, [(0.0, -7.2), (0.0, -10.2)]), newest=pd.Timestamp("2026-12-30"), th=th)
+        outs.append([re.sub(r" · (funding|held) [^·]*?(?= ·|$)", "", x) for x in out if "💸" not in x])
+        states.append(json.loads(sp.read_text())[X.KEY] if sp.exists() else None)
+    assert outs[0] == outs[1] == outs[2] and states[0] == states[1] == states[2]
+    assert any(x.startswith("**FROZEN") or x.startswith("Now: REVERT") or x.startswith("Now: KEEP") for x in outs[0])   # a verdict is reached
+
+
+def test_exh_tp7_report_shows_funding(tmp_path):
+    import config as C
+    import scout_exh_tp7_609 as X
+    th = NS(**dict(C.SignalThresholds().model_dump(), **_cfg()))
+    T0 = pd.Timestamp("2026-11-25")
+    f = pd.DataFrame([dict(opened_at="2026-11-25T00:00:00", closed_at="2026-11-25T02:00:00", pair="P0USDT", direction="SHORT", status="CLOSED",
+                           entry_strategy="EXHAUSTION_SHORT", pnl_percentage=6.9, close_reason="FRENZY_TP", entry_price=100.0, entry_exh_tp_pct=7.0,
+                           entry_exh_sl_pct=6.0, entry_exh_atr_pct=3.0, entry_exh_model_slip_pct=0.1, entry_depth_mode=None, entry_depth_walk_pct=None,
+                           funding_fee_usd=-10.0, quantity=50.0)]).assign(o=lambda d: pd.to_datetime(d.opened_at))
+    out = "\n".join(X.report(frame=f, since_ms=int(pd.Timestamp("2026-11-24").value // 10**6), state_path=str(tmp_path / "s.json"),
+                             now_ms=int(pd.Timestamp("2026-12-30").value // 10**6), bars_fn=lambda p, te, n: _bars(te, [(0.0, -7.2), (0.0, -10.2)]),
+                             newest=T0 + pd.Timedelta(days=9), th=th))
+    assert "funding -0.20 %" in out and "held 2.0 h" in out and "avg -0.20 % of notional per fill" in out and "avg hold 2.0 h" in out
+
+
 def test_exh_tp7_tp_old_and_gate():
     import scout_exh_tp7_609 as X
     assert X.tp_old(3.0) == 10.0 and X.tp_old(0.3) == 6.0 and X.tp_old(None) is None and X.tp_old(-1) is None
@@ -200,8 +255,65 @@ def test_dashboard_gates_read_the_tp7_era():
 def test_open_orders_stop_line_ui_and_exports():
     h = _src("templates/index.html")
     assert "TP cap 7 % (DECISION_LOG 609" in h and "exit override DL 579 (TP ≈ 10 %" not in h
-    assert "_exTp = (Number(o.entry_exh_tp_pct) > 0 && Number(o.entry_exh_tp_pct) <= _exCap + 1e-9)" in h    # the badge shows the clamped level
+    assert "_exTp = Number(o.exit_tp_pct) > 0 ? Number(o.exit_tp_pct) : (Number(o.entry_exh_tp_pct) > 0 && Number(o.entry_exh_tp_pct) <= _exCap + 1e-9)" in h    # the badge shows the clamped level
     m = _src("main.py")
     i = m.index("_stop_at_pct = None")
-    blk = m[i:i + 1500]
-    assert "flatbase_stop_pct" in blk and "_exh_rl(o, _th_sa)[1]" in blk and "_dist_rl(o, _th_sa)[1]" in blk and "frenzy_willy_stop_pct" in blk
+    blk = m[i:i + 2200]
+    assert "flatbase_stop_pct" in blk and "_exit_lv = _exh_rl(o, _th_sa)" in blk and "_exit_lv = _dist_rl(o, _th_sa)" in blk and "frenzy_willy_stop_pct" in blk
+
+
+def test_closed_orders_funding_pct_same_base_as_pnl_pct():
+    """💸 (DECISION_LOG 613) Closed Orders Funding % on the pnl_percentage base — entry × (quantity + partial_closed_qty)."""
+    from services.paper_costs import funding_pct_of
+    assert funding_pct_of(-87.38, 0.01563, 338877.0) == pytest.approx(-1.65, abs=0.005)        # the RARE 11-21 row: 7 % TP → 5.31 % booked
+    assert funding_pct_of(-10.0, 100.0, 5.0, 5.0) == pytest.approx(-1.0)                       # partial closes widen the base (DL 574)
+    assert funding_pct_of(0.0, 100.0, 1.0) == 0.0
+    for bad in [(None, 1.0, 1.0), (1.0, 0.0, 1.0), (1.0, None, 1.0), (1.0, 1.0, 0.0), ("x", 1.0, 1.0), (float("nan"), 1.0, 1.0)]:
+        assert funding_pct_of(*bad) is None
+    assert funding_pct_of(-10.0, 100.0, 0.0, 5.0) == pytest.approx(-2.0)                       # fully reduced before the close: the partial base
+    assert funding_pct_of(-10.0, 100.0, 5.0, float("nan")) == funding_pct_of(-10.0, 100.0, 5.0, -3.0) == pytest.approx(-2.0)
+
+
+def test_closed_orders_funding_pct_is_the_funding_share_of_pnl_pct():
+    """the engine's own fold path (fold_funding on entry × qty, then fold_partial re-bases on entry × (qty + pq)) moves pnl_percentage
+    by exactly funding_pct_of — partial rows included."""
+    from services.paper_costs import fold_funding, funding_pct_of
+    from services.position_size_adopt import fold_partial
+    E, q, pq, fu, raw = 2.0, 300.0, 200.0, -7.0, 40.0
+    for pq_, net in ((0.0, 0.0), (pq, 12.0)):
+        def final(fund):
+            p, pc = fold_funding(raw, raw / (E * q) * 100, E * q, fund)
+            p2, pc2 = fold_partial(p, q, E, net, pq_)
+            return pc2 if pc2 is not None else pc
+        assert final(fu) - final(0.0) == pytest.approx(funding_pct_of(fu, E, q, pq_), abs=0.006)
+
+
+def test_closed_orders_funding_pct_wired():
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parents[1]
+    m = (root / "main.py").read_text()
+    assert ('"funding_pct": (_funding_pct_of(getattr(o, \'funding_fee_usd\', None), o.entry_price, o.quantity, '
+            'getattr(o, \'partial_closed_qty\', None))') in m
+    assert "if getattr(o, 'funding_in_pnl', None) else None)," in m      # older rows (funding not inside the P&L) → no %
+    assert "Number(o.funding_pct).toFixed(2)" in (root / "templates" / "index.html").read_text()
+
+
+def test_open_orders_send_the_rows_own_exh_dist_levels_615():
+    """🎯 (DECISION_LOG 615) the Open Orders payload carries exit_tp_pct / exit_sl_pct = the server's row_levels (the badge reads these
+    first) plus the raw EXH / DIST stamps; the JS clamp of the stamps to today's caps is only the fallback (ENSO 11-21: the badge showed
+    the −6 cap while the engine's stop was −5.21)."""
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parents[1]
+    m = (root / "main.py").read_text()
+    i = m.index('@app.get("/api/orders/open")'); j = m.index("@app.", i + 10)
+    for k in ("entry_exh_tp_pct", "entry_exh_sl_pct", "entry_dist_tp_pct", "entry_dist_sl_pct"):
+        assert f'"{k}": getattr(o, \'{k}\', None)' in m[i:j]
+    assert '"exit_tp_pct": (round(float(_exit_lv[0]), 2)' in m[i:j] and '"exit_sl_pct": (round(float(_exit_lv[1]), 2)' in m[i:j]
+    assert "_exit_lv = _exh_rl(o, _th_sa)" in m[i:j] and "_exit_lv = _dist_rl(o, _th_sa)" in m[i:j]
+    import services.exhaustion as SE, services.distribution as SD                   # the JS fallback keys = the engine's FIELDS
+    assert SE.FIELDS['sl_cap'] == 'exhaustion_sl_cap_pct' and SE.FIELDS['tp_cap'] == 'exhaustion_tp_cap_pct'
+    assert SD.FIELDS['sl_cap'] == 'distribution_sl_cap_pct' and SD.FIELDS['tp_cap'] == 'distribution_tp_cap_pct'
+    h = (root / "templates" / "index.html").read_text()
+    assert h.count("Number(o.exit_tp_pct) > 0 ? Number(o.exit_tp_pct)") == 2 and h.count("Number(o.exit_sl_pct) > 0 ? Number(o.exit_sl_pct)") == 2
+    assert "Number(o.entry_exh_sl_pct) <= _exSlCap + 1e-9" in h
+    assert "Number(o.entry_dist_tp_pct) <= _dsTpCap + 1e-9" in h and "Number(o.entry_dist_sl_pct) <= _dsSlCap + 1e-9" in h

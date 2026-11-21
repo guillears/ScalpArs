@@ -5,7 +5,8 @@ never changes config).
 RULE (engine)   services/exhaustion.ssc_oivol_block: at an EXHAUSTION_SHORT signal the rule already passed, BLOCK when spot_share_chg >
                 −0.0366 (with the rule's < −0.0066: the spot share falls only a little) AND oi_vol = OI_usd ÷ the 24 h quote volume > 0.128.
                 OI_usd = openInterestHist sumOpenInterestValue of the latest row with T − 30 min ≤ timestamp ≤ T − 5 min (the API timestamp
-                = the metrics create_time, checked live — the study's exact window); unreadable → FAIL-OPEN (trade, EXH_SSC_OIVOL_UNREAD).
+                = the snapshot time; the study's vision read was one 5m period fresher in 2024-05 … 2026-11-15, no look-ahead — DECISION_LOG
+                614); unreadable → FAIL-OPEN (trade, EXH_SSC_OIVOL_UNREAD).
 EVIDENCE        reports/EXH_BADDAY_2026-11-18.md (2023-07 → 2026-11, the live exit): blocked 630 of 3,998 (16 %), 31 % WR, −0.43 %/trade;
                 daily compound at 0.183 × equity +0.356 → +0.399 %/day; design 511 · −0.49, unseen 2026-H2 119 · −0.16 (P(avg<0) 0.63);
                 blocked negative in 5 of 7 half-years (2023-H2 +0.66, 2024-H1 +0.26); family-wise luck p 0.45 → DECLARED OVERRIDE.

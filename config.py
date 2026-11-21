@@ -1743,7 +1743,7 @@ class SignalThresholds(BaseModel):
     # 🧯 2026-11-18 EXH_SSC_OIVOL entry filter (DECISION_LOG 582 — operator "yes build it", DECLARED OVERRIDE: family-wise luck p 0.45).
     # At a signal the rule passed, BLOCK when spot_share_chg > exhaustion_ssc_oivol_ssc_min (−0.0366; with the rule's < −0.0066 the band is
     # −0.0366 < ssc < −0.0066) AND OI ÷ the 24 h quote volume > exhaustion_ssc_oivol_oivol_min (0.128). OI = openInterestHist
-    # sumOpenInterestValue of the latest row with T − 30 min ≤ timestamp ≤ T − 5 min (API timestamp = metrics create_time — the study's window); unreadable
+    # sumOpenInterestValue of the latest row with T − 30 min ≤ timestamp ≤ T − 5 min (API timestamp = the snapshot time; the study's vision read was one period fresher — DL 614); unreadable
     # → FAIL-OPEN (EXH_SSC_OIVOL_UNREAD). Evidence reports/EXH_BADDAY_2026-11-18.md: blocked 630 of 3,998 (16 %), 31 % WR, −0.43 %/trade; DCR at
     # 0.183 × equity +0.356 → +0.399 %/day (2023-07 → 2026-11); design 511 · −0.49, unseen 2026-H2 119 · −0.16 (P(avg<0) 0.63); blocked
     # negative in 5 of 7 half-years (2023-H2 +0.66, 2024-H1 +0.26). 🔒 REVERT (scripts/scout_exh_ssc_oivol.py, alert only, frozen, read once):

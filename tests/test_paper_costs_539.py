@@ -201,10 +201,10 @@ def test_stop_reads_line_and_closed_funding_column():
     assert "if (!stopTxt && !fuTxt) return '';" in h and "const hasFu = isFinite(fu) && Math.abs(fu) >= 0.01;" in h   # the stop level shows before any funding
     assert "const lbl = o.stop_read_basis === 'price_funding' ? 'Price − funding' : o.stop_read_basis === 'price' ? 'Price' : 'Price + fees';" in h
     assert "` · stop at −${+sa.toFixed(2)}%`" in h and "` · funding paid $${Math.abs(fu).toFixed(2)}" in h and "` · funding received $${fu.toFixed(2)}" in h
-    assert '"stop_at_pct": _stop_at_pct,' in m and "_stop_at_pct = _exh_rl(o, _th_sa)[1]" in m and "_stop_at_pct = _dist_rl(o, _th_sa)[1]" in m
+    assert '"stop_at_pct": _stop_at_pct,' in m and "_exit_lv = _exh_rl(o, _th_sa)" in m and "_exit_lv = _dist_rl(o, _th_sa)" in m and m.count("_stop_at_pct = _exit_lv[1]") == 2
     assert "_stop_read_basis = \"price_funding\"" in m and "_fb_paid_funding_pct(getattr(o, 'funding_fee_usd', None), o.entry_price, o.quantity)" in m
     assert "if (o.pnl_price_pct == null) return '';" in h
-    assert '>Funding</th>' in h and '${fmtFunding(o.funding_usd)}</td>' in h
+    assert '>Funding</th>' in h and '${fmtFunding(o.funding_usd)}${(o.funding_usd != null' in h   # 💸 (613) the % follows the $
     i = h.index('id="content-closed"'); j = h.index('</thead>', i)
     assert h[i:j].count('<th ') == 21                                   # header count == the row's cell count
     assert 'colspan="20"' not in h[h.index('id="content-closed"'):h.index('id="closed-orders-table-body"') + 200]

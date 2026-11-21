@@ -12,8 +12,11 @@ tests/fixtures/dist_parity.npz, built by scripts/dist_parity_fixture.py from the
   VSW15     on the CLOSED 15m candle that closes at T: vavg = the mean quote volume of the 20 candles BEFORE it (sh(rolling(20).mean())),
             vavg > 0, quote volume ≥ 5 × vavg, close < open (family_signals 'VSW' short = spk & (c < o)).
   POS 4 h   metrics sum_toptrader_long_short_ratio = GET /futures/data/topLongShortPositionRatio (period 5m) `longShortRatio` — the API
-            `timestamp` EQUALS the metrics create_time (checked live 2026-11-18 on BTCUSDT 11-17 12:00 … 12:20: identical ratios at identical
-            stamps; the API rounds to 4 decimals). km = the latest row with timestamp ≤ T − 5 min and ≥ T − 30 min (fresh); k4 = the latest row
+            `timestamp` is the SNAPSHOT time (never shifted). The vision metrics files label each row 5 min EARLY (create_time = snapshot − 5 min)
+            from 2024-05 to 2026-11-15, and correctly before and after (DECISION_LOG 614, reports/OI_TS_AUDIT_2026-11-21.md). The study's
+            "create_time ≤ T − 5 min" therefore read the snapshot at ≤ T — one 5m period fresher than live can see, NO look-ahead (aligned
+            re-run: avg +0.883 → +0.824 %/trade, 7/7 half-years positive). Live reads the snapshot at ≤ T − 5 min (the 11-17 parity check
+            fell after vision's fix, so it matched). km = the latest row with timestamp ≤ T − 5 min and ≥ T − 30 min (fresh); k4 = the latest row
             with timestamp ≤ ts(km) − 4 h and ts(km) − ts(k4) ≤ 4 h 15 min; chg = ratio(km) − ratio(k4) (unified_short_build metrics block).
             KEEP when chg ≤ −0.01097 (strict NaN → no trade, as the study's comparison).
   ATR(14)   Wilder ATR on the 15m candles at the signal candle (frenzy_ta_build.atr); atr_pct = ATR ÷ the signal close × 100 (study: ÷ the entry

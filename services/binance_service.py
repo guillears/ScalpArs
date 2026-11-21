@@ -996,7 +996,7 @@ class BinanceService:
 
     async def fetch_exh_open_interest(self, pair_id: str, end_ms: int, limit: int = 12) -> Optional[List]:
         """🧯 (DECISION_LOG 582) the 5m open-interest history (GET /futures/data/openInterestHist, period 5m, endTime = end_ms) on the EXH perp
-        client — rows {'symbol', 'sumOpenInterest', 'sumOpenInterestValue', 'timestamp' (= the metrics create_time, checked live 11-18)}. A data endpoint: weight 0 against
+        client — rows {'symbol', 'sumOpenInterest', 'sumOpenInterestValue', 'timestamp' (= the snapshot time; DL 614)}. A data endpoint: weight 0 against
         the 1-min IP budget, its own 1,000 requests / 5 min cap — one call per EXHAUSTION signal the rule already passed. None on any error /
         ban / the EXH back-off (never sleeps, never raises): the caller fails OPEN (the EXH_SSC_OIVOL filter is skipped, counted)."""
         try:
@@ -1022,8 +1022,8 @@ class BinanceService:
 
     async def fetch_exh_top_pos_ratio(self, pair_id: str, end_ms: int, limit: int = 60) -> Optional[List]:
         """📉 (DECISION_LOG 586) the 5m TOP-TRADER POSITION long/short ratio history (GET /futures/data/topLongShortPositionRatio, period 5m,
-        endTime = end_ms) on the EXH perp client — rows {'symbol', 'longShortRatio', 'longAccount', 'shortAccount', 'timestamp' (= the metrics
-        create_time — checked live 2026-11-18 on BTCUSDT: identical ratios at identical stamps, API rounded to 4 decimals)}. A data endpoint:
+        endTime = end_ms) on the EXH perp client — rows {'symbol', 'longShortRatio', 'longAccount', 'shortAccount', 'timestamp' (= the snapshot
+        time, DL 614 — the vision files label rows 5 min early 2024-05 … 2026-11-15; API rounded to 4 decimals)}. A data endpoint:
         weight 0 against the 1-min IP budget, its own 1,000 requests / 5 min IP cap; its OWN back-off (exh_pos_limited_until, review I6) — a 429 here never stops the EXH OI read — one call per DISTRIBUTION
         signal (a red VSW candle on a tracked coin). None on any error / ban / back-off (never sleeps, never raises): the caller fails CLOSED."""
         try:

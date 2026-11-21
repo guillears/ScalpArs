@@ -42,6 +42,7 @@ DEPTH_CAP_ORDER_FIELDS = ('entry_cap_planned_usd', 'entry_cap_entry_side_usd', '
 from services.position_add import add_exit_refusal as _add_exit_refusal   # ➕ (DECISION_LOG 324)
 from services.resting_tp import RTP_SLEEVES as _RTP_SLEEVES   # 🎯 (DECISION_LOG 296)
 from services.funding_accrual import clear_open_funding as _clear_open_funding   # 💸 (DECISION_LOG 607)
+from services.paper_costs import funding_pct_of as _funding_pct_of   # 💸 (DECISION_LOG 613) Closed Orders Funding %
 from services.flatbase import FLATBASE_CLASS as _FB_CLS, paid_funding_pct as _fb_paid_funding_pct   # 💸 (2026-11-21 · DL 607) sleeves whose stop reads the GROSS price move
 from services.exhaustion import EXHAUSTION_CLASS as _EXH_CLS
 from services.distribution import DISTRIBUTION_CLASS as _DIST_CLS
@@ -2365,6 +2366,7 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
         # stop · EXHAUSTION / DISTRIBUTION the row's own level (row_levels: the stamp, clamped to today's cap) · WILLY / WILLY_HT the net stop ·
         # anything else None (the line shows no level)
         _stop_at_pct = None
+        _exit_lv = (None, None)   # 🎯 (DECISION_LOG 615) EXH / DIST: the (TP %, SL %) the engine runs (row_levels) — the badge reads these
         try:
             _es_sa = getattr(o, 'entry_strategy', None) or ""
             _th_sa = config.trading_config.thresholds
@@ -2372,10 +2374,12 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
                 _stop_at_pct = float(getattr(_th_sa, 'flatbase_stop_pct', 0) or 0) or None
             elif _es_sa in _EXH_CLS:
                 from services.exhaustion import row_levels as _exh_rl
-                _stop_at_pct = _exh_rl(o, _th_sa)[1]
+                _exit_lv = _exh_rl(o, _th_sa)
+                _stop_at_pct = _exit_lv[1]
             elif _es_sa in _DIST_CLS:
                 from services.distribution import row_levels as _dist_rl
-                _stop_at_pct = _dist_rl(o, _th_sa)[1]
+                _exit_lv = _dist_rl(o, _th_sa)
+                _stop_at_pct = _exit_lv[1]
             elif _es_sa in ("FRENZY_WILLY", "FRENZY_WILLY_HT"):
                 _stop_at_pct = float(getattr(_th_sa, 'frenzy_willy_stop_pct', 0) or 0) or None
             _stop_at_pct = round(float(_stop_at_pct), 2) if _stop_at_pct else None
@@ -2425,6 +2429,10 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
             "entry_frenzy_willy_nomiss": getattr(o, 'entry_frenzy_willy_nomiss', None),   # 🧭 (350) R_NOMISS entry A
             "frenzy_willy_tp_target_pct": getattr(o, 'frenzy_willy_tp_target_pct', None), "entry_frenzy_willy_spike_high": getattr(o, 'entry_frenzy_willy_spike_high', None), "frenzy_willy_runner_k": getattr(o, 'frenzy_willy_runner_k', None),   # 🎲² (356) WILLY exit V2: the row's own TP / spike high
             "flip_fan_tp_pct": getattr(o, 'flip_fan_tp_pct', None),   # 🎯 (563) FAN flip fixed TP (NULL = the trail)
+            # 🎯 (DECISION_LOG 615) the row's OWN TP / SL stamps — the EXH / DIST badge reads them but they were never sent, so the badge showed
+            # today's caps (ENSO 11-21: badge −6 while the engine's stop and the "stop at" line were −5.21)
+            "entry_exh_tp_pct": getattr(o, 'entry_exh_tp_pct', None), "entry_exh_sl_pct": getattr(o, 'entry_exh_sl_pct', None),
+            "entry_dist_tp_pct": getattr(o, 'entry_dist_tp_pct', None), "entry_dist_sl_pct": getattr(o, 'entry_dist_sl_pct', None),
             **{_k: getattr(o, _k, None) for _k in DEPTH_CAP_ORDER_FIELDS},   # 📖📊 (584) capacity at entry (the 📖 badge)
             "size_adopted_at": (o.size_adopted_at.isoformat() if getattr(o, 'size_adopted_at', None) else None),   # 📐 (572) size from Binance
             "size_adopted_from_qty": getattr(o, 'size_adopted_from_qty', None),
@@ -2479,6 +2487,8 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
             "pnl_price_pct": _stop_read_pct,
             "stop_read_basis": _stop_read_basis,
             "stop_at_pct": _stop_at_pct,   # 🪧 (DECISION_LOG 610) the stop level the Open Orders line names
+            "exit_tp_pct": (round(float(_exit_lv[0]), 2) if _exit_lv[0] else None),   # 🎯 (615) EXH / DIST TP the engine runs
+            "exit_sl_pct": (round(float(_exit_lv[1]), 2) if _exit_lv[1] else None),   # 🎯 (615) EXH / DIST SL the engine runs
             "duration": f"{hours:02d}:{minutes:02d}:{seconds:02d}",
             "duration_seconds": duration_seconds,
             "opened_at": o.opened_at.isoformat(),
@@ -3128,6 +3138,10 @@ async def get_closed_orders(db: AsyncSession = Depends(get_db)):
             # 💸 (2026-11-21) funding paid (−) / received (+) while open; funding_in_pnl True = already inside pnl (NULL on rows before DL 539)
             "funding_usd": (round(float(o.funding_fee_usd), 4) if getattr(o, 'funding_fee_usd', None) is not None else None),
             "funding_in_pnl": getattr(o, 'funding_in_pnl', None),
+            # 💸 (613) funding as % of the SAME base as pnl_percentage (entry × (quantity + partial_closed_qty)) → the two % add up
+            # only where the funding is INSIDE pnl_percentage (rows from DL 539) — older rows keep the $ alone
+            "funding_pct": (_funding_pct_of(getattr(o, 'funding_fee_usd', None), o.entry_price, o.quantity, getattr(o, 'partial_closed_qty', None))
+                            if getattr(o, 'funding_in_pnl', None) else None),
             "pnl": round(o.pnl or 0, 2),
             "pnl_percentage": round(o.pnl_percentage or 0, 2),
             "peak_pnl": round(o.peak_pnl or 0, 2),

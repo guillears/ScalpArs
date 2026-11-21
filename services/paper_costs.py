@@ -91,6 +91,17 @@ def fold_funding(pnl, pnl_pct, notional, funding_usd) -> Tuple[Optional[float], 
     return newp, newpc
 
 
+def funding_pct_of(funding_usd, entry_price, quantity, partial_closed_qty=None) -> Optional[float]:
+    """💸 (DECISION_LOG 613) the funding $ as a % of the SAME base pnl_percentage uses — entry × (quantity + partial_closed_qty) (the
+    original notional, DL 574) — so the Closed Orders Funding % and P&L % sit on one ruler (P&L % = price % − fees % + funding %).
+    Negative = paid. Missing / non-positive inputs → None (the UI shows the $ alone). Never raises."""
+    fu, e, q, pq = _f(funding_usd), _f(entry_price), _f(quantity), _f(partial_closed_qty)
+    if fu is None or e is None or q is None or e <= 0:
+        return None
+    base = e * (q + (pq if pq is not None and pq > 0 else 0.0))
+    return round(fu / base * 100.0, 2) if base > 0 else None
+
+
 HOUR_MS = 3_600_000
 
 

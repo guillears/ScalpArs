@@ -11585,7 +11585,7 @@ class TradingEngine:
     async def _exh_oi_read(self, pair, T) -> Optional[float]:
         """🧯 (DECISION_LOG 582) OI_usd at the decision time T: ONE openInterestHist read (5m, endTime T, the EXH perp client — a weight-0
         data endpoint with its own 1,000 / 5 min cap; one call per signal that passed every other gate), the latest row with
-        T − 30 min ≤ timestamp ≤ T − 5 min (services.exhaustion.oi_pick; API timestamp = metrics create_time). None = unreadable (ban / error / empty / stale) → the caller fails OPEN. Never raises."""
+        T − 30 min ≤ timestamp ≤ T − 5 min (services.exhaustion.oi_pick; API timestamp = the snapshot time, DL 614). None = unreadable (ban / error / empty / stale) → the caller fails OPEN. Never raises."""
         try:
             if _bs_ban_active():
                 return None

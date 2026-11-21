@@ -466,13 +466,16 @@ def in_window(spike_ms, T, th) -> bool:
 # BLOCK a signal the rule passed when BOTH (a) spot_share_chg > exhaustion_ssc_oivol_ssc_min (−0.0366; the rule itself needs < −0.0066, so
 # the block band is −0.0366 < ssc < −0.0066 — the spot share falls only a little) AND (b) oi_vol = OI_usd ÷ vol24 > exhaustion_ssc_oivol_oivol_min
 # (0.128 — open interest is large against the day's turnover). Study reports/EXH_BADDAY_2026-11-18.md (builder sq/build.py L95-110, prep.py L21):
-#   OI_usd  Binance metrics sum_open_interest_value of the latest 5m row whose create_time (the period START) is ≤ T − 5 min and ≥ T − 30 min,
+#   OI_usd  Binance metrics sum_open_interest_value of the latest 5m row whose create_time (the vision file's label) is ≤ T − 5 min and ≥ T − 30 min,
 #           T = the decision time (the signal 15m bar close). Live: GET /futures/data/openInterestHist (period 5m) → sumOpenInterestValue; the
-#           latest row with T − 30 min ≤ timestamp ≤ T − 5 min — the API `timestamp` EQUALS the metrics create_time (BTCUSDT 11-17 12:00 … 12:20: identical
-#           sumOpenInterestValue at identical stamps, checked live 2026-11-18), so this is the study's exact window (create_time ≤ T − 5 min, ≤ 30 min old).
+#           latest row with T − 30 min ≤ timestamp ≤ T − 5 min. The API `timestamp` is the SNAPSHOT time (never shifted); the vision metrics files
+#           label rows 5 min EARLY (create_time = snapshot − 5 min) from 2024-05 to 2026-11-15 and correctly before / after (DECISION_LOG 614,
+#           reports/OI_TS_AUDIT_2026-11-21.md). So the study read the snapshot at ≤ T (one period fresher than live, NO look-ahead; aligned
+#           re-run: blocked cohort −0.63 → −0.56 %, still < 0 at 95 %) and live reads ≤ T − 5 min. The 11-18 parity check (BTCUSDT 11-17) matched
+#           only because it fell after vision's 11-16 fix.
 #   vol24   the rule's own 24 h quote volume (features()['vol24'] — the 288 closed 5m bars ending at the last closed bar = the study's vol24_k).
 # Unreadable OI (error, empty, stale, non-positive) → FAIL-OPEN (trade), counted EXH_SSC_OIVOL_UNREAD. Strict cuts (> / >), as in the study.
-OI_LAG_MS = 5 * 60_000                    # (582 review, checked live 11-18: openInterestHist `timestamp` == metrics create_time, the period START)
+OI_LAG_MS = 5 * 60_000                    # (582; DL 614) the API timestamp is the snapshot time → live reads the snapshot ≥ 5 min old
 OI_MAX_AGE_MS = 30 * 60_000
 OI_LIMIT = 12                              # rows asked for (1 h of 5m periods ending at T) — a weight-0 data endpoint
 
@@ -483,8 +486,8 @@ def ssc_oivol_enabled(th) -> bool:
 
 
 def oi_pick(rows, T) -> Tuple[Optional[float], Optional[int]]:
-    """(OI_usd, its timestamp ms) of the latest openInterestHist row with T − 30 min ≤ timestamp ≤ T − 5 min (the API timestamp = the metrics
-    create_time — the study's window). rows = [{'timestamp': ms, 'sumOpenInterestValue': '…'}, …] (any order). (None, None) when no usable row
+    """(OI_usd, its timestamp ms) of the latest openInterestHist row with T − 30 min ≤ timestamp ≤ T − 5 min (the API timestamp = the
+    snapshot time; DECISION_LOG 614 — one 5m period older than the study's read in the 2024-05 … 2026-11-15 vision era, no look-ahead). rows = [{'timestamp': ms, 'sumOpenInterestValue': '…'}, …] (any order). (None, None) when no usable row
     (empty / stale / unreadable / non-positive). Never raises."""
     best = None
     try:

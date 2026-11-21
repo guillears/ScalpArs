@@ -55,9 +55,9 @@ def test_oi_row_pick_is_lag_safe():
     T = 1_763_000_100_000 // (15 * MIN) * (15 * MIN)
     r = lambda ts, v: {"timestamp": ts, "sumOpenInterestValue": str(v)}
     rows = [r(T - 15 * MIN, 1.0), r(T - 10 * MIN, 2.0), r(T - 5 * MIN, 3.0), r(T, 4.0), r(T + 5 * MIN, 99.0)]
-    assert X.oi_pick(rows, T) == (3.0, T - 5 * MIN)                                          # timestamp = create_time → the row ≤ T − 5 min
+    assert X.oi_pick(rows, T) == (3.0, T - 5 * MIN)                                          # timestamp = the snapshot time (DL 614) → the row ≤ T − 5 min
     assert X.oi_pick(list(reversed(rows[:3])), T) == (3.0, T - 5 * MIN)                      # any order
-    assert X.oi_pick([r(T - 30 * MIN, 5.0)], T) == (5.0, T - 30 * MIN)                       # = the study's create_time ≥ T − 30 min
+    assert X.oi_pick([r(T - 30 * MIN, 5.0)], T) == (5.0, T - 30 * MIN)                       # ≤ 30 min old, as the study
     assert X.oi_pick([r(T - 30 * MIN - 1, 5.0)], T) == (None, None)                          # older → stale → unreadable
     assert X.oi_pick([r(T - 5 * MIN + 1, 5.0)], T) == (None, None)                           # newer than T − 5 min → never used
     assert X.oi_pick([r(T, 5.0)], T) == (None, None)

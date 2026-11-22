@@ -196,17 +196,21 @@ def test_stop_reads_line_and_closed_funding_column():
     assert '"funding_usd": (round(float(o.funding_fee_usd), 4) if getattr(o, \'funding_fee_usd\', None) is not None else None),' in m
     assert '"funding_in_pnl": getattr(o, \'funding_in_pnl\', None),' in m
     h = _src("templates/index.html")
-    # 🪧 (DECISION_LOG 610 → 617) two short lines under the P&L: "Price +X%" and, only when funding ≥ 0.1 % of notional, "Funding −W% ($Z)";
+    # 🪧 (DECISION_LOG 610 → 617 → 620) two short lines under the P&L: "Move +X% (price ↑/↓)" and, only when funding ≥ 0.1 % of notional, "Funding −W% ($Z)";
     # no "stop at" (the 🎯 flag shows the row's own stop since DL 615) — the stop level and the exact $ stay in the hover
-    assert "<div>${lbl} ${pp >= 0 ? '+' : ''}${pp.toFixed(2)}%</div>${fuLine}</div>" in h and "stop reads ${lbl}" not in h
+    assert "<div>${lbl} ${pp >= 0 ? '+' : ''}${pp.toFixed(2)}%${pxArrow}</div>${fuLine}</div>" in h and "stop reads ${lbl}" not in h
     assert "const showFu = isFinite(fuPct) && Math.abs(fuPct) >= 0.1;" in h and "if (!hasStop && !showFu) return '';" in h
     assert "Funding ${fu < 0 ? '−' : '+'}${Math.abs(fuPct).toFixed(2)}% ($${Math.abs(fu).toFixed(Math.abs(fu) < 10 ? 2 : 0)})" in h
     assert "it closes the trade when that number reaches −${+sa.toFixed(2)}%" in h                        # the stop level lives in the hover
-    assert "const lbl = o.stop_read_basis === 'price_funding' ? 'Price − funding' : o.stop_read_basis === 'price' ? 'Price' : 'Price + fees';" in h
+    assert "const lbl = o.stop_read_basis === 'price_funding' ? 'Move − funding' : o.stop_read_basis === 'price' ? 'Move' : 'Move − fees';" in h   # 🪧 (620)
+    assert "Math.abs(_cp / _ep - 1) >= 0.00005" in h and "_ep > 0 && _cp > 0" in h                                  # no arrow within 0.005 % / unknown price
+    assert 'Price − funding number above' not in h and 'Move − funding number above' in h and "'Price + fees'" not in h
+    assert "(_cp > _ep ? ' (price ↑)' : ' (price ↓)')" in h and "${pp.toFixed(2)}%${pxArrow}</div>${fuLine}</div>" in h   # the real price direction
+    assert 'whitespace-nowrap">${formatUSD(o.pnl)} (${o.pnl_percentage.toFixed(2)}%)</span>' in h                          # the P&L never wraps
     assert "${stopTxt}${fuTxt}" not in h and "` · stop at −${+sa.toFixed(2)}%`" not in h                     # the old one-liner is gone
     assert "const fuPct = (isFinite(fu) && nv > 0) ? fu / nv * 100 : NaN;" in h                                 # no notional → no % line
     assert "${fu < 0 ? 'text-red-400/80' : 'text-emerald-400/80'}" in h                                        # paid red · received green
-    assert "already taken out of the Price − funding number above" in h                                       # FLATBASE: not counted twice
+    assert "already taken out of the Move − funding number above" in h                                       # FLATBASE: not counted twice
     assert '"stop_at_pct": _stop_at_pct,' in m and "_exit_lv = _exh_rl(o, _th_sa)" in m and "_exit_lv = _dist_rl(o, _th_sa)" in m and m.count("_stop_at_pct = _exit_lv[1]") == 2
     assert "_stop_read_basis = \"price_funding\"" in m and "_fb_paid_funding_pct(getattr(o, 'funding_fee_usd', None), o.entry_price, o.quantity)" in m
     assert "if (o.pnl_price_pct == null) return '';" in h

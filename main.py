@@ -778,6 +778,7 @@ async def stop_background_tasks():
                 await task
             except asyncio.CancelledError:
                 pass
+    await trading_engine.stop_ht_burst_loop()   # 💥 (DECISION_LOG 619 review) the WILLY_HT burst 1m buffer loop: cancelled + awaited before the clients close
     _sg_task = trading_engine.__dict__.get('_stamp_gap_task')   # 🚨 (DECISION_LOG 405) a read-only sweep in flight at shutdown
     if _sg_task is not None and not _sg_task.done():
         _sg_task.cancel()

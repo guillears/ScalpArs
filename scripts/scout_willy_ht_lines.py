@@ -47,6 +47,11 @@ LINES      (zone = the entries the line would block; rest = the scored others; a
                    opened ≥ the DECISION_LOG 618 commit + 10 min are fetched and counted. The scout needs ≥ 15 prior bars (the study dropped
                    fills with < 300 — differs only on coins listed minutes before the fill). Cut strict: cloc15 < 0.50 (the PREREG; the study's
                    evaluator used ≤ — no fill sits exactly at 0.50 in the evidence).
+                   ⚠ ARMED for WILLY_HT since DECISION_LOG 619 (2026-11-21, operator-declared; frenzy_willy_ht_burst_rejection_enabled — the
+                   engine judges the same zone at the DECISION minute with services.frenzy.pre_vol15_vs60 + cloc15, the fill sits seconds later)
+                   → forward HT zone fills should be ~0 and the HT row here mostly shows rest-side fills; the filter's forward verdict is the
+                   blocked-trade pricer (scout_blocked_filters.py, FRENZY_WILLY_HT · WILLY_HT_BURST_REJECTION, TIGHT absolute gate: first 10
+                   priced on ≥ 5 days, avg ≥ 0 → REVERT). cloc15 here = services.frenzy.cloc15 (one definition).
 COHORT     CLOSED FRENZY_WILLY and FRENZY_WILLY_HT LONG fills from the orders exports (scout_willy_failed_spike_watch.load: dedup, CLOSED beats
            OPEN, newest export wins), operator-closed out, opened ≥ the DECISION_LOG 580 commit + 10 min (forward only). Each sleeve × line
            read and decided SEPARATELY (never pooled).
@@ -75,11 +80,15 @@ import export_glob as _EG          # noqa: E402,F401  (Downloads + exports_archi
 import scout_gatekit as _GK        # noqa: E402
 import scout_b1h_negflank as NF    # noqa: E402
 import scout_willy_failed_spike_watch as WF   # noqa: E402  (the loader + the frozen bar — one definition)
+_R = os.path.dirname(_D)
+_R in sys.path or sys.path.insert(0, _R)
+from services import frenzy as _FZ   # noqa: E402  💥 (619) the shared pure cloc15 (engine + this scout)
 
 DL = 580
 DL_ARMED_NEAR_HIGH = 594   # 🧱 (DECISION_LOG 594) NEAR_SPIKE_HIGH ARMED for WILLY_HT (the engine refuses the zone; the blocked-trade pricer decides)
 DL_596 = 596   # 📊 (DECISION_LOG 596) PRE_VOL_SURGE + BTC5M_UP registered 2026-11-19 — HT only, forward from that commit
 DL_618 = 618   # 💥 (DECISION_LOG 618) BURST_REJECTION registered 2026-11-21 — HT only, forward from that commit
+DL_ARMED_BURST = 619   # 💥 (DECISION_LOG 619) BURST_REJECTION ARMED for WILLY_HT (the engine refuses the zone; the blocked-trade pricer decides)
 DL_HT = 608   # 🔁 (DECISION_LOG 608) RE-BASED 2026-11-21: HT's TP +5 → +6 net (stop −4; was 587: +2 → +5) → HT counts only fills ≥ the DL 608 commit + 10 min
 SLEEVES = ("FRENZY_WILLY", "FRENZY_WILLY_HT")
 # FROZEN breakevens: WILLY V2b (DL 509) · HT re-based at DL 608 = the +6 / −4 exit: |loss| ÷ (win + |loss|) = 4 ÷ 10 (0.444 at +5 / −4, 0.667 at +2 / −4)
@@ -88,7 +97,7 @@ BE_NOTE = WF.BE_NOTE   # HT's 40.0 % is frozen from theory (+6 / −4 net), WILL
 STATE_KEY = {"FRENZY_WILLY": "FRENZY_WILLY", "FRENZY_WILLY_HT": "FRENZY_WILLY_HT@608"}   # the HT verdicts of the +2 / +5 eras are never read again
 TOP_ACC_CUT, GLOB_ACC_CUT, OFF_PEAK_CUT, REANCHOR_H = 1.19, 1.0624, -1.4, 1.0
 PRE_VOL_CUT, BTC_GAP_CUT = 1.60, 0.0   # 📊 (596) FROZEN — the WL594 cuts (never re-fit)
-CLOC_CUT, CLOC_BARS = 0.50, 15         # 💥 (618) FROZEN — the pre-registered V4 cut (never re-fit) · the pre_vol "recent" window
+CLOC_CUT, CLOC_BARS = 0.50, _FZ.CLOC_BARS   # 💥 (618) FROZEN — the pre-registered V4 cut (never re-fit) · the pre_vol "recent" window
 LINES = ("CROWDED_LONGS", "NEAR_SPIKE_HIGH", "REANCHORED", "PRE_VOL_SURGE", "BTC5M_UP", "BURST_REJECTION")
 LINES_596 = ("PRE_VOL_SURGE", "BTC5M_UP")   # HT only, floor = the DL 596 commit + 10 min
 LINES_618 = ("BURST_REJECTION",)            # HT only, floor = the DL 618 commit + 10 min
@@ -163,20 +172,10 @@ def zone_above(v, cut):
 
 
 def cloc15(rows_1m, fill_ms):
-    """💥 (618) close location of the 15 one-minute bars CLOSED before the fill minute: (last close − low) ÷ (high − low) over those bars
-    (the study's cloc15; bars opened before the fill minute = the pre_vol "recent" window). rows_1m = Binance 1m klines
-    [open_ms, o, h, l, c, v, …]. → float in [0, 1], or None (fewer than 15 such bars / flat range / unreadable). Pure, never raises."""
-    try:
-        m0 = (int(fill_ms) // 60_000) * 60_000
-        pre = sorted((r for r in (rows_1m or []) if int(r[0]) < m0), key=lambda r: int(r[0]))[-CLOC_BARS:]
-        if len(pre) < CLOC_BARS:
-            return None
-        hi, lo, c = max(float(r[2]) for r in pre), min(float(r[3]) for r in pre), float(pre[-1][4])
-        if not (hi > lo) or any(x != x for x in (hi, lo, c)):
-            return None
-        return round((c - lo) / (hi - lo), 6)
-    except (TypeError, ValueError, IndexError):
-        return None
+    """💥 (618) close location of the 15 one-minute bars CLOSED before the fill minute: (last close − low) ÷ (high − low) over those bars.
+    → float in [0, 1], or None (fewer than 15 such bars / flat range / unreadable). Since DECISION_LOG 619 the ONE definition lives in
+    services.frenzy.cloc15 (the engine's WILLY_HT_BURST_REJECTION judges the same function at the decision) — this is a re-export. Pure."""
+    return _FZ.cloc15(rows_1m, fill_ms)
 
 
 def zone_burst_rejection(pre_vol, cloc):
@@ -433,7 +432,10 @@ def run(now_ms=None, paths=None, state_path=STATE, since_ms=None, fetch=True):
             L += [f"(re-based: HT fills opened ≥ {pd.Timestamp(int(ht_floor), unit='ms'):%Y-%m-%d %H:%M} UTC — the DL {DL_HT} TP +6 / SL −4 exit; breakeven 40.0 %)", f"⚠ {BE_NOTE}.",
                   f"⚠ NEAR_SPIKE_HIGH is ARMED for WILLY_HT since DECISION_LOG {DL_ARMED_NEAR_HIGH} (frenzy_willy_ht_min_dip_pct) — zone entries are REFUSED, "
                   "so forward HT zone fills should be ~0 and its table mostly shows rest-side fills. The filter's forward verdict is the blocked-trade "
-                  "pricer (scout_blocked_filters: FRENZY_WILLY_HT · WILLY_HT_NEAR_HIGH — the refused zone trades priced on HT's live exit).", ""]
+                  "pricer (scout_blocked_filters: FRENZY_WILLY_HT · WILLY_HT_NEAR_HIGH — the refused zone trades priced on HT's live exit).",
+                  f"⚠ BURST_REJECTION is ARMED for WILLY_HT since DECISION_LOG {DL_ARMED_BURST} (frenzy_willy_ht_burst_rejection_enabled) — zone entries are "
+                  "REFUSED at the decision, so forward HT zone fills should be ~0. Its forward verdict is the blocked-trade pricer (scout_blocked_filters: "
+                  "FRENZY_WILLY_HT · WILLY_HT_BURST_REJECTION, tight gate 10 priced on ≥ 5 days, avg ≥ 0 → REVERT).", ""]
         elif es == "FRENZY_WILLY":
             L += ["(plain WILLY entries back ON since DECISION_LOG 595 (2026-11-19) — OFF 11-18 → 11-19 (DL 587), no fills in that gap)", ""]
         for ln in LINES:

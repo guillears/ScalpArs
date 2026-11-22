@@ -119,6 +119,9 @@ class BinanceService:
         self.flatbase_exchange = None   # 🩳 (DECISION_LOG 348) FLATBASE 14-day history reads: own public client + throttle (lazy)
         self.flatbase_limited_until = 0.0   # 🩳 a 429 / 418 on the FLATBASE client → its reader defers until then
         self.flatbase_used_weight = 0   # the X-MBX-USED-WEIGHT-1M of its last response (the reader stops above FLATBASE_WEIGHT_STOP)
+        self.burst_exchange = None      # 💥 (DECISION_LOG 619) WILLY_HT_BURST_REJECTION 1m reads (the rolling buffer + the decision fallback): own public client (lazy)
+        self.burst_limited_until = 0.0  # 💥 a 429 / 418 on the burst client → no burst read until then (the filter fails open: _UNREAD)
+        self.burst_used_weight = 0      # the X-MBX-USED-WEIGHT-1M of its last response
         self.exh_exchange = None        # 🪫 (DECISION_LOG 578) EXHAUSTION_SHORT signal reads (perp 5m klines with quote volume): own public client (lazy)
         self.exh_spot_exchange = None   # 🪫 … spot 15m klines + spot exchangeInfo (the SPOT API's own weight budget): own public client (lazy)
         self.exh_limited_until = 0.0    # 🪫 a 429 / 418 on either EXH client → no EXH read until then (the signal fails closed: EXH_NO_DATA)
@@ -546,6 +549,11 @@ class BinanceService:
             await self.recorder_exchange.close()
         if getattr(self, 'flatbase_exchange', None) is not None:   # 🩳 (DECISION_LOG 348)
             await self.flatbase_exchange.close()
+        if getattr(self, 'burst_exchange', None) is not None:   # 💥 (DECISION_LOG 619)
+            try:
+                await self.burst_exchange.close()
+            finally:
+                self.burst_exchange = None   # (619 review) a later read re-creates it instead of using a closed client
         if getattr(self, 'regime_exchange', None) is not None:   # 📈 (DECISION_LOG 383)
             await self.regime_exchange.close()
         for _xc in ('exh_exchange', 'exh_spot_exchange'):   # 🪫 (DECISION_LOG 578)
@@ -949,6 +957,59 @@ class BinanceService:
             logger.warning(f"[BINANCE] FLATBASE klines until {end_ms} for {pair_id} ({timeframe}) failed: {str(e)[:120]}")
             return None
 
+    BURST_WEIGHT_STOP = 1500   # 💥 (DECISION_LOG 619 review) IP used weight (1 min) at / above which the burst reads stand down to the next minute (= REGIME_WEIGHT_STOP)
+    BURST_LIMIT_BACKOFF_S = 60.0   # a 429 / 418 / -1003 on the burst client → no burst read for this long
+
+    def burst_limited(self) -> bool:
+        """💥 (DECISION_LOG 619) True = no burst read now: an ACTIVE IP ban (_ban_until in the future — the EXH helpers' check) or the burst
+        client's own back-off (a rate-limit answer, or the IP used weight ≥ BURST_WEIGHT_STOP until the next minute boundary). Never raises."""
+        try:
+            now = time.time()
+            return _ban_until > now or now < float(self.burst_limited_until or 0.0)
+        except Exception:
+            return True
+
+    def _burst_after_ok(self) -> None:
+        """💥 (619 review) read X-MBX-USED-WEIGHT-1M of the last burst answer; ≥ BURST_WEIGHT_STOP → stand down until the next minute boundary
+        (Binance's 1-minute weight window resets there). Never raises."""
+        try:
+            _h = getattr(self.burst_exchange, 'last_response_headers', None) or {}
+            _w = next((v for k, v in dict(_h).items() if str(k).lower() == 'x-mbx-used-weight-1m'), None)
+            if _w is None:
+                return
+            self.burst_used_weight = int(float(_w))
+            if self.burst_used_weight >= self.BURST_WEIGHT_STOP:
+                now = time.time()
+                self.burst_limited_until = max(float(self.burst_limited_until or 0.0), (math.floor(now / 60.0) + 1) * 60.0)
+                logger.warning(f"[BINANCE] burst 1m reads paused to the next minute — IP used weight {self.burst_used_weight}")
+        except (TypeError, ValueError, AttributeError):
+            pass
+
+    async def get_klines_1m_recent(self, pair_id: str, limit: int = 90) -> Optional[List]:
+        """💥 (DECISION_LOG 619) the newest `limit` (1 … 99 → weight 1) 1m klines of a pair, oldest first, incl. the forming bar — the PUBLIC
+        /fapi/v1/klines on the burst client: its OWN lazily-created public ccxt client and throttle, so these reads never queue in front of
+        the scan / FRENZY / order reads. pair_id = 'ABCUSDT' (or 'ABC/USDT:USDT'; no markets load). → [[open_ms, o, h, l, c, v], …] as
+        Binance returns them, or None on any failure, during an active ban or the burst back-off (never sleeps it out: the caller fails
+        open). Never raises (a cancellation propagates)."""
+        try:
+            if self.burst_limited():
+                return None
+            if self.burst_exchange is None:
+                self.burst_exchange = ccxt.binanceusdm({'enableRateLimit': True, 'options': {'defaultType': 'future'}})
+            raw = await self.burst_exchange.fapiPublicGetKlines({
+                'symbol': str(pair_id).replace('/USDT:USDT', 'USDT').replace('/', ''), 'interval': '1m',
+                'limit': max(1, min(int(limit), 99))})
+            self._burst_after_ok()
+            return [[int(r[0]), float(r[1]), float(r[2]), float(r[3]), float(r[4]), float(r[5])] for r in raw or []]
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            self._detect_ban(e)
+            if isinstance(e, (RateLimitExceeded, DDoSProtection)) or any(x in str(e) for x in ('429', '418', '-1003', 'Too many requests')):
+                self.burst_limited_until = max(float(self.burst_limited_until or 0.0), time.time() + self.BURST_LIMIT_BACKOFF_S)
+            logger.warning(f"[BINANCE] burst 1m klines for {pair_id} failed: {str(e)[:120]}")
+            return None
+
     def _exh_note(self, cl, spot: bool) -> None:
         try:
             _h = getattr(cl, 'last_response_headers', None) or {}
@@ -1173,7 +1234,8 @@ class BinanceService:
         clients — the shared budget the observe-only Market-hot reads defer to. None when no client has a header yet. Never raises."""
         best = None
         _now_ms = time.time() * 1000
-        for cl in (getattr(self, 'exchange', None), getattr(self, 'public_exchange', None), getattr(self, 'regime_exchange', None)):
+        for cl in (getattr(self, 'exchange', None), getattr(self, 'public_exchange', None), getattr(self, 'regime_exchange', None),
+                   getattr(self, 'burst_exchange', None)):   # 💥 (619 review) the burst client's answers carry the same IP-wide counter
             try:
                 _last = getattr(cl, 'lastRestRequestTimestamp', None)
                 if _last and _now_ms - float(_last) > 60_000:

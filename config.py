@@ -1621,6 +1621,18 @@ class SignalThresholds(BaseModel):
     # Unreadable H → fail-open (WILLY_HT_NEAR_HIGH_UNREAD). 🔒 revert (alert-only, scripts/scout_blocked_filters.py): first 15 priced blocked
     # HT trades on ≥ 8 days, avg net on HT's exit ≥ 0 → REVERT (set 0). Code default 0 = OFF; trading_config.json 1.4.
     frenzy_willy_ht_min_dip_pct: float = 0.0
+    # 💥 2026-11-21 WILLY_HT BURST-REJECTION FILTER (DECISION_LOG 619, operator-declared override — it FAILS the locked bar): refuse a
+    # FRENZY_WILLY_HT long when, on the 1m bars CLOSED before the decision minute, pre_vol15_vs60 > 1.60 (the last 15 bars traded > 1.6× the
+    # 60 before) AND cloc15 < 0.50 (those 15 bars closed in the lower half of their range) — a volume burst sold back before we buy. Cuts
+    # FROZEN in services/watch_filters (HT_BURST_PRE_VOL_MIN / HT_BURST_CLOC_MAX — never re-fit; only this switch is config). Evidence
+    # (DL 618, reports/WILLY_HT_THEORY_2D_2026-11-21.md, pre-registered V4): real 24 → 3 blocked, all −4.10 (master 12 · +4.46 → 11 · +5.24;
+    # batch 12 · +0.95 → 10 · +1.96); backtest HOLDOUT 267 · +0.02 → 229 · +0.12 (38 blocked · −0.62). Fails: P(mean<0) 0.78 < 0.95, 3 real
+    # blocked < 15, luck p ≈ 0.20 (best-of-6 0.61), flips at the 0.60 cut, 25-H2 blocked were winners. Counter
+    # FRENZY_WILLY_HT_BLOCK_WILLY_HT_BURST_REJECTION + a blocked_signals row + a WILLY journal event; the pending entry ENDS (HT's one-shot rule).
+    # 1m bars: a rolling in-memory buffer per candidate coin (~0 ms), else one read capped at 1.5 s; unreadable → fail-open
+    # (WILLY_HT_BURST_REJECTION_UNREAD). 🔒 TIGHT revert (alert-only, scripts/scout_blocked_filters.py): first 10 priced blocked HT trades on
+    # ≥ 5 days, avg net on HT's exit ≥ 0 → REVERT (set false). Code default False = OFF; trading_config.json true.
+    frenzy_willy_ht_burst_rejection_enabled: bool = False
     frenzy_willy_ht_max_slots: int = 10            # 🧺 DL 542 (operator 11-13): no per-sleeve limit — 10 = the book count ceiling (was 1) · FRENZY_WILLY_HT open at once (its OWN slot; WILLY's slot never counts HT)
     # 🩳 2026-10-22 FLATBASE_SHORT (DECISION_LOG 348 — operator DISCIPLINE OVERRIDE: the study FAILED its ship bars; alert-only gates, no
     # auto-off). Short a FRENZY episode whose coin was FLAT for the 14 days before the spike (14-d close range ≤ flatbase_flat_max at the base

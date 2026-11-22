@@ -48,6 +48,9 @@ COHORT   BLOCKED rows from every decisions export (export_glob: Downloads + expo
          🧱 (DL 594) WILLY_HT_NEAR_HIGH (FRENZY_WILLY_HT, operator-declared): an ABSOLUTE gate instead — first 15 priced refusals on ≥ 8
          days, avg net on HT's exit ≥ 0 → REVERT CANDIDATE (frenzy_willy_ht_min_dip_pct → 0), else KEEP; also frozen on its sole refusals
          (key FRENZY_WILLY_HT@608:WILLY_HT_NEAR_HIGH|sole since DL 608).
+         💥 (DL 619) WILLY_HT_BURST_REJECTION (FRENZY_WILLY_HT, operator-declared, FAILS the locked bar): the same ABSOLUTE gate, TIGHTER —
+         first 10 priced refusals on ≥ 5 days, avg net on HT's exit ≥ 0 → REVERT CANDIDATE (frenzy_willy_ht_burst_rejection_enabled → false),
+         else KEEP; also frozen on its sole refusals. Its refusals count only from the DECISION_LOG 619 commit + 10 min (LINE_FLOOR_DL).
 PARITY   on B25 real CLOSED fills (deep review 2026-11-11): FRENZY LITE / RETRY / WILLY / HT exact (corr 1.000, bias ≤ 0.01 %/fill) ·
          momentum long 53 / 53 priced with the top-up, corr 0.97, bias −0.01 · SPIKE_FADE 29 / 30, same sign 90 %, corr 0.71, bias +0.07,
          median |Δ| 0.08 — without TLM (+0.31 booked, +3.44 priced: an intra-minute trail exit 1m bars cannot see) corr 0.78, bias −0.04,
@@ -687,8 +690,11 @@ TIGHT = {"LITE_BTC_RSI_HOT": (5, 3), "ML_WEAK_RESCUE": (8, None), "LITE_WEAK_HOL
 # 🧱 (DECISION_LOG 594) an operator-declared line with an ABSOLUTE pre-committed gate: at the first prefix of N priced refusals on ≥ D UTC days
 # (no earlier refusal of the sleeve still pending) — the blocked trades' average net on the sleeve's own exit ≥ 0 → REVERT; else KEEP. No kept
 # comparison. Frozen once. SOLE_GATED lines also freeze a second verdict on their SOLE refusals (the line's own effect) under "<key>|sole".
-ABS_GATE = {"WILLY_HT_NEAR_HIGH": (15, 8)}
-SOLE_GATED = ("WILLY_HT_NEAR_HIGH",)
+ABS_GATE = {"WILLY_HT_NEAR_HIGH": (15, 8), "WILLY_HT_BURST_REJECTION": (10, 5)}   # 💥 (619) tighter than NEAR_HIGH (it fails the locked bar)
+SOLE_GATED = ("WILLY_HT_NEAR_HIGH", "WILLY_HT_BURST_REJECTION")
+# 💥 (DECISION_LOG 619) a line armed after the pricer's DL 527 floor counts its refusals only from ITS commit + 10 min (none can exist before;
+# the floor also keeps a hand-replayed / mislabelled row out). Not in git yet → that line is NOT EVALUABLE (never counted).
+LINE_FLOOR_DL = {"WILLY_HT_BURST_REJECTION": 619}
 REVERT_TXT = "REVERT CANDIDATE (operator switches the line off — never automatic)"
 
 
@@ -762,7 +768,7 @@ def gate_read(B, K, line, sole=False):
 ML_RISKCAP = "MOMENTUM_LONG_RISKCAP"
 ML_SLEEVES = ("MOMENTUM_LONG", ML_RISKCAP)
 KEPT_AS = {ML_RISKCAP: "MOMENTUM_LONG"}
-LINES = {"FRENZY_WILLY": ("WILLY_GAP", "WILLY_FAILED_SPIKE"), "FRENZY_WILLY_HT": ("WILLY_FAILED_SPIKE", "WILLY_HT_NEAR_HIGH"), "FRENZY_LITE_RETRY": ("RETRY_BTC1H",),   # 🧱 (594) near high
+LINES = {"FRENZY_WILLY": ("WILLY_GAP", "WILLY_FAILED_SPIKE"), "FRENZY_WILLY_HT": ("WILLY_FAILED_SPIKE", "WILLY_HT_NEAR_HIGH", "WILLY_HT_BURST_REJECTION"), "FRENZY_LITE_RETRY": ("RETRY_BTC1H",),   # 🧱 (594) near high · 💥 (619) burst rejection
          "FRENZY_LITE": ("LITE_BTC_EMA20_DOWN", "LITE_BTC_RSI_HOT", "LITE_WEAK_HOLD"), "FRENZY_LONG": ("LONG_WEAK_FRENZY",), "SPIKE_FADE": ("FADE_LATE_WEAK",),
          "MOMENTUM_LONG": ("ML_MKT_HOT", "ML_BULL90", "ML_WEAK_RESCUE", "ML_WEAK_MARKET", "ML_FADING_QUIET"),
          ML_RISKCAP: ("ML_RISK_CAP",)}   # 📈 (533) a RISK limiter, not an edge filter: its "REVERT CANDIDATE" reads as what the cap COST
@@ -789,7 +795,7 @@ def _load_state(path):
         return {}, None, "⚠ gate state unreadable — nothing frozen this run (operator restore needed)."
 
 
-def run(now_ms=None, dec_paths=None, ord_paths=None, state_path=STATE, store_path=STORE, since_ms=None, fetch=True):
+def run(now_ms=None, dec_paths=None, ord_paths=None, state_path=STATE, store_path=STORE, since_ms=None, fetch=True, line_floors=None):
     now_ms = int(time.time() * 1000) if now_ms is None else int(now_ms)
     L = [f"## 🧱💲 BLOCKED TRADES — the armed filters' refusals priced on today's exit + per-line revert gates (DECISION_LOG {DL}; filters DL {FLOOR_DL})", ""]
     if since_ms is None:
@@ -821,20 +827,30 @@ def run(now_ms=None, dec_paths=None, ord_paths=None, state_path=STATE, store_pat
           "| Sleeve · line | Blocked N | days | WR | avg % | Σ % | sole: N · avg | kept (same pricer): N · avg · booked avg | 🔒 revert gate |",
           "|---|---|---|---|---|---|---|---|---|"]
     changed = False
+    if line_floors is None:   # 💥 (619) per-line floors (line → ms or None = not evaluable)
+        line_floors = {ln: _GK.dl_deploy_ms(dl, lag_min=10, label=f"{ln} (blocked-trade pricer, DL {dl})") for ln, dl in LINE_FLOOR_DL.items()}
     for sl, lines in LINES.items():
         Bs = B[B.sleeve == sl] if len(B) else B
         Ks = K[K.sleeve == KEPT_AS.get(sl, sl)] if len(K) else K
         Kk = Ks[Ks.status == "PRICED"] if len(Ks) else Ks
         kept = f"{len(Kk)} · {Kk.pct.mean():+.3f} · {pd.to_numeric(Kk.booked, errors='coerce').mean():+.3f}" if len(Kk) else "0"
         for ln, _sole in [(x, v) for x in lines for v in ((False, True) if x in SOLE_GATED else (False,))]:
-            P = Bs[_has_line(Bs.lines, ln) & (Bs.status == "PRICED")] if len(Bs) else Bs
+            _lab = f"{ln} (sole)" if _sole else ln
+            Bs_ln = Bs
+            if ln in LINE_FLOOR_DL:   # 💥 (619) this line's refusals count from its own commit + 10 min
+                _lf = line_floors.get(ln)
+                if _lf is None:
+                    L.append(f"| {sl} · {_lab} | – | – | – | – | – | – | {kept} | NOT EVALUABLE — the DECISION_LOG {LINE_FLOOR_DL[ln]} commit is not in git |")
+                    continue
+                Bs_ln = Bs[~_has_line(Bs.lines, ln) | (Bs.te >= int(_lf))] if len(Bs) else Bs
+            P = Bs_ln[_has_line(Bs_ln.lines, ln) & (Bs_ln.status == "PRICED")] if len(Bs_ln) else Bs_ln
             if _sole and len(P):
                 P = P[P.sole.astype(bool)]
             S = P[P.sole.astype(bool)] if len(P) else P
             key = f"{GATE_KEY.get(sl, sl)}:{ln}" + ("|sole" if _sole else "")
             rec = st.get(key)
             if not rec:
-                state, det, _ = gate_read(Bs, Ks, ln, sole=_sole) if len(Bs) else ("COLLECTING", "0 priced", None)
+                state, det, _ = gate_read(Bs_ln, Ks, ln, sole=_sole) if len(Bs_ln) else ("COLLECTING", "0 priced", None)
                 if state != "COLLECTING" and state_path:
                     st[key] = rec = dict(state=state, detail=det, at=pd.Timestamp(now_ms, unit="ms").strftime("%Y-%m-%d %H:%M UTC"))
                     changed = True
@@ -842,7 +858,6 @@ def run(now_ms=None, dec_paths=None, ord_paths=None, state_path=STATE, store_pat
             else:
                 gtxt = f"**{rec['state']}** (frozen {rec['at']}: {rec['detail']})"
             sole = f"{len(S)} · {S.pct.mean():+.3f}" if len(S) else "0"
-            _lab = f"{ln} (sole)" if _sole else ln
             if len(P):
                 L.append(f"| {sl} · {_lab} | {len(P)} | {P.day.nunique()} | {(P.pct > 0).mean():.0%} | {P.pct.mean():+.3f} | {P.pct.sum():+.2f} | {sole} | {kept} | {gtxt} |")
             else:
@@ -861,7 +876,10 @@ def run(now_ms=None, dec_paths=None, ord_paths=None, state_path=STATE, store_pat
           "priced by the SAME pricer on the SAME slip ruler) → REVERT CANDIDATE (the operator switches that line's watch_block_* toggle off); "
           "else KEEP. Never automatic. 🧱 (DL 594) FRENZY_WILLY_HT · WILLY_HT_NEAR_HIGH runs its own ABSOLUTE gate: at the first 15 priced "
           "blocked HT trades on ≥ 8 UTC days (no earlier refusal pending), their average net on HT's exit ≥ 0 → REVERT CANDIDATE (set "
-          "frenzy_willy_ht_min_dip_pct to 0); else KEEP — frozen once, and once more on its sole refusals (\"(sole)\" row).", ""]
+          "frenzy_willy_ht_min_dip_pct to 0); else KEEP — frozen once, and once more on its sole refusals (\"(sole)\" row). 💥 (DL 619) "
+          "FRENZY_WILLY_HT · WILLY_HT_BURST_REJECTION (declared override, fails the locked bar) runs a TIGHTER absolute gate: first 10 priced "
+          "blocked HT trades on ≥ 5 UTC days (refused ≥ the DL 619 commit + 10 min), average ≥ 0 → REVERT CANDIDATE (set "
+          "frenzy_willy_ht_burst_rejection_enabled false); else KEEP — frozen once, and once more on its sole refusals.", ""]
     return L
 
 

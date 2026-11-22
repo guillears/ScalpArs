@@ -189,6 +189,101 @@ def pre_vol15_vs60(rows_1m, fill_ms):
         return None
 
 
+CLOC_BARS = 15   # 💥 (DECISION_LOG 618 / 619) the cloc15 window = the pre_vol "recent" window (15 one-minute bars closed before the minute)
+BURST_BUF_KEEP = 150   # 💥 (619) bars kept per coin in the rolling 1m buffer (≥ 75 needed + slack)
+
+
+def cloc15(rows_1m, fill_ms):
+    """💥 (DECISION_LOG 618, armed DL 619) close location of the 15 one-minute bars CLOSED before the fill / decision minute:
+    (last close − min low) ÷ (max high − min low) over those bars (the study's cloc15; bars opened before the minute = the pre_vol "recent"
+    window). rows_1m = raw / ccxt 1m klines [open_ms, o, h, l, c, v, …]. → float in [0, 1], or None (fewer than 15 such bars / flat
+    range / unreadable). The ONE definition: the engine (WILLY_HT_BURST_REJECTION) and scripts/scout_willy_ht_lines.py. Pure, never raises."""
+    try:
+        m0 = (int(fill_ms) // 60_000) * 60_000
+        pre = sorted((r for r in (rows_1m or []) if int(r[0]) < m0), key=lambda r: int(r[0]))[-CLOC_BARS:]
+        if len(pre) < CLOC_BARS:
+            return None
+        hi, lo, c = max(float(r[2]) for r in pre), min(float(r[3]) for r in pre), float(pre[-1][4])
+        if any(x != x for x in (hi, lo, c)) or not (hi > lo):
+            return None
+        return round((c - lo) / (hi - lo), 6)
+    except (TypeError, ValueError, IndexError):
+        return None
+
+
+def burst_buf_merge(buf, rows_1m, request_ms, keep=BURST_BUF_KEEP):
+    """💥 (DECISION_LOG 619) merge one Binance 1m read into a coin's rolling buffer, in place: buf = {"bars": {open_ms: (row, final)},
+    "cov": [[lo, hi], …]}. request_ms = the time the request was SENT (taken before the await — review 619): a bar is FINAL when it opened
+    ≥ 1 min before that (open + 60 s ≤ request_ms), so a forming bar is never marked final. The read COVERS [its first open, the request
+    minute): every bar Binance has in that span came back, final — so the buffer can later prove it holds exactly the rows a fresh read would
+    return (BUF ≡ FETCH), gaps included. A later read replaces an earlier one of the same bar; a non-final read never overwrites a final bar.
+    Keeps the newest `keep` bars (coverage clamped to them). → buf. Pure (no I/O), never raises."""
+    try:
+        bars = buf.setdefault("bars", {})
+        cov = buf.setdefault("cov", [])
+        f = int(request_ms)
+        opens = []
+        for r in rows_1m or []:
+            try:
+                o = int(r[0])
+                row = [o] + [float(x) for x in r[1:6]]
+            except (TypeError, ValueError, IndexError):
+                continue
+            opens.append(o)
+            fin = f >= o + 60_000
+            old = bars.get(o)
+            if old is not None and old[1] and not fin:
+                continue
+            bars[o] = (row, fin)
+        hi = (f // 60_000) * 60_000
+        if opens and min(opens) < hi:
+            cov.append([min(opens), hi])
+        if len(bars) > keep:
+            for o in sorted(bars)[:len(bars) - keep]:
+                bars.pop(o, None)
+        lo_keep = min(bars) if bars else None
+        merged = []
+        for a, b in sorted(cov):
+            if lo_keep is not None:
+                a = max(a, lo_keep)
+            if b <= a:
+                continue
+            if merged and a <= merged[-1][1]:
+                merged[-1][1] = max(merged[-1][1], b)
+            else:
+                merged.append([a, b])
+        buf["cov"] = merged
+    except (TypeError, ValueError, AttributeError):
+        pass
+    return buf
+
+
+def burst_buf_rows(buf, decision_ms):
+    """💥 (DECISION_LOG 619) the rows a fresh Binance read at the decision would give for the window — the last 75 bars opened before the
+    decision minute — taken from the buffer ONLY when it provably holds every one of them: one covered span reaches from the oldest of those
+    75 bars up to the decision minute (so the bar just closed, m0 − 1 min, is in and final, and no bar Binance has in the window is missing —
+    a minute Binance itself omits is omitted here too; USDⓈ-M returns zero-volume bars for no-trade minutes, checked 2026-11-21) and every
+    one is final. Else None (the caller reads Binance once). Same row selection as services.frenzy.pre_vol15_vs60 / cloc15. Pure."""
+    try:
+        m0 = (int(decision_ms) // 60_000) * 60_000
+        n = PRE_VOL_BARS_RECENT + PRE_VOL_BARS_BASE
+        bars = (buf or {}).get("bars") or {}
+        pre = sorted(o for o in bars if o < m0)[-n:]
+        if len(pre) < n:
+            return None
+        if not any(a <= pre[0] and b >= m0 for a, b in (buf or {}).get("cov") or []):
+            return None
+        out = []
+        for o in pre:
+            row, fin = bars[o]
+            if not fin:
+                return None
+            out.append(row)
+        return out
+    except (TypeError, ValueError, KeyError):
+        return None
+
+
 def frenzy_vol_trend(bars) -> Optional[float]:
     """🔬 Oct-3 OBSERVE-ONLY stamp (DECISION_LOG 193): quote volume (≈ base volume × close — ccxt bars carry no quote column; the backtest
     used Binance's own quote volume) of the last 12 CLOSED 5m bars ÷ the 12 before them (> 1 = volume rising,
@@ -938,6 +1033,8 @@ def frenzy_willy_ht_config_errors(th) -> list:
     dip_ = _fin(getattr(th, 'frenzy_willy_ht_min_dip_pct', 0.0) or 0.0)   # 🧱 (594 review) 0 = off, else (0, 50] — a value outside would silently switch it off
     if dip_ is None or dip_ < 0 or dip_ > 50:
         errs.append("frenzy_willy_ht_min_dip_pct must be 0 (off) or > 0 and ≤ 50 (% below the spike high)")
+    if not isinstance(getattr(th, 'frenzy_willy_ht_burst_rejection_enabled', False), bool):   # 💥 (DECISION_LOG 619)
+        errs.append("frenzy_willy_ht_burst_rejection_enabled must be true or false")
     return errs
 
 

@@ -42,6 +42,8 @@ from services.paper_costs import paper_exit_book_price, exit_slip_pct, accrue_fu
 from sqlalchemy.orm.attributes import flag_modified   # 💸 (DECISION_LOG 539 review) force the funding write on every close attempt
 PAPER_EXIT_SLIP_SANE_PCT = 3.0   # 💸 (539) a paper exit book read further than this from the decision price is a bad read (booked at the decision price)
 from services.watch_filters import ht_min_dip as watch_ht_min_dip, ht_dip_pct as watch_ht_dip_pct   # 🧱 (DECISION_LOG 594) WILLY_HT_NEAR_HIGH
+from services.watch_filters import ht_burst_on as watch_ht_burst_on, ht_burst_state as watch_ht_burst_state   # 💥 (DECISION_LOG 619) WILLY_HT_BURST_REJECTION
+from services.frenzy import pre_vol15_vs60 as _fz_pre_vol15_vs60, cloc15 as _fz_cloc15, burst_buf_merge as _fz_burst_buf_merge, burst_buf_rows as _fz_burst_buf_rows   # 💥 (619)
 from services.watch_filters import frenzy_blocks as watch_frenzy_blocks, ml_blocks as watch_ml_blocks, fade_blocks as watch_fade_blocks, ms_blocks as watch_ms_blocks, block_code as watch_block_code   # 🧱 (DECISION_LOG 527 · 561 ms) armed watch-line filters
 from services.frenzy import FRENZY_WILLY_HT, WILLY_EXIT_CLASS, frenzy_willy_ht_frac   # 🎲¼ (DECISION_LOG 341) the quarter-size WILLY
 from services.funding_accrual import open_funding_usd, OPEN_FUNDING_USD as _FA_OPEN_FUNDING   # 💸 (DECISION_LOG 607) the accrued funding the FLATBASE stop reads
@@ -1378,6 +1380,17 @@ _frenzy_norm_cache: Dict[str, tuple] = {}
 # when the two do not join, and every FRENZY_KL_FULL_EVERY bars per pair (staggered) — that full read is also compared with the
 # cached window (FRENZY_KL_MISMATCH log + _frenzy_status['kl_mismatch']). Same window, same decisions, seconds earlier.
 _frenzy_kl_cache: Dict[str, dict] = {}
+# 💥 (DECISION_LOG 619) WILLY_HT_BURST_REJECTION — a rolling 1m buffer per WILLY / HT candidate coin (the pending red-candle entries first, then
+# every FRENZY-flagged coin, newest spike first, ≤ HT_BURST_BUF_MAX_PAIRS), refreshed in the background HT_BURST_REFRESH_OFFSET_S after each
+# minute closes on its own public client (binance_service.get_klines_1m_recent, weight 1 per coin per minute). At the HT decision the 75 bars
+# closed before the decision minute are read from memory (0 network); only a coin whose buffer lacks the bar that just closed (a new candidate,
+# a failed refresh, a decision in the first ~2 s of a minute) reads Binance once, capped at HT_BURST_FETCH_TIMEOUT_S → else fail-open (_UNREAD).
+_ht_burst_buf: Dict[str, dict] = {}   # pair → {"bars": {open_ms: ([open_ms, o, h, l, c, v], final)}, "cov": [[lo, hi], …]} (services.frenzy.burst_buf_merge)
+HT_BURST_BUF_MAX_PAIRS = 40
+HT_BURST_REFRESH_OFFSET_S = 1.5
+HT_BURST_FETCH_TIMEOUT_S = 1.5
+HT_BURST_LIMIT_FULL, HT_BURST_LIMIT_TAIL = 90, 6   # both weight 1 (limit < 100) · the tail = m0 − 5 … m0 − 1 + the forming bar
+HT_BURST_PASS_STALE_S = 600   # the loop stops when no FRENZY pass ran for this long (restarted by the next pass)
 FRENZY_KL_TAIL = 5
 FRENZY_KL_FULL_EVERY = 12
 FRENZY_KL_LIMIT = 1500   # bars per full 5m read = the cached window length (the studies' 1499 closed bars + the forming bar)
@@ -10447,6 +10460,7 @@ class TradingEngine:
                     if _frenzy_flags[k]['misses'] >= 3 or k not in by or k.upper() in skip:
                         _frenzy_flags.pop(k, None)
             await self._frenzy_willy_sweep(bar_open, _willy, seen)   # 🎲 (251) pending red-candle entries: episode over / wait passed / WILLY off → expire
+            self._ht_burst_buf_ensure()   # 💥 (619) the WILLY_HT_BURST_REJECTION 1m buffer loop (started / kept while the filter is wanted)
             await self._frenzy_lite_retry_sweep(bar_open, seen)   # 🔁 (316) pending LITE retries: window passed / episode over / switched off → drop
             if _fbs:
                 await self._flatbase_run_queue(db)       # 🩳 (348) tracking / FLAT reads / S4 judgement for every pair read this pass
@@ -13246,6 +13260,153 @@ class TradingEngine:
         logger.info(f"[FRENZY_WILLY] {pair}: entry {_pd.get('trig')} expired — {why} (no entry, no re-arm)")
         await self._frenzy_willy_save()
 
+    # ───────────── 💥 (DECISION_LOG 619) WILLY_HT_BURST_REJECTION — the 1m data, read with ~0 latency at the decision ─────────────
+    @staticmethod
+    def _ht_burst_wanted() -> bool:
+        """💥 (619) the 1m buffer is kept only while the filter can fire: the switch ON, WILLY ON, HT ON. Never raises."""
+        try:
+            th = config.trading_config.thresholds
+            return (watch_ht_burst_on(th) and bool(getattr(th, 'frenzy_willy_enabled', False))
+                    and bool(getattr(th, 'frenzy_willy_ht_enabled', True)))
+        except Exception:
+            return False
+
+    @staticmethod
+    def _ht_burst_source_ok() -> bool:
+        """💥 (619 review) the exchange service can read 1m klines (an engine replay's fake exchange cannot → DL 619 not applied). Never raises."""
+        try:
+            return callable(getattr(binance_service, 'get_klines_1m_recent', None)) and callable(getattr(binance_service, 'burst_limited', None))
+        except Exception:
+            return False
+
+    def _ht_burst_candidates(self) -> list:
+        """💥 (619) the coins an HT entry can come from: the pending red-candle entries first, then every FRENZY-flagged coin (newest spike
+        first), at most HT_BURST_BUF_MAX_PAIRS. Never raises."""
+        try:
+            out = list((getattr(self, '_fz_willy_pending', None) or {}).keys())
+            fl = sorted(list(_frenzy_flags.items()), key=lambda kv: -int((kv[1] or {}).get('spike_ts') or 0))
+            out += [p for p, _ in fl if p not in out]
+            return out[:HT_BURST_BUF_MAX_PAIRS]
+        except Exception:
+            return []
+
+    async def _ht_burst_refresh_pair(self, pair) -> None:
+        """💥 (619) one coin's buffer refresh: the newest HT_BURST_LIMIT_TAIL bars when the buffer already holds the bars before them, else a
+        full HT_BURST_LIMIT_FULL read. Weight 1 either way. A failure leaves the buffer as it was (the decision then reads once). Never raises."""
+        try:
+            buf = _ht_burst_buf.setdefault(pair, {})
+            _req = int(_leash_time.time() * 1000)   # the request time (review 619): a bar is final only when it closed before the request
+            m0 = (_req // 60_000) * 60_000
+            # a decision in this minute needs m0 − 75 … m0 − 1; the tail read brings (and covers) m0 − 5 … m0 − 1 (+ the forming m0), so the
+            # buffer must already cover m0 − 75 … m0 − 5 (one covered span — a gap of a failed refresh forces a full read)
+            _tail_ok = any(a <= m0 - 75 * 60_000 and b >= m0 - (HT_BURST_LIMIT_TAIL - 1) * 60_000 for a, b in (buf.get("cov") or []))
+            rows = await asyncio.wait_for(binance_service.get_klines_1m_recent(pair, HT_BURST_LIMIT_TAIL if _tail_ok else HT_BURST_LIMIT_FULL), 5.0)
+            if rows:
+                _fz_burst_buf_merge(buf, rows, _req)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            pass
+
+    async def _ht_burst_buf_loop(self) -> None:
+        """💥 (619) background: HT_BURST_REFRESH_OFFSET_S after every minute close, refresh the candidates' buffers (≤ 4 reads at once, on the
+        burst client — never in front of the scan / FRENZY / order reads); drop the buffers of coins no longer candidates. Ends when the filter
+        is no longer wanted (restarted by the next FRENZY pass). Never raises."""
+        try:
+            while self._ht_burst_wanted():
+                if _leash_time.time() - float(self.__dict__.get('_ht_burst_pass_at') or 0) > HT_BURST_PASS_STALE_S:
+                    break   # no FRENZY pass for 10 min (bot stopped / FRENZY not running): stop reading; the next pass restarts the loop
+                await asyncio.sleep(self._ht_burst_sleep_s(_leash_time.time()))
+                try:
+                    if not self._ht_burst_wanted():
+                        break
+                    cand = self._ht_burst_candidates()
+                    for p in [p for p in list(_ht_burst_buf) if p not in cand]:
+                        _ht_burst_buf.pop(p, None)
+                    if not cand or binance_service.burst_limited():
+                        continue
+                    sem = asyncio.Semaphore(4)
+
+                    async def _one(p):
+                        async with sem:
+                            await self._ht_burst_refresh_pair(p)
+                    await asyncio.gather(*(_one(p) for p in cand), return_exceptions=True)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    logger.debug(f"[WILLY_HT_BURST] buffer refresh failed ({str(e)[:80]})")
+        except asyncio.CancelledError:
+            raise   # (619 review) a cancel (engine stop / shutdown) ends the task as cancelled — never swallowed
+        except Exception as e:
+            logger.warning(f"[WILLY_HT_BURST] buffer loop stopped ({str(e)[:80]}) — restarted by the next FRENZY pass")
+        finally:
+            _ht_burst_buf.clear()   # a stopped loop leaves no buffer to go stale (a decision then reads once)
+
+    @staticmethod
+    def _ht_burst_sleep_s(now: float) -> float:
+        """💥 (619 review) seconds to the next refresh moment = HT_BURST_REFRESH_OFFSET_S after a minute boundary (never 0 → never a minute skipped
+        nor a double read in the same minute). Pure."""
+        return ((HT_BURST_REFRESH_OFFSET_S - now % 60.0) % 60.0) or 60.0
+
+    def _ht_burst_buf_ensure(self) -> None:
+        """💥 (619) start the buffer loop when the filter is wanted and no loop runs (called at the end of every FRENZY pass). Never raises."""
+        try:
+            if not self._ht_burst_wanted() or not self._ht_burst_source_ok():
+                _ht_burst_buf.clear()
+                return
+            self._ht_burst_pass_at = _leash_time.time()
+            t = self.__dict__.get('_ht_burst_task')
+            if t is None or t.done():
+                self._ht_burst_task = asyncio.get_running_loop().create_task(self._ht_burst_buf_loop())
+        except Exception:
+            pass
+
+    async def stop_ht_burst_loop(self) -> None:
+        """💥 (619 review) shutdown: cancel the burst buffer loop and wait for it (its buffers are dropped). Never raises."""
+        t = self.__dict__.get('_ht_burst_task')
+        self._ht_burst_task = None
+        if t is not None and not t.done():
+            t.cancel()
+            try:
+                await t
+            except (asyncio.CancelledError, Exception):   # the task's own cancellation (the main.py shutdown pattern)
+                pass
+        _ht_burst_buf.clear()
+
+    async def _ht_burst_read(self, pair, decision_ms):
+        """💥 (619) the decision-time values: (pre_vol15_vs60, cloc15, read_ms, source). The 75 bars closed before the decision minute come from
+        the coin's rolling buffer when all are there and final (source BUF, ~0 ms); else ONE read on the burst client, capped at
+        HT_BURST_FETCH_TIMEOUT_S (source FETCH; merged into the buffer); a ban / back-off / timeout / failure → (None, None, ms, source) and the
+        caller fails OPEN. Bars opened before the decision minute only (no look-ahead). Never raises."""
+        t0 = _leash_time.perf_counter()
+        _el = lambda: int(round((_leash_time.perf_counter() - t0) * 1000))
+        if not self._ht_burst_source_ok():
+            return None, None, 0, "NA"   # an engine replay's fake exchange has no 1m source: DL 619 is not applied (not counted UNREAD)
+        try:
+            rows = _fz_burst_buf_rows(_ht_burst_buf.get(pair), decision_ms)
+            src = "BUF"
+            if rows is None:
+                src = "FETCH"
+                if binance_service.burst_limited():
+                    return None, None, _el(), "LIMITED"
+                _req = int(_leash_time.time() * 1000)   # the request time (review 619): finality is judged against it, never the answer time
+                try:
+                    got = await asyncio.wait_for(binance_service.get_klines_1m_recent(pair, HT_BURST_LIMIT_FULL), HT_BURST_FETCH_TIMEOUT_S)
+                except asyncio.TimeoutError:
+                    return None, None, _el(), "TIMEOUT"
+                if not got:
+                    return None, None, _el(), "FETCH_FAILED"
+                buf = _ht_burst_buf.setdefault(pair, {})
+                _fz_burst_buf_merge(buf, got, _req)
+                # the same row selection as BUF (one definition); a window the read cannot prove complete (a brand-new listing with < 75
+                # bars) falls back to the raw rows — the pure functions then return None exactly as on the raw definition
+                rows = _fz_burst_buf_rows(buf, decision_ms) or got
+            return _fz_pre_vol15_vs60(rows, decision_ms), _fz_cloc15(rows, decision_ms), _el(), src
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            return None, None, _el(), "ERROR"
+
     async def _frenzy_willy_sweep(self, bar_open, enabled, seen=None) -> None:
         """🎲 end of a pass: a pending entry whose pair was READ this pass and is no longer flagged (episode over), or whose wait passed, expires;
         WILLY off → all drop. A pair NOT read this pass (klines failed / a restart's first passes) waits for its own clock only (review #9)."""
@@ -13756,8 +13917,8 @@ class TradingEngine:
             # display global reads an unreadable slope as 0). Rules + frozen cuts: services/watch_filters.py (an unreadable input never blocks).
             # A refusal ends the entry like every other refusal here (WILLY's pending entry, LITE's stretch, the retry) and is recorded as a
             # blocked signal (decisions BLOCKED row) for the scout to price on today's exit.
-            _wfl = watch_frenzy_blocks(
-                th, _es, adx=(indicators or {}).get('adx'), ema_gap_8_13=_ef.get('entry_ema_gap_8_13'),
+            _wf_kw = dict(
+                adx=(indicators or {}).get('adx'), ema_gap_8_13=_ef.get('entry_ema_gap_8_13'),
                 vs_vwap_pct=(round(flag['vs_vwap_pct'], 3) if flag.get('vs_vwap_pct') is not None else None),   # review: the stamp's rounding
                 btc_1h_slope=(_ef.get('entry_btc_1h_slope') if _ef.get('entry_btc_1h_slope') is not None else _g.get('_current_btc_1h_slope')),
                 btc_ema20_slope_raw=_g.get('_btc_ema20_slope_pct_raw'),
@@ -13765,11 +13926,30 @@ class TradingEngine:
                 btc_rsi=(_ef.get('entry_btc_rsi') if _ef.get('entry_btc_rsi') is not None else _g.get('_current_btc_rsi')),   # 🧱 (554) LITE_BTC_RSI_HOT
                 above_share=(round(flag['above_share'], 2) if flag.get('above_share') is not None else None),   # 🧱 (556) LITE_WEAK_HOLD — the stamp's value
                 price=price, spike_high=(flag.get('peak') if _ht else None))   # 🧱 (594) WILLY_HT_NEAR_HIGH: the DECISION price vs H (frenzy_walk's peak = the spike-high stamp)
+            _wfl = watch_frenzy_blocks(th, _es, **_wf_kw)
             # 🧱 (DECISION_LOG 594) HT near-high line ON but the spike high / price unreadable → FAIL-OPEN (the entry proceeds), counted per check (HT is one-shot, so ≈ once per setup)
             _ht_dip = watch_ht_dip_pct(price, flag.get('peak')) if _ht else None
             if _ht and watch_ht_min_dip(th) > 0 and _ht_dip is None:
                 self._record_filter_block("WILLY_HT_NEAR_HIGH_UNREAD", "LONG")
                 logger.warning(f"[{_es}] {pair}: near-high filter ON but the spike high is unreadable (peak={flag.get('peak')} price={price}) — fail-open, entry proceeds")
+            # 💥 (DECISION_LOG 619) WILLY_HT_BURST_REJECTION — judged LAST among the HT lines and only when nothing above already refuses (NEAR_HIGH /
+            # FAILED_SPIKE: no 1m read is spent on a refused setup; its stamps stay None on that row): pre_vol15_vs60 + cloc15 on the 1m bars closed
+            # before THIS decision minute, from the rolling buffer (~0 ms) or one capped read (≤ HT_BURST_FETCH_TIMEOUT_S). Undecidable → FAIL-OPEN,
+            # counted WILLY_HT_BURST_REJECTION_UNREAD (not on an engine replay with no 1m source — source NA, DL 619 not applied there).
+            # Price: open_position re-reads the order book just before the order and re-checks the dislocation vs this decision price (and the
+            # lateness after the open lane) — a slow read cannot fill at a stale price.
+            _bpv = _bcl = _bms = None; _bsrc = None
+            if _ht and watch_ht_burst_on(th) and not _wfl:
+                _bpv, _bcl, _bms, _bsrc = await self._ht_burst_read(pair, int(_leash_time.time() * 1000))
+                if _bsrc == "NA":
+                    pass
+                elif watch_ht_burst_state(_bpv, _bcl) == "unread":
+                    self._record_filter_block("WILLY_HT_BURST_REJECTION_UNREAD", "LONG")
+                    logger.warning(f"[{_es}] {pair}: burst-rejection filter ON but the 1m bars are unreadable ({_bsrc}, {_bms} ms; "
+                                   f"pre_vol={_bpv} cloc15={_bcl}) — fail-open, entry proceeds")
+                else:
+                    logger.info(f"[{_es}] {pair}: burst read {_bsrc} {_bms} ms · pre_vol {_bpv} · cloc15 {_bcl}")
+                    _wfl = watch_frenzy_blocks(th, _es, pre_vol=_bpv, cloc=_bcl, **_wf_kw)
             if _wfl:
                 _wcode = watch_block_code(_es, _wfl)
                 self._record_filter_block(_wcode, "LONG")
@@ -13788,10 +13968,16 @@ class TradingEngine:
                 if _wl:   # 🧱 (594) the WILLY stamps the pricer / the HT lines read (spike high = HT's high-target anchor; dip = the value judged)
                     _wef.update(entry_frenzy_willy_spike_high=flag.get('peak'), entry_frenzy_willy_trigger=willy,
                                 entry_frenzy_willy_dip_pct=(round(_ht_dip, 4) if _ht_dip is not None else None))
+                if _ht:   # 💥 (619) the decision-time burst values the pricer / the scout read
+                    _wef.update(entry_frenzy_pre_vol15_dec=_bpv, entry_frenzy_cloc15=_bcl, entry_frenzy_burst_read_ms=_bms)
                 self._blocked_record(_es, "LONG", pair, price, _wfl, _wef, bar_ms=(int(catchup_now) if _cu else int(bar_open)))
                 if _ht and "WILLY_HT_NEAR_HIGH" in _wfl:   # 🧱 (594) the WILLY journal line (decisions export e=WILLY) — the counter is the filter block
                     self._willy_event("WILLY_HT_NEAR_HIGH", pair, reason=(f"dip {_ht_dip:.2f} % below the spike high {flag.get('peak')} < {watch_ht_min_dip(th):g} % · {willy}"
                                                                           + (f" · also {'+'.join(x for x in _wfl if x != 'WILLY_HT_NEAR_HIGH')}" if len(_wfl) > 1 else "")),
+                                      price=price, tally=False)
+                if _ht and "WILLY_HT_BURST_REJECTION" in _wfl:   # 💥 (619) the WILLY journal line — the counter is the filter block
+                    self._willy_event("WILLY_HT_BURST_REJECTION", pair, reason=(f"pre_vol {_bpv:.2f} > 1.60 · cloc15 {_bcl:.2f} < 0.50 ({_bsrc} {_bms} ms) · {willy}"
+                                                                                + (f" · also {'+'.join(x for x in _wfl if x != 'WILLY_HT_BURST_REJECTION')}" if len(_wfl) > 1 else "")),
                                       price=price, tally=False)
                 return
             _pvr = ((indicators.get('volume') or 0) / indicators['avg_volume']) if (indicators and indicators.get('avg_volume')) else None
@@ -13812,6 +13998,8 @@ class TradingEngine:
                 entry_frenzy_willy_spike_high=(flag.get('peak') if _wl else None),   # 🎲² (356) H = frenzy_walk's peak: highest 5m high, spike bar → this red signal bar
                 entry_frenzy_willy_dip_pct=((round(watch_ht_dip_pct(price, flag.get('peak')), 4) if watch_ht_dip_pct(price, flag.get('peak')) is not None else None) if _wl else None),   # 🧱 (594) (H − decision price) ÷ H × 100
                 frenzy_willy_ht=_ht,   # 🎲¼ (341) with frenzy_willy=True → tagged FRENZY_WILLY_HT by open_position
+                entry_frenzy_pre_vol15_dec=(_bpv if _ht else None), entry_frenzy_cloc15=(_bcl if _ht else None),   # 💥 (619) the burst values judged at the decision
+                entry_frenzy_burst_read_ms=(_bms if _ht else None),   # 💥 (619) how long the decision-time 1m read took (≈ 0 = from the buffer)
                 frenzy_lite_retry=_lr,   # 🔁 (316) the retry rides lite=True (LITE-family open) and is tagged FRENZY_LITE_RETRY by open_position
                 entry_frenzy_retry_wait_min=(round((int(bar_open) - int(lite_retry['green'])) / 60_000.0, 2) if _lr else None),
                 entry_frenzy_retry_green_ret=((lite_retry or {}).get('ret') if _lr else None),
@@ -14850,6 +15038,9 @@ class TradingEngine:
         entry_frenzy_willy_nomiss: Optional[bool] = None,   # 🧭 (350) True = an R_NOMISS entry A (read after the late window, no red bar missed)
         entry_frenzy_willy_spike_high: Optional[float] = None,   # 🎲² (356) the episode's spike high H (WILLY exit V2 target anchor)
         entry_frenzy_willy_dip_pct: Optional[float] = None,   # 🧱 (594) (H − the decision price) ÷ H × 100 — the value WILLY_HT_NEAR_HIGH judged
+        entry_frenzy_pre_vol15_dec: Optional[float] = None,   # 💥 (619) pre_vol15_vs60 at the HT decision (WILLY_HT_BURST_REJECTION)
+        entry_frenzy_cloc15: Optional[float] = None,   # 💥 (619) cloc15 at the HT decision
+        entry_frenzy_burst_read_ms: Optional[int] = None,   # 💥 (619) the decision-time 1m read latency, ms
         frenzy_strong: bool = False,   # 💪 Oct-4 (197): FRENZY_LONG with ADX rising ∧ +DI above −DI → frenzy_long_lev_mult_strong
         frenzy_bar_open_ms: Optional[int] = None,   # 🔥 Oct-3: the signal bar's open — lateness re-checked AFTER the bot open lane
         frenzy_catchup: bool = False,   # ⏪ Oct-6: a catch-up fill (its fresh ON bar was never judged) → entry_frenzy_catchup
@@ -17493,6 +17684,9 @@ class TradingEngine:
                 entry_dist_pos_lag_min=entry_dist_pos_lag_min, entry_dist_pos_span_min=entry_dist_pos_span_min)),
             entry_frenzy_willy_spike_high=(entry_frenzy_willy_spike_high if (_frenzy and _fz_es in WILLY_EXIT_CLASS) else None),   # 🎲² (356) WILLY exit V2 stamps
             entry_frenzy_willy_dip_pct=(entry_frenzy_willy_dip_pct if (_frenzy and _fz_es in WILLY_EXIT_CLASS) else None),   # 🧱 (594) the near-high dip judged at the decision
+            entry_frenzy_pre_vol15_dec=(entry_frenzy_pre_vol15_dec if (_frenzy and _fz_es == FRENZY_WILLY_HT) else None),   # 💥 (619) HT only
+            entry_frenzy_cloc15=(entry_frenzy_cloc15 if (_frenzy and _fz_es == FRENZY_WILLY_HT) else None),
+            entry_frenzy_burst_read_ms=(entry_frenzy_burst_read_ms if (_frenzy and _fz_es == FRENZY_WILLY_HT) else None),
             frenzy_willy_tp_target_pct=_wv2_tp,   # 🎲² (356) the WILLY TP decided at entry (NULL = pre-V2 row → config TP)
             frenzy_willy_runner_k=_wrun_k,   # 🏃 (541) WILLY runner k (NULL = today's exit)
             flip_fan_tp_pct=_ff_tp,   # 🎯 (563) FAN flip fixed TP (NULL = the trail)

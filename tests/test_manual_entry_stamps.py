@@ -31,6 +31,7 @@ NOT_A_MOMENTUM_STAMP = {
     "entry_exh_universe",   # 🌐 (585)
     "entry_exh_ret_1h_pct",   # 📉 (596) observe
     "entry_frenzy_pre_vol15_vs60",   # 📊 (596) FRENZY post-fill backfill (observe)
+    "entry_frenzy_pre_vol15_dec", "entry_frenzy_cloc15", "entry_frenzy_burst_read_ms",   # 💥 (619) WILLY_HT_BURST_REJECTION decision-time values (HT only)
     "entry_exh_spot_symbol",   # 🔤 (589)
     "entry_dist_bar_ret_pct", "entry_dist_vsw_mult", "entry_dist_pos_ratio", "entry_dist_pos_chg_4h", "entry_dist_atr_pct", "entry_dist_tp_pct",
     "entry_dist_sl_pct", "entry_dist_decision_price", "entry_dist_q5_usd", "entry_dist_model_slip_pct",

@@ -68,6 +68,17 @@ def _momentum_entries_on(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_burst_network(monkeypatch):
+    """💥 (DECISION_LOG 619) the WILLY_HT_BURST_REJECTION 1m read never reaches Binance in tests (an unread read = fail-open, as live);
+    tests/test_willy_ht_burst_rejection_619.py stubs it with bars where it needs them."""
+    from services import binance_service as _bs
+
+    async def _none(*a, **k):
+        return None
+    monkeypatch.setattr(_bs.binance_service, "get_klines_1m_recent", _none, raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _no_orderbook_network(monkeypatch):
     """📖 Oct-3: manual opens read the order book (research stamp) — never the network in tests."""
     from services import binance_service as _bs

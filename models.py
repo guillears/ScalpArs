@@ -714,6 +714,12 @@ class Order(Base):
     # filter judged (blocks HT when < frenzy_willy_ht_min_dip_pct). The fill-price dip = (H − entry_price) ÷ H × 100 (the scout's measure).
     entry_frenzy_pre_vol15_vs60 = Column(Float, nullable=True)     # 📊 (DECISION_LOG 596, observe) mean 1m base volume of the 15 bars before the fill minute ÷ the 60 before those (post-fill backfill, FRENZY_*)
     entry_frenzy_willy_dip_pct = Column(Float, nullable=True)
+    # 💥 (DECISION_LOG 619) FRENZY_WILLY_HT fills: the WILLY_HT_BURST_REJECTION inputs judged AT THE DECISION (1m bars closed before the decision
+    # minute) — pre_vol15_vs60 (the post-fill entry_frenzy_pre_vol15_vs60 is the same measure on the fill minute) · cloc15 · the read's latency (ms;
+    # ≈ 0 = from the rolling buffer). NULL = the switch off / not HT / unreadable (fail-open).
+    entry_frenzy_pre_vol15_dec = Column(Float, nullable=True)
+    entry_frenzy_cloc15 = Column(Float, nullable=True)
+    entry_frenzy_burst_read_ms = Column(Integer, nullable=True)
     frenzy_willy_tp_target_pct = Column(Float, nullable=True)
     willy_floor_armed_at = Column(DateTime, nullable=True)
     # 🏃 (DECISION_LOG 541) WILLY RUNNER: k (× entry_atr_pct below the peak) when this FRENZY_WILLY fill runs the trailing runner after its target

@@ -209,7 +209,14 @@ def test_stop_reads_line_and_closed_funding_column():
     assert 'whitespace-nowrap">${formatUSD(o.pnl)} (${o.pnl_percentage.toFixed(2)}%)</span>' in h                          # the P&L never wraps
     assert "${stopTxt}${fuTxt}" not in h and "` · stop at −${+sa.toFixed(2)}%`" not in h                     # the old one-liner is gone
     assert "const fuPct = (isFinite(fu) && nv > 0) ? fu / nv * 100 : NaN;" in h                                 # no notional → no % line
-    assert "${fu < 0 ? 'text-red-400/80' : 'text-emerald-400/80'}" in h                                        # paid red · received green
+    assert "const fuLine = !showFu ? '' : `<div class=\"text-yellow-400/80\">" in h                 # 🎨 (624) funding = a cost → yellow, like fees
+    assert "${Math.abs(Number(o.funding_usd) || 0) > 0.005 ? 'text-yellow-400' : 'text-gray-400'}" in h   # Closed Orders funding yellow
+    assert "'text-emerald-400' : 'text-red-400'} font-medium\">${(o.peak_pnl || 0) >= 0" not in h                # peak / worst white
+    assert "${(o.trough_pnl ?? 0) < 0 ? 'text-red-400' : 'text-gray-400'}" not in h
+    assert '<td class="px-4 py-3 text-right text-white font-medium">${(o.peak_pnl || 0) >= 0' in h                  # Closed Orders peak = white
+    assert "<td class=\"px-4 py-3 text-right text-white font-medium\">${o.trough_pnl == null ? '—'" in h            # worst = white (both tables)
+    assert "text-red-400/80' : 'text-emerald-400/80'" not in h                                                  # the old open-row funding colours are gone
+    assert "${Math.abs(Number(r.total_funding) || 0) > 0.005 ? 'text-yellow-400' : 'text-gray-400'}" in h       # period table funding = a cost too
     assert "already taken out of the Move − funding number above" in h                                       # FLATBASE: not counted twice
     assert '"stop_at_pct": _stop_at_pct,' in m and "_exit_lv = _exh_rl(o, _th_sa)" in m and "_exit_lv = _dist_rl(o, _th_sa)" in m and m.count("_stop_at_pct = _exit_lv[1]") == 2
     assert "_stop_read_basis = \"price_funding\"" in m and "_fb_paid_funding_pct(getattr(o, 'funding_fee_usd', None), o.entry_price, o.quantity)" in m

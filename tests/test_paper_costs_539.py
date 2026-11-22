@@ -217,6 +217,10 @@ def test_stop_reads_line_and_closed_funding_column():
     assert "<td class=\"px-4 py-3 text-right text-white font-medium\">${o.trough_pnl == null ? '—'" in h            # worst = white (both tables)
     assert "text-red-400/80' : 'text-emerald-400/80'" not in h                                                  # the old open-row funding colours are gone
     assert "${Math.abs(Number(r.total_funding) || 0) > 0.005 ? 'text-yellow-400' : 'text-gray-400'}" in h       # period table funding = a cost too
+    assert "(Math.abs(r.avg_slippage_pct) > 0.02 ? 'text-yellow-400' : 'text-gray-300')" in h                  # DL 625: period slippage % = a cost (yellow)
+    assert "(Math.abs(r.total_slippage_usd) > 1 ? 'text-yellow-400' : 'text-gray-300')" in h                   # DL 625: period slippage $ yellow
+    assert "(Math.abs(r.avg_slippage_pct) > 0.05 ? 'text-yellow-400' : 'text-gray-400')" in h                  # DL 625: per-pair slippage % yellow
+    assert "r.avg_slippage_pct > 0.02 ? 'text-red-400'" not in h and "r.total_slippage_usd > 1 ? 'text-red-400'" not in h and "r.avg_slippage_pct > 0.05 ? 'text-red-400'" not in h   # old red / green slippage gone (both tables)
     assert "already taken out of the Move − funding number above" in h                                       # FLATBASE: not counted twice
     assert '"stop_at_pct": _stop_at_pct,' in m and "_exit_lv = _exh_rl(o, _th_sa)" in m and "_exit_lv = _dist_rl(o, _th_sa)" in m and m.count("_stop_at_pct = _exit_lv[1]") == 2
     assert "_stop_read_basis = \"price_funding\"" in m and "_fb_paid_funding_pct(getattr(o, 'funding_fee_usd', None), o.entry_price, o.quantity)" in m

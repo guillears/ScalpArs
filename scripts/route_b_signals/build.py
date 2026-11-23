@@ -45,6 +45,7 @@ import btc_trend as BT      # noqa: E402
 import controls as CT       # noqa: E402
 import exits as X           # noqa: E402
 import labels as LB         # noqa: E402
+import q2 as Q2             # noqa: E402
 import signals as SG        # noqa: E402
 import sources as SRC       # noqa: E402
 import state as ST          # noqa: E402
@@ -457,8 +458,9 @@ def main(argv=None):
     for r in S.itertuples():
         T = r.signal_time.value // 1_000_000
         c = coins.get(r.pair)
-        st_rows.append({**(c.state(T) if c is not None else {"rb_has_book": False, "rb_has_mark": False, **ST.DL611_FLAGS}), **market.state(T),
-                        **BT.stamp(btc_tab, T)})
+        st = {**(c.state(T) if c is not None else {"rb_has_book": False, "rb_has_mark": False, **ST.DL611_FLAGS}), **market.state(T),
+              **BT.stamp(btc_tab, T)}
+        st_rows.append({**st, **Q2.lines(c, ST.state_minute(T), st, market.covered)})   # the Q2 theory-line variables (build item 7)
     S = pd.concat([S, pd.DataFrame(st_rows)], axis=1)
     # ── outcomes (carry FINAL rows from the previous run)
     prev_p = os.path.join(C.DATA, "signals.pkl.gz")
@@ -520,6 +522,7 @@ def main(argv=None):
                            signals_has_fb=int(S.get("has_fb", pd.Series(dtype=bool)).eq(True).sum()),
                            signals_has_oi=int(S.get("has_oi", pd.Series(dtype=bool)).eq(True).sum()),
                            signals_has_ratio=int(S.get("has_ratio", pd.Series(dtype=bool)).eq(True).sum())),
+                q2_scored={k_: int(S[f"q2_{k_}"].notna().sum()) for k_ in Q2.LINES if f"q2_{k_}" in S.columns},
                 market_days=dict(days=int(len(mdays)), complete=int(mdays.complete.sum()) if len(mdays) else 0),
                 btc_daily=dict(days=int(len(btc_tab)) if btc_tab is not None else 0,
                                signals_sign={str(k_): int(v_) for k_, v_ in S["btc_d_trend"].map(

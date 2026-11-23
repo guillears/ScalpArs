@@ -290,4 +290,143 @@ The per-sleeve daily WORKED rate is compared across days, two-sided (no directio
 ---
 
 ## Addenda
-*(none — any change goes here, timestamped, before the data it touches is read)*
+*(any change goes here, timestamped, before the data it touches is read)*
+
+### Addendum 1 — implementation pins and stated deviations for build items 1–7 (written 2026-11-23 17:42 UTC, before any scan outcome was read)
+
+**Why.** The build items needed exact readings of a few phrases above. The reviews (caveman + deep, per item, then on this addendum)
+asked for each choice to be frozen here before any DESIGN row is read.
+
+**What was read while writing it.** No outcome column (`out_*`, `fwd_*`, `g_*`, labels) was printed or summarised. Only coverage
+counts were read (rows scored, openers, controls, stubs).
+
+**Freeze proof.** The git commit that adds this addendum.
+
+**Scope.** These pins fix how the code reads §0–§8. Items marked **[DEVIATION]** narrow or widen a cohort for data-quality reasons;
+each is stated here, with its reason, before any DESIGN outcome is read. No question, label, threshold or gate is changed.
+
+**Item 1 — DL 611 state (OI / positioning / full book)**
+- **OI**
+  - The newest row with minute ≤ s − 1, at most 3 min before s.
+  - `oi_chg_1m` / `oi_chg_5m` are the recorder's own % on that row.
+  - Derived 15 / 60 / 240-min change = % of that row's `oi` vs the newest row at or before (its minute − w), at most 5 min older.
+- **Positioning**
+  - Rows are de-duplicated per `ratio_ts`, keeping the earliest minute it was seen.
+  - Usable = `ratio_ts` + 10 min ≤ T **and** that first-seen minute ≤ s − 1 (the same sweep-start rule as OI).
+  - Read the newest usable row, if T − `ratio_ts` ≤ 30 min.
+  - The 60-min change = relative % vs the usable row whose `ratio_ts` is nearest `ratio_ts` − 60 min (± 10 min).
+- **Cross-hour merge:** each family comes whole from one row (OI: the first row with an `oi`; positioning: the newest `ratio_ts`).
+- **Full book:** the last fb row in [s − 2, s]. Band columns carry a `_lb` flag when the trusted reach is shorter than the band.
+- **Unscored** = NaN on every key, plus `has_fb` / `has_oi` / `has_ratio`.
+- **HOLDOUT-only per §0** (the imbalance and taker-share families):
+  - `rb_imb_05`, `fb_imb_05`;
+  - `rb_taker_buy_share_5`, `rb_taker_buy_share_15`;
+  - `taker_bs_ratio`, `taker_bs_ratio_chg60_pct`;
+  - every 2D pair containing one of them.
+  - Their DESIGN results are printed, but never count.
+
+**Item 2 — full-book pricing**
+- **Entry-leg order:** the real fill price → the full book → the 20-level book → the journal model slip → the default slip.
+- **Exit-leg order:** the full book at the exit minute → the 20-level book at the exit minute → the full book at the signal → the
+  20-level book at the signal → the default slip.
+- **[DEVIATION — narrows "where the coin was in the full book"]** A full-book leg is used only when that row's `fb_<side>_usd_5`
+  (itself a per-second mean) is ≥ $6k on the side taken. Reason: the recorder's `fb_cost_*` is the mean over only the seconds where
+  the size fitted within 5 % (thin seconds are dropped — a low bias).
+- **`out_cost_flag` values**
+  - `full_book`: every taker leg was full-book costed. A real fill's own price counts as costed, so a real fill with a full-book
+    exit is `full_book`.
+  - `no_book_leg`: a fill's own price plus a maker TP.
+  - `lower-bound cost`: any other source. The label means "not the full book", whichever way the bias runs.
+  - empty when unpriced.
+- **Finality:** a taker exit at or past the recorded data end (or the full-book data end, for a full-book coin) is never final.
+- **Triggers and controls keep the 20-level cost** (item 2 covers the **sleeve** NET only). `h_cost_src` takes three values:
+  - `route_b_book`;
+  - `no_book` — no recorded book; excluded per §3, together with that trigger's controls;
+  - `book_unwalkable` — a book row existed but the $6k walk did not fit; default slip.
+- **[DEVIATION — `book_unwalkable` is kept, with a robustness condition]**
+  - Every Q3 pass statistic must ALSO hold with the `book_unwalkable` triggers and controls excluded; counts per key are reported.
+  - A control is priced on its own minute's cost source; mismatches with its trigger are counted.
+
+**Item 3 — labels**
+- **Minutes** are counted in bars, like the outcome walk on the same path; "within the max hold" = the first `hold` bars.
+- **REACH** includes the stop minute (the `path_labels` convention; REACH never decides a pass). `lbl_pass_min` is the bar count
+  to the passage.
+- **Decomposition:** the walk's real stop is the −Y passage for the group (so a FLATBASE funding-offset stop groups as NEVER).
+  `lbl_worked` stays the exit-independent price label.
+- **Finality:** the label has its own `out_lbl_done`; pricing finality is unchanged. If the label's bars never arrive, it is closed
+  12 h after hold + 180 min: a still-unknown label becomes `NO_DATA`, kept in the coverage counts and excluded from the WORKED rate
+  (`lbl_worked` NaN).
+- **S5**
+  - Uses the scout cache's `entry` and `sl`, key `pair|T` (T in whole seconds).
+  - The walk starts at the first whole minute after T + 8 s and runs over the scout's hold.
+  - It needs a gap-free path: PENDING until then, `NO_DATA` after 12 h.
+  - Rows count from the DL 630 commit (b6f73117, 2026-11-23 14:33:21 UTC), and only where the scout cache holds an entry.
+
+**Item 4 — BTC daily trend**
+- Perpetual daily closes (the last 1,500 days), `ewm(span, adjust=False)`, read on the last day whose close ≤ T.
+- An exact tie stamps 0, and B4 treats 0 as **no sign**.
+- Stale (T ≥ 1 day after the last closed day's close) or unavailable → NaN.
+
+**Item 5 — H7, variants, controls**
+- **H7**
+  - At trigger minute m, H7 uses the OI row stamped m − 1 (its `oi_chg_5m`) and mark(m − 1) ÷ mark(m − 6) − 1. Each mark is the
+    last row ≤ that minute, at most 2 min old.
+  - Thresholds are inclusive (≤ −3, ≥ +2, ≥ +5).
+  - Hot coins with an OI sweep only. No book is needed **to fire**, but a `no_book` H7 opener is still out of the Q3 statistics (§3).
+- **Variant depth**
+  - The newest fb row ≤ m (≤ 2 min old) on the absorbing side, against the median of the 24 h of rows before **that row** (the row
+    excluded, ≥ 60 rows).
+  - Variant hit minutes = the parent's hit minutes where the condition holds; episodes are built on them.
+  - B3b's "same coin set" = the parent openers with `cond_depth_scored` True.
+- **Control-exclusion family:** the H number. Both sides of H3 / H4 / H5 / H6 go together, H7a / b / c are separate, and a variant
+  goes with its parent.
+- **[DEVIATION — OPEN, the operator decides before 12-10] Exclusion around every HIT minute, not only openers.**
+  - The rule excludes ± 60 min (inclusive) around every minute the trigger condition held. §6's "any trigger of the same family"
+    could also mean its openers.
+  - Consequence at the 11-23 17:38 UTC run (counts only): **161 of 197 H6 openers have no eligible control.** A funding extreme
+    lasts hours, so the whole coin-day is excluded. Every other family loses 0–12 %.
+  - Those H6 openers leave the Δ statistic, and H6 reads UNTESTABLE for them.
+  - The alternative is to exclude around openers only. This addendum may be amended once, before 12-10, to pick it.
+- **Control minutes**
+  - in the trigger **minute's** UTC day, at or after REC_START, with a 20-level book row stamped at that minute;
+  - drawn without replacement within an opener and independently across openers (a minute can repeat across openers of the same
+    coin-day and family);
+  - no depth condition for variants;
+  - a trigger with zero eligible minutes gets a stub row. It is excluded from Δ and does **not** count toward the A1-Q3 / B1
+    possibility floors; stubs are counted in the report;
+  - a draw is final only when every hourly file from D−1 23:00 to D+1 01:00 LOADED this run, or is permanently absent (still missing
+    48 h after the hour ended — counted in `ctrl_day_missing_hours`). Hours before the recording start count as present. Q3 reads
+    `ctrl_final` rows only;
+  - numpy 2.4.1, pinned by a golden-draw test.
+
+**Item 6 — S0 (Q4)**
+- The per-window value = the market row at the window's last minute. The daily mean is over the windows that have a value.
+- **[DEVIATION — strict completeness]** `complete` = every S0 column is scored in all 96 windows, and Q4 reads complete days only.
+  One unscored window in one column drops the day (e.g. 11-20 lost to the 60-min breadth warm-up; 2 of 5 days complete at 11-23).
+  Q4 still needs ≥ 10 complete days a side.
+- **Outages:** a minute with no mark row from ANY coin is a recorder outage. Market liquidations there are NaN (never 0), and every
+  rolling **liquidation** sum needs its full window. The BTC taker-buy share keeps its existing ≥ 7-of-15-minute rule.
+- **The daily mean is descriptive:** it includes windows after a day's signals. A Q4 line acted on during a day would read the
+  previous day's S0.
+- **Funding mean** = the raw per-settlement rate over every coin with a mark row (BTC and ETH included; 1 h and 8 h coins mixed).
+- **Premium** = the mean over coins of (mark ÷ index − 1), each from its own row.
+
+**Item 7 — Q2**
+- **The p90 / p99 sample** = the coin's w-min liquidation sums at each of its liquidation minutes in [s − 7 d, s), non-zero only,
+  ≥ 20 values. The 7 days are truncated at the recording start early in DESIGN. numpy linear quantile.
+- **Firing:** a line fires when the current w-min sum is > 0 and ≥ the quantile.
+- **[DEVIATION] Outage windows:** a window (s − w, s] that overlaps a recorder outage is unscored. The 7-day sample keeps every
+  window as recorded.
+- **Prior median:** the fb rows in [row − 24 h, row) of the row the state read, ≥ 60 non-NaN values.
+- **[DEVIATION — strict three-valued logic]** Every AND / OR line (S1b, S2a, S2c, S5) is scored only when every leg is scored.
+  - S5 is therefore scored only when there is an OI sweep (hot coin) **and** a scorable 15-min liquidation p90 (≥ 20 non-zero sums
+    in 7 d, window clear of outages).
+  - This narrows the DL 630 cohort (11-23 17:38: 93 EXH_NO_SPOT rows, 48 with OI, 41 with S5 scored). The coverage is reported.
+- **S2-c cuts:** the DIST Q2-cohort DESIGN rows (the optional-stopping guard applied) where **both** variables are scored. pandas
+  linear quantile at 1/3, inclusive ≤. Funding = `rb_funding_pct` (the current rate at the state minute).
+- The `_lb` flags are carried for the audit only and do not change any line.
+- **Which statistic judges what:** the rotation null (§6) is the family-maximum null of the **Q1** screen. A **Q2** line is judged by
+  A2's window-clustered bootstrap, as A2 states.
+
+**Schedule (§7)**
+- 2026-12-10 is a **Thursday**, not a Wednesday. The date governs: the first run is Thursday 2026-12-10, weekly on Thursdays after.

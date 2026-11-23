@@ -164,6 +164,8 @@ reports/TP_GRID_2026-11-20_FB_data/*.pkl
 reports/TP_GRID_2026-11-20_DIST_data/funding_*.json
 reports/SCOUT_DIST_TP_SHADOW.json
 reports/SCOUT_EXH_SSC_OIVOL_609.json
+reports/.exh_nospot_630_cache.json
+reports/SCOUT_EXH_NOSPOT_630.json
 reports/SCOUT_EXH_AFTER_DROP_609.json
 reports/SCOUT_EXH_WIDE_585_609.json
 reports/SCOUT_EXH_TP7_609.json

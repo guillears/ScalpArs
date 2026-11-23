@@ -37,6 +37,10 @@ EXIT = {
     "scout_exh_ssc_oivol.py": dict(dl="582 · 609", sleeves="EXHAUSTION_SHORT (blocked EXH_SSC_OIVOL signals)", walks={"exhaustion_tp_atr_mult": 20.0,
                                    "exhaustion_tp_cap_pct": 7.0, "exhaustion_sl_atr_mult": 1.5, "exhaustion_sl_cap_pct": 6.0,
                                    "exhaustion_max_hold_hours": 24.0}),
+    # 🚫🔭 (630) EXH_NO_SPOT forward watch: no-spot setups that pass every other rule, priced on the live EXHAUSTION exit → STALE on a change
+    "scout_exh_nospot_630.py": dict(dl="630", sleeves="EXHAUSTION_SHORT (refused EXH_NO_SPOT setups)", walks={"exhaustion_tp_atr_mult": 20.0,
+                                    "exhaustion_tp_cap_pct": 7.0, "exhaustion_sl_atr_mult": 1.5, "exhaustion_sl_cap_pct": 6.0,
+                                    "exhaustion_max_hold_hours": 24.0}),
     "scout_willy_timecap.py": dict(dl="264 · 278 · 281 · 285 · 290 · 297", sleeves="FRENZY_WILLY", walks=_OLD_WILLY),
     # 🔁 (409) re-based 2026-10-29: every fill walked under today's V2b exit (the old +1.25 / −4 / 90 ruler printed as context only)
     "scout_willy_mktdip.py": dict(dl="305", sleeves="FRENZY_WILLY", walks=_OLD_WILLY),

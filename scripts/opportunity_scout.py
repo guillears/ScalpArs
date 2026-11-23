@@ -1580,6 +1580,14 @@ def run():
     except Exception as _sso_e:
         log(f"EXH_SSC_OIVOL gate failed: {_sso_e}")
         _rg_sec += ["## 🧯 EXH_SSC_OIVOL (DL 582)", "", f"Unavailable this run ({str(_sso_e)[:120]}).", ""]
+    try:                                               # 🚫🔭 Nov-23 EXH_NO_SPOT forward watch (DECISION_LOG 630; refused no-spot setups priced, observe)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_exh_nospot_630 as _ns630
+        _rg_sec += _ns630.run(now_ms)
+    except Exception as _ns630_e:
+        log(f"EXH_NO_SPOT watch failed: {_ns630_e}")
+        _rg_sec += ["## 🚫🔭 EXH_NO_SPOT forward watch (DL 630)", "", f"Unavailable this run ({str(_ns630_e)[:120]}).", ""]
     try:                                               # 📖 Nov-18 DL 583 depth-guard band revert gate (min_frac 0.5 → 0.25; forward)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

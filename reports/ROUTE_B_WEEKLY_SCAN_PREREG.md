@@ -453,3 +453,39 @@ which were frozen without them.
 - Operator 2026-11-23: the weekly report shows **summaries only** — per sleeve / key / line aggregates (N, medians, effects, CIs). It
   never lists single trades or signals. A pass still gets its event-study chart (§7), as an aggregate path.
 
+### Addendum 3 — H6 control exclusion: Addendum 1's open choice closed, the ORIGINAL rule stays (written 2026-11-23 18:18 UTC, before any scan outcome was read)
+
+**Operator decision (2026-11-23):** "keep original rule". This closes the one open choice Addendum 1 left: the openers-only option is
+withdrawn, and no further change to the exclusion is possible. No Q3 outcome had been read; only coverage counts were.
+
+- **The rule stays as Addendum 1 wrote it:** H6, like every family, excludes ± 60 min (inclusive) around every hit minute.
+- **Correction to Addendum 1's diagnosis.** Most H6 openers lacked a control because their coin had **no order book recorded**, not
+  because of the exclusion. Funding-extreme coins are mostly not on the recorder's hot list. Counts at the 11-23 18:00 UTC data
+  (3.78 days):
+  - 190 H6 base openers (plus 10 "|c" variant rows);
+  - 161 of the 190 had no recorded book at the trigger minute, so they are out of Q3 under §3 whatever the rule;
+  - 29 had a book: 6 of them have no eligible control under this rule (median eligible minutes 531). That leaves **23 testable, about
+    6 a day**.
+- **Disclosure:** the openers-only alternative was built and run once (outcome columns computed, never printed), then reverted. Its
+  control draws are recomputed at the next build (the carry is keyed by the drawn minute).
+- **What this means for H6:** it reaches the §6 floors (A1-Q3 ≥ 20, B1 ≥ 30 on ≥ 10 days) slowly. More book coverage of
+  funding-extreme coins would be a recorder change, outside this pre-registration.
+- **Stale labels on disk:** one interim build wrote `h_cost_src = default`, a pre-split label. CODE_VERSION 7 re-prices every row, so
+  `h_cost_src` takes only the three Addendum-1 values (`route_b_book` / `book_unwalkable` / `no_book`), and a test pins them.
+- Addendum 1's **[DEVIATION — OPEN]** item is closed by this addendum. Nothing else changes.
+
+### Addendum 4 — priority order for reporting and follow-up (written 2026-11-23 18:18 UTC, before any scan outcome was read)
+
+**Operator (2026-11-23):** "prioritize the ones that have more trades per day". Order only: every key stays in the Q3 family and the
+luck test, and no gate, null or floor changes. Dropping the low-volume keys would lower the bar for the rest, so none is dropped.
+
+- **The order:** per family, the Q3-eligible base openers per day over DESIGN (a book at the trigger minute and at least one final
+  control), counted once at the 12-10 run and frozen. This uses no outcome. Variants and H7a / b / c are listed under their parent
+  family.
+- **Raw possibilities per day on 11-23, for orientation only** (the order is fixed by the eligible counts at 12-10): H5 178 · H4 128 ·
+  H3 66 · H6 50 (≈ 6 eligible) · H1 23 · H2 18 · H7 7.
+- **The weekly report** lists the Q3 keys in that order, each with its separate-window count beside it (the statistical unit).
+- **Follow-up work** for a key that passes runs in that order: the winners-vs-losers study under its frozen cell (the standing
+  entry × exit rule; its own pre-registration), then capacity, then the sleeve design and scout. This is an addition to §6 C's steps,
+  not a gate.
+- **Fresh-data-only keys:** H3 and H5 can only pass on HOLDOUT, so their place in the order applies from their first HOLDOUT verdict.

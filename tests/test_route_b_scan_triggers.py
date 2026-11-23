@@ -303,3 +303,16 @@ def test_short_variant_holds_on_the_ask_side():
                            fb_ask_usd_05=np.r_[np.full(100, 1.0), np.full(100, 10.0)]))
     d = TR.Depth(fb)
     assert d.ok(int(mins[150]), "ask") == (True, True) and d.ok(int(mins[150]), "bid") == (True, False)
+
+
+def test_h_cost_src_takes_only_the_three_values(monkeypatch):
+    """PREREG Addendum 3: route_b_book · book_unwalkable · no_book (the interim 'default' label is gone; CODE_VERSION ≥ 7 re-prices)."""
+    import build as BLD
+    assert BLD.CODE_VERSION >= 7
+    vals = set()
+    for kw in (dict(), dict(sell=(5.0, np.nan))):
+        B, coins, _ = _h_env(monkeypatch, **kw)
+        vals |= set(B.price_h_table(_rows(), "ctrl_id", None, None, coins, _Mk(), None, "hk", T0 + 5000 * M).h_cost_src)
+    B, _, _ = _h_env(monkeypatch)
+    vals |= set(B.price_h_table(_rows(), "ctrl_id", None, None, {}, _Mk(), None, "hk", T0 + 5000 * M).h_cost_src)
+    assert vals == {"route_b_book", "book_unwalkable", "no_book"}

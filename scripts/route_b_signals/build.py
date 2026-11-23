@@ -51,7 +51,7 @@ import sources as SRC       # noqa: E402
 import state as ST          # noqa: E402
 import triggers as TR       # noqa: E402
 
-CODE_VERSION = 6            # bump when pricing / state logic changes (forces a re-price of carried-over rows)
+CODE_VERSION = 7            # bump when pricing / state logic changes (forces a re-price of carried-over rows)
 OUT_COLS_PREFIX = ("out_",)
 
 

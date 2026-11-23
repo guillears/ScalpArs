@@ -451,6 +451,8 @@ def main(argv=None):
     coins = ST.coins_from(book, mark, liq, sorted(set(S.pair) | trig_syms), fb=fbk, pos=pos)
     market = ST.Market(mark, liq, book[book.sym == "BTCUSDT"])
     btc_tab = BT.load(SRC.limiter(), now_ms, now_ms=now_ms)         # BTC 1d EMA50 / EMA200 (build item 4)
+    mdays = ST.market_days(market)                                  # the Q4 S0 row in DAY units (build item 6)
+    mdays.to_csv(os.path.join(C.DATA, "market_days.csv.gz"), index=False)
     st_rows = []
     for r in S.itertuples():
         T = r.signal_time.value // 1_000_000
@@ -518,6 +520,7 @@ def main(argv=None):
                            signals_has_fb=int(S.get("has_fb", pd.Series(dtype=bool)).eq(True).sum()),
                            signals_has_oi=int(S.get("has_oi", pd.Series(dtype=bool)).eq(True).sum()),
                            signals_has_ratio=int(S.get("has_ratio", pd.Series(dtype=bool)).eq(True).sum())),
+                market_days=dict(days=int(len(mdays)), complete=int(mdays.complete.sum()) if len(mdays) else 0),
                 btc_daily=dict(days=int(len(btc_tab)) if btc_tab is not None else 0,
                                signals_sign={str(k_): int(v_) for k_, v_ in S["btc_d_trend"].map(
                                    lambda v: "unscored" if v != v else ("tie" if v == 0 else ("bull" if v > 0 else "bear"))).value_counts().items()},

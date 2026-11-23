@@ -29,7 +29,8 @@ coins for OI / positioning). NaN = UNSCORED (never "rest"); has_fb / has_oi / ha
   The full-book bands carry fb_<side>_usd_<t>_lb = True when the trusted full book reached less than that band (a LOWER bound).
   Every family emits its full key set (NaN when unscored) so the schema never depends on the data.
 Market columns (prefix mk_, the same state minute): breadth % of coins whose mark is up over 5 / 15 / 60 min · market liquidations long /
-short 1 / 5 / 15 min · BTC $ within 0.2 % (bid + ask) · BTC taker-buy share 5 / 15 min · BTC return 15 / 60 min.
+short 1 / 5 / 15 min · BTC $ within 0.2 % (bid + ask) · BTC taker-buy share 5 / 15 min · BTC return 15 / 60 min · mean funding % and mean
+mark-index premium % across coins (build item 6). market_days() = the Q4 S0 row in DAY units (PREREG §4).
 """
 import math
 
@@ -262,8 +263,10 @@ class Market:
     """per-minute MARKET row (computed once on the recorded minute grid; trailing windows only)."""
 
     def __init__(self, mark, liq, btc):
-        piv = mark.pivot_table(index="minute", columns="sym", values="mark", aggfunc="last")
+        m3 = mark.drop_duplicates(["minute", "sym"], keep="last").set_index(["minute", "sym"])
+        piv = m3["mark"].unstack()                                  # one reshape per column (the 3 pivot_tables cost 3× time / memory)
         grid = np.arange(piv.index.min(), piv.index.max() + MIN_MS, MIN_MS)
+        up = piv.notna().any(axis=1).reindex(grid, fill_value=False).to_numpy(bool)   # a minute in which the recorder wrote ANY mark
         piv = piv.reindex(grid).ffill(limit=5)
         f = pd.DataFrame(index=grid)
         for w in (5, 15, 60):
@@ -271,9 +274,10 @@ class Market:
             both = piv.notna() & prev.notna()
             f[f"mk_breadth_up_{w}"] = ((piv > prev) & both).sum(axis=1) / both.sum(axis=1).replace(0, np.nan) * 100
         lq = liq.groupby("minute")[["liq_long_usd", "liq_short_usd"]].sum().reindex(grid).fillna(0)
+        lq[~up] = np.nan                                            # a recorder outage is UNSCORED, never "zero liquidations"
         for w in (1, 5, 15):
-            f[f"mk_liq_long_{w}"] = lq.liq_long_usd.rolling(w, min_periods=1).sum()
-            f[f"mk_liq_short_{w}"] = lq.liq_short_usd.rolling(w, min_periods=1).sum()
+            f[f"mk_liq_long_{w}"] = lq.liq_long_usd.rolling(w, min_periods=w).sum()
+            f[f"mk_liq_short_{w}"] = lq.liq_short_usd.rolling(w, min_periods=w).sum()
         bt = btc.set_index("minute").reindex(grid)
         f["mk_btc_depth_02_usd"] = (bt.bid_usd_02 + bt.ask_usd_02).ffill(limit=BOOK_MAX_AGE_MIN)
         f["mk_btc_bid_02_usd"] = bt.bid_usd_02.ffill(limit=BOOK_MAX_AGE_MIN)
@@ -284,8 +288,26 @@ class Market:
         if "BTCUSDT" in piv.columns:
             for w in (15, 60):
                 f[f"mk_btc_ret_{w}m_pct"] = (piv["BTCUSDT"] / piv["BTCUSDT"].shift(w) - 1) * 100
+        # S0 (weekly-scan PREREG §4 Q4, build item 6): mean funding and mean mark-index premium across every coin with a mark row
+        # (the last row ≤ the minute, ≤ 5 min old — the same carry as the breadth columns)
+        # funding = the raw per-settlement rate, 1 h and 8 h settlement coins mixed (as H6), BTC / ETH included
+        fu = m3["funding"].astype("float32").unstack().reindex(grid).ffill(limit=5)
+        f["mk_funding_mean_pct"] = fu.mean(axis=1) * 100
+        ratio = (m3["mark"] / m3["index"].where(m3["index"] > 0)).unstack().reindex(grid).ffill(limit=5)   # per ROW (never a mark
+        f["mk_premium_mean_pct"] = (ratio.mean(axis=1) - 1) * 100                                              # paired with a stale index)
         self.f = f
+        self.up_grid, self.up = np.asarray(grid, np.int64), up
+        self.up_cum = np.concatenate([[0], np.cumsum(~up)])
         self.grid = grid
+
+    def covered(self, a, b):
+        """True when the recorder wrote marks in EVERY minute of (a, b] (inside the recorded grid) — an outage minute makes a window
+        unscored, never "zero". Pure on the grid."""
+        g = self.up_grid
+        if not len(g) or a + MIN_MS < g[0] or b > g[-1]:
+            return False
+        i, j = np.searchsorted(g, a, "right"), np.searchsorted(g, b, "right")
+        return bool(j > i and self.up_cum[j] - self.up_cum[i] == 0)
 
     def state(self, T_ms):
         s = state_minute(T_ms)
@@ -303,6 +325,38 @@ FB_KEYS = (["fb_age_min", "fb_spread_bps", "fb_reach_bid_pct", "fb_reach_ask_pct
 OI_KEYS = ["oi_age_min", "oi_chg_1m", "oi_chg_5m"] + [f"oi_chg_{w}m" for w in OI_DERIVED]
 RATIO_KEYS = ["ratio_age_min"] + list(RATIOS) + [f"{c}_chg60_pct" for c in RATIOS]
 DL611_FLAGS = {"has_fb": False, "has_oi": False, "has_ratio": False}
+
+
+S0_COLS = {"breadth_up_15": "mk_breadth_up_15", "breadth_up_60": "mk_breadth_up_60", "liq_long_15": "mk_liq_long_15",
+           "liq_short_15": "mk_liq_short_15", "btc_depth_02_usd": "mk_btc_depth_02_usd", "btc_taker_buy_share_15": "mk_btc_taker_buy_share_15",
+           "funding_mean_pct": "mk_funding_mean_pct", "premium_mean_pct": "mk_premium_mean_pct"}
+
+
+def market_days(market, start_ms=None, end_ms=None):
+    """the Q4 MARKET row in DAY units (PREREG §4 S0): per 15-min window the value at the window's LAST minute (its state at the window's
+    close), then the daily MEAN over the windows that have it. → DataFrame(day, s0_<x> …, s0_<x>_n windows, n_windows, complete).
+    complete = every S0 column is scored in all 96 windows of the day (a recorder outage, a late hour or a partial day → False; Q4 reads
+    complete days only). Pure on the Market frame."""
+    f = market.f
+    if start_ms is not None:
+        f = f[f.index >= start_ms]
+    if end_ms is not None:
+        f = f[f.index < end_ms]
+    if not len(f):
+        return pd.DataFrame(columns=["day", "n_windows", "complete"])
+    idx = np.asarray(f.index, np.int64)
+    last = f[(idx // MIN_MS) % 15 == 14]                       # the last minute of each 15-min window
+    d = pd.DataFrame({f"s0_{k}": (last[v] if v in last.columns else np.nan) for k, v in S0_COLS.items()})   # every column, always
+    d["day"] = pd.to_datetime(np.asarray(last.index, np.int64), unit="ms", utc=True).strftime("%Y-%m-%d")
+    g = d.groupby("day")
+    out = g.mean(numeric_only=True)
+    for c in [c for c in d.columns if c.startswith("s0_")]:
+        out[c + "_n"] = g[c].count()
+    out["n_windows"] = g.size()
+    out = out.reset_index()
+    ncols = [c for c in out.columns if c.startswith("s0_") and c.endswith("_n")]
+    out["complete"] = (out[ncols] == 96).all(axis=1) if ncols else False
+    return out
 
 
 def _num(v):

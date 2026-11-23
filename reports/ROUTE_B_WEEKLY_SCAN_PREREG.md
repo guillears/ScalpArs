@@ -430,3 +430,26 @@ each is stated here, with its reason, before any DESIGN outcome is read. No ques
 
 **Schedule (§7)**
 - 2026-12-10 is a **Thursday**, not a Wednesday. The date governs: the first run is Thursday 2026-12-10, weekly on Thursdays after.
+
+### Addendum 2 — presentation: verdict colours and summary-only tables (written 2026-11-23 17:55 UTC, before any scan outcome was read)
+
+Display only: no question, cohort, label, threshold, null or gate changes. It carries the colours agreed on 2026-11-20 (DECISION_LOG
+598: "the weekly scan will use 🟢 passed every locked gate · 🟡 below the bar (watch line) · 🔴 refuted · ⚪ too few") into §6 D's statuses,
+which were frozen without them.
+
+| Status (§6 D) | Colour | Meaning in the report |
+|---|---|---|
+| PASSED | 🟢 | passed every locked gate on HOLDOUT |
+| SURVIVED DESIGN | 🟡 | a watch line, waiting on HOLDOUT |
+| STALE | 🟡 | waiting on its one re-check after an exit change |
+| FAILED · CONTRADICTED | 🔴 | refuted |
+| COLLECTING · UNTESTABLE | ⚪ | too few rows / cannot be tested |
+
+- Every status-table row carries its colour in the first column, before the status word. A colour never replaces the status word.
+- Coverage rows carry the data-quality marks of 2026-11-20 (🟢 ≥ 90 % of the fills with the book recorded at entry · 🟡 50–90 % or the
+  recorder degraded · 🔴 < 50 % or the recorder down · ⚪ none; the worst mark wins; "degraded" / "down" per day as DL 598 defines
+  them). They describe the data, never a result.
+- A PASSED line labelled "one regime" (§6 B4) keeps 🟢 with the label beside it, and stays capped at OBSERVE.
+- Operator 2026-11-23: the weekly report shows **summaries only** — per sleeve / key / line aggregates (N, medians, effects, CIs). It
+  never lists single trades or signals. A pass still gets its event-study chart (§7), as an aggregate path.
+

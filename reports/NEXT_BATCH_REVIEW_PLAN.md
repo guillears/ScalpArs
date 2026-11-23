@@ -868,3 +868,6 @@ Results in hand (2026-11-20; risk-matched scripts scripts/TP_GRID_2026-11-20_{DI
 - Before using any Kelly number: fix ONE Kelly definition (DIST_WL haircut Kelly 0.10–0.20 vs DL 586 1.15 / 0.71 / 0.43 notional vs EXH Wilson-floor ≈ 0.06 disagree).
 - FB real fills: 14 of the 27 are modelled confirm entries (B24 / B25), not real — the stop refutation's KAT / PARTI are modelled; only REAL rows test parity.
 - Every equal-drawdown read assumes no shared-book slot cap (the cluster days are partly unreachable live) — re-read with the 4-slot cap.
+
+### 🩺 WILLY "turnover unreadable" refusals (DECISION_LOG 628, 2026-11-22)
+grep the live log for `[FRENZY_WILLY] … turnover unreadable` (decisions gate FRENZY_WILLY_TURNOVER_UNREAD): per refusal, did the same episode later read R and open / block? A refusal that never re-reads = a lost WILLY / HT entry → price it with scripts/scout_blocked_filters.py's walker and fix the mcap / 24 h volume source if it recurs (11-21 05:20 ELSA · 11-22 09:00 ELSA = LOST, never re-read — sensitivity +1.25 as WILLY / +6.00 as HT · 11-22 11:15 BULLA harmless).

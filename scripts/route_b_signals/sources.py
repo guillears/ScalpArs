@@ -41,6 +41,24 @@ def feature_keys():
     return sorted(k for k in DR.s3_keys("features/") if k.endswith(".csv.gz"))
 
 
+_HOUR_KEY = re.compile(r"features/(\d{4}-\d{2}-\d{2})/([01]\d|2[0-3])\.csv\.gz")
+
+
+def loaded_hour_starts(keys):
+    """the hour-start ms of the hourly summaries that actually LOADED this run (a listed key whose file failed is not present)."""
+    return hour_starts([k for k in keys if compact_hour(k) is not None])
+
+
+def hour_starts(keys):
+    """the hour-start ms of every hourly summary key ("features/<date>/<HH>.csv.gz"). Pure."""
+    out = []
+    for k in keys:
+        m = _HOUR_KEY.fullmatch(str(k))
+        if m:
+            out.append(int(pd.Timestamp(f"{m.group(1)} {m.group(2)}:00", tz="UTC").value // 1_000_000))
+    return out
+
+
 def fetch_feature(key):
     """bytes of one hourly summary; cache = DATA/s3/<key> (copied from the daily report's cache when present)."""
     path = os.path.join(DATA, "s3", key)

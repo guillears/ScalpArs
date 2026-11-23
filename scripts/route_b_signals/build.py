@@ -42,6 +42,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import common as C          # noqa: E402
 import btc_trend as BT      # noqa: E402
+import controls as CT       # noqa: E402
 import exits as X           # noqa: E402
 import labels as LB         # noqa: E402
 import signals as SG        # noqa: E402
@@ -49,7 +50,7 @@ import sources as SRC       # noqa: E402
 import state as ST          # noqa: E402
 import triggers as TR       # noqa: E402
 
-CODE_VERSION = 5            # bump when pricing / state logic changes (forces a re-price of carried-over rows)
+CODE_VERSION = 6            # bump when pricing / state logic changes (forces a re-price of carried-over rows)
 OUT_COLS_PREFIX = ("out_",)
 
 
@@ -311,6 +312,63 @@ def s5_labels(S, specs, now_ms, cache_path=NOSPOT_CACHE, th=None):
     return out
 
 
+def price_h(pair, T, st, now_ms, hkey):
+    """one trigger / control row priced on the fixed grid from the open of minute m + 2: forward returns, g_tp*_sl*_net, funding, the
+    cost source (h_cost_src: route_b_book when both taker legs had the recorded 20-level $6k cost at the state · book_unwalkable when a
+    book row existed but the $6k walk did not fit (default slip, kept, flagged) · no_book when the coin had no recorded book (default
+    slip — PREREG §3 excludes these rows from every Q3 pass statistic))."""
+    res = {"h_final": False, "h_entry_px": math.nan, "h_carry_key": hkey, "h_cost_src": ""}
+    side = 1 if st["_direction"] == "LONG" else -1
+    k = klines_for(pair, T - 3600_000, T + 300 * C.MIN_MS, now_ms)
+    if k is None or not len(k):
+        return res
+    i0 = entry_index(k, T)
+    pk = k.iloc[i0:i0 + 240]
+    if not len(pk):
+        return res
+    ein, eout = ("buy", "sell") if side > 0 else ("sell", "buy")
+    es0, xs0 = st.get(f"rb_cost6k_{ein}_bps"), st.get(f"rb_cost6k_{eout}_bps")
+    ok_e, ok_x = es0 is not None and es0 == es0, xs0 is not None and xs0 == xs0
+    src = "route_b_book" if (ok_e and ok_x) else ("book_unwalkable" if st.get("rb_has_book") is True else "no_book")
+    es = es0 / 100 if ok_e else C.DEFAULT_SLIP_PCT
+    xs = xs0 / 100 if ok_x else C.DEFAULT_SLIP_PCT
+    e_ms = int(pk.open_ms.iloc[0])
+    fund, fok = SRC.funding_history(pair, e_ms, e_ms + 240 * C.MIN_MS, now_ms)
+    res.update(X.forward_returns(pk.o.to_numpy(), pk.c.to_numpy(), side, t=pk.open_ms.to_numpy(), funding=fund))
+    res.update(X.grid(pk.o.to_numpy(), pk.h.to_numpy(), pk.l.to_numpy(), pk.c.to_numpy(), pk.open_ms.to_numpy(), side,
+                      entry_slip_pct=max(es, 0), exit_slip_pct=max(xs, 0), funding=fund))
+    res.update(h_final=(len(pk) >= 240) and bool(fok), h_funding_ok=bool(fok), h_entry_px=float(pk.o.iloc[0]), h_entry_ms=e_ms,
+               h_slip_entry_pct=es, h_slip_exit_pct=xs, h_cost_src=src,
+               h_funding_240_pct=X.funding_pct(fund, side, float(pk.o.iloc[0]), e_ms, e_ms + 240 * C.MIN_MS))
+    return res
+
+
+def price_h_table(Tt, id_col, out_p, prev_p, coins, market, btc_tab, hkey, now_ms, carry_if=lambda r: True):
+    """state + grid outcome for every row of a trigger / control table; a FINAL outcome of the previous run is carried (same code
+    version, carry key, and carry_if — e.g. a control whose draw is final). Rows without a minute (control stubs) stay unpriced."""
+    prev = pd.read_pickle(prev_p) if (prev_p and os.path.exists(prev_p)) else None
+    carry = {}
+    if prev is not None and "h_carry_key" in prev.columns and id_col in prev.columns:
+        carry = {getattr(r, id_col): r for r in prev[(prev.code_version == CODE_VERSION) & (prev.h_final == True)   # noqa: E712
+                                                       & (prev.h_carry_key == hkey)].itertuples() if carry_if(r)}
+    rows = []
+    for r in Tt.itertuples():
+        if r.minute != r.minute:
+            rows.append({"h_final": False, "h_carry_key": hkey, "h_cost_src": ""})
+            continue
+        T = r.signal_time.value // 1_000_000
+        c = coins.get(r.pair)
+        st = {**(c.state(T) if c is not None else dict(ST.DL611_FLAGS)), **market.state(T), **BT.stamp(btc_tab, T)}
+        pr = carry.get(getattr(r, id_col))
+        if pr is not None:
+            rows.append({**st, **{cc: getattr(pr, cc) for cc in prev.columns if cc.startswith(("fwd_", "g_", "h_"))}})
+            continue
+        rows.append({**st, **price_h(r.pair, T, dict(st, _direction=r.direction), now_ms, hkey)})
+    out = pd.concat([Tt.reset_index(drop=True), pd.DataFrame(rows)], axis=1)
+    out["code_version"] = CODE_VERSION
+    return out
+
+
 def klines_for(sym, a_ms, b_ms, now_ms):
     """the exact [a, b) slice for THIS call (whole days are cached per symbol inside sources.klines)."""
     return SRC.klines(sym, a_ms, b_ms, now_ms)
@@ -432,52 +490,25 @@ def main(argv=None):
     S.to_pickle(prev_p)
     S.assign(signal_time=S.signal_time.dt.strftime("%Y-%m-%dT%H:%M:%S")).to_csv(os.path.join(C.DATA, "signals.csv.gz"), index=False)
     print(f"signals: {len(S)} rows ({int(S.get('out_priced', pd.Series(dtype=bool)).fillna(False).sum())} priced, {n_carried} carried over)")
-    # ── H1–H6 triggers (outcomes stored, never printed)
-    Tt = TR.detect(book, mark, coins)
+    # ── H1–H7 triggers + "|c" variants + matched random-minute controls (outcomes stored, never printed)
+    Tt, hits = TR.detect(book, mark, coins, fb=fbk, pos=pos, return_hits=True)
     Tt = Tt[Tt.signal_time >= C.REC_START].reset_index(drop=True)
     Tt["trigger_id"] = Tt.trigger + "|" + Tt.pair + "|" + Tt.signal_time.dt.strftime("%Y-%m-%dT%H:%M")
-    tprev_p = os.path.join(C.DATA, "triggers_H.pkl.gz")
-    tprev = pd.read_pickle(tprev_p) if (os.path.exists(tprev_p) and not a.full) else None
     hkey = C.spec_hash({"grid": "tp1-5 x sl1-5 / 240 min", "fwd": [5, 15, 60, 240]})
-    tcarry = {}
-    if tprev is not None and "h_carry_key" in tprev.columns:
-        tcarry = {r.trigger_id: r for r in tprev[(tprev.code_version == CODE_VERSION) & (tprev.h_final == True)   # noqa: E712
-                                                  & (tprev.h_carry_key == hkey)].itertuples()}
-    rows = []
-    for r in Tt.itertuples():
-        T = r.signal_time.value // 1_000_000
-        c = coins.get(r.pair)
-        st = {**(c.state(T) if c is not None else dict(ST.DL611_FLAGS)), **market.state(T), **BT.stamp(btc_tab, T)}
-        if r.trigger_id in tcarry:
-            pr = tcarry[r.trigger_id]
-            rows.append({**st, **{cc: getattr(pr, cc) for cc in tprev.columns if cc.startswith(("fwd_", "g_", "h_"))}})
-            continue
-        side = 1 if r.direction == "LONG" else -1
-        k = klines_for(r.pair, T - 3600_000, T + 300 * C.MIN_MS, now_ms)
-        res = {"h_final": False, "h_entry_px": math.nan, "h_carry_key": hkey}
-        if k is not None and len(k):
-            i0 = entry_index(k, T)
-            pk = k.iloc[i0:i0 + 240]
-            if len(pk):
-                ein, eout = ("buy", "sell") if side > 0 else ("sell", "buy")
-                es = st.get(f"rb_cost6k_{ein}_bps")
-                xs = st.get(f"rb_cost6k_{eout}_bps")
-                es = es / 100 if (es is not None and es == es) else C.DEFAULT_SLIP_PCT
-                xs = xs / 100 if (xs is not None and xs == xs) else C.DEFAULT_SLIP_PCT
-                e_ms = int(pk.open_ms.iloc[0])
-                fund, fok = SRC.funding_history(r.pair, e_ms, e_ms + 240 * C.MIN_MS, now_ms)
-                res.update(X.forward_returns(pk.o.to_numpy(), pk.c.to_numpy(), side, t=pk.open_ms.to_numpy(), funding=fund))
-                res.update(X.grid(pk.o.to_numpy(), pk.h.to_numpy(), pk.l.to_numpy(), pk.c.to_numpy(), pk.open_ms.to_numpy(), side,
-                                  entry_slip_pct=max(es, 0), exit_slip_pct=max(xs, 0), funding=fund))
-                res.update(h_final=(len(pk) >= 240) and bool(fok), h_funding_ok=bool(fok), h_entry_px=float(pk.o.iloc[0]), h_entry_ms=e_ms,
-                           h_slip_entry_pct=es, h_slip_exit_pct=xs,
-                           h_funding_240_pct=X.funding_pct(fund, side, float(pk.o.iloc[0]), e_ms, e_ms + 240 * C.MIN_MS))
-        rows.append({**st, **res})
-    Tt = pd.concat([Tt, pd.DataFrame(rows)], axis=1)
-    Tt["code_version"] = CODE_VERSION
+    tprev_p = os.path.join(C.DATA, "triggers_H.pkl.gz")
+    Tt = price_h_table(Tt, "trigger_id", tprev_p, None if a.full else tprev_p, coins, market, btc_tab, hkey, now_ms)
     Tt.to_pickle(tprev_p)
     Tt.assign(signal_time=Tt.signal_time.dt.strftime("%Y-%m-%dT%H:%M:%S")).to_csv(os.path.join(C.DATA, "triggers_H.csv.gz"), index=False)
-    print(f"H1–H6 triggers: {len(Tt)} openers (outcomes stored, not printed)")
+    hours = set(SRC.loaded_hour_starts(keys))
+    bm = {s_: g.minute.to_numpy(np.int64) for s_, g in book[book.sym.isin(set(Tt.pair))].groupby("sym")}
+    Ct = CT.controls_for(Tt, hits, bm, TR.family, int(C.REC_START.value // 1_000_000), hours, now_ms)
+    cprev_p = os.path.join(C.DATA, "controls_H.pkl.gz")
+    Ct = price_h_table(Ct, "ctrl_id", cprev_p, None if a.full else cprev_p, coins, market, btc_tab, hkey, now_ms,
+                       carry_if=lambda r: bool(getattr(r, "ctrl_final", False)))
+    Ct.to_pickle(cprev_p)
+    Ct.assign(signal_time=Ct.signal_time.dt.strftime("%Y-%m-%dT%H:%M:%S")).to_csv(os.path.join(C.DATA, "controls_H.csv.gz"), index=False)
+    print(f"H1–H7 triggers: {len(Tt)} openers (parents + variants) · {int((Ct.ctrl_k >= 0).sum())} controls "
+          f"({int((Ct.ctrl_k < 0).sum())} openers with none eligible) — outcomes stored, not printed")
     meta = dict(run_utc=pd.Timestamp.now(tz="UTC").isoformat(timespec="seconds"), code_version=CODE_VERSION, s3_hours=n_hours,
                 data_end=str(pd.Timestamp(data_end_ms, unit="ms", tz="UTC")), journal_end=journal_end, journal_files=spans,
                 orders_only_fills=n_orders_only, probe_fills_dropped=n_probe, exh_wide_read_cap=int((J.gate == "EXH_WIDE_READ_CAP").sum()) if len(J) else 0,

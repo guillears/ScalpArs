@@ -42,12 +42,13 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import common as C          # noqa: E402
 import exits as X           # noqa: E402
+import labels as LB         # noqa: E402
 import signals as SG        # noqa: E402
 import sources as SRC       # noqa: E402
 import state as ST          # noqa: E402
 import triggers as TR       # noqa: E402
 
-CODE_VERSION = 4            # bump when pricing / state logic changes (forces a re-price of carried-over rows)
+CODE_VERSION = 5            # bump when pricing / state logic changes (forces a re-price of carried-over rows)
 OUT_COLS_PREFIX = ("out_",)
 
 
@@ -221,6 +222,17 @@ def price_signal(r, spec, k, coin, now_ms, data_end_ms, fb_end_ms=None):
         else:
             xslip, xslip_src = C.DEFAULT_SLIP_PCT, "default"
     net = w["net_pct"] - xslip if w["net_pct"] == w["net_pct"] else math.nan
+    # entry labels on the SAME path / entry (PREREG §3, build item 3) — exit-independent; the decomposition reads the booked NET
+    lb = LB.worked_reach(pk.h.to_numpy(), pk.l.to_numpy(), e, side, sl, spec["hold_min"])
+    dlab = LB.decomposition_label(lb["lbl_path"], lb["lbl_pass_min"], w["reason"], w["minutes"])
+    dc = LB.decomposition(pk.h.to_numpy(), pk.l.to_numpy(), pk.open_ms.to_numpy(), e, side, w["exit_ms"], net, dlab, walk_final=w["final"])
+    lbl_done = bool(lb["lbl_final"]) and dc["lbl_group"] != "PENDING"
+    if not lbl_done and now_ms > T + (spec["hold_min"] + LABEL_TAIL_MIN) * C.MIN_MS + LABEL_GRACE_MS:
+        if lb["lbl_worked"] != lb["lbl_worked"]:              # bars never arrived (delisted / holes): closed, never silently dropped
+            lb = dict(lb, lbl_path="NO_DATA")
+        if dc["lbl_group"] == "PENDING":
+            dc = dict(dc, lbl_group="NO_DATA")
+        lbl_done = True
     if w["exit_ms"] == w["exit_ms"] and w["exit_ms"] > now_ms - SRC.FUNDING_PUBLISH_LAG_MS:
         fund_ok = False                                               # a settlement inside the last minutes may not be published yet
     ex_ok = w["exit_ms"] == w["exit_ms"]
@@ -238,10 +250,64 @@ def price_signal(r, spec, k, coin, now_ms, data_end_ms, fb_end_ms=None):
              out_entry_slip_src=eslip_src, out_exit_slip_pct=xslip, out_exit_slip_src=xslip_src,
              out_cost_flag=cost_flag(eslip_src, xslip_src, w["reason"] not in ("NO_PATH", "NO_LEVELS")), out_funding_pct=w["funding_pct"],
              out_funding_ok=fund_ok, out_net_pct=net, out_mfe_pct=w["mfe_pct"], out_mae_pct=w["mae_pct"], out_min_to_mfe=w["min_to_mfe"],
-             out_min_to_mae=w["min_to_mae"], out_min_to_exit=w["minutes"], out_fill_minute=fill_minute, out_data_end_ms=data_end_ms)
+             out_min_to_mae=w["min_to_mae"], out_min_to_exit=w["minutes"], out_fill_minute=fill_minute, out_data_end_ms=data_end_ms,
+             out_lbl_done=lbl_done, out_lbl_decomp_path=dlab, **{"out_" + k_: v_ for k_, v_ in {**lb, **dc}.items()})
     if spec["kind"] == "atr" and atr_src == "journal":
         o["out_atr_check_computed"] = atr_from_klines(k, T)
     return o
+
+
+LABEL_TAIL_MIN = 180         # bars after the hold: the decomposition reads the exit + 45 min (best) and + 120 min (recovered)
+LABEL_GRACE_MS = 12 * 3_600_000   # a label whose bars still miss this long after hold + tail is closed as NO_DATA (the scout's grace)
+NOSPOT_CACHE = os.path.join(C.REPORTS, ".exh_nospot_630_cache.json")
+NOSPOT_LAT_MS = 8_000        # the DL 630 scout's latency ruler: its entry = the first trade ≥ T + 8 s (× (1 − 0.10 %))
+
+
+def s5_hold(th, spec):
+    """the DL 630 scout's own hold (scout_exh_nospot_630.hold_minutes → the engine's max_hold_minutes); the Route B spec's as a fallback."""
+    try:
+        import scout_exh_nospot_630 as NS
+        return int(NS.hold_minutes(th))
+    except Exception:
+        return int(spec["hold_min"])
+
+
+def s5_labels(S, specs, now_ms, cache_path=NOSPOT_CACHE, th=None):
+    """PREREG §4 S5 (build item 3): the WORKED / REACH label of the EXH_NO_SPOT rows on the DL 630 scout's CACHED entry price (pair|T),
+    walked like the scout: from t1 = the first whole minute after T + 8 s, its stop distance, its hold, on a GAP-FREE path (the scout's
+    path_bars: every one of the hold minutes present, else PENDING — NO_DATA after the scout's 12-h grace). Recomputed every run (a cache
+    entry never changes). → DataFrame aligned to S (s5_* columns; NaN where the scout holds no entry)."""
+    cols = ["s5_entry_px", "s5_sl_pct", "s5_lbl_path", "s5_lbl_worked", "s5_lbl_reach_pct", "s5_lbl_pass_min", "s5_lbl_final"]
+    out = pd.DataFrame({c: [math.nan] * len(S) for c in cols}, index=S.index).astype(object)
+    try:
+        with open(cache_path) as f:
+            cache = json.load(f)
+    except (OSError, ValueError):
+        return out
+    spec = specs.get("EXHAUSTION_SHORT")
+    if not cache or spec is None:
+        return out
+    hold = s5_hold(th, spec) if th is not None else int(spec["hold_min"])
+    for i, r in S[S.status.astype(str) == "BLOCKED:EXH_NO_SPOT"].iterrows():
+        T = int(r.signal_time.value // 1_000_000) // 1000 * 1000      # whole seconds, like the scout's key
+        c = cache.get(f"{r.pair}|{T}") or {}
+        e, sl = c.get("entry"), c.get("sl")
+        if not (isinstance(e, (int, float)) and e > 0 and isinstance(sl, (int, float)) and sl > 0):
+            continue
+        t1 = (T + NOSPOT_LAT_MS) // C.MIN_MS * C.MIN_MS + C.MIN_MS
+        k = klines_for(r.pair, t1, t1 + hold * C.MIN_MS, now_ms)
+        want = t1 + np.arange(hold, dtype=np.int64) * C.MIN_MS
+        have = k.set_index("open_ms") if len(k) else None
+        if have is not None and np.isin(want, have.index.to_numpy(np.int64)).all():
+            kk = have.loc[want]
+            lb = LB.worked_reach(kk.h.to_numpy(), kk.l.to_numpy(), float(e), -1, float(sl), hold)
+        elif now_ms > t1 + hold * C.MIN_MS + LABEL_GRACE_MS:
+            lb = dict(lbl_path="NO_DATA", lbl_worked=math.nan, lbl_reach_pct=math.nan, lbl_pass_min=math.nan, lbl_final=True)
+        else:
+            lb = dict(lbl_path="PENDING", lbl_worked=math.nan, lbl_reach_pct=math.nan, lbl_pass_min=math.nan, lbl_final=False)
+        out.loc[i, cols] = [float(e), float(sl), lb["lbl_path"], lb["lbl_worked"], lb["lbl_reach_pct"], lb["lbl_pass_min"],
+                            bool(lb["lbl_final"])]
+    return out
 
 
 def klines_for(sym, a_ms, b_ms, now_ms):
@@ -263,8 +329,8 @@ def _true(x):
 
 
 def can_carry(prev, cur_key):
-    """carry a previous outcome only when code version, exit spec / costs, fill link and status match AND either ① it was priced, final
-    and its funding read (real True values — NaN never counts), with no fallback exit slip past the then data end, or ② it is unpriced
+    """carry a previous outcome only when code version, exit spec / costs, fill link and status match AND either ① it was priced, final,
+    its funding read and its entry label / decomposition done (real True values — NaN never counts), with no fallback exit slip past the then data end, or ② it is unpriced
     for a PERMANENT reason (sleeve off, no entry bar by design). Temporary reasons (no klines yet, entry minute not in klines, levels
     undefined, path not finished) are always re-tried. prev = dict-like of the previous row. Pure."""
     try:
@@ -273,7 +339,7 @@ def can_carry(prev, cur_key):
     except (TypeError, ValueError):
         return False
     if _true(prev.get("out_priced")):
-        if not (_true(prev.get("out_final")) and _true(prev.get("out_funding_ok"))):
+        if not (_true(prev.get("out_final")) and _true(prev.get("out_funding_ok")) and _true(prev.get("out_lbl_done"))):
             return False
         xm, de = prev.get("out_exit_ms"), prev.get("out_data_end_ms")
         if prev.get("out_exit_slip_src") in TAKER_EXIT_SRCS and (de is None or de != de or not (xm < de)):
@@ -349,9 +415,10 @@ def main(argv=None):
         k = None
         if spec is not None and r.priceable:
             T = r.signal_time.value // 1_000_000
-            k = klines_for(r.pair, T - 30 * 3600_000, T + (spec["hold_min"] + 60) * C.MIN_MS, now_ms)
+            k = klines_for(r.pair, T - 30 * 3600_000, T + (spec["hold_min"] + LABEL_TAIL_MIN) * C.MIN_MS, now_ms)
         outs.append(price_signal(r, spec, k, coins.get(r.pair), now_ms, data_end_ms, fb_end_ms))
     S = pd.concat([S, pd.DataFrame(outs)], axis=1)
+    S = pd.concat([S, s5_labels(S, specs, now_ms, th=th)], axis=1)
     S["code_version"] = CODE_VERSION
     S["exit_ms_for_poss"] = S.get("out_exit_ms")
     S = SG.possibilities(S, exit_ms_col="exit_ms_for_poss", hold_col="hold_min").drop(columns=["exit_ms_for_poss"])

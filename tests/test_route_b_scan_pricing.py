@@ -163,7 +163,7 @@ def test_long_sides_mapping():
 def test_can_carry_refuses_any_taker_exit_at_or_past_data_end():
     sp = C.exit_specs(C.load_thresholds())["EXHAUSTION_SHORT"]
     key = BLD.carry_key(sp, None, "BLOCKED:X")
-    base = dict(code_version=BLD.CODE_VERSION, carry_key=key, out_priced=True, out_final=True, out_funding_ok=True)
+    base = dict(code_version=BLD.CODE_VERSION, carry_key=key, out_priced=True, out_final=True, out_funding_ok=True, out_lbl_done=True)
     for src in BLD.TAKER_EXIT_SRCS:
         assert not BLD.can_carry(dict(base, out_exit_slip_src=src, out_exit_ms=3.0, out_data_end_ms=2.0), key), src
         assert BLD.can_carry(dict(base, out_exit_slip_src=src, out_exit_ms=1.0, out_data_end_ms=2.0), key), src

@@ -307,7 +307,7 @@ def test_carry_invalidation():
     th = C.load_thresholds()
     sp = C.exit_specs(th)["EXHAUSTION_SHORT"]
     k = BLD.carry_key(sp, "2026-11-20T14:15:30|KUSDT|SHORT", "OPENED")
-    prev = dict(code_version=BLD.CODE_VERSION, carry_key=k, out_priced=True, out_final=True, out_funding_ok=True,
+    prev = dict(code_version=BLD.CODE_VERSION, carry_key=k, out_priced=True, out_final=True, out_funding_ok=True, out_lbl_done=True,
                 out_exit_slip_src="route_b_book_at_exit", out_exit_ms=1.0, out_data_end_ms=2.0)
     assert BLD.can_carry(prev, k)
     sp2 = dict(sp, tp_cap=sp["tp_cap"] + 3)                                # exit spec changed → re-price
@@ -328,7 +328,7 @@ def _sig_row(status="BLOCKED:EXH_VOL_DECAY", **kw):
 
 
 def test_funding_ok_gates_final_and_unlinked_never_final(monkeypatch):
-    k = _day_frame(T0 - 40 * 60 * M, n=40 * 60 + 200)
+    k = _day_frame(T0 - 40 * 60 * M, n=40 * 60 + 1700)                     # covers the 24-h entry-label hold too (build item 3)
     k["h"] = k.o + 0.01
     k.loc[k.open_ms >= T0 + 40 * M, "l"] = 1.0                             # crashes → short TP right after the entry
     sp = C.exit_specs(C.load_thresholds())["EXHAUSTION_SHORT"]
@@ -530,7 +530,7 @@ def test_can_carry_nan_safe_and_permanent_only():
     assert BLD.can_carry(dict(base, out_priced=np.nan, out_why=C.NOT_PRICED_WHY["FRENZY_WIDE"]), k)
     pr = dict(base, out_priced=True, out_final=True, out_funding_ok=np.nan, out_exit_slip_src="maker_tp")
     assert not BLD.can_carry(pr, k)                                          # NaN funding_ok is not True
-    pr = dict(base, out_priced=True, out_final=True, out_funding_ok=True, out_exit_slip_src="default", out_exit_ms=5.0, out_data_end_ms=5.0)
+    pr = dict(base, out_priced=True, out_final=True, out_funding_ok=True, out_lbl_done=True, out_exit_slip_src="default", out_exit_ms=5.0, out_data_end_ms=5.0)
     assert not BLD.can_carry(pr, k)                                          # fallback slip with the exit at/after the then data end
     assert BLD.can_carry(dict(pr, out_exit_ms=4.0), k)
 

@@ -41,6 +41,7 @@ import pandas as pd
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import common as C          # noqa: E402
+import btc_trend as BT      # noqa: E402
 import exits as X           # noqa: E402
 import labels as LB         # noqa: E402
 import signals as SG        # noqa: E402
@@ -391,11 +392,13 @@ def main(argv=None):
     trig_syms = set(book.sym) | set(mark[mark.funding.abs() >= 0.001].sym)
     coins = ST.coins_from(book, mark, liq, sorted(set(S.pair) | trig_syms), fb=fbk, pos=pos)
     market = ST.Market(mark, liq, book[book.sym == "BTCUSDT"])
+    btc_tab = BT.load(SRC.limiter(), now_ms, now_ms=now_ms)         # BTC 1d EMA50 / EMA200 (build item 4)
     st_rows = []
     for r in S.itertuples():
         T = r.signal_time.value // 1_000_000
         c = coins.get(r.pair)
-        st_rows.append({**(c.state(T) if c is not None else {"rb_has_book": False, "rb_has_mark": False, **ST.DL611_FLAGS}), **market.state(T)})
+        st_rows.append({**(c.state(T) if c is not None else {"rb_has_book": False, "rb_has_mark": False, **ST.DL611_FLAGS}), **market.state(T),
+                        **BT.stamp(btc_tab, T)})
     S = pd.concat([S, pd.DataFrame(st_rows)], axis=1)
     # ── outcomes (carry FINAL rows from the previous run)
     prev_p = os.path.join(C.DATA, "signals.pkl.gz")
@@ -444,7 +447,7 @@ def main(argv=None):
     for r in Tt.itertuples():
         T = r.signal_time.value // 1_000_000
         c = coins.get(r.pair)
-        st = {**(c.state(T) if c is not None else dict(ST.DL611_FLAGS)), **market.state(T)}
+        st = {**(c.state(T) if c is not None else dict(ST.DL611_FLAGS)), **market.state(T), **BT.stamp(btc_tab, T)}
         if r.trigger_id in tcarry:
             pr = tcarry[r.trigger_id]
             rows.append({**st, **{cc: getattr(pr, cc) for cc in tprev.columns if cc.startswith(("fwd_", "g_", "h_"))}})
@@ -484,6 +487,10 @@ def main(argv=None):
                            signals_has_fb=int(S.get("has_fb", pd.Series(dtype=bool)).eq(True).sum()),
                            signals_has_oi=int(S.get("has_oi", pd.Series(dtype=bool)).eq(True).sum()),
                            signals_has_ratio=int(S.get("has_ratio", pd.Series(dtype=bool)).eq(True).sum())),
+                btc_daily=dict(days=int(len(btc_tab)) if btc_tab is not None else 0,
+                               signals_sign={str(k_): int(v_) for k_, v_ in S["btc_d_trend"].map(
+                                   lambda v: "unscored" if v != v else ("tie" if v == 0 else ("bull" if v > 0 else "bear"))).value_counts().items()},
+                               last_close=str(pd.Timestamp(int(btc_tab.close_ms.max()), unit="ms", tz="UTC")) if btc_tab is not None and len(btc_tab) else ""),
                 binance_stopped=SRC.limiter().stopped, runtime_s=round(time.time() - t_run, 1),
                 exits={k: v for k, v in specs.items()})
     with open(os.path.join(C.DATA, "meta.json"), "w") as f:

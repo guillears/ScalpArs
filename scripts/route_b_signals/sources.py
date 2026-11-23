@@ -70,11 +70,29 @@ SUM_COLS = ["n_trades", "buy_usd", "sell_usd", "liq_long_usd", "liq_short_usd"]
 MARK_COLS = ["mark", "index", "funding"]
 
 
+FB_BAND_TAGS = ("01", "02", "05", "1", "2", "5")          # the recorder's full-book layout (scripts/route_b/fullbook.py, DL 611)
+FB_SIZES = (1000, 3000, 6000, 10000, 25000)
+FB_COLS = (["n_fbook", "fb_spread_bps", "fb_reach_bid_pct", "fb_reach_ask_pct"]
+           + [f"fb_{s}_usd_{t}" for t in FB_BAND_TAGS for s in ("bid", "ask")]
+           + [f"fb_cost_{s}_{z}" for z in FB_SIZES for s in ("buy", "sell")])
+OI_COLS = ["oi", "oi_chg_1m", "oi_chg_5m"]
+RATIO_COLS = ["ratio_ts", "top_ls_acct", "top_ls_pos", "global_ls_acct", "taker_bs_ratio"]
+MIN_CACHE_V = 2                # v2 (build item 1): the per-hour pickle also keeps the DL 611 full-book / OI / positioning rows
+
+
+_HOUR_MEMO = {}                 # one read of each hourly pickle per run (load_minutes and load_fb_pos share it)
+
+
 def compact_hour(key):
-    """one hourly file → (book rows, mark rows, liq rows) as float32 frames, cached as a pickle per hour (DATA/minutes/)."""
-    pk = os.path.join(DATA, "minutes", key.replace("/", "_").replace(".csv.gz", ".pkl.gz"))
+    """one hourly file → (book rows, mark rows, liq rows, full-book rows, OI / positioning rows) as float frames, cached as a pickle per
+    hour (DATA/minutes/, versioned: a v1 pickle without the DL 611 frames is rebuilt from the cached raw file). Hours written before the
+    DL 611 columns existed give empty fb / pos frames."""
+    pk = os.path.join(DATA, "minutes", key.replace("/", "_").replace(".csv.gz", f".v{MIN_CACHE_V}.pkl.gz"))
+    if pk in _HOUR_MEMO:
+        return _HOUR_MEMO[pk]
     if os.path.exists(pk):
-        return pd.read_pickle(pk)
+        _HOUR_MEMO[pk] = pd.read_pickle(pk)
+        return _HOUR_MEMO[pk]
     b = fetch_feature(key)
     if b is None:
         return None
@@ -89,8 +107,23 @@ def compact_hour(key):
         for c in x.columns:
             if c not in ("sym", "minute"):
                 x[c] = x[c].astype("float64" if c in ("mid", "mid_hi", "mid_lo", "mark", "index") else "float32")
-    res = dict(book=book, mark=mark, liq=liq, key=key)
+    fcols = [c for c in FB_COLS if c in d.columns]
+    fb = (d[d.n_fbook.fillna(0) > 0][["sym", "minute"] + fcols].astype({c: "float64" for c in fcols}).copy()
+          if "n_fbook" in d.columns else pd.DataFrame(columns=["sym", "minute"] + FB_COLS))
+    pcols = [c for c in OI_COLS + RATIO_COLS if c in d.columns]
+    pos = (d[d[pcols].notna().any(axis=1)][["sym", "minute"] + pcols].astype({c: "float64" for c in pcols}).copy()
+           if pcols else pd.DataFrame(columns=["sym", "minute"] + OI_COLS + RATIO_COLS))
+    for x, cols in ((fb, FB_COLS), (pos, OI_COLS + RATIO_COLS)):
+        for c in cols:
+            if c not in x.columns:
+                x[c] = np.nan
+    res = dict(book=book, mark=mark, liq=liq, fb=fb[["sym", "minute"] + FB_COLS], pos=pos[["sym", "minute"] + OI_COLS + RATIO_COLS],
+               key=key)
     pd.to_pickle(res, pk)
+    old = pk.replace(f".v{MIN_CACHE_V}.pkl.gz", ".pkl.gz")         # the v1 pickle of this hour is superseded
+    if os.path.exists(old):
+        os.remove(old)
+    _HOUR_MEMO[pk] = res
     return res
 
 
@@ -113,6 +146,33 @@ def load_minutes(keys):
     if not len(mark) or not len(book):
         raise SystemExit("Route B summaries hold no mark / book rows — nothing built")
     return book, mark, liq, len(parts)
+
+
+def merge_fb_pos(fb, pos):
+    """the DL 611 frames across hourly files: a coin-minute split over two files keeps the full-book row with more full-book seconds
+    (first_view.merge_split_minutes' rule); the OI family comes whole from the first row that has an oi, the positioning family whole
+    from the row with the newest ratio_ts (those lines are filed by write time, so a minute's value may sit in the next hour's file;
+    a per-column merge could attach a newer read to an older ratio_ts and pass the 10-min lag early). Pure."""
+    if len(fb):
+        fb = (fb.sort_values(["sym", "minute", "n_fbook"]).drop_duplicates(["sym", "minute"], keep="last")
+              .sort_values(["sym", "minute"]).reset_index(drop=True))
+    if len(pos):                              # each FAMILY from ONE row (never a ratio value glued to another row's ratio_ts)
+        key = ["sym", "minute"]
+        o = (pos[pos.oi.notna()].sort_values(key).drop_duplicates(key, keep="first")[key + OI_COLS])
+        r = (pos[pos.ratio_ts.notna()].sort_values(key + ["ratio_ts"]).drop_duplicates(key, keep="last")[key + RATIO_COLS])
+        pos = o.merge(r, on=key, how="outer").sort_values(key).reset_index(drop=True)
+    return fb, pos
+
+
+def load_fb_pos(keys):
+    """the DL 611 full-book and OI / positioning rows of every readable hour (the same per-hour cache as load_minutes) → (fb, pos)."""
+    parts = [p for p in (compact_hour(k) for k in keys) if p is not None]
+    fb = pd.concat([p["fb"] for p in parts if len(p["fb"])] or [pd.DataFrame(columns=["sym", "minute"] + FB_COLS)], ignore_index=True)
+    pos = pd.concat([p["pos"] for p in parts if len(p["pos"])] or [pd.DataFrame(columns=["sym", "minute"] + OI_COLS + RATIO_COLS)],
+                    ignore_index=True)
+    for x in (fb, pos):
+        x["minute"] = pd.to_numeric(x["minute"]).astype("int64")
+    return merge_fb_pos(fb, pos)
 
 
 # ───────────────────────────────────────────────────────────── journals + orders

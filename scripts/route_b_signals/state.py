@@ -13,6 +13,21 @@ Coin columns (prefix rb_):
   liquidations (market-wide stream, every coin): long / short $ last 5 / 15 min · burst flag = the 5-min sum ≥ the coin's own 99th pct of
   non-zero 5-min sums over minutes BEFORE s (≥ 20 of them)
   mark: funding % (current rate) · mark-index premium % · coin return 15 / 60 min (mark)
+DL 611 coin columns (build item 1 of the weekly-scan PREREG; recorded from 2026-11-21 22:02, ≤ 30 priority coins for the full book, hot
+coins for OI / positioning). NaN = UNSCORED (never "rest"); has_fb / has_oi / has_ratio = the coverage flag of each family:
+  full book (the last fb row in [s − BOOK_MAX_AGE_MIN, s], the same rule as the 20-level book): fb_spread_bps · fb_reach_bid_pct /
+  fb_reach_ask_pct · fb_bid_usd_<01|02|05|1|2|5> / fb_ask_usd_… · fb_cost_<buy|sell>_<1000|3000|6000|10000|25000> (bps) · fb_imb_05
+  (derived: (bid − ask) ÷ (bid + ask) within 0.5 %) · fb_age_min
+  open interest — LAG RULE: the recorder stamps an OI row at its sweep START (the read lands up to ~60 s later), so a row is usable only
+  if its minute ≤ s − 1. oi_chg_1m / oi_chg_5m = the recorder's live % of the newest usable row (≤ OI_MAX_AGE_MIN old) · oi_chg_<15|60|240>m
+  (derived: % of that row's oi vs the newest row ≤ its minute − w, at most OI_BACK_TOL_MIN older) · oi_age_min
+  positioning — LAG RULE: a 5-min ratio row is usable only if ratio_ts + 10 min ≤ T AND its row minute ≤ s − 1 (stamped at the sweep
+  start, like OI); rows are de-duplicated per ratio_ts (the earliest recorded minute = when it was first seen). The newest usable one, at
+  most RATIO_MAX_AGE_MIN from ratio_ts to T: top_ls_acct · top_ls_pos · global_ls_acct · taker_bs_ratio · each <x>_chg60_pct (derived:
+  % vs the usable row whose ratio_ts is nearest ratio_ts − 60 min, within ± RATIO_BACK_TOL_MIN) · ratio_age_min (T − ratio_ts, in
+  FRACTIONAL minutes from T; fb_age_min / oi_age_min are whole minutes before s)
+  The full-book bands carry fb_<side>_usd_<t>_lb = True when the trusted full book reached less than that band (a LOWER bound).
+  Every family emits its full key set (NaN when unscored) so the schema never depends on the data.
 Market columns (prefix mk_, the same state minute): breadth % of coins whose mark is up over 5 / 15 / 60 min · market liquidations long /
 short 1 / 5 / 15 min · BTC $ within 0.2 % (bid + ask) · BTC taker-buy share 5 / 15 min · BTC return 15 / 60 min.
 """
@@ -24,6 +39,17 @@ import pandas as pd
 from common import BOOK_MAX_AGE_MIN, MIN_MS, NOTIONAL_USD
 
 BANDS = (("02", 0.2), ("05", 0.5), ("1", 1.0))
+FB_BAND_TAGS = ("01", "02", "05", "1", "2", "5")
+FB_SIZES = (1000, 3000, 6000, 10000, 25000)
+OI_LAG_MIN = 1                 # an OI row is usable only at state minute ≥ its minute + 1 (sweep-start stamp; PREREG §2 item 1)
+OI_MAX_AGE_MIN = 3             # the newest usable OI row may be at most this many minutes before s (the sweep runs every 60 s)
+OI_BACK_TOL_MIN = 5            # the derived w-min OI change: the earlier row may be at most this much older than minute − w
+OI_DERIVED = (15, 60, 240)
+RATIO_LAG_MS = 10 * MIN_MS     # a positioning row is usable only if ratio_ts + 10 min ≤ T (PREREG §2 item 1)
+RATIO_ROW_LAG_MIN = 1          # … and its row minute ≤ s − 1 (sweep-start stamp, PREREG §2 item 1)
+RATIO_MAX_AGE_MIN = 30         # … and T − ratio_ts ≤ 30 min (the sweep runs every 5 min; older = unscored)
+RATIO_BACK_TOL_MIN = 10        # the 60-min change: the earlier ratio row's ratio_ts within ± 10 min of ratio_ts − 60 min
+RATIOS = ("top_ls_acct", "top_ls_pos", "global_ls_acct", "taker_bs_ratio")
 
 
 def state_minute(T_ms):
@@ -42,8 +68,18 @@ def cost_at(c2500, c10000, usd=NOTIONAL_USD):
 class Coin:
     """one coin's recorded rows (book / mark / liq), sorted by minute, with prefix sums for O(log n) window reads."""
 
-    def __init__(self, sym, book, mark, liq):
+    def __init__(self, sym, book, mark, liq, fb=None, pos=None):
         self.sym = sym
+        self.fb = (fb if fb is not None else pd.DataFrame(columns=["minute"])).sort_values("minute").reset_index(drop=True)
+        self.fm = self.fb.minute.to_numpy(np.int64)
+        pos = pos if pos is not None else pd.DataFrame(columns=["minute", "oi", "ratio_ts"])
+        o = pos[pos["oi"].notna()] if "oi" in pos.columns else pos.iloc[:0]
+        self.oi = o.sort_values("minute").reset_index(drop=True)
+        self.om = self.oi.minute.to_numpy(np.int64)
+        rt = pos[pos["ratio_ts"].notna()] if "ratio_ts" in pos.columns else pos.iloc[:0]
+        self.rt = rt.sort_values(["ratio_ts", "minute"]).drop_duplicates("ratio_ts", keep="first").reset_index(drop=True)
+        self.rt_m = self.rt.minute.to_numpy(np.int64) if len(self.rt) else np.array([], np.int64)
+        self.rt_ts = self.rt.ratio_ts.to_numpy(float) if len(self.rt) else np.array([], float)
         self.book = book.sort_values("minute").reset_index(drop=True)
         self.mark = mark.sort_values("minute").reset_index(drop=True)
         self.liq = liq.sort_values("minute").reset_index(drop=True)
@@ -137,6 +173,88 @@ class Coin:
                 r[f"rb_ret_{w}m_pct"] = (float(m["mark"]) / float(self.mark.mark.iloc[kk]) - 1) * 100 if ok else math.nan
         else:
             r["rb_has_mark"] = False
+        r.update(self.state_fb(s))
+        r.update(self.state_oi(s))
+        r.update(self.state_ratio(int(T_ms), s))
+        return r
+
+    # ── DL 611 families (build item 1) — every one reads only rows that were public by T
+    def state_fb(self, s):
+        k = np.searchsorted(self.fm, s, "right") - 1
+        if k < 0 or s - self.fm[k] > BOOK_MAX_AGE_MIN * MIN_MS:
+            return {"has_fb": False, **{c: math.nan for c in FB_KEYS}}
+        b = self.fb.iloc[k]
+        r = {"has_fb": True, "fb_age_min": (s - int(self.fm[k])) // MIN_MS}
+        for c in ("fb_spread_bps", "fb_reach_bid_pct", "fb_reach_ask_pct"):
+            r[c] = _num(b.get(c))
+        for t in FB_BAND_TAGS:
+            pct = FB_BAND_PCT[t]
+            for side in ("bid", "ask"):
+                r[f"fb_{side}_usd_{t}"] = _num(b.get(f"fb_{side}_usd_{t}"))
+                reach = r[f"fb_reach_{side}_pct"]
+                r[f"fb_{side}_usd_{t}_lb"] = bool(not (reach >= pct)) if reach == reach else math.nan
+        for z in FB_SIZES:
+            for side in ("buy", "sell"):
+                r[f"fb_cost_{side}_{z}"] = _num(b.get(f"fb_cost_{side}_{z}"))
+        bb, aa = r["fb_bid_usd_05"], r["fb_ask_usd_05"]
+        r["fb_imb_05"] = (bb - aa) / (bb + aa) if (bb == bb and aa == aa and bb + aa > 0) else math.nan
+        return r
+
+    def oi_row(self, s):
+        """index of the newest USABLE OI row at state minute s (minute ≤ s − OI_LAG_MIN, ≤ OI_MAX_AGE_MIN before s) or −1."""
+        k = np.searchsorted(self.om, s - OI_LAG_MIN * MIN_MS, "right") - 1
+        return k if (k >= 0 and s - self.om[k] <= OI_MAX_AGE_MIN * MIN_MS) else -1
+
+    def oi_chg(self, s, w):
+        """% change of OI over w minutes ending at the newest usable row (NaN when unscored). Pure on the recorded rows."""
+        k = self.oi_row(s)
+        if k < 0:
+            return math.nan
+        q = int(self.om[k])
+        j = np.searchsorted(self.om, q - w * MIN_MS, "right") - 1
+        if j < 0 or (q - w * MIN_MS) - self.om[j] > OI_BACK_TOL_MIN * MIN_MS:
+            return math.nan
+        a, b = float(self.oi.oi.iloc[j]), float(self.oi.oi.iloc[k])
+        return (b / a - 1) * 100 if a > 0 else math.nan
+
+    def state_oi(self, s):
+        k = self.oi_row(s)
+        if k < 0:
+            return {"has_oi": False, **{c: math.nan for c in OI_KEYS}}
+        o = self.oi.iloc[k]
+        r = {"has_oi": True, "oi_age_min": (s - int(self.om[k])) // MIN_MS, "oi_chg_1m": _num(o.get("oi_chg_1m")),
+             "oi_chg_5m": _num(o.get("oi_chg_5m"))}
+        for w in OI_DERIVED:
+            r[f"oi_chg_{w}m"] = self.oi_chg(s, w)
+        return r
+
+    def ratio_rows(self, T_ms, s):
+        """the positioning rows public by T: ratio_ts + RATIO_LAG_MS ≤ T and first-seen row minute ≤ s − RATIO_ROW_LAG_MIN (by ratio_ts)."""
+        if not len(self.rt):
+            return self.rt
+        n = int(np.searchsorted(self.rt_ts, T_ms - RATIO_LAG_MS, "right"))
+        x = self.rt.iloc[:n]
+        return x[self.rt_m[:n] <= s - RATIO_ROW_LAG_MIN * MIN_MS]
+
+    def state_ratio(self, T_ms, s):
+        none = {"has_ratio": False, **{c: math.nan for c in RATIO_KEYS}}
+        x = self.ratio_rows(T_ms, s)
+        if not len(x):
+            return none
+        last = x.iloc[-1]
+        ts = float(last.ratio_ts)
+        if T_ms - ts > RATIO_MAX_AGE_MIN * MIN_MS:
+            return none
+        r = {"has_ratio": True, "ratio_age_min": (T_ms - ts) / MIN_MS}
+        tgt = ts - 60 * MIN_MS
+        d = (x.ratio_ts.to_numpy(float) - tgt)
+        ok = np.abs(d) <= RATIO_BACK_TOL_MIN * MIN_MS
+        j = int(np.argmin(np.where(ok, np.abs(d), np.inf))) if ok.any() else -1
+        for c in RATIOS:
+            v = _num(last.get(c))
+            r[c] = v
+            v0 = _num(x.iloc[j].get(c)) if j >= 0 else math.nan
+            r[f"{c}_chg60_pct"] = (v / v0 - 1) * 100 if (v == v and v0 == v0 and v0 > 0) else math.nan
         return r
 
 
@@ -178,9 +296,28 @@ class Market:
         return r
 
 
-def coins_from(book, mark, liq, syms):
+FB_BAND_PCT = {"01": 0.1, "02": 0.2, "05": 0.5, "1": 1.0, "2": 2.0, "5": 5.0}
+FB_KEYS = (["fb_age_min", "fb_spread_bps", "fb_reach_bid_pct", "fb_reach_ask_pct", "fb_imb_05"]
+           + [f"fb_{sd}_usd_{t}{x}" for t in FB_BAND_TAGS for sd in ("bid", "ask") for x in ("", "_lb")]
+           + [f"fb_cost_{sd}_{z}" for z in FB_SIZES for sd in ("buy", "sell")])
+OI_KEYS = ["oi_age_min", "oi_chg_1m", "oi_chg_5m"] + [f"oi_chg_{w}m" for w in OI_DERIVED]
+RATIO_KEYS = ["ratio_age_min"] + list(RATIOS) + [f"{c}_chg60_pct" for c in RATIOS]
+DL611_FLAGS = {"has_fb": False, "has_oi": False, "has_ratio": False}
+
+
+def _num(v):
+    try:
+        v = float(v)
+        return v if v == v else math.nan
+    except (TypeError, ValueError):
+        return math.nan
+
+
+def coins_from(book, mark, liq, syms, fb=None, pos=None):
     bg = {s: g for s, g in book[book.sym.isin(syms)].groupby("sym")}
     mg = {s: g for s, g in mark[mark.sym.isin(syms)].groupby("sym")}
     lg = {s: g for s, g in liq[liq.sym.isin(syms)].groupby("sym")}
+    fg = {s: g for s, g in fb[fb.sym.isin(syms)].groupby("sym")} if fb is not None and len(fb) else {}
+    pg = {s: g for s, g in pos[pos.sym.isin(syms)].groupby("sym")} if pos is not None and len(pos) else {}
     e_b, e_m, e_l = book.iloc[:0], mark.iloc[:0], liq.iloc[:0]
-    return {s: Coin(s, bg.get(s, e_b), mg.get(s, e_m), lg.get(s, e_l)) for s in syms}
+    return {s: Coin(s, bg.get(s, e_b), mg.get(s, e_m), lg.get(s, e_l), fg.get(s), pg.get(s)) for s in syms}

@@ -47,7 +47,7 @@ import sources as SRC       # noqa: E402
 import state as ST          # noqa: E402
 import triggers as TR       # noqa: E402
 
-CODE_VERSION = 2            # bump when pricing / state logic changes (forces a re-price of carried-over rows)
+CODE_VERSION = 3            # bump when pricing / state logic changes (forces a re-price of carried-over rows)
 OUT_COLS_PREFIX = ("out_",)
 
 
@@ -253,6 +253,7 @@ def main(argv=None):
     if not keys:
         sys.exit("no Route B summaries listed on S3 (aws credentials / network?)")
     book, mark, liq, n_hours = SRC.load_minutes(keys)
+    fbk, pos = SRC.load_fb_pos(keys)                       # DL 611 full book + OI / positioning (build item 1)
     data_end_ms = int(max(book.minute.max(), mark.minute.max())) + C.MIN_MS
     print(f"Route B: {n_hours} hours · {book.sym.nunique()} book coins · {mark.sym.nunique()} mark coins · data to "
           f"{pd.Timestamp(data_end_ms, unit='ms', tz='UTC')}")
@@ -269,13 +270,13 @@ def main(argv=None):
     S["hold_min"] = S.sleeve.map(lambda s: specs[s]["hold_min"] if specs.get(s) else (int(th.get("frenzy_willy_max_hold_minutes", 90)) if s == "FRENZY_WILLY" else np.nan))
     # ── coin objects + market row
     trig_syms = set(book.sym) | set(mark[mark.funding.abs() >= 0.001].sym)
-    coins = ST.coins_from(book, mark, liq, sorted(set(S.pair) | trig_syms))
+    coins = ST.coins_from(book, mark, liq, sorted(set(S.pair) | trig_syms), fb=fbk, pos=pos)
     market = ST.Market(mark, liq, book[book.sym == "BTCUSDT"])
     st_rows = []
     for r in S.itertuples():
         T = r.signal_time.value // 1_000_000
         c = coins.get(r.pair)
-        st_rows.append({**(c.state(T) if c is not None else {"rb_has_book": False, "rb_has_mark": False}), **market.state(T)})
+        st_rows.append({**(c.state(T) if c is not None else {"rb_has_book": False, "rb_has_mark": False, **ST.DL611_FLAGS}), **market.state(T)})
     S = pd.concat([S, pd.DataFrame(st_rows)], axis=1)
     # ── outcomes (carry FINAL rows from the previous run)
     prev_p = os.path.join(C.DATA, "signals.pkl.gz")
@@ -323,7 +324,7 @@ def main(argv=None):
     for r in Tt.itertuples():
         T = r.signal_time.value // 1_000_000
         c = coins.get(r.pair)
-        st = {**(c.state(T) if c is not None else {}), **market.state(T)}
+        st = {**(c.state(T) if c is not None else dict(ST.DL611_FLAGS)), **market.state(T)}
         if r.trigger_id in tcarry:
             pr = tcarry[r.trigger_id]
             rows.append({**st, **{cc: getattr(pr, cc) for cc in tprev.columns if cc.startswith(("fwd_", "g_", "h_"))}})
@@ -358,6 +359,11 @@ def main(argv=None):
                 data_end=str(pd.Timestamp(data_end_ms, unit="ms", tz="UTC")), journal_end=journal_end, journal_files=spans,
                 orders_only_fills=n_orders_only, probe_fills_dropped=n_probe, exh_wide_read_cap=int((J.gate == "EXH_WIDE_READ_CAP").sum()) if len(J) else 0,
                 fb_tracking_only=fb_tracking_episodes(J),
+                dl611=dict(fb_rows=int(len(fbk)), fb_coins=int(fbk.sym.nunique()) if len(fbk) else 0, pos_rows=int(len(pos)),
+                           oi_coins=int(pos[pos.oi.notna()].sym.nunique()) if len(pos) else 0,
+                           signals_has_fb=int(S.get("has_fb", pd.Series(dtype=bool)).eq(True).sum()),
+                           signals_has_oi=int(S.get("has_oi", pd.Series(dtype=bool)).eq(True).sum()),
+                           signals_has_ratio=int(S.get("has_ratio", pd.Series(dtype=bool)).eq(True).sum())),
                 binance_stopped=SRC.limiter().stopped, runtime_s=round(time.time() - t_run, 1),
                 exits={k: v for k, v in specs.items()})
     with open(os.path.join(C.DATA, "meta.json"), "w") as f:

@@ -47,7 +47,7 @@ import sources as SRC       # noqa: E402
 import state as ST          # noqa: E402
 import triggers as TR       # noqa: E402
 
-CODE_VERSION = 3            # bump when pricing / state logic changes (forces a re-price of carried-over rows)
+CODE_VERSION = 4            # bump when pricing / state logic changes (forces a re-price of carried-over rows)
 OUT_COLS_PREFIX = ("out_",)
 
 
@@ -103,8 +103,46 @@ def book_cost_at(coin, minute_ms, side):
     return ST.cost_at(b[f"cost_{side}_2500"], b[f"cost_{side}_10000"])[0]
 
 
-def price_signal(r, spec, k, coin, now_ms, data_end_ms):
-    """outcome dict (out_*) for one signal row under today's exit."""
+FB_FIT_BAND = "5"           # the full book's widest band (5 %): a $usd order "fits" only if that side holds ≥ $usd within it
+
+
+def fb_cost_at(coin, minute_ms, side, usd=6000):
+    """the FULL-book cost (bps vs mid) of a $usd market order `side` at the fb row ≤ minute_ms (≤ BOOK_MAX_AGE_MIN old); NaN when the coin
+    was not in the full book then, or the size did not fit (weekly-scan PREREG build item 2). The recorder's fb_cost_* is the mean over the
+    seconds where the size fitted within 5 % (thin seconds dropped — a LOW bias), so a row whose taken side held < $usd within 5 % on
+    average (fb_<ask|bid>_usd_5) is treated as not fitting → the 20-level fallback, flagged "lower-bound cost"."""
+    if coin is None or not len(getattr(coin, "fm", [])):
+        return math.nan
+    k = np.searchsorted(coin.fm, minute_ms, "right") - 1
+    if k < 0 or minute_ms - coin.fm[k] > C.BOOK_MAX_AGE_MIN * C.MIN_MS:
+        return math.nan
+    row = coin.fb.iloc[k]
+    return fb_fit(ST._num(row.get(f"fb_cost_{side}_{usd}")), ST._num(row.get(f"fb_{'ask' if side == 'buy' else 'bid'}_usd_{FB_FIT_BAND}")), usd)
+
+
+def fb_fit(cost_bps, side_usd_5, usd=6000):
+    """the full-book cost when the taken side held ≥ $usd within 5 % (else NaN). Pure."""
+    return cost_bps if (cost_bps == cost_bps and side_usd_5 == side_usd_5 and side_usd_5 >= usd) else math.nan
+
+
+def cost_flag(entry_src, exit_src, priced=True):
+    """'full_book' when every TAKER leg was costed on the full book · 'no_book_leg' when no leg needed a book (a fill's own price in, a
+    maker TP out) · else 'lower-bound cost' (PREREG §2 item 2's label: a 20-level / journal / default cost) · '' when unpriced. Pure."""
+    if not priced:
+        return ""
+    if entry_src == "in_fill_price" and exit_src == "maker_tp":
+        return "no_book_leg"
+    ok_in = entry_src in ("full_book", "in_fill_price")
+    ok_out = exit_src in ("full_book_at_exit", "full_book_at_signal", "maker_tp")
+    return "full_book" if (ok_in and ok_out) else "lower-bound cost"
+
+
+TAKER_EXIT_SRCS = ("full_book_at_exit", "route_b_book_at_exit", "full_book_at_signal", "route_b_book_at_signal", "default")
+
+
+def price_signal(r, spec, k, coin, now_ms, data_end_ms, fb_end_ms=None):
+    """outcome dict (out_*) for one signal row under today's exit. fb_end_ms = the end of the recorded FULL-book data (a coin that was in
+    the full book at the signal stays non-final until its exit minute is inside it)."""
     side = 1 if r["direction"] == "LONG" else -1
     T = int(r["signal_time"].value // 1_000_000)
     o = dict(out_priced=False, out_why="")
@@ -150,8 +188,11 @@ def price_signal(r, spec, k, coin, now_ms, data_end_ms):
     # entry slip
     ein = "buy" if side > 0 else "sell"
     eout = "sell" if side > 0 else "buy"
+    fb_in = fb_fit(ST._num(r.get(f"fb_cost_{ein}_6000")), ST._num(r.get(f"fb_{'ask' if ein == 'buy' else 'bid'}_usd_{FB_FIT_BAND}")))
     if taken:
         eslip, eslip_src = 0.0, "in_fill_price"
+    elif fb_in is not None and fb_in == fb_in:
+        eslip, eslip_src = max(0.0, fb_in) / 100.0, "full_book"
     elif r.get(f"rb_cost6k_{ein}_bps") == r.get(f"rb_cost6k_{ein}_bps") and r.get(f"rb_cost6k_{ein}_bps") is not None:
         eslip, eslip_src = max(0.0, r[f"rb_cost6k_{ein}_bps"]) / 100.0, "route_b_book"
     elif r.get("journal_model_slip_pct") == r.get("journal_model_slip_pct") and r.get("journal_model_slip_pct") is not None:
@@ -164,9 +205,17 @@ def price_signal(r, spec, k, coin, now_ms, data_end_ms):
                funding=fund, stop_counts_funding=spec["stop_counts_funding"], entry_slip_pct=eslip, exit_slip_pct=0.0, entry_ms=e_ms)
     xslip, xslip_src = 0.0, "maker_tp"
     if w["reason"] not in ("TP", "NO_PATH", "NO_LEVELS"):
+        xf = fb_cost_at(coin, int(w["exit_ms"]), eout) if w["exit_ms"] == w["exit_ms"] else math.nan
         xs = book_cost_at(coin, int(w["exit_ms"]), eout) if w["exit_ms"] == w["exit_ms"] else math.nan
-        if xs == xs:
+        fb_out = fb_fit(ST._num(r.get(f"fb_cost_{eout}_6000")), ST._num(r.get(f"fb_{'ask' if eout == 'buy' else 'bid'}_usd_{FB_FIT_BAND}")))
+        # order: the exit minute's full book → its 20-level book → the signal's full book → its 20-level book → default (the cost AT the
+        # exit time beats a full-book read 1–90 min earlier)
+        if xf == xf:
+            xslip, xslip_src = max(0.0, xf) / 100.0, "full_book_at_exit"
+        elif xs == xs:
             xslip, xslip_src = max(0.0, xs) / 100.0, "route_b_book_at_exit"
+        elif fb_out is not None and fb_out == fb_out:
+            xslip, xslip_src = max(0.0, fb_out) / 100.0, "full_book_at_signal"
         elif r.get(f"rb_cost6k_{eout}_bps") == r.get(f"rb_cost6k_{eout}_bps") and r.get(f"rb_cost6k_{eout}_bps") is not None:
             xslip, xslip_src = max(0.0, r[f"rb_cost6k_{eout}_bps"]) / 100.0, "route_b_book_at_signal"
         else:
@@ -174,7 +223,9 @@ def price_signal(r, spec, k, coin, now_ms, data_end_ms):
     net = w["net_pct"] - xslip if w["net_pct"] == w["net_pct"] else math.nan
     if w["exit_ms"] == w["exit_ms"] and w["exit_ms"] > now_ms - SRC.FUNDING_PUBLISH_LAG_MS:
         fund_ok = False                                               # a settlement inside the last minutes may not be published yet
-    slip_pending = xslip_src in ("route_b_book_at_signal", "default") and w["exit_ms"] == w["exit_ms"] and w["exit_ms"] >= data_end_ms
+    ex_ok = w["exit_ms"] == w["exit_ms"]
+    slip_pending = (xslip_src in TAKER_EXIT_SRCS and ex_ok and w["exit_ms"] >= data_end_ms) or \
+                   (xslip_src in TAKER_EXIT_SRCS and ex_ok and r.get("has_fb") is True and fb_end_ms is not None and w["exit_ms"] >= fb_end_ms)
     final = bool(w["final"]) and bool(fund_ok) and not unlinked and not slip_pending   # funding / fill link / exit book still to come → not final
     why = ("" if final else ("taken, fill not in an orders export yet — priced from the next-minute open, re-priced each run" if unlinked
                              else "funding history not fetched" if (w["final"] and not fund_ok)
@@ -184,7 +235,8 @@ def price_signal(r, spec, k, coin, now_ms, data_end_ms):
              out_entry_src=e_src, out_entry_px=e, out_entry_ms=e_ms, out_tp_pct=tp, out_sl_pct=sl, out_atr_pct=atr, out_atr_src=atr_src,
              out_hold_min=spec["hold_min"], out_reason=w["reason"], out_final=final, out_path_final=w["final"], out_exit_px=w["exit_px"], out_exit_ms=w["exit_ms"],
              out_minutes=w["minutes"], out_gross_pct=w["gross_pct"], out_fees_pct=w["fees_pct"], out_entry_slip_pct=eslip,
-             out_entry_slip_src=eslip_src, out_exit_slip_pct=xslip, out_exit_slip_src=xslip_src, out_funding_pct=w["funding_pct"],
+             out_entry_slip_src=eslip_src, out_exit_slip_pct=xslip, out_exit_slip_src=xslip_src,
+             out_cost_flag=cost_flag(eslip_src, xslip_src, w["reason"] not in ("NO_PATH", "NO_LEVELS")), out_funding_pct=w["funding_pct"],
              out_funding_ok=fund_ok, out_net_pct=net, out_mfe_pct=w["mfe_pct"], out_mae_pct=w["mae_pct"], out_min_to_mfe=w["min_to_mfe"],
              out_min_to_mae=w["min_to_mae"], out_min_to_exit=w["minutes"], out_fill_minute=fill_minute, out_data_end_ms=data_end_ms)
     if spec["kind"] == "atr" and atr_src == "journal":
@@ -224,7 +276,7 @@ def can_carry(prev, cur_key):
         if not (_true(prev.get("out_final")) and _true(prev.get("out_funding_ok"))):
             return False
         xm, de = prev.get("out_exit_ms"), prev.get("out_data_end_ms")
-        if prev.get("out_exit_slip_src") in ("route_b_book_at_signal", "default") and (de is None or de != de or not (xm < de)):
+        if prev.get("out_exit_slip_src") in TAKER_EXIT_SRCS and (de is None or de != de or not (xm < de)):
             return False
         return True
     return str(prev.get("out_why") or "") in PERMANENT_WHY
@@ -255,6 +307,7 @@ def main(argv=None):
     book, mark, liq, n_hours = SRC.load_minutes(keys)
     fbk, pos = SRC.load_fb_pos(keys)                       # DL 611 full book + OI / positioning (build item 1)
     data_end_ms = int(max(book.minute.max(), mark.minute.max())) + C.MIN_MS
+    fb_end_ms = int(fbk.minute.max()) + C.MIN_MS if len(fbk) else None
     print(f"Route B: {n_hours} hours · {book.sym.nunique()} book coins · {mark.sym.nunique()} mark coins · data to "
           f"{pd.Timestamp(data_end_ms, unit='ms', tz='UTC')}")
     # ── journal → signals
@@ -297,7 +350,7 @@ def main(argv=None):
         if spec is not None and r.priceable:
             T = r.signal_time.value // 1_000_000
             k = klines_for(r.pair, T - 30 * 3600_000, T + (spec["hold_min"] + 60) * C.MIN_MS, now_ms)
-        outs.append(price_signal(r, spec, k, coins.get(r.pair), now_ms, data_end_ms))
+        outs.append(price_signal(r, spec, k, coins.get(r.pair), now_ms, data_end_ms, fb_end_ms))
     S = pd.concat([S, pd.DataFrame(outs)], axis=1)
     S["code_version"] = CODE_VERSION
     S["exit_ms_for_poss"] = S.get("out_exit_ms")

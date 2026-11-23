@@ -127,7 +127,7 @@ def write(S, Tt, J, meta, book, mark):
     L.append("\n## 3 · Data-quality flags\n")
     q = []
     p = S[pr]
-    for c in ("out_entry_slip_src", "out_exit_slip_src", "out_entry_src", "out_atr_src"):
+    for c in ("out_entry_slip_src", "out_exit_slip_src", "out_cost_flag", "out_entry_src", "out_atr_src"):
         if c in p.columns:
             q.append(dict(flag=c, value=" · ".join(f"{k}: {v}" for k, v in p[c].fillna("–").replace("", "–").value_counts().items())))
     hb = S[S.rb_has_book.fillna(False).astype(bool)]

@@ -308,7 +308,7 @@ DL611_FLAGS = {"has_fb": False, "has_oi": False, "has_ratio": False}
 def _num(v):
     try:
         v = float(v)
-        return v if v == v else math.nan
+        return v if math.isfinite(v) else math.nan
     except (TypeError, ValueError):
         return math.nan
 

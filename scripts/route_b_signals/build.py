@@ -26,7 +26,8 @@ Outputs (reports/ROUTE_B_SIGNALS_data/):
 Rules honoured: no look-ahead (state.py), master over backtest (real journal signals, real fills linked and flagged), window units
 (window15 on every row; the report counts windows), full-size only (probe fills dropped), possibilities not events (poss_id / poss_dup).
 Module map: common.py (constants, today's exits from trading_config.json) · sources.py (S3 / journals / orders / klines / funding) ·
-state.py (state at T) · signals.py (journal → signals, fills, possibilities) · exits.py (walkers) · triggers.py (H1–H6) · report.py.
+state.py (state at T) · signals.py (journal → signals, fills, possibilities) · today_stack.py (filters armed mid-recording re-applied,
+DL 635) · exits.py (walkers) · triggers.py (H1–H6) · report.py.
 """
 import argparse
 import json
@@ -50,6 +51,7 @@ import signals as SG        # noqa: E402
 import sources as SRC       # noqa: E402
 import state as ST          # noqa: E402
 import triggers as TR       # noqa: E402
+import today_stack as TS     # noqa: E402
 
 CODE_VERSION = 7            # bump when pricing / state logic changes (forces a re-price of carried-over rows)
 OUT_COLS_PREFIX = ("out_",)
@@ -490,6 +492,8 @@ def main(argv=None):
     S["poss_note"] = ""
     S = SG.pair_held_links(S)                    # PAIR_HELD = capacity: joins the holding position's possibility (any sleeve)
     S = SG.gate_audit(S, th)                     # also_blocked_by · filters_unevaluated · sole_block · block_class
+    S = TS.apply(S, th, bars_for=lambda sym, ms: TS.fetch_bars_1m(sym, ms, now_ms, os.path.join(C.DATA, "today_stack")))   # (635) today's
+    #                                              filters re-applied to signals from before a mid-recording filter went live
     S = S.sort_values("signal_time").reset_index(drop=True)
     S.to_pickle(prev_p)
     S.assign(signal_time=S.signal_time.dt.strftime("%Y-%m-%dT%H:%M:%S")).to_csv(os.path.join(C.DATA, "signals.csv.gz"), index=False)
@@ -522,6 +526,8 @@ def main(argv=None):
                            signals_has_fb=int(S.get("has_fb", pd.Series(dtype=bool)).eq(True).sum()),
                            signals_has_oi=int(S.get("has_oi", pd.Series(dtype=bool)).eq(True).sum()),
                            signals_has_ratio=int(S.get("has_ratio", pd.Series(dtype=bool)).eq(True).sum())),
+                today_stack={rc.name: {st_: int(((S.today_recheck == rc.name) & (S.today_recheck_state == st_)).sum())
+                                       for st_ in ("zone", "rest", "unread", "nofetch")} for rc in TS.RECHECKS},
                 q2_scored={k_: int(S[f"q2_{k_}"].notna().sum()) for k_ in Q2.LINES if f"q2_{k_}" in S.columns},
                 market_days=dict(days=int(len(mdays)), complete=int(mdays.complete.sum()) if len(mdays) else 0),
                 btc_daily=dict(days=int(len(btc_tab)) if btc_tab is not None else 0,

@@ -489,3 +489,34 @@ luck test, and no gate, null or floor changes. Dropping the low-volume keys woul
   entry × exit rule; its own pre-registration), then capacity, then the sleeve design and scout. This is an addition to §6 C's steps,
   not a gate.
 - **Fresh-data-only keys:** H3 and H5 can only pass on HOLDOUT, so their place in the order applies from their first HOLDOUT verdict.
+
+### Addendum 5 — today's filter stack on every signal (written 2026-11-23 22:05 UTC, before any scan outcome was read)
+
+**Operator (2026-11-23):** Route B must judge every signal under today's filters, not only today's exits. Two filters were armed after
+the recording began, so the journal decisions before them never ran them: FLATBASE_FUNDING_ABOVE_BASE (DL 601, committed 11-20 17:27
+UTC) and WILLY_HT_BURST_REJECTION (DL 619, committed 11-22 00:09 UTC).
+- **FLATBASE:** no signal reached the funding check before it went live. The 4 earlier FB signals were 24 h-volume blocks, and the
+  one FB fill came after. On today's data the FB re-check is forward safety only.
+- **HT:** all 8 HT fills came before DL 619, and they are the rows re-checked. 9 earlier HT signals were already blocked by another
+  filter and never reached the burst check.
+
+- **New columns** (`scripts/route_b_signals/today_stack.py`, DL 635): `today_recheck` · `today_recheck_state` (zone / rest /
+  unread) · `today_recheck_value` · `today_block` · `today_block_class` · `today_filters_pass`. Each filter is re-applied with the
+  engine's own function to the rows that reached it before its commit + 60 min. After that the engine's own decision stands.
+  - Input unreadable to the engine (a missing journal funding stamp; Binance returning no bars): the engine fails open, so the row
+    passes (flagged).
+  - Input not fetched by a build (Binance stopped, network): `nofetch`, so `today_filters_pass` is NA. Such rows are left out of every
+    today's-stack read, counted, and re-tried at the next build.
+  - Empty strings in these columns read back as NaN from the CSV; readers use `.fillna("")`.
+- **How the scan reads them:**
+  - **Q1 / Q2 cohorts: unchanged.** §2 already includes taken and filter-blocked rows. A row today's stack refuses is a filter-blocked
+    row, so it stays in.
+  - **Every "what today's bot trades" read** (taken vs blocked, before → after daily compound return, per-sleeve kept cohort, Q5
+    capacity of kept fills) uses `today_filters_pass` / `today_block_class` in place of the journal `status` / `block_class`.
+  - A blocked-filter breakdown names `today_block` where it is set.
+- **Guard:** the test suite pins every ENTRY setting of the Route B sleeves, switches and cuts. That includes the WILLY watch blocks
+  and the shared funding guard. Exit, size and sleeve on / off keys are excluded because exits are read live. A changed entry setting
+  in `trading_config.json` fails the suite until a re-check decision is made.
+- **Not re-checked, by design:** DL 629 (committed 2026-11-23 01:39 UTC) is a timing bug fix for WILLY's turnover read. It delayed a decision; it is
+  not a filter, and the delayed setups were journaled again when re-judged.
+- No question, cohort, label, threshold or gate above changes.

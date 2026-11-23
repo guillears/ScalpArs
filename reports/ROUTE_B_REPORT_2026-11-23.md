@@ -141,7 +141,9 @@ Counts per sleeve, winners / losers. "Against us" after the peak = taker flow ti
 | **All sleeves: cost / capacity** | The real book cost at entry and stop for every fill, against the paper drift and the model slip (`entry_exh_model_slip_pct`, `entry_dist_model_slip_pct`); capacity per signal (CLAUDE.md capacity rule) | 7–16 bps per side where measurable. **Now measurable on fine-tick priority coins too**: full-book $6k cost 6–23 bps (median of the 40 coins ≈ 12) | Usable now for the priority coins; non-priority coins and every pre-11-21 22:02 entry stay on the 20 levels |
 
 **Pre-register before the data arrives: done.** `reports/ROUTE_B_WEEKLY_SCAN_PREREG.md`, frozen 11-23 15:01 UTC, plus Addendum 1
-(implementation pins and stated deviations, DL 631) and Addendum 2 (verdict colours, summaries only, DL 632). The signal loader
+(implementation pins and stated deviations, DL 631), Addendum 2 (verdict colours, summaries only, DL 632), Addendum 3 (H6 keeps
+the original control rule, DL 633), Addendum 4 (priority by trades per day, DL 634) and Addendum 5 (every signal judged on
+today's filters, DL 635). The signal loader
 now carries the full-book, OI and ratio columns (build items 1–7, DL 631).
 
 ---
@@ -170,7 +172,7 @@ All of these go to the 12-10 scan as pre-registered lines. Any survivor faces th
 
 - **Status:** **pre-registered and built (DL 631 / 632); the weekly task is not created yet** (needs the operator's OK). The daily report's countdown still targets **≈ 2026-12-10** (day 21 since 11-19; at 11-22 it read "4 of 21 days"), which matches DL 597 and memory ("set up the WEEKLY research scan at ~3 weeks of data").
 - **To prepare before 12-10** (progress since 11-21 in **bold**; the rest needs the operator's OK):
-  1. **The PREREG file: done** (frozen 11-23 15:01 UTC + Addenda 1–2). Open before 12-10: the H6 control-exclusion choice (operator).
+  1. **The PREREG file: done** (frozen 11-23 15:01 UTC + Addenda 1–5). **H6 control rule decided (Addendum 3, DL 633): the original rule is kept.** H6's real limit is book coverage: 161 of 190 H6 trigger minutes had no order book, so ≈ 6 testable per day. **Priority (Addendum 4, DL 634):** ideas are reported and followed up in order of testable trades per day (fixed at the 12-10 run; raw today H5 178 · H4 128 · H3 66 · H6 50 (≈ 6 testable) · H1 23 · H2 18 · H7 7). No gate changes.
   2. A signal-level dataset: **done (DL 612, `scripts/route_b_signals/build.py`, incremental).** Its last report is `ROUTE_B_SIGNALS_2026-11-22.md` (data to 11-22 01:00), so it should be run daily. **The DL 611 columns are now in its state block, with the no-look-ahead tests (DL 631).**
   3. A decision on the deeper book: **done for the bot's coins (DL 611, ≤ 30 priority coins).** It works (0 gaps, 0 resyncs) and confirms the 20-level book where both reach. Open point: the 30-coin cap left 1–8 wanted coins out on 11-21 / 11-22 (none since 11-23 11:26). If the bot's list grows again, raising the cap is a recorder change, so it is the operator's call.
   4. **A regime caveat in every read**: every fill so far is in one BTC daily-trend sign (EMA50 < EMA200 since 11-20). The scan should report per BTC daily-trend sign (locked live-mode lesson) and say so if only one sign has been seen.

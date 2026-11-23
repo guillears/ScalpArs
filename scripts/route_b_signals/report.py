@@ -31,10 +31,11 @@ def coverage(S):
     rows = []
     for (sl, st), x in g:
         sole = int(x.sole_block.fillna(False).astype(bool).sum()) if "sole_block" in x.columns else 0
+        today_ref = int((x.today_block.fillna("").astype(str) != "").sum()) if "today_block" in x.columns else 0   # (635)
         pr = x.get("out_priced", pd.Series(False, index=x.index)).fillna(False).astype(bool)
         fin = x.get("out_final", pd.Series(False, index=x.index)).fillna(False).astype(bool)
         rows.append(dict(sleeve=sl, status=st, block_class=(x.block_class.iloc[0] if "block_class" in x.columns else ""), signals=len(x),
-                         possibilities=int((~x.poss_dup.astype(bool)).sum()), sole_block=sole, windows15=x.window15.nunique(),
+                         possibilities=int((~x.poss_dup.astype(bool)).sum()), sole_block=sole, today_stack_refuses=today_ref, windows15=x.window15.nunique(),
                          coins=x.pair.nunique(), book_at_signal=_pct(int(x.rb_has_book.fillna(False).astype(bool).sum()), len(x)),
                          mark_at_signal=_pct(int(x.rb_has_mark.fillna(False).astype(bool).sum()), len(x)),
                          priced=_pct(int(pr.sum()), len(x)), final=_pct(int((pr & fin).sum()), len(x))))
@@ -47,7 +48,9 @@ def descriptive(S):
     blocks, partly-unscored blocks and unlinked taken signals are left out (counted in section 2)."""
     x = S[(~S.poss_dup.astype(bool)) & S.get("out_priced", False).fillna(False).astype(bool) & S.get("out_final", False).fillna(False).astype(bool)].copy()
     x = x[(x.status == "OPENED") | ((x.block_class == "filter") & x.sole_block.astype(bool))]
-    x["group"] = np.where(x.status == "OPENED", "TAKEN", x.status + " (sole)")
+    tb = x["today_block"].fillna("").astype(str) if "today_block" in x.columns else pd.Series("", index=x.index)
+    x["group"] = np.where(x.status != "OPENED", x.status + " (sole)",
+                          np.where(tb != "", "TAKEN then · today's stack refuses: " + tb, "TAKEN"))   # (635) filters armed mid-recording
     rows = []
     for (sl, gr), y in x.groupby(["sleeve", "group"]):
         n = y.out_net_pct
@@ -161,6 +164,12 @@ def write(S, Tt, J, meta, book, mark):
         q.append(dict(flag="block classes", value=" · ".join(f"{k}: {v}" for k, v in S.block_class.value_counts().items())))
         q.append(dict(flag="PAIR_HELD rows (capacity: joined to the holding position's possibility, not a filter counterfactual)",
                       value=str(int(S.status.astype(str).str.endswith("PAIR_HELD").sum()))))
+    if "today_recheck" in S.columns:   # (635) filters armed after the recording began, re-applied to the signals before them
+        for nm, y in S[S.today_recheck.fillna("").astype(str) != ""].groupby("today_recheck"):
+            vc = y.today_recheck_state.value_counts()
+            q.append(dict(flag=f"today's stack: {nm} re-applied to signals from before it went live (zone = today refuses · rest · unread = "
+                               f"fail-open · nofetch = not read this build, unknown)",
+                          value=" · ".join(f"{k} {int(vc.get(k, 0))}" for k in ("zone", "rest", "unread", "nofetch")) + f" of {len(y)}"))
     q.append(dict(flag="EXH_WIDE_READ_CAP counters (shortlist coins not read: no episode, not signals)", value=str(meta["exh_wide_read_cap"])))
     q.append(dict(flag="FLATBASE episodes still TRACKING (no final status yet)", value=str(meta["fb_tracking_only"])))
     if len(J):
@@ -182,7 +191,9 @@ def write(S, Tt, J, meta, book, mark):
     L.append("Possibilities only, priced final rows. TAKEN = linked fills; blocked rows ONLY where the named gate was the SOLE failing filter "
              "and every filter was scored (the engine stops at the first failing gate, so most blocked rows are multi-gate or partly unscored "
              "— see section 3); capacity rows (PAIR_HELD) are not filter counterfactuals. Blocked rows are priced as if entered at the "
-             "next-minute open with today's exit — they are what each gate kept the bot out of in THIS window, nothing more. Window units decide any later read (the locked "
+             "next-minute open with today's exit — they are what each gate kept the bot out of in THIS window, nothing more. A fill taken before a "
+             "filter armed mid-recording (DL 601 / 619) that today's stack would refuse is its own row ('TAKEN then · today's stack refuses'). "
+             "Window units decide any later read (the locked "
              "gates: ≥ 15 blocked, ≥ 8 windows, window-clustered bootstrap); no row here meets them.\n")
     L.append(_t(descriptive(S)))
     # ── H1–H6 counts only

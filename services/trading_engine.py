@@ -13432,6 +13432,58 @@ class TradingEngine:
         except Exception:
             return None
 
+    WILLY_CAP_WAIT_S = 4.0          # 🩺 (629) one red-bar wait for a cap still landing (Flatbase's confirm-step pattern, DL 348)
+    WILLY_CAP_WAIT_PASS_S = 8.0     # 🩺 (629) total red-bar cap waiting per FRENZY pass (the pass is serial: bounds the stall for later pairs)
+
+    async def _willy_turnover_read(self, pair, vol24, bar_open=None):
+        """🩺 (DECISION_LOG 629) the red-bar turnover read: _willy_turnover first; when it is unreadable ONLY because the cap is not cached
+        yet (the 24 h volume is readable), ONE bounded wait (WILLY_CAP_WAIT_S) on the shared one-pair fetch the arm already started
+        (mcap_service.fetch_pair_now — cache first, same in-flight task / 10-min dedupe, so a coin with no cap at the source returns at once
+        until the dedupe expires), then re-read. The waits of one FRENZY pass (bar_open) share WILLY_CAP_WAIT_PASS_S — the pass runs pairs
+        one after another, so a burst of missing caps never stalls it more than that. A cap still missing → None, as before (refused, stays
+        armed). Fixes the timing refusals: a cap that EXISTS but had not landed when the red bar closed (11-22 BULLA armed + red on one pass;
+        16 of the 29 TURNOVER_UNREAD refusals 10-23 → 11-22, each judged 1–4 bars late — the fix restores the first red bar). The wait
+        outcome is kept in _willy_cap_note[pair] for the UNREAD log / journal reason. Never raises."""
+        _note = self.__dict__.setdefault('_willy_cap_note', {})
+        _note.pop(pair, None)
+        R = self._willy_turnover(pair, vol24)
+        if R is not None:
+            return R
+        try:
+            try:
+                v = float(vol24)
+            except (TypeError, ValueError):
+                v = float('nan')
+            if not (v > 0 and v != float('inf')):
+                _note[pair] = "24 h volume unreadable"
+                return None                      # the volume is the missing half: no cap fetch can fix it
+            from services import mcap_service as _mcs
+            if _mcs.get(pair)[0] is not None:
+                _note[pair] = "cap cached, ratio unreadable"
+                return None
+            _b = self.__dict__.setdefault('_willy_cap_wait_budget', {})
+            _key = int(bar_open) if bar_open is not None else None
+            if _key not in _b:
+                _b.clear(); _b[_key] = float(self.WILLY_CAP_WAIT_PASS_S)   # a new pass: a fresh budget (older passes dropped)
+            _left = _b[_key]
+            if _left <= 0.05:
+                _note[pair] = "no wait: the pass's cap-wait budget is spent"
+                return None
+            _t0 = time.monotonic()
+            try:
+                await _mcs.fetch_pair_now(pair, timeout_s=min(float(self.WILLY_CAP_WAIT_S), _left))
+            finally:
+                _used = time.monotonic() - _t0
+                _b[_key] = _left - _used
+            R = self._willy_turnover(pair, vol24)
+            if R is None:   # < 0.05 s = nothing was in flight (the 10-min dedupe: the source had no cap / the arm's fetch failed)
+                _note[pair] = (f"waited {_used:.1f} s, no cap at the source" if _used >= 0.05
+                               else "no fetch in flight (10-min dedupe) — no cap")
+            return R
+        except Exception as e:
+            _note[pair] = f"cap read failed ({str(e)[:40]})"
+            return None
+
     def _frenzy_willy_nomiss_ok(self, pair, sp, bar_open, late, closed, wait_ms) -> bool:
         """🧭 (DECISION_LOG 350) R_NOMISS for a cold new episode the late window alone refuses: True = entry A may arm as the on-time A would
         have — frenzy_willy_a_nomiss ON, no red 5m bar missed since the spike (frenzy_willy_no_red_missed; unreadable = refused), and the bar
@@ -13638,7 +13690,7 @@ class TradingEngine:
             # ② 🔄 turnover filter at the red bar (operator DECLARED OVERRIDE): R < frenzy_willy_max_vol_mcap_ratio, unreadable = refused; stays armed
             _cut = float(getattr(th, 'frenzy_willy_max_vol_mcap_ratio', 0) or 0)
             if _cut > 0:
-                _R = self._willy_turnover(pair, flag.get('volume_24h'))
+                _R = await self._willy_turnover_read(pair, flag.get('volume_24h'), bar_open)   # 🩺 (629) bounded wait on a not-yet-landed cap
                 _tw = "FRENZY_WILLY_TURNOVER_UNREAD" if _R is None else ("FRENZY_WILLY_TURNOVER" if _R >= _cut else None)
                 if _tw:
                     _until = f"{datetime.utcfromtimestamp(int(_pd['exp']) / 1000):%H:%M}"
@@ -13648,9 +13700,11 @@ class TradingEngine:
                         _kinds.append(_tw)
                         self._record_filter_block(_tw, "LONG")
                         _px = flag.get('live_price') or flag.get('price')
-                        self._willy_event(_tw, pair, reason=(f"R={_R:.3f}" if _R is not None else "mcap / volume unreadable") + f" · {_pd['trig']}",
+                        _cn = (self.__dict__.get('_willy_cap_note') or {}).get(pair)   # 🩺 (629) the red-bar wait's outcome
+                        self._willy_event(_tw, pair, reason=(f"R={_R:.3f}" if _R is not None else "mcap / volume unreadable" + (f" ({_cn})" if _cn else ""))
+                                          + f" · {_pd['trig']}",
                                           price=_px, tally=False)   # journal line only (the scout prices it); the counter is the filter block
-                        logger.info(f"[FRENZY_WILLY] {pair}: turnover " + (f"R={_R:.2f} ≥ {_cut:g}" if _R is not None else "unreadable (mcap / 24 h volume missing or stale)")
+                        logger.info(f"[FRENZY_WILLY] {pair}: turnover " + (f"R={_R:.2f} ≥ {_cut:g}" if _R is not None else "unreadable (mcap / 24 h volume missing or stale" + (f"; {_cn}" if _cn else "") + ")")
                                     + f" → refused (stays armed until {_until} UTC)")
                         await self._frenzy_willy_save()
                     flag['willy_last'] = f"{_bar_txt} WILLY {_pd['trig']} armed · red bar refused: " + (f"turnover {_R:.2f}× mcap ≥ {_cut:g}×" if _R is not None else "turnover unreadable")

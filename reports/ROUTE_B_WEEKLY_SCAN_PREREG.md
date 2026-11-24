@@ -520,3 +520,50 @@ UTC) and WILLY_HT_BURST_REJECTION (DL 619, committed 11-22 00:09 UTC).
 - **Not re-checked, by design:** DL 629 (committed 2026-11-23 01:39 UTC) is a timing bug fix for WILLY's turnover read. It delayed a decision; it is
   not a filter, and the delayed setups were journaled again when re-judged.
 - No question, cohort, label, threshold or gate above changes.
+
+### Addendum 6 — operator-ordered INTERIM look at Q3 (written 2026-11-24 20:58 UTC, before any H-trigger outcome was read)
+
+**Operator (2026-11-24):** "run a first overview NOW … then we will run it again whenever i want, maybe its conclusive only on 12-05, yet
+i want to see the analisis" — the stated reason: find missing data / pipeline gaps now, not at the scheduled run.
+- **What is run:** §6's Q3 statistics (matched random-minute Δ, the family-max shuffled null, H-a / H-b halves, floors), on every H row
+  recorded so far (2026-11-19 23:23 UTC → the run), plus a data-completeness table. Labelled **INTERIM — NOT A VERDICT** everywhere.
+- **Disclosure:** from now on every H outcome up to this run's cut-off counts as SEEN (§0). It is repeated in every scan report.
+- **Lock (the price of looking):** no trigger definition, grid, cost rule, control rule, null, floor, gate or date split above changes
+  because of anything this look shows. A change proposed after it applies only to data after the change, and the affected key is then
+  HOLDOUT-only. The 12-10 DESIGN screen and SURVIVORS.json run exactly as frozen; the HOLDOUT (≥ 2026-12-07) is untouched by this look.
+- **Repeat looks:** the operator may re-run the interim at will; each run is listed in the scan report with its cut-off time.
+- **No interim result can arm, propose or retire anything.** It is descriptive plus a data check.
+
+### Addendum 7 — the Q3 luck family = keys that reach the floor (written 2026-11-24 21:40 UTC, AFTER the Addendum 6 interim look — disclosed; revised 22:20 UTC from the reviews, before commit)
+
+**Operator (2026-11-24):** "fix the luck test". **This change was found during the interim look**, so it is a post-look change, stated as such.
+- **Problem (a property of §6's statistic, predictable from its wording alone, not from any key's result):** the Q3 null takes the maximum
+  raw Δ over every DESIGN-eligible key and variant × 16 cells. Keys with 1–4 openers (mostly "|c" variants) have shuffle Δs of several pp
+  by chance alone, so they set the bar (interim: +5.52 pp; the null max came mostly from H6_funding_ge_+0.1pct|c and H7a_oi_flush_dump|c,
+  3–4 openers) and no key with real N can clear it — the scan could never pass anything.
+- **Fix:** the family = the DESIGN-eligible keys (H1, H2, H4, H6, H7a / b / c and their "|c" variants) whose **eligible** openers reach
+  the A1-Q3 floor: ≥ 20 on ≥ 5 distinct UTC days, where eligible = final, book-priced, with ≥ 1 final priced control (Addendum 1: stubs
+  never count toward the floors; Addendum 4's eligibility). Counted on the scan's own cohort before any outcome is computed. A key below
+  the floor is not tested at that run (its best cell is shown, marked "below floor") and joins at the first run where it reaches it.
+  Unchanged: shuffle within coin-day, 1,000×, seed, best cell re-picked, 16 cells, B-gates; H3 / H5 keep their fixed cell and
+  HOLDOUT-only status. Each key is shuffled independently (parents and "|c" variants share coins / hours, so this is not the joint null;
+  it is conservative — it does not inflate passes). Stated sensitivity that remains: the raw-Δ bar is still set by the smallest key that
+  qualifies and moves as keys join (a key at exactly 20 openers has a null of ≈ 1.5–3 pp); a studentized max was NOT adopted.
+- **Amending Addendum 6's lock (explicitly):** Addendum 6 said no null may change because of the look, and that a later change makes the
+  affected key HOLDOUT-only. This addendum is the one exception, for the reason above (the bar problem follows from §6's wording and the
+  key counts, not from a result), and it applies to the 12-10 DESIGN screen as well. Evidence it helps no key on the data seen: with
+  the floor counted correctly, **no key reaches it at the interim** (11-24's controls were not final yet → every key had ≤ 4 control
+  days), so the interim tested nothing; an earlier draft that counted openers without controls gave a +1.64 pp bar, which H4 ask
+  vacuum (Δ +1.03, p 0.27) did not clear either.
+- Implemented in scripts/route_b_signals/interim_q3.py (`floor_keys`, `family_null`); the 12-10 scan uses the same rule.
+
+### Addendum 8 — H4 ask vacuum exploration (written 2026-11-24 21:55 UTC, before its W/L / extended-grid numbers were computed)
+
+**Operator (2026-11-24):** "run winners vs losers here", "focus on theory of what the trade is about", "different TP and SL levels? what's
+the optimal". scripts/H4_ASK_VACUUM_STUDY_2026-11-24.py reads, on the interim cohort only: 12 theory lines with their predicted side
+(written in the script before the run), every recorded state variable (median split, rotation-null family max |t|), and an extended grid
+(TP 1–12 · stop 1–8 · hold 1–24 h) vs the matched random minutes.
+- **Status of anything found:** HOLDOUT-only. A separator or a cell picked here is frozen as found (variable, cut = its interim median,
+  side; or TP / stop / hold) and is judged only on HOLDOUT rows (signal ≥ 2026-12-07) with §6 B-gates. It never counts as DESIGN
+  evidence and does not change H4's frozen 16-cell DESIGN screen at 12-10.
+- The extended grid (beyond §3's 16 cells) is exploratory; §3's grid stays the scan's grid.

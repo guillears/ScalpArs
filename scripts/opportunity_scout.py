@@ -1572,6 +1572,14 @@ def run():
     except Exception as _ht6_e:
         log(f"DL 608 HT_TP6 gate failed: {_ht6_e}")
         _rg_sec += ["## 🎯🔒 DL 608 HT_TP6", "", f"Unavailable this run ({str(_ht6_e)[:120]}).", ""]
+    try:                                               # 🏃👁 (DECISION_LOG 636) TP_RUNNER observe lines — HT / EXH runner past the TP vs the booked TP
+        _sd = os.path.dirname(os.path.abspath(__file__))
+        _sd in sys.path or sys.path.insert(0, _sd)
+        import scout_tp_runner_636 as _tpr
+        _rg_sec += _tpr.report(now_ms=now_ms)
+    except Exception as _tpr_e:
+        log(f"DL 636 TP_RUNNER lines failed: {_tpr_e}")
+        _rg_sec += ["## 🏃👁 DL 636 TP_RUNNER", "", f"Unavailable this run ({str(_tpr_e)[:120]}).", ""]
     try:                                               # 🧯 Nov-18 EXH_SSC_OIVOL shadow revert gate (DECISION_LOG 582; blocked signals priced with the live exit)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

@@ -122,6 +122,13 @@ EXIT["scout_blocked_filters.py"] = dict(dl="527 · 529 · 532 · 608", sleeves="
     # stored HT price re-priced on a change via era_of) and its gate state is namespaced FRENZY_WILLY_HT@608 → a later HT exit change shows ⚠ STALE
     "frenzy_willy_ht_tp_pct": 6.0, "frenzy_willy_ht_high_target_enabled": False, "frenzy_willy_ht_late_tp_enabled": False,
     "frenzy_willy_ht_max_hold_minutes": 1440.0, "frenzy_willy_stop_pct": 4.0})
+# 🏃👁 (636) TP_RUNNER observe lines: the runner is priced from each REAL booked TP fill (HT +6 / EXH TP 7) → a change to either sleeve's TP,
+# stop or hold makes the lines measure a TP that no longer runs → ⚠ STALE (re-base or retire the same day)
+EXIT["scout_tp_runner_636.py"] = dict(dl="636", sleeves="FRENZY_WILLY_HT · EXHAUSTION_SHORT (TP hits)", walks={
+    "frenzy_willy_ht_tp_pct": 6.0, "frenzy_willy_ht_high_target_enabled": False, "frenzy_willy_ht_late_tp_enabled": False,
+    "frenzy_willy_ht_max_hold_minutes": 1440.0, "frenzy_willy_stop_pct": 4.0,
+    "exhaustion_tp_atr_mult": 20.0, "exhaustion_tp_cap_pct": 7.0, "exhaustion_sl_atr_mult": 1.5, "exhaustion_sl_cap_pct": 6.0,
+    "exhaustion_max_hold_hours": 24.0})
 PROXY = {"scout_bearrun_v2.py": "359", "scout_bearrun_r24.py": "369",
          "scout_g51_band1_watch.py": "463"}   # 👁 (463) refused band-① signals on the audit's +0.40 / −0.70 ruler, never the live exit
 BOOKED = {   # booked P&L — `era` = drops fills by WILLY exit era (registered on the old +1.25 exit)

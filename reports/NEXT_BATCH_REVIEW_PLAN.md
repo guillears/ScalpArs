@@ -846,6 +846,12 @@ shadow of the exit it replaced (`sc_base_pnl` = what RUNNER_TRAIL / HARD_TP_LADD
 before → after, LOO, per-day; plus its pre-committed revert gate (scripts/scout_* for DL 532). Path decomposition (path_labels) first, ENTRY × EXIT joint
 check, master over backtest. Also the 3 live ML longs of 11-15 13:23 (AVAX / INJ / ARB).
 
+### 🟥👁 DIST_BIG_RED watch (DECISION_LOG 639, registered 2026-11-24) — read at every batch review
+Split the real DIST fills opened ≥ 2026-11-24 18:00 UTC by `entry_dist_bar_ret_pct` into 3 frozen buckets — VERY BIG ≤ −7.1 · BIG −7.1 … −3.0 ·
+SMALL > −3.0 — N · WR · avg % · $ (one size) · path groups (`scripts/path_labels.py`). Frozen reads at ≥ 30 forward fills on ≥ 10 days and again at
+60 (then retire): SMALL clears the EXPECTANCY bar on its own (N ≥ 15, breakeven WR 35.6 % frozen) → filter candidate (operator decides); VERY BIG
+feeds the DIST size read only. Backtest: VERY BIG +1.75 vs rest +0.68 (7/7 halves); −3 % is not a natural break. The 11-18 → 11-24 batch is in-sample.
+
 ### 🎯⚖️ DIST / EXH / FLATBASE TAKE PROFIT vs SIZE — operator 2026-11-20: "i have my doubts with this, what is safer" → DEEP REVIEW at this batch
 Context (2026-11-20, nothing shipped): reports/TP_GRID_2026-11-20_{DIST,EXH,FB}.md (DECISION_LOG 603). DIST backtest 1,547 fills at ONE size
 0.61 × equity: TP 10 (today) earns the most (+0.93 %/fill, DCR +0.59) but has the deepest drawdown (−55 %); TP 4–9 raise WR (43 → 60 %) and

@@ -1,0 +1,13 @@
+var,dir,batch,N,good_mean,other_mean,gap,DESIGN,HOLDOUT,halves_pos
+rsi15,+,entry_rsi (5m/15m RSI) W 76 vs L 64,1536,0.57,1.22,-0.65,0.29,-1.2,3/7
+rsi5,+,"same, 5m",1536,0.68,1.1,-0.42,0.68,-1.08,4/7
+di_diff15,+,DI spread W 40 vs L 17,1536,0.64,1.14,-0.5,0.31,-1.0,2/7
+di_diff1h,+,1h DI diff W 63 vs L 42,1536,0.98,0.81,0.17,1.0,-0.27,5/7
+gap15,+,above EMA13 / gap5-20 W 7–9 % vs L 2–4 %,1536,0.8,0.98,-0.18,-0.39,0.02,3/7
+gap1h,+,1h gap,1536,1.0,0.79,0.21,0.9,-0.07,5/7
+adx15,+,ADX rising (proxy level),1536,0.82,0.96,-0.14,0.17,-0.28,4/7
+vmult15,+,volume trend W 50 vs L 4 (proxy),1536,0.92,0.86,0.06,0.45,-0.18,4/7
+btc_rsi1h,-,BTC RSI W 33 vs L 54,1535,0.96,0.82,0.14,0.05,0.24,3/7
+btc_ret4h,-,BTC below EMA13 in winners (proxy 4h ret),1535,0.98,0.79,0.18,-0.35,0.5,3/7
+bar_ret_pct,-,red candle size W −5.4 vs L −1.7,1536,1.26,0.53,0.73,0.14,1.15,6/7
+fund_last,-,funding W −0.8 % vs L 0.0,1536,1.15,0.77,0.37,-0.03,0.62,4/7

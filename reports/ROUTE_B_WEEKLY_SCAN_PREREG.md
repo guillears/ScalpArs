@@ -567,3 +567,41 @@ the optimal". scripts/H4_ASK_VACUUM_STUDY_2026-11-24.py reads, on the interim co
   side; or TP / stop / hold) and is judged only on HOLDOUT rows (signal ≥ 2026-12-07) with §6 B-gates. It never counts as DESIGN
   evidence and does not change H4's frozen 16-cell DESIGN screen at 12-10.
 - The extended grid (beyond §3's 16 cells) is exploratory; §3's grid stays the scan's grid.
+
+### Addendum 9 — two frozen H4 ask-vacuum lines, HOLDOUT-only (written 2026-11-24 21:37 UTC, before any HOLDOUT row exists)
+
+**Operator (2026-11-24):** "yes freeze both lines". Source: the interim H4 study (reports/H4_ASK_VACUUM_STUDY_2026-11-24.md, Addendum 8) —
+in-sample on 4.7 days, so both lines are judged ONLY on HOLDOUT rows (trigger minute ≥ 2026-12-07 00:00 UTC), never on anything seen.
+Code: scripts/route_b_signals/h4_frozen_lines.py (reads the loader datasets; prints COLLECTING until the floors are met).
+
+**Common cohort:** H4_ask_vacuum openers (one per coin per 60 min, as the loader builds them), alts only, `h_cost_src` = route_b_book or
+book_unwalkable (no_book out), entry at the open of minute m + 2 (the loader's `h_entry_ms`), the loader's recorded slips, live taker /
+maker fees, real settled funding. **Exit: TP +5 % (resting maker, fills 0.05 % through) · stop −3 % (taker, the loader's stop-fill rule)
+· 24 h time exit** (`exits.walk`, the same walker as the grid). Optional-stopping guard: a row counts only when its 24 h path is final.
+
+**Line H4-T (the tradeable version):** the cohort rows with the 20-level book's ask $ within 0.5 % (`rb_ask_usd_05`) ≥ **$12,000**
+(2 × the $6k order the loader costs — our book must not be the vacuum). Matched controls: the loader's random same-coin, same-day minutes
+of those openers, priced on the same exit. **Pass (all):** B1 ≥ 30 rows on ≥ 10 UTC days · mean net > 0 with an hour-clustered 95 % CI
+above 0 · Δ vs controls with its hour-clustered 95 % CI above 0 · Kelly at the one-sided 95 % Wilson WR floor > 0 · no coin and no day
+≥ 50 % of the net sum, and leave-one-coin / leave-one-day keep the sign AND ≥ 50 % of the mean (§6 B2) · capacity quoted (median ask $
+within 0.5 %). One BTC daily regime
+on HOLDOUT → the pass is capped at OBSERVE (B4). **Fail:** at the first read with the floors met, any item fails → retired (no re-fit).
+
+**Line H4-B (the market switch, DAY units):** on the H4-T rows, BTC's 4 h return at the trigger = BTCUSDT 1m close of minute m − 1 vs the
+close of minute m − 241 (> 0 = UP). Unit = one UTC day per side (a day's UP rows and DOWN rows are two observations). **Pass (all):** ≥ 10
+days on each side · mean(UP days) − mean(DOWN days) > 0 with a day-bootstrap 95 % CI above 0 · the UP side alone: mean net > 0 with a
+day-bootstrap 95 % CI above 0 (days resampled jointly — a day can hold both sides) · leave-one-day-out keeps the sign of the gap. **Fail** as above. A pass → an on / off observe line for
+H4-T only, never a sleeve by itself.
+
+**Read once:** the first non-COLLECTING result per line is written with its data cut-off to reports/H4_FROZEN_LINES_state.json
+(committed) and reported unchanged at every later run — never re-judged on a larger cohort. **HOLDOUT cut** is on the trigger MINUTE
+(§2 cuts on signal time = minute + 1 min; this is one minute stricter). **Path rules:** a row counts only once its 24 h of 1m bars are
+complete and contiguous and the run is ≥ 10 min past the hold's end (funding publication). **Superseded:** the study report's two other
+"frozen" items (taker-buy share > 0.5618 at TP 5 / stop 5 / 4 h; BTC book depth ≤ $724,979) are NOT registered — retired here; this
+addendum's H4-T / H4-B are the only H4 lines.
+Neither line changes H4's pre-registered 16-cell DESIGN read at 12-10. No threshold above is ever re-fitted.
+
+**Erratum (Addenda 7 and 8 clock labels):** the UTC times written in their headings ("21:40", "21:55", "revised 22:20") were estimates and
+are wrong — all three texts were written before commit 3096e39a (2026-11-24 21:26:18 UTC), which is their freeze proof. The ORDER claims
+hold: Addendum 8 was appended in the same shell command that then ran the H4 study for the first time; Addendum 7's revision came after the
+interim look and before that commit. Nothing else in them changes.

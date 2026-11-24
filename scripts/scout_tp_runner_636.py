@@ -32,6 +32,13 @@ RULES      (each priced from the REAL booked TP fill: touch = closed_at, TP pric
   force-close 24 h after the open, so no earlier-opened fill can still be open), a deciding fill lacks funding, or > 10 % of the forward
   fills up to the k-th are NOT EVALUABLE. The study period
   (fills since each exit era's deploy — DL 608 HT / DL 609 EXH — to the DL 636 commit) is shown as an IN-SAMPLE block, never deciding.
+🔊 SURGE   (DECISION_LOG 638, operator 2026-11-24 "yes build it") HT_RUNNER_SURGE — every HT hit also carries vol5_60 = $ volume per minute in the
+           5 min before the touch ÷ the 60 min before (scripts/TP_RUNNER_HT_TRIGGER_2026-11-24.py: backtest 118 HT hits, surge > 1.286 → runner
+           +6.15 pp / hit, 9 of 59 ran, + in all 4 half-years; quiet −1.23, 2 of 59 ran; family-wise p 0.43–0.70 = not beyond luck → observe).
+           Frozen once, two stages (review-tightened before any forward data): at 30 scored forward hits the surge Σ Δ WITHOUT its best hit
+           > 0 ∧ the quiet Σ Δ < 0 → ARM_SURGE_CANDIDATE (operator decides) · surge Σ ≤ 0 or quiet Σ ≥ 0 → RETIRE_SPLIT · else extend to
+           60 scored hits (same ARM rule, else RETIRE). Resampled backtest: ARM 66 % if real, 12 % by luck. Same freeze holds as the HT
+           read + a hold when > 10 % of the deciding hits lack a volume read.
 OUTPUT     summaries only (operator 11-23): N · Σ / mean / median Δ · $ at one size (0.61 × $10k) · exit mix · best · without the best · funding.
 Usage: venv/bin/python -I scripts/scout_tp_runner_636.py"""
 import json
@@ -66,6 +73,7 @@ ATR_N, ATR_TF_MIN, ATR_LOOK_H = 14, 15, 5
 MIN1, HOUR, DAY, PAGE = 60_000, 3_600_000, 86_400_000, 900
 HOLD_H, STALE_H, EXPORT_HOLD_H = 24, 48, 24
 HT_N, HT_FLOOR_MIN_N, HT_FLOOR_WARN, HT_BEHIND = 40, 10, -2.0, -25.0
+SURGE_CUT, SURGE_N, SURGE_N2, SURGE_KEY, SURGE_DL = 1.2863, 30, 60, "HT_RUNNER_SURGE", 638   # (638) cut frozen = the backtest median (1.28629)
 EXH_N, EXH_DAYS, EXH_Q, BOOT_N, SEED = 50, 10, 0.90, 2000, 636
 ONE_SIZE_USD = 0.61 * 10_000
 LINES = {HT: "HT_RUNNER", EXH: "EXH_RUNNER"}
@@ -233,7 +241,7 @@ def _bars(pair, t_touch, now_ms, bud):
         pg = LS.fapi_klines(pair, "1m", start, PAGE, bud, CACHE, now_ms, fetch=True)
         if pg is None or getattr(bud, "errors", 0) > e0:
             return None
-        out += [q[:5] for q in pg]
+        out += [q[:6] for q in pg]                                 # (638) + volume for the surge split
         if len(pg) < PAGE:
             break
         start = int(pg[-1][0]) + MIN1                                 # (deep review) a gap in page 1 must not overlap page 2
@@ -243,6 +251,77 @@ def _bars(pair, t_touch, now_ms, bud):
             seen.add(int(q[0]))
             uniq.append(q)
     return sorted(uniq, key=lambda q: int(q[0]))
+
+
+def vol5_60(bars, t_touch):
+    """(DECISION_LOG 638) the volume surge INTO the TP: average $ volume per minute over the 5 minutes before the touch minute ÷ the average
+    over the 60 minutes before it (missing minutes = 0, like the study's filled grid). $ volume = base volume × close (fapi klines carry no
+    quote volume here; vs the study's quote volume on 118 HT hits: median 0.15 %, worst 2.1 %, 117 / 118 on the same side of the cut).
+    None when the volume column is missing or the hour traded nothing. The touch minute = the booked closed_at minute (lags the first
+    touching bar by 2–4 min on 2 of 29 live HT TP fills — stated). PURE."""
+    m0 = int(t_touch) // MIN1 * MIN1
+    b = [q for q in (bars or []) if m0 - 60 * MIN1 <= int(q[0]) < m0]
+    if not b or any(len(q) < 6 for q in b):
+        return None
+    usd = lambda q: float(q[5]) * float(q[4])
+    tot60 = sum(usd(q) for q in b) / 60.0
+    tot5 = sum(usd(q) for q in b if int(q[0]) >= m0 - 5 * MIN1) / 5.0
+    return float(tot5 / tot60) if tot60 > 0 else None
+
+
+def _surge_arm(su, qu):
+    """ARM rule (review-tightened before any forward data): the surge Σ Δ stays > 0 WITHOUT its single best hit ∧ the quiet Σ Δ < 0. PURE."""
+    return len(su) > 1 and sum(su) - max(su) > 0 and sum(qu) < 0
+
+
+def surge_read(rows):
+    """HT_RUNNER_SURGE read (DL 638): rows = forward priced HT hits [dict(d, surge, …)] in open order; unscored hits (surge None) are
+    skipped but stay inside the prefix. Two stages, frozen once: at the first SURGE_N scored hits → ARM_SURGE_CANDIDATE if _surge_arm ·
+    RETIRE_SPLIT if the surge Σ ≤ 0 or the quiet Σ ≥ 0 · else EXTEND to SURGE_N2 scored hits, where _surge_arm → ARM else RETIRE.
+    Backtest resampling (118 HT hits): ARM 66 % when the split is real, 12 % by luck (the untightened 'Σ surge > 0 ∧ Σ quiet < 0' at 30:
+    76 % / 26 %). Operator decides on ARM. → (state, text, k). PURE."""
+    def at(n):
+        k, seen = 0, 0
+        for k, r in enumerate(rows, 1):          # the prefix length by POSITION — equal-content rows must not alias
+            seen += r.get("surge") is not None
+            if seen == n:
+                break
+        cut = [r for r in rows[:k] if r.get("surge") is not None]
+        su = [r["d"] for r in cut if r["surge"] > SURGE_CUT]
+        qu = [r["d"] for r in cut if r["surge"] <= SURGE_CUT]
+        txt = (f"first {n} scored hits: surge {len(su)} Σ Δ {sum(su):+.2f} pp (w/o its best {sum(su) - max(su) if su else 0.0:+.2f}) · "
+               f"quiet {len(qu)} Σ Δ {sum(qu):+.2f} pp")
+        return su, qu, txt, k
+    sc = [r for r in rows if r.get("surge") is not None]
+    if len(sc) < SURGE_N:
+        su = [r["d"] for r in sc if r["surge"] > SURGE_CUT]
+        qu = [r["d"] for r in sc if r["surge"] <= SURGE_CUT]
+        return "COLLECTING", (f"⏳ {len(sc)}/{SURGE_N} scored hits · surge {len(su)} Σ {sum(su):+.2f} · quiet {len(qu)} Σ {sum(qu):+.2f} (not judged)"), None
+    su, qu, txt, k = at(SURGE_N)
+    arm = " — surge pays without its best hit and quiet loses: arm candidate (operator decides: the runner on surge touches only)"
+    if _surge_arm(su, qu):
+        return "ARM_SURGE_CANDIDATE", txt + arm, k
+    if sum(su) <= 0 or sum(qu) >= 0:
+        return "RETIRE_SPLIT", txt + " — the split does not hold: retire it", k
+    if len(sc) < SURGE_N2:
+        return "COLLECTING", f"stage 1 inconclusive ({txt}) → extended to {SURGE_N2} scored hits · now {len(sc)}/{SURGE_N2}", None
+    su, qu, txt, k = at(SURGE_N2)
+    if _surge_arm(su, qu):
+        return "ARM_SURGE_CANDIDATE", txt + arm, k
+    return "RETIRE_SPLIT", txt + " — stage 2: the split does not hold: retire it", k
+
+
+def surge_summary(rows):
+    """surge vs quiet summary text. PURE."""
+    sc = [r for r in rows if r.get("surge") is not None]
+    if not sc:
+        return "no scored hits"
+    out = []
+    for nm, g in (("surge", [r for r in sc if r["surge"] > SURGE_CUT]), ("quiet", [r for r in sc if r["surge"] <= SURGE_CUT])):
+        d = [r["d"] for r in g]
+        out.append(f"{nm} N {len(d)}" + (f" · Σ {sum(d):+.2f} · mean {np.mean(d):+.2f} · ran {sum(1 for r in g if r['why'] != 'guard')}" if d else ""))
+    nu = sum(1 for r in rows if r.get("surge") is None)
+    return " | ".join(out) + (f" · {nu} without a volume read" if nu else "")
 
 
 def price_fill(r, side, now_ms, bud, bars_fn=None, funding_fn=None):
@@ -279,7 +358,8 @@ def price_fill(r, side, now_ms, bud, bars_fn=None, funding_fn=None):
     if fs is None and now_ms < t_touch + STALE_H * HOUR:
         return "PENDING"
     fund = None if fs is None else float(-side * fs * px / E)       # a short receives fs; a long pays it (mark-scaled ≈ exit px ÷ E)
-    return dict(d=delta_pp(side, E, tp_px, px, fund or 0.0), why=why, fund=fund, day=t_touch // DAY, atr=atr, o=r.o)
+    return dict(d=delta_pp(side, E, tp_px, px, fund or 0.0), why=why, fund=fund, day=t_touch // DAY, atr=atr, o=r.o,
+                surge=vol5_60(bars, t_touch) if side > 0 else None)
 
 
 def _cohort(sleeve, frame):
@@ -354,32 +434,42 @@ def report(frames=None, since_ms=None, era_ms=None, state_path=STATE, now_ms=Non
                 L.append("  " + w)
         else:
             v, txt, k = exh_read([(x["day"], x["d"]) for x in fwd])
-        hold = []
-        if stopped:
-            hold.append("a fetch stopped this run")
-        if v != "COLLECTING":
-            dec = fwd[:k]
-            last_o = dec[-1]["o"]
-            if newest is None or newest < last_o + pd.Timedelta(hours=EXPORT_HOLD_H):
-                hold.append("newest export < the deciding fill's open + 24 h")
-            nf = sum(1 for x in dec if x.get("fund") is None)
-            if nf:
-                hold.append(f"funding unread on {nf} deciding fill(s)")
-            nne = sum(1 for o in ne_fwd_o if o <= last_o)
-            if nne > 0.10 * (k + nne):
-                hold.append(f"{nne} forward fills NOT EVALUABLE (> 10 % of the prefix) — check before reading")
-        rec = st.get(key) if isinstance(st, dict) else None
-        bad_rec = rec is not None and not (isinstance(rec, dict) and rec.get("verdict"))
-        if st is None or bad_rec:
-            L.append("  ⚠ state file corrupt" + (f" ({key} entry)" if bad_rec else "") + " — operator restore needed; not frozen this run.")
-            rec = None
-        elif v != "COLLECTING" and not hold and rec is None:
-            rec = dict(verdict=v, detail=txt, run_at=pd.Timestamp(now_ms, unit="ms").strftime("%Y-%m-%d %H:%M UTC"))
-            st[key], dirty = rec, True
-        if rec:
-            L.append(f"  **FROZEN ({rec.get('run_at')}): {rec.get('verdict')}** — {rec.get('detail')}")
-        else:
-            L.append(f"  Now: {v} — {txt}" + (" · ⏸ freezing deferred: " + " · ".join(hold) if hold else ""))
+        reads = [(key, v, txt, k)]
+        if sleeve == HT:
+            L.append(f"  🔊 surge split (DL {SURGE_DL}; vol 5 min ÷ 60 min at the touch, cut {SURGE_CUT:g} frozen) — IN-SAMPLE: {surge_summary(ins)}")
+            L.append(f"     FORWARD: {surge_summary(fwd)}")
+            reads.append((SURGE_KEY,) + surge_read(fwd))
+        for key_, v_, txt_, k_ in reads:
+            hold = []
+            if stopped:
+                hold.append("a fetch stopped this run")
+            if v_ != "COLLECTING":
+                dec = fwd[:k_]
+                last_o = dec[-1]["o"]
+                if newest is None or newest < last_o + pd.Timedelta(hours=EXPORT_HOLD_H):
+                    hold.append("newest export < the deciding fill's open + 24 h")
+                nf = sum(1 for x in dec if x.get("fund") is None)
+                if nf:
+                    hold.append(f"funding unread on {nf} deciding fill(s)")
+                nne = sum(1 for o in ne_fwd_o if o <= last_o)
+                if nne > 0.10 * (k_ + nne):
+                    hold.append(f"{nne} forward fills NOT EVALUABLE (> 10 % of the prefix) — check before reading")
+                nus = sum(1 for x in dec if key_ == SURGE_KEY and x.get("surge") is None)
+                if nus > 0.10 * len(dec):        # (review) the scored hits must not be a filtered sample
+                    hold.append(f"{nus} deciding hits without a volume read (> 10 %) — check before reading")
+            rec = st.get(key_) if isinstance(st, dict) else None
+            bad_rec = rec is not None and not (isinstance(rec, dict) and rec.get("verdict"))
+            tag = "" if key_ == key else f"{key_}: "
+            if st is None or bad_rec:
+                L.append(f"  {tag}⚠ state file corrupt" + (f" ({key_} entry)" if bad_rec else "") + " — operator restore needed; not frozen this run.")
+                rec = None
+            elif v_ != "COLLECTING" and not hold and rec is None:
+                rec = dict(verdict=v_, detail=txt_, run_at=pd.Timestamp(now_ms, unit="ms").strftime("%Y-%m-%d %H:%M UTC"))
+                st[key_], dirty = rec, True
+            if rec:
+                L.append(f"  {tag}**FROZEN ({rec.get('run_at')}): {rec.get('verdict')}** — {rec.get('detail')}")
+            else:
+                L.append(f"  {tag}Now: {v_} — {txt_}" + (" · ⏸ freezing deferred: " + " · ".join(hold) if hold else ""))
         L.append("")
     if dirty:
         try:

@@ -249,3 +249,66 @@ def test_funding_window_ends_at_the_exit_bar_open():
                  bars_fn=lambda *a: flat_history(106.0, 1.06) + bars([(106, 106.1, 104, 104.5)]),
                  funding_fn=lambda p, a, b: got.append((a, b)) or 0.0)
     assert got == [(T0, T0 + MIN)]          # exit bar opens at touch minute + 1 min
+
+
+# ─── 🔊 DL 638 surge split ───
+def vbars(vols, end=T0, px=1.0):
+    """1m bars ending at the touch minute, oldest first, with base volume vols[i] and close px."""
+    n = len(vols)
+    return [[end - (n - i) * MIN, px, px, px, px, v] for i, v in enumerate(vols)]
+
+
+def test_vol5_60_ratio_and_window():
+    b = vbars([1.0] * 55 + [3.0] * 5)                     # last 5 min at 3× → 3 ÷ ((55 + 15) ÷ 60)
+    assert S.vol5_60(b, T0) == pytest.approx(3.0 / (70 / 60))
+    assert S.vol5_60(b + [[T0, 1, 1, 1, 1, 999.0]], T0) == pytest.approx(3.0 / (70 / 60))   # the touch minute never counts
+    assert S.vol5_60(vbars([0.0] * 60), T0) is None
+    assert S.vol5_60([q[:5] for q in b], T0) is None     # no volume column → no read
+
+
+def test_vol5_60_missing_minutes_count_as_zero():
+    b = vbars([1.0] * 60)[30:]                           # only the last 30 minutes exist
+    assert S.vol5_60(b, T0) == pytest.approx(1.0 / (30 / 60))
+
+
+def test_surge_read_frozen_rule():
+    big = [dict(d=30.0, surge=2.0, why="trail")]
+    sur = [dict(d=5.0, surge=2.0, why="trail")] * 9
+    qui = [dict(d=-1.2, surge=0.8, why="guard")] * 20
+    assert S.surge_read(sur + qui[:10])[0] == "COLLECTING"
+    v, txt, k = S.surge_read(big + sur + qui)
+    assert v == "ARM_SURGE_CANDIDATE" and k == 30                                    # pays even without the best hit
+    one = big + [dict(d=-1.2, surge=2.0, why="guard")] * 9 + qui                    # one lottery ticket carries the surge Σ
+    v, txt, k = S.surge_read(one)
+    assert v == "COLLECTING" and "extended to 60" in txt                             # stage 1 inconclusive → extend
+    assert S.surge_read(one + [dict(d=-1.2, surge=2.0, why="guard")] * 10 + qui)[0] == "RETIRE_SPLIT"   # stage 2: still one ticket
+    assert S.surge_read(one + one)[0] == "ARM_SURGE_CANDIDATE"                      # two big runners: pays without the best one
+    assert S.surge_read(one + big + sur + qui[:20])[0] == "ARM_SURGE_CANDIDATE"     # stage 2 holds without the best hit
+    assert S.surge_read([dict(d=-1.0, surge=2.0, why="guard")] * 15 + qui[:15])[0] == "RETIRE_SPLIT"
+    assert S.surge_read([dict(d=1.0, surge=2.0, why="trail")] * 15 + [dict(d=0.5, surge=0.5, why="trail")] * 15)[0] == "RETIRE_SPLIT"
+    none = [dict(d=9.0, surge=None, why="trail")] * 5
+    assert S.surge_read(none + big + sur + qui)[2] == 35                            # unscored hits skipped but inside the prefix
+    assert S.SURGE_CUT == 1.2863
+
+
+def test_report_shows_and_freezes_the_surge_split(tmp_path, monkeypatch):
+    monkeypatch.setattr(S, "HT_N", 99)
+    monkeypatch.setattr(S, "SURGE_N", 3)
+    since = int(pd.Timestamp("2026-11-30").value // 1_000_000)
+    touch = str(pd.Timestamp(T0, unit="ms"))
+    ht = _frame(S.HT, [dict(opened_at=f"2026-12-01 0{i}:00", pair=f"F{i}USDT", pnl_percentage=6.0, close_reason="FRENZY_TP", entry_price=100,
+                            exit_price=106.05, closed_at=touch, frenzy_willy_tp_target_pct=6.0) for i in range(3)])
+
+    def bars_fn(p, t, n):
+        h = [q + [1.0] for q in flat_history(106.0, 1.06)]
+        if p in ("F0USDT", "F2USDT"):                     # F0 / F2 surge into the touch and run; F1 is quiet and hits the floor
+            for q in h[-5:]:
+                q[5] = 10.0
+            return h + [[T0 + MIN, 106, 130, 106, 129, 1], [T0 + 2 * MIN, 125, 126, 120, 121, 1]]
+        return h + [[T0 + MIN, 106, 106.1, 104, 104.5, 1]]
+    st = tmp_path / "s.json"
+    L = "\n".join(S.report(frames={S.HT: ht, S.EXH: _frame(S.EXH, [])}, since_ms=since, era_ms={S.HT: since, S.EXH: since}, state_path=str(st),
+                           now_ms=T0 + 3 * 86_400_000, bars_fn=bars_fn, funding_fn=lambda p, a, b: 0.0, newest=pd.Timestamp("2026-12-09")))
+    assert "surge split" in L and "surge N 2" in L and "quiet N 1" in L
+    assert json.loads(st.read_text())["HT_RUNNER_SURGE"]["verdict"] == "ARM_SURGE_CANDIDATE"
+    assert "HT_RUNNER" not in json.loads(st.read_text())     # the 40-hit HT read is still collecting

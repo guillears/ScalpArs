@@ -1,0 +1,85 @@
+TP touches (today's exits): 88 raw → 72 one per coin per 60 min · {'EXHAUSTION_SHORT': 39, 'DISTRIBUTION_SHORT': 26, 'FRENZY_WILLY_HT': 7}
+
+priced 72 (9 taken) · days 4 · hours 46
+outcome by sleeve:
+                     N  mean_delta  median   ran  reach4h  fund
+sleeve                                                         
+DISTRIBUTION_SHORT  26       -0.03   -1.91  0.42     3.08 -0.63
+EXHAUSTION_SHORT    39       -1.86   -1.73  0.33     3.20 -0.69
+FRENZY_WILLY_HT      7       -0.43   -1.10  0.14     7.21  0.00
+exit mix: {'trail': 36, 'time': 20, 'guard': 16}
+features (30): coverage {'atr': 72, 'tk_share_1': 72, 'tk_share_5': 72, 'tk_share_15': 72, 'tk_share_accel': 72, 'vol5_vs_60': 72, 'bigprint5_vs_60': 72, 'book_imb05_signed': 72, 'depth_ratio_02_signed': 72, 'depth_ratio_05_signed': 72, 'depth_ratio_1_signed': 72, 'depth_ratio_05_chg15': 72, 'spread_bps': 72, 'reach_moveside': 72, 'speed5_signed': 72, 'speed15_signed': 72, 'liq_with_5': 72, 'liq_against_5': 72, 'liq_with_15': 72, 'liq_against_15': 72, 'liq_with_60': 72, 'liq_against_60': 72, 'premium_signed': 72, 'premium_chg15_signed': 72, 'funding_receive': 72, 'min_entry_to_tp': 72, 'oi_chg_5m': 29, 'oi_chg_15m': 29, 'top_ls_pos_signed': 29, 'taker_bs_signed': 29}
+hour units per block: {'ALL': 46, 'DIST': 22, 'EXHA': 31}
+
+== ONE family: 172 tests (3 blocks × 2 outcomes × features) on HOUR units · 95 % |t| threshold 3.55
+block outcome         feature  N_hours    median  hi_mean  lo_mean    diff      t  fw_p
+ EXHA reach4h     liq_with_60       31  9604.800    7.636    2.463   5.173  2.847 0.416
+ EXHA reach4h     liq_with_15       31  4240.500    7.553    2.542   5.011  2.731 0.555
+ DIST reach4h  speed15_signed       22     2.918   17.616    2.202  15.414  2.629 0.676
+ DIST reach4h   speed5_signed       22     0.994   17.478    2.339  15.138  2.566 0.744
+ DIST reach4h      liq_with_5       22  2272.230   17.427    2.390  15.037  2.543 0.768
+ DIST reach4h taker_bs_signed       12     0.056   22.563    2.765  19.798  2.447 0.855
+  ALL reach4h  speed15_signed       46     2.566   11.372    4.107   7.265  2.407 0.886
+  ALL reach4h     liq_with_60       46 18835.770   11.351    4.128   7.222  2.391 0.896
+ DIST reach4h      tk_share_1       22     0.547    3.013   16.804 -13.791 -2.275 0.954
+ EXHA reach4h      liq_with_5       31  1570.800    7.112    2.955   4.158  2.195 0.981
+  ALL reach4h   speed5_signed       46     1.408   11.000    4.479   6.521  2.133 0.988
+ EXHA reach4h             atr       31     3.417    7.032    3.030   4.002  2.087 0.993
+
+== trade-level reading of the top hour-unit cells (shown, not the test):
+  EXHA · reach4h · liq_with_60: +8.58 vs +2.64 (N 39, t +2.36)
+  EXHA · reach4h · liq_with_15: +8.42 vs +2.79 (N 39, t +2.22)
+  DIST · reach4h · speed15_signed: +18.70 vs +2.15 (N 26, t +3.05)
+  DIST · reach4h · speed5_signed: +18.67 vs +2.18 (N 26, t +3.04)
+  DIST · reach4h · liq_with_5: +18.58 vs +2.27 (N 26, t +2.99)
+
+2D (runner Δ, all touches, rows scored on both): 1458 cells · best t -4.75 ('tk_share_5↑', 'liq_against_15↑', 12, np.float64(-8.953118859795055), np.float64(0.5130686888190398)) · null 95 % 4.66
+2D (reach 4 h): 1458 cells · best t -4.51 ('vol5_vs_60↑', 'liq_with_5↓', 12, np.float64(1.4874525568388501), np.float64(8.964576565909736)) · null 95 % 4.69
+
+#### follow-up: taker_bs_signed (scored 29/72 · halves 14 / 15 · 4 day clusters)
+  reach 4 h: +11.54 vs +9.09 (median +2.24 vs +4.47) · adverse 4 h: +6.70 vs +9.69 (median +2.56 vs +6.61) · ATR 3.38 vs 3.92
+  per ATR (medians): reach 1.39 vs 1.14 · adverse 1.49 vs 1.54 · reach − adverse -0.18 vs -3.15
+  our side hit first at ±3 pp 40% vs 53% · ±5 pp 33% vs 33%
+  runner Δ: -0.55 vs -2.37 (median -4.52 vs -2.46) · ran 21% vs 33% · day-block CI of the gap -3.43 … +28.06
+  reach gap day-block CI -5.00 … +26.45
+  reach4h gap per day {'11-21': '+nan (n 1/0)', '11-22': '-5.0 (n 11/9)', '11-23': '+6.3 (n 2/6)'} · per sleeve {'DIST': '+6.8', 'EXHA': '-5.9', 'FREN': '+nan'}
+  adverse4h gap per day {'11-21': '+nan (n 1/0)', '11-22': '-0.6 (n 11/9)', '11-23': '-5.9 (n 2/6)'} · per sleeve {'DIST': '-7.8', 'EXHA': '-0.5', 'FREN': '+nan'}
+  delta gap per day {'11-21': '+nan (n 1/0)', '11-22': '-3.4 (n 11/9)', '11-23': '-1.1 (n 2/6)'} · per sleeve {'DIST': '+8.5', 'EXHA': '-6.6', 'FREN': '+nan'}
+  high half: 12 coins · 11 hours · top coins' share of its reach {'AKEUSDT': 0.47, 'IDOLUSDT': 0.3, 'BULLAUSDT': 0.09}
+  second resting target x % past the TP (guard = HT floor / own stop, 24 h; maker target, taker + 0.10 slip guard), Δ vs TP:
+    +2 %: high -1.18 · low +0.45 · all -0.34
+    +3 %: high -2.15 · low +0.14 · all -0.97
+    +5 %: high -2.20 · low +0.26 · all -0.92
+    +8 %: high -1.13 · low -0.33 · all -0.72
+
+#### follow-up: liq_with_60 (scored 72/72 · halves 36 / 36 · 4 day clusters)
+  reach 4 h: +11.26 vs +4.17 (median +5.00 vs +2.36) · adverse 4 h: +8.87 vs +4.54 (median +6.35 vs +2.99) · ATR 4.32 vs 2.63
+  per ATR (medians): reach 1.42 vs 0.93 · adverse 1.36 vs 1.53 · reach − adverse -0.47 vs -0.54
+  our side hit first at ±3 pp 47% vs 48% · ±5 pp 48% vs 35%
+  runner Δ: +0.15 vs -2.28 (median -1.10 vs -1.40) · ran 42% vs 28% · day-block CI of the gap -4.11 … +8.38
+  reach gap day-block CI +1.98 … +10.57
+  reach4h gap per day {'11-20': '+6.8 (n 14/13)', '11-21': '+12.5 (n 9/8)', '11-22': '+6.7 (n 10/10)', '11-23': '-4.4 (n 3/5)'} · per sleeve {'DIST': '+8.3', 'EXHA': '+6.5', 'FREN': '-4.3'}
+  adverse4h gap per day {'11-20': '+2.1 (n 14/13)', '11-21': '+2.5 (n 9/8)', '11-22': '+4.8 (n 10/10)', '11-23': '+19.2 (n 3/5)'} · per sleeve {'DIST': '+5.9', 'EXHA': '+1.5', 'FREN': '+7.3'}
+  delta gap per day {'11-20': '+1.7 (n 14/13)', '11-21': '+11.3 (n 9/8)', '11-22': '+0.6 (n 10/10)', '11-23': '-12.5 (n 3/5)'} · per sleeve {'DIST': '+5.1', 'EXHA': '+0.5', 'FREN': '+0.8'}
+  high half: 19 coins · 29 hours · top coins' share of its reach {'AKEUSDT': 0.21, 'IDOLUSDT': 0.18, 'BLESSUSDT': 0.15}
+  second resting target x % past the TP (guard = HT floor / own stop, 24 h; maker target, taker + 0.10 slip guard), Δ vs TP:
+    +2 %: high -0.34 · low -0.24 · all -0.29
+    +3 %: high -0.98 · low -0.08 · all -0.53
+    +5 %: high -0.94 · low +0.69 · all -0.12
+    +8 %: high -0.16 · low -0.55 · all -0.36
+
+#### follow-up: liq_with_5 (scored 72/72 · halves 36 / 36 · 4 day clusters)
+  reach 4 h: +12.01 vs +3.43 (median +4.44 vs +2.57) · adverse 4 h: +8.63 vs +4.77 (median +5.95 vs +3.61) · ATR 3.89 vs 2.94
+  per ATR (medians): reach 1.49 vs 0.93 · adverse 1.40 vs 1.53 · reach − adverse +0.29 vs -0.93
+  our side hit first at ±3 pp 49% vs 46% · ±5 pp 43% vs 44%
+  runner Δ: -1.35 vs -0.78 (median -3.32 vs -0.87) · ran 31% vs 39% · day-block CI of the gap -2.65 … +2.58
+  reach gap day-block CI +5.15 … +10.70
+  reach4h gap per day {'11-20': '+6.1 (n 8/19)', '11-21': '+11.6 (n 11/6)', '11-22': '+9.0 (n 14/6)', '11-23': '+2.8 (n 3/5)'} · per sleeve {'DIST': '+15.1', 'EXHA': '+4.8', 'FREN': '-0.8'}
+  adverse4h gap per day {'11-20': '+5.7 (n 8/19)', '11-21': '+2.2 (n 11/6)', '11-22': '+1.7 (n 14/6)', '11-23': '+12.7 (n 3/5)'} · per sleeve {'DIST': '+4.4', 'EXHA': '+1.4', 'FREN': '+10.9'}
+  delta gap per day {'11-20': '-1.3 (n 8/19)', '11-21': '+3.7 (n 11/6)', '11-22': '-2.1 (n 14/6)', '11-23': '-4.4 (n 3/5)'} · per sleeve {'DIST': '+3.6', 'EXHA': '-4.1', 'FREN': '+0.9'}
+  high half: 18 coins · 33 hours · top coins' share of its reach {'AKEUSDT': 0.3, 'IDOLUSDT': 0.17, 'BLESSUSDT': 0.14}
+  second resting target x % past the TP (guard = HT floor / own stop, 24 h; maker target, taker + 0.10 slip guard), Δ vs TP:
+    +2 %: high -0.73 · low +0.15 · all -0.29
+    +3 %: high -1.56 · low +0.50 · all -0.53
+    +5 %: high -1.24 · low +1.00 · all -0.12
+    +8 %: high -0.92 · low +0.21 · all -0.36

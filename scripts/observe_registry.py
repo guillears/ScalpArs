@@ -139,6 +139,9 @@ BOOKED = {   # booked P&L — `era` = drops fills by WILLY exit era (registered 
     # 📉 (596) EXH_AFTER_DROP judges booked EXHAUSTION fills (−10 … −5 % hour vs the rest) against the frozen 35 % breakeven → the same exit pins
     "scout_exh_after_drop.py": {"exhaustion_tp_atr_mult": 20.0, "exhaustion_tp_cap_pct": 7.0, "exhaustion_sl_atr_mult": 1.5,
                                 "exhaustion_sl_cap_pct": 6.0, "exhaustion_max_hold_hours": 24.0},
+    # 🌡 (644) EXH_BEAR80 judges booked EXHAUSTION fills (> 80 % of coins bearish vs the rest) against the frozen 44.1 % TP-7 breakeven → the same exit pins
+    "scout_exh_bear80_644.py": {"exhaustion_tp_atr_mult": 20.0, "exhaustion_tp_cap_pct": 7.0, "exhaustion_sl_atr_mult": 1.5,
+                                "exhaustion_sl_cap_pct": 6.0, "exhaustion_max_hold_hours": 24.0},
     # 📖 (583) the depth-guard band gate reads booked $ and slippage of shrunk band fills (exit-agnostic: same trade, smaller size)
     "scout_depth_band_583.py": None,
     # 📖📐 (584) the impact-mode gate reads the ENTRY cost only (realised entry slippage vs the stamped modelled walk) — exit-agnostic

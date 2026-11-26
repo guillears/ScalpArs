@@ -39,6 +39,17 @@ RULES      (each priced from the REAL booked TP fill: touch = closed_at, TP pric
            > 0 ∧ the quiet Σ Δ < 0 → ARM_SURGE_CANDIDATE (operator decides) · surge Σ ≤ 0 or quiet Σ ≥ 0 → RETIRE_SPLIT · else extend to
            60 scored hits (same ARM rule, else RETIRE). Resampled backtest: ARM 66 % if real, 12 % by luck. Same freeze holds as the HT
            read + a hold when > 10 % of the deciding hits lack a volume read.
+🪜 FLOOR   (DECISION_LOG 647, operator 2026-11-26 "the exh new suggested tp should and must have a floor" · "go ahead with the EXH floor +6
+           observe line") EXH_RUNNER_F6 — the EXH runner above PLUS a profit floor: stop = min(4 × ATR trail, floor price, own stop), floor =
+           +6 net = E × (100 − 6 − taker) ÷ (100 + taker) (a short's net after taker on both sides; the study's convention); gap → open; 24 h
+           from the touch; Δ vs the booked maker TP as above (funding to the floored exit). Backtest (467 EXH TP hits, today's exit, scripts in
+           reports/TP_HOLD_2026-11-24_data): floor +6 −0.05 pp / hit (older −0.30 · newer +0.08 · 3 / 7 half-years; 88 % close at the floor in a
+           median 6 min); floor +5 −0.21 (shown as INFO, never deciding — one deciding arm only); no floor +0.65 but worst day −23 %.
+           🔒 frozen ONCE, forward fills opened ≥ the DL 647 commit only, the SAME rule as EXH_RUNNER: the first 50 priced TP hits on ≥ 10 UTC
+           days, one-sided 90 % lower bound of mean Δ (day-block bootstrap, 2,000, seed 636) > 0 → ARM CANDIDATE (operator decides) · else KEEP
+           TP 7. Same freeze holds. Fills before the DL 647 commit = an IN-SAMPLE block, never deciding.
+           A hit whose TP sits below the floor (low ATR: TP < ≈ 6.1 %) cannot run under this rule → it sells at TP and enters the read as
+           Δ 0 ('tp<floor'; counted, conservative — zeros only make ARM harder). The +5 info arm never holds the plain / F6 read.
 OUTPUT     summaries only (operator 11-23): N · Σ / mean / median Δ · $ at one size (0.61 × $10k) · exit mix · best · without the best · funding.
 Usage: venv/bin/python -I scripts/scout_tp_runner_636.py"""
 import json
@@ -77,6 +88,7 @@ SURGE_CUT, SURGE_N, SURGE_N2, SURGE_KEY, SURGE_DL = 1.2863, 30, 60, "HT_RUNNER_S
 EXH_N, EXH_DAYS, EXH_Q, BOOT_N, SEED = 50, 10, 0.90, 2000, 636
 ONE_SIZE_USD = 0.61 * 10_000
 LINES = {HT: "HT_RUNNER", EXH: "EXH_RUNNER"}
+F6_DL, F6_KEY, EXH_FLOOR_NET, EXH_FLOOR_INFO = 647, "EXH_RUNNER_F6", 6.0, 5.0     # 🪜 (647) the floored EXH runner (+5 = info only)
 
 
 def _f(x):
@@ -173,6 +185,19 @@ def ht_floor_px(E, floor_net=HT_FLOOR_NET, fee=None):
     """the +5-net floor price (study: E × (100 + 5 + 0.05) ÷ (100 − 0.05); fee = the taker fee %). PURE."""
     fe = TAKER if fee is None else fee
     return E * (100 + floor_net + fe) / (100 - fe)
+
+
+def exh_floor_px(E, floor_net=EXH_FLOOR_NET, fee=None):
+    """🪜 (647) a SHORT's floor price at +floor_net net after the taker fee on both sides: E × (100 − floor − taker) ÷ (100 + taker). PURE."""
+    fe = TAKER if fee is None else fee
+    return E * (100 - floor_net - fe) / (100 + fe)
+
+
+def floor_rows(rows, tag="f6"):
+    """🪜 (647) the floored-runner view of priced EXH rows → [dict(d, why, fund, day, o)]; a row whose floored walk was not priced is left out
+    (counted by the caller). PURE."""
+    return [dict(d=x["d_" + tag], why=x["why_" + tag], fund=x["fund_" + tag], day=x["day"], o=x["o"]) for x in rows
+            if x.get("d_" + tag) is not None]
 
 
 def ht_read(deltas, whys):
@@ -358,8 +383,28 @@ def price_fill(r, side, now_ms, bud, bars_fn=None, funding_fn=None):
     if fs is None and now_ms < t_touch + STALE_H * HOUR:
         return "PENDING"
     fund = None if fs is None else float(-side * fs * px / E)       # a short receives fs; a long pays it (mark-scaled ≈ exit px ÷ E)
+    extra = {}
+    if side < 0:                                                    # 🪜 (647) the floored runners on the same path (+6 deciding, +5 info)
+        for fl, tag in ((EXH_FLOOR_NET, "f6"), (EXH_FLOOR_INFO, "f5")):
+            fpx = exh_floor_px(E, fl)
+            if fpx <= tp_px:                                        # (review) a low-ATR TP below the floor → the rule never runs: sell at TP, Δ 0
+                extra.update({"d_" + tag: 0.0, "why_" + tag: "tp<floor", "fund_" + tag: 0.0})
+                continue
+            w2, px2, t2 = runner_walk(bars, t_touch, tp_px, side, K_ATR * atr, min(fpx, guard))
+            if w2 == "PENDING" or px2 is None:                      # a floor exits no later than the plain runner → only on a broken path
+                extra.update({"d_" + tag: None, "why_" + tag: None, "fund_" + tag: None})
+                continue
+            fs2 = funding_fn(r.pair, t_touch, t2 - MIN1) if funding_fn else _FB.funding_sum_pct(r.pair, t_touch, t2 - MIN1, bud, now_ms)
+            if fs2 is None and now_ms < t_touch + STALE_H * HOUR:
+                if tag == "f5":                                     # (deep review) the info arm never holds the plain / F6 prefix
+                    extra.update({"d_f5": None, "why_f5": None, "fund_f5": None})
+                    continue
+                return "PENDING"                                    # (review) F6: retry like the plain line, never a stuck 'funding unread'
+            f2 = None if fs2 is None else float(-side * fs2 * px2 / E)
+            extra.update({"d_" + tag: delta_pp(side, E, tp_px, px2, f2 or 0.0), "why_" + tag: ("floor" if w2 == "guard" else w2),
+                          "fund_" + tag: f2})
     return dict(d=delta_pp(side, E, tp_px, px, fund or 0.0), why=why, fund=fund, day=t_touch // DAY, atr=atr, o=r.o,
-                surge=vol5_60(bars, t_touch) if side > 0 else None)
+                surge=vol5_60(bars, t_touch) if side > 0 else None, **extra)
 
 
 def _cohort(sleeve, frame):
@@ -379,11 +424,11 @@ def _col(a, c):
     return a[c] if c in a.columns else pd.Series([None] * len(a), index=a.index)
 
 
-def report(frames=None, since_ms=None, era_ms=None, state_path=STATE, now_ms=None, bars_fn=None, funding_fn=None, newest=None):
-    """frames / era_ms = {sleeve: …} (tests); since_ms = the DL 636 forward floor."""
+def report(frames=None, since_ms=None, era_ms=None, state_path=STATE, now_ms=None, bars_fn=None, funding_fn=None, newest=None, f6_since_ms=None):
+    """frames / era_ms = {sleeve: …} (tests); since_ms = the DL 636 forward floor; f6_since_ms = the DL 647 floor (EXH_RUNNER_F6)."""
     now_ms = int(time.time() * 1000) if now_ms is None else int(now_ms)
     L = [f"## 🏃👁 TP_RUNNER observe lines (DECISION_LOG {DL}) — HT 4 × ATR + floor +5 · EXH 4 × ATR, stop kept, no floor — "
-         "runner Δ vs the booked maker TP (pp of entry, funding incl.)", ""]
+         "runner Δ vs the booked maker TP (pp of entry, funding incl.) · 🪜 EXH floor +6 (DL 647)", ""]
     if since_ms is None:
         since_ms = _GK.dl_deploy_ms(DL, lag_min=0, label="TP_RUNNER")
     if since_ms is None:
@@ -434,24 +479,41 @@ def report(frames=None, since_ms=None, era_ms=None, state_path=STATE, now_ms=Non
                 L.append("  " + w)
         else:
             v, txt, k = exh_read([(x["day"], x["d"]) for x in fwd])
-        reads = [(key, v, txt, k)]
+        reads = [(key, v, txt, k, fwd)]
         if sleeve == HT:
             L.append(f"  🔊 surge split (DL {SURGE_DL}; vol 5 min ÷ 60 min at the touch, cut {SURGE_CUT:g} frozen) — IN-SAMPLE: {surge_summary(ins)}")
             L.append(f"     FORWARD: {surge_summary(fwd)}")
-            reads.append((SURGE_KEY,) + surge_read(fwd))
-        for key_, v_, txt_, k_ in reads:
+            reads.append((SURGE_KEY,) + surge_read(fwd) + (fwd,))
+        else:                                   # 🪜 (647) EXH_RUNNER_F6 — the floored runner, its own forward floor and frozen read
+            f6s = f6_since_ms if f6_since_ms is not None else _GK.dl_deploy_ms(F6_DL, lag_min=0, label=F6_KEY)
+            if f6s is None:
+                L.append(f"  🪜 {F6_KEY}: ⚠ NOT EVALUABLE — the DECISION_LOG {F6_DL} commit is not in git yet; nothing is counted.")
+            else:
+                t6 = pd.Timestamp(int(f6s), unit="ms")
+                pre6, fw6 = ins + [x for x in fwd if x["o"] < t6], [x for x in fwd if x["o"] >= t6]
+                ff, nfl = floor_rows(fw6), sum(1 for x in fw6 if x.get("d_f6") is None)
+                L.append(f"  🪜 {F6_KEY} (DL {F6_DL}; 4 × ATR from the running low · floor +{EXH_FLOOR_NET:g} net · own stop kept) — "
+                         f"IN-SAMPLE (before the DL {F6_DL} commit; never deciding): {summary(floor_rows(pre6))}")
+                L.append(f"     FORWARD (opened ≥ {t6:%Y-%m-%d %H:%M} UTC): {summary(ff)}" + (f" · {nfl} floored walk(s) unpriced" if nfl else ""))
+                L.append(f"     info — floor +{EXH_FLOOR_INFO:g} (never deciding): {summary(floor_rows(fw6, 'f5'))}")
+                v6, txt6, k6 = exh_read([(x["day"], x["d"]) for x in ff])
+                reads.append((F6_KEY, v6, txt6, k6, ff))
+        for key_, v_, txt_, k_, src in reads:
             hold = []
             if stopped:
                 hold.append("a fetch stopped this run")
             if v_ != "COLLECTING":
-                dec = fwd[:k_]
+                dec = src[:k_]
                 last_o = dec[-1]["o"]
                 if newest is None or newest < last_o + pd.Timedelta(hours=EXPORT_HOLD_H):
                     hold.append("newest export < the deciding fill's open + 24 h")
                 nf = sum(1 for x in dec if x.get("fund") is None)
                 if nf:
                     hold.append(f"funding unread on {nf} deciding fill(s)")
-                nne = sum(1 for o in ne_fwd_o if o <= last_o)
+                n6 = 0
+                if key_ == F6_KEY:                # 🪜 (647) skipped floored walks count with the not-evaluable fills (> 10 % rule; never a stuck hold)
+                    n6 = sum(1 for x in fw6 if x.get("d_f6") is None and x["o"] <= last_o)
+                nne = sum(1 for o in ne_fwd_o if o <= last_o and (key_ != F6_KEY or o >= t6)) + n6
                 if nne > 0.10 * (k_ + nne):
                     hold.append(f"{nne} forward fills NOT EVALUABLE (> 10 % of the prefix) — check before reading")
                 nus = sum(1 for x in dec if key_ == SURGE_KEY and x.get("surge") is None)

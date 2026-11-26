@@ -1,0 +1,32 @@
+# HT PRE_VOL_SURGE audit — zone (pre_vol > 1.60) vs rest · N · WR · avg TP-6 net % (today's exit)
+
+## ① real fills
+real ALL 60 (every HT fill, any filter era)    zone  33 ·  27% · -1.28 | rest  27 ·  67% · +2.66 | gap +3.95
+real ALL minus burst zone (today's DL 619)     zone  20 ·  35% · -0.49 | rest  27 ·  67% · +2.66 | gap +3.15
+real KEPT (today's filters)                    zone  11 ·  45% · +0.63 | rest  11 · 100% · +6.00 | gap +5.37
+real KEPT minus burst zone                     zone   9 ·  56% · +1.67 | rest  11 · 100% · +6.00 | gap +4.32
+real master only                               zone  26 ·  27% · -1.30 | rest  23 ·  61% · +2.09 | gap +3.39
+real batch only                                zone   7 ·  29% · -1.21 | rest   4 · 100% · +5.99 | gap +7.21
+luck (within-month shuffle, real ALL 60): p 0.001 · real minus burst: p 0.028
+real zone coins: {'AINUSDT': 3, 'UAIUSDT': 3, 'EVAAUSDT': 3, 'ERAUSDT': 2, 'INITUSDT': 2, 'BLURUSDT': 2, 'CYBERUSDT': 2, 'ONEUSDT': 2, 'LAUSDT': 1, 'IOSTUSDT': 1, 'ORDERUSDT': 1, 'FOGOUSDT': 1, 'ONUSDT': 1, 'ACTUSDT': 1, 'ICNTUSDT': 1, 'JCTUSDT': 1, 'KGENUSDT': 1, 'IRYSUSDT': 1, 'KAVAUSDT': 1, 'YBUSDT': 1, 'BLESSUSDT': 1, 'NAORISUSDT': 1}
+
+## ② replica — real fills the backtest also took (same pair, |Δt| ≤ 30 min)
+real fills in the backtest window (≥ 2025-02): 60 · matched in the backtest: 10
+   same pre_vol side: 100% · same outcome sign: 100% · median |Δt| 0 min
+real fills the backtest also took              zone   6 ·  67% · +2.88 | rest   4 · 100% · +6.00 | gap +3.12
+
+## ③ backtest by period
+backtest ALL 300                               zone 176 ·  41% · +0.07 | rest 124 ·  37% · -0.31 | gap -0.39
+backtest minus burst zone                      zone 137 ·  43% · +0.29 | rest 124 ·  37% · -0.31 | gap -0.61
+backtest Oct–Nov 2026 (the real months)        zone  22 ·  45% · +0.56 | rest  26 ·  42% · +0.23 | gap -0.33
+backtest Oct–Nov 2026 minus burst              zone  16 ·  56% · +1.67 | rest  26 ·  42% · +0.23 | gap -1.45
+backtest Jun–Sep 2026                          zone  58 ·  45% · +0.46 | rest  29 ·  31% · -0.91 | gap -1.38
+backtest 2025                                  zone  58 ·  40% · -0.04 | rest  43 ·  49% · +0.88 | gap +0.92
+   per month (zone N/avg | rest N/avg): 2026-01 5/-2.1 | 1/-4.1 · 2026-02 4/+1.0 | 7/-2.6 · 2026-03 10/+1.0 | 4/-1.6 · 2026-04 16/-1.6 | 9/-3.0 · 2026-05 3/-0.7 | 5/-0.1 · 2026-06 8/+2.2 | 5/-4.1 · 2026-07 9/-1.9 | 8/-0.1 · 2026-08 20/+1.0 | 9/-0.7 · 2026-09 21/+0.3 | 7/+0.2 · 2026-10 12/+0.2 | 12/-0.7 · 2026-11 10/+1.0 | 14/+1.1
+
+## ④ spike age (fresh = spike inside the 15-min window, ≤ 20 min)
+real · fresh ≤ 20 min                          zone  26 ·  27% · -1.30 | rest  13 ·  46% · +0.59 | gap +1.89
+real · older > 20 min                          zone   7 ·  29% · -1.22 | rest  14 ·  86% · +4.59 | gap +5.81
+backtest · fresh ≤ 20 min                      zone 125 ·  42% · +0.15 | rest  37 ·  35% · -0.50 | gap -0.65
+backtest · older > 20 min                      zone  51 ·  39% · -0.12 | rest  87 ·  38% · -0.24 | gap -0.12
+   share of fills with a fresh spike: real 65% · backtest 54% · median pre_vol real 1.79 · backtest 1.99

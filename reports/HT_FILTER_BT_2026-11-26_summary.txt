@@ -1,0 +1,35 @@
+HT backtest 300 fills · burst zone 39 removed (today's stack) → 261 · coverage: crowded 100% · pre_vol 100%
+today's stack: N 261 · WR 40% · avg +0.01
+
+=== CROWDED_LONGS: scored 261 · zone 131 · 109 days · WR 37% · avg -0.37 vs rest 130 · WR 44% · avg +0.39
+   DESIGN: zone 14 · +0.26 vs rest 18 · -1.64
+   HOLDOUT: zone 117 · -0.45 vs rest 112 · +0.71
+   half-years (zone N/avg | rest N/avg): 2025-H1 14/+0.26 | 18/-1.64 · 2025-H2 28/-0.11 | 31/+1.77 · 2026-H1 35/-1.79 | 32/-0.30 · 2026-H2 54/+0.25 | 49/+0.70
+   P(zone mean<0) 0.78 · luck p 0.078 · biggest pair 5% / day 2% of zone loss
+   sleeve if blocked: avg +0.01 → +0.39 · DCR -0.017 → +0.038 %/d · maxDD -44 → -16 % · worst day -7.5 → -5.0
+   HOLDOUT if blocked: avg +0.12 → +0.71 · DCR +0.011 → +0.086 · maxDD -44 → -16 % · worst -7.5 → -5.0
+
+=== PRE_VOL_SURGE (all): scored 261 · zone 137 · 118 days · WR 43% · avg +0.29 vs rest 124 · WR 37% · avg -0.31
+   DESIGN: zone 17 · -0.98 vs rest 15 · -0.61
+   HOLDOUT: zone 120 · +0.47 vs rest 109 · -0.27
+   half-years (zone N/avg | rest N/avg): 2025-H1 17/-0.98 | 15/-0.61 · 2025-H2 31/+0.15 | 28/+1.67 · 2026-H1 36/+0.12 | 31/-2.47 · 2026-H2 53/+0.91 | 50/-0.00
+   P(zone mean<0) 0.23 · luck p 0.885 · biggest pair 3% / day 3% of zone loss
+   sleeve if blocked: avg +0.01 → -0.31 · DCR -0.017 → -0.046 %/d · maxDD -44 → -50 % · worst day -7.5 → -5.0
+   HOLDOUT if blocked: avg +0.12 → -0.27 · DCR +0.011 → -0.047 · maxDD -44 → -50 % · worst -7.5 → -5.0
+
+=== PRE_VOL_SURGE outside burst: scored 261 · zone 137 · 118 days · WR 43% · avg +0.29 vs rest 124 · WR 37% · avg -0.31
+   DESIGN: zone 17 · -0.98 vs rest 15 · -0.61
+   HOLDOUT: zone 120 · +0.47 vs rest 109 · -0.27
+   half-years (zone N/avg | rest N/avg): 2025-H1 17/-0.98 | 15/-0.61 · 2025-H2 31/+0.15 | 28/+1.67 · 2026-H1 36/+0.12 | 31/-2.47 · 2026-H2 53/+0.91 | 50/-0.00
+   P(zone mean<0) 0.23 · luck p 0.885 · biggest pair 3% / day 3% of zone loss
+   sleeve if blocked: avg +0.01 → -0.31 · DCR -0.017 → -0.046 %/d · maxDD -44 → -50 % · worst day -7.5 → -5.0
+   HOLDOUT if blocked: avg +0.12 → -0.27 · DCR +0.011 → -0.047 · maxDD -44 → -50 % · worst -7.5 → -5.0
+
+=== BOTH: scored 261 · zone 77 · 70 days · WR 42% · avg +0.13 vs rest 184 · WR 40% · avg -0.05
+   DESIGN: zone 7 · +1.68 vs rest 25 · -1.50
+   HOLDOUT: zone 70 · -0.02 vs rest 159 · +0.18
+   half-years (zone N/avg | rest N/avg): 2025-H1 7/+1.68 | 25/-1.50 · 2025-H2 20/-1.05 | 39/+1.86 · 2026-H1 19/-1.44 | 48/-0.93 · 2026-H2 31/+1.51 | 72/+0.01
+   P(zone mean<0) 0.42 · luck p 0.521 · biggest pair 4% / day 4% of zone loss
+   sleeve if blocked: avg +0.01 → -0.05 · DCR -0.017 → -0.022 %/d · maxDD -44 → -42 % · worst day -7.5 → -7.5
+   HOLDOUT if blocked: avg +0.12 → +0.18 · DCR +0.011 → +0.019 · maxDD -44 → -42 % · worst -7.5 → -7.5
+

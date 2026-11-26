@@ -21,6 +21,14 @@ RULE       every CLOSED DISTRIBUTION_SHORT fill opened ≥ the DL 605 commit + 1
            ≤ the arm's level is out of that arm (Δ ≡ 0). Freezing waits while a kline fetch stopped this run or the
            newest orders export is < the read prefix's last fill + 24 h (an earlier-opened fill could still be open). A fill whose path is still
            incomplete 48 h after entry with the klines answering → NOT_EVALUABLE (out of the read; the read cannot stall).
+🪢 TRAIL   (DECISION_LOG 647, operator 2026-11-26 "add it" — the DL 645 least-bad trail, registered although DL 645 refuted it: 0 / 7
+           backtest half-years, HOLDOUT Δ −0.61 / trade, batch +1.48 in-sample N 8) DIST_TRAIL_SHADOW — the same walk with Exit B's TP / stop / 24 h
+           PLUS an ATR trail: armed once the best low so far (bars before the current one) is ≥ 2 % below the fill price; the stop is then
+           min(own stop, best low × (1 + 0.5 × entry_dist_atr_pct %)) (dist_exit_sim.sim_trade mech 4, arm 2, 0.5 × ATR); a trail exit is a taker
+           market order (fees + slip as a stop); bar-granular like mech 4 (the bar that makes the arming low is not intrabar-stopped). Forward = fills opened ≥ the DL 647 commit only (its own floor; earlier fills are not read).
+           🔒 frozen ONCE (key DIST_TRAIL_SHADOW, same state file) at the first k ≥ 30 priced fills on ≥ 10 UTC days: arm_verdict on Δ = trail − today
+           (one-sided day-cluster bootstrap P(mean Δ > 0) ≥ 0.95 ∧ mean Δ without the best 5 % > 0) → SHIP CANDIDATE (operator decides) · else NO
+           SHIP (keep Exit B); the risk read (DCR / max DD / worst day at 0.61, today vs trail) shown beside it. Same freeze holds.
 Usage: venv/bin/python -I scripts/scout_dist_tp_shadow.py"""
 import json
 import os
@@ -47,13 +55,15 @@ KEY = "DIST_TP_SHADOW"
 STATE = os.path.join(_R, "reports", "SCOUT_DIST_TP_SHADOW.json")
 CACHE = os.path.join(_R, "reports", "backtest_cache", "scout_dist_tp")
 COLS = ("opened_at", "pair", "direction", "status", "entry_strategy", "pnl", "pnl_percentage", "close_reason", "notional_value",
-        "entry_price", "entry_dist_tp_pct", "entry_dist_sl_pct", "entry_dist_model_slip_pct", "entry_depth_mode", "entry_depth_walk_pct")
+        "entry_price", "entry_dist_tp_pct", "entry_dist_sl_pct", "entry_dist_model_slip_pct", "entry_depth_mode", "entry_depth_walk_pct",
+        "entry_dist_atr_pct")
 ARMS = (5.0, 8.0)
 THRU, FEE_IN, FEE_MK, FEE_TK = 0.05, 0.05, 0.02, 0.05
 EXIT_SLIP_MIN = 0.10                     # taker exits pay at least the study's model slip (DL 603)
 HOLD_H, MIN1, HOUR, DAY, PAGE = 24, 60_000, 3_600_000, 86_400_000, 900
 N_MIN, DAYS_MIN, P_MIN, BOOT, SEED, TOP = 30, 10, 0.95, 4000, 7, 0.05
 SIZE = 0.61
+TR_DL, TR_KEY, TR_ARM, TR_K = 647, "DIST_TRAIL_SHADOW", 2.0, 0.5   # 🪢 (647) arm +2 % (best low), trail 0.5 × entry ATR
 
 
 def _thresholds():
@@ -104,6 +114,49 @@ def walk_x(bars, E, te, tp, sl, slip=0.0, entry_slip=None):
         if q[3] <= tpl:
             return "TP", float(tp - FEE_IN - FEE_MK - se), int(q[0])
     return "PENDING", np.nan, None
+
+
+def walk_trail(bars, E, te, tp, sl, atr, slip=0.0, entry_slip=None, arm=TR_ARM, k=TR_K):
+    """🪢 (647) walk_x + the DL 645 ATR trail (dist_exit_sim mech 4): best = min(E, the lowest low of the bars BEFORE this one); armed once
+    (1 − best ÷ E) × 100 ≥ arm; stop = min(E × (1 + sl %), best × (1 + k × atr %)) when armed, else the own stop; stop first on a bar touching
+    both, a gap books the open; a trail exit is a taker exit like the stop. → (why 'TP' | 'STOP' | 'TRAIL' | 'TIME' | 'PENDING' | 'UNPRICED',
+    net %, exit bar open ms). PURE."""
+    if not (E and E > 0 and tp and tp > 0 and sl and sl > 0 and atr and atr > 0):
+        return "UNPRICED", np.nan, None
+    b = [q for q in (bars or []) if int(q[0]) >= int(te) // MIN1 * MIN1 + MIN1]
+    if not b:
+        return "UNPRICED", np.nan, None
+    s = max(float(slip or 0.0), 0.0)
+    se = s if entry_slip is None else max(float(entry_slip), 0.0)
+    sx = max(s, EXIT_SLIP_MIN)
+    own, tpl = E * (1 + sl / 100), E * (1 - (tp + THRU) / 100)
+    taker = lambda px: float(-(px / E - 1) * 100 - FEE_IN - FEE_TK - se - sx)
+    best = E
+    for q in b:
+        if int(q[0]) >= te + HOLD_H * HOUR:
+            return "TIME", taker(float(q[1])), int(q[0])
+        armed = (1 - best / E) * 100 >= arm
+        stop = min(own, best * (1 + k * atr / 100)) if armed else own
+        if q[2] >= stop:
+            return ("TRAIL" if stop < own - 1e-12 else "STOP"), taker(max(float(q[1]), stop)), int(q[0])
+        if q[3] <= tpl:
+            return "TP", float(tp - FEE_IN - FEE_MK - se), int(q[0])
+        best = min(best, float(q[3]))
+    return "PENDING", np.nan, None
+
+
+def trail_risk(rows, d0, d1):
+    """🪢 (647) one-size DCR / max DD / worst day, today vs trail; rows = [((close day today, close day trail), net_today, net_trail)]. PURE."""
+    if not rows:
+        return {}
+    days = np.arange(d0, d1 + 1)
+    out = {}
+    for n, j in (("TODAY", 1), ("TRAIL", 2)):
+        r = pd.Series([x[j] for x in rows]).groupby([x[0][j - 1] for x in rows]).sum().reindex(days, fill_value=0.0).values
+        g = np.maximum(1 + r * SIZE / 100, 1e-9); eq = np.cumprod(g)
+        out[n] = dict(dcr=round((eq[-1] ** (1 / len(g)) - 1) * 100, 3),
+                      dd=round((eq / np.maximum.accumulate(np.r_[1.0, eq])[1:] - 1).min() * 100, 3), worst=round((g.min() - 1) * 100, 3))
+    return out
 
 
 def fetch_bars(pair, te, now_ms, bud):
@@ -187,7 +240,7 @@ def newest_export():
     return t
 
 
-def report(frame=None, since_ms=None, state_path=STATE, now_ms=None, bars_fn=None, newest=None):
+def report(frame=None, since_ms=None, state_path=STATE, now_ms=None, bars_fn=None, newest=None, tr_since_ms=None):
     now_ms = int(time.time() * 1000) if now_ms is None else int(now_ms)
     L = [f"## 🎯👁 DIST_TP_SHADOW (DECISION_LOG {DL}, OBSERVE only) — DISTRIBUTION_SHORT at TP 5 % / 8 % vs today's TP, on real fills "
          "(1m walk from the real fill price from the next minute, the fill's own stop first, TP ≥ 0.05 % through, 24 h; modelled slip; no funding)", ""]
@@ -207,9 +260,13 @@ def report(frame=None, since_ms=None, state_path=STATE, now_ms=None, bars_fn=Non
     if st is not None and not isinstance(st, dict):
         st = None
     rec = (st or {}).get(KEY)
-    if rec is not None and not (isinstance(rec, dict) and {"run_at", "k", "arms"} <= set(rec)):
-        return L + [f"⚠ frozen {KEY} record damaged — operator restore needed; not re-decided.", ""]
+    tp_bad = rec is not None and not (isinstance(rec, dict) and {"run_at", "k", "arms"} <= set(rec))
+    if tp_bad:                                  # (review) a damaged TP record must not hide the trail line below
+        L.append(f"⚠ frozen {KEY} record damaged — operator restore needed; not re-decided.")
+        rec = None
     bud, rows, par, stopped = LS.Budget(), [], [], False
+    trs = tr_since_ms if tr_since_ms is not None else _GK.dl_deploy_ms(TR_DL, lag_min=0, label=TR_KEY)   # 🪢 (647) the trail line's own floor
+    trows, tr_ne = [], []
     for r in a.itertuples():
         E, slip = _f(r.entry_price), _f(getattr(r, "entry_dist_model_slip_pct", None)) or 0.0
         tp0, sl = row_levels(r, _TH_NS)                 # the stamps, else the caps — the levels the engine ran (services.distribution)
@@ -220,6 +277,15 @@ def report(frame=None, since_ms=None, state_path=STATE, now_ms=None, bars_fn=Non
         w0, v0, x0 = walk_x(bars, E, te, tp0, sl, slip, es) if bars else ("UNPRICED", np.nan, None)
         arms = [walk_x(bars, E, te, x, sl, slip, es) if (bars and tp0 and x < tp0) else (w0, v0, x0) for x in ARMS]
         vals = [v0] + [v for _, v, _ in arms]
+        if trs is not None and te >= int(trs):                 # 🪢 (647) the trail walk on the same path — its own list / pending / read
+            atr = _f(getattr(r, "entry_dist_atr_pct", None))
+            tw, tv, tx = walk_trail(bars, E, te, tp0, sl, atr, slip, es) if (bars and atr and atr > 0) else ("UNPRICED", np.nan, None)
+            if v0 == v0 and tv == tv:
+                trows.append((te // DAY, v0, tv, r.o, (x0 // DAY, tx // DAY)))
+            elif not (atr and atr > 0) or (bars is not None and now_ms > te + STALE_H * HOUR):
+                tr_ne.append(r.o)                               # no ATR stamp (never priceable) / no complete path → out of the trail read
+            else:
+                trows.append(None)
         if any(v != v for v in vals):
             if bars is not None and now_ms > te + STALE_H * HOUR:
                 L.append(f"  · {r.pair} {r.o:%m-%d %H:%M} → NOT_EVALUABLE (no complete price path) — out of the read")
@@ -260,7 +326,7 @@ def report(frame=None, since_ms=None, state_path=STATE, now_ms=None, bars_fn=Non
         hold.append("newest export < the last priced fill + 24 h (an earlier-opened fill could still be open)")
     if st is None:
         L.append("⚠ state file corrupt — operator restore needed; not frozen this run.")
-    elif rec is None and res and not hold:
+    elif rec is None and res and not hold and not tp_bad:
         pr = done[:k]
         rr = risk_read([(x[5], x[1], x[2], x[3]) for x in pr], int(min(min(x[5]) for x in pr)), int(max(max(x[5]) for x in pr)))
         rec = dict(run_at=pd.Timestamp(now_ms, unit="ms").strftime("%Y-%m-%d %H:%M UTC"), k=k,
@@ -280,15 +346,75 @@ def report(frame=None, since_ms=None, state_path=STATE, now_ms=None, bars_fn=Non
         for n, d in (rec.get("risk") or {}).items():
             L.append(f"  risk at 0.61 × equity — {n}: DCR {d.get('dcr')} %/day · max DD {d.get('dd')} % · worst day {d.get('worst')} % · "
                      f"DCR at today's drawdown {d.get('eq_dcr') if d.get('eq_dcr') is not None else 'n/a'} %/day")
-    elif res:
+    elif res and not tp_bad:
         L.append("Now: " + " · ".join(f"{n}: {s} — {t}" for n, (s, t) in res.items()))
         if hold:
             L.append("  ⏸ freezing deferred: " + " · ".join(hold) + " — re-checked next run.")
-    else:
+    elif not tp_bad:
         L.append(f"Now: ⏳ COLLECTING — {len(done)}/{N_MIN} fills on {len({x[0] for x in done})}/{DAYS_MIN} days")
+    L += trail_section(trows, tr_ne, trs, st, state_path, now_ms, stopped, newest)
     L.append("  Evidence (DL 603, never counted): backtest 1,547 fills — same size TP 10 +0.93 vs 8 +0.81 vs 5 +0.60 %/fill; equal drawdown "
              "ALL P(better) 0.35–0.52 · HOLDOUT 0.75–0.81 (ranges include 0). A SHIP CANDIDATE is decided with the DIST size (pre-live list).")
     return L + [""]
+
+
+def trail_section(trows, tr_ne, trs, st, state_path, now_ms, stopped, newest):
+    """🪢 (647) the DIST_TRAIL_SHADOW summary + its frozen read (own key). Summaries only."""
+    L = ["", f"### 🪢 DIST_TRAIL_SHADOW (DECISION_LOG {TR_DL}, OBSERVE only) — Exit B + ATR trail (armed at +{TR_ARM:g} %, {TR_K:g} × entry ATR) vs Exit B"]
+    if trs is None:
+        return L + [f"  ⚠ NOT EVALUABLE — the DECISION_LOG {TR_DL} commit is not in git yet; nothing is counted."]
+    done = []
+    for x in trows:
+        if x is None:
+            break
+        done.append(x)
+    d = np.array([x[2] - x[1] for x in done], float)
+    L.append(f"  forward (opened ≥ {pd.Timestamp(int(trs), unit='ms'):%Y-%m-%d %H:%M} UTC): priced {len(done)} on {len({x[0] for x in done})} days"
+             + (f" · Exit B {np.mean([x[1] for x in done]):+.2f} → trail {np.mean([x[2] for x in done]):+.2f} %/fill · Σ Δ {d.sum():+.2f} · "
+                f"better {100 * (d > 0).mean():.0f} %" if len(done) else "") + (f" · {len(tr_ne)} not evaluable" if tr_ne else "")
+             + (" · the read waits at a pending fill" if len(done) < len(trows) else ""))
+    rec = (st or {}).get(TR_KEY) if isinstance(st, dict) else None
+    if rec is not None and not (isinstance(rec, dict) and {"run_at", "k", "state"} <= set(rec)):
+        return L + [f"  ⚠ frozen {TR_KEY} record damaged — operator restore needed; not re-decided."]
+    k = prefix([(x[0],) for x in done])
+    if rec is None and k:
+        sv, tx = arm_verdict(list(d[:k]), [x[0] for x in done[:k]])
+        hold = (["a kline fetch stopped this run"] if stopped else []) + (
+            ["newest export < the last priced fill + 24 h"] if (newest is None or newest < max(x[3] for x in done[:k]) + pd.Timedelta(hours=HOLD_H)) else [])
+        nne = sum(1 for o in tr_ne if o <= max(x[3] for x in done[:k]))
+        if nne > 0.10 * (k + nne):              # (review) a partly-stamped / unpriced prefix would be a filtered sample
+            hold.append(f"{nne} fills NOT EVALUABLE inside the prefix (> 10 %) — check before reading")
+        if st is None:
+            L.append("  ⚠ state file corrupt — operator restore needed; not frozen this run.")
+        elif hold:
+            L.append(f"  Now: {sv} — {tx} · ⏸ freezing deferred: " + " · ".join(hold))
+        else:
+            pr = done[:k]
+            rk = trail_risk([(x[4], x[1], x[2]) for x in pr], int(min(min(x[4]) for x in pr)), int(max(max(x[4]) for x in pr)))
+            rec = dict(run_at=pd.Timestamp(now_ms, unit="ms").strftime("%Y-%m-%d %H:%M UTC"), k=k, state=sv, detail=tx, risk=rk)
+            try:
+                with open(state_path) as fh:            # re-read: the TP-shadow read may have written its key this run
+                    cur = json.load(fh)
+            except (FileNotFoundError, OSError, ValueError):
+                cur = dict(st)
+            cur = cur if isinstance(cur, dict) else dict(st)
+            cur[TR_KEY] = rec
+            try:
+                tmp = state_path + ".tmp"
+                with open(tmp, "w") as fh:
+                    json.dump(cur, fh, indent=1)
+                os.replace(tmp, state_path)
+            except OSError as e:
+                L.append(f"  ⚠ state not saved ({e})")
+    if rec:
+        L.append(f"  **Frozen read ({rec.get('run_at')}, first {rec.get('k')} fills): {rec.get('state')}** — {rec.get('detail')}")
+        for n, v in (rec.get("risk") or {}).items():
+            L.append(f"    risk at 0.61 × equity — {n}: DCR {v.get('dcr')} %/day · max DD {v.get('dd')} % · worst day {v.get('worst')} %")
+    elif not k:
+        L.append(f"  Now: ⏳ COLLECTING — {len(done)}/{N_MIN} fills on {len({x[0] for x in done})}/{DAYS_MIN} days")
+    L.append("  Evidence (DL 645, never counted): backtest HOLDOUT Δ −0.61 / trade, 0 / 7 half-years, DCR +0.85 → +0.24 %/day, max DD −55 → −25 %;"
+             " batch 11-19 → 11-25 (in-sample) −1.83 → −0.35.")
+    return L
 
 
 if __name__ == "__main__":

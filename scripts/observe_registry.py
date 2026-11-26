@@ -105,7 +105,8 @@ EXIT = {
 # 🔂 (532) the second-chance revert gate: today's-exit shadow (sc_base_pnl) is the runner trail / ladder level at the trigger; the
 # booked side is the second chance at the shipped knobs → a change to either makes the line STALE
 # 🎯👁 (605) DIST_TP_SHADOW walks real DIST fills at TP 5 / 8 vs today's Exit B TP with the fill's own stop, 24 h → pinned to Exit B
-EXIT["scout_dist_tp_shadow.py"] = dict(dl="605", sleeves="DISTRIBUTION_SHORT", walks={"distribution_tp_atr_mult": 20.0, "distribution_tp_cap_pct": 10.0,
+# 🪢 (647) DIST_TRAIL_SHADOW (Exit B + the +2 % / 0.5 × ATR trail) rides the same file and the same Exit B pins
+EXIT["scout_dist_tp_shadow.py"] = dict(dl="605 · 647", sleeves="DISTRIBUTION_SHORT", walks={"distribution_tp_atr_mult": 20.0, "distribution_tp_cap_pct": 10.0,
                                        "distribution_sl_atr_mult": 1.5, "distribution_sl_cap_pct": 6.0, "distribution_max_hold_hours": 24.0})
 EXIT["scout_ml_second_chance.py"] = dict(dl="532", sleeves="MOMENTUM LONG (ADX falling at entry)", walks={
     **EXIT["scout_ml_fixed_tp_watch.py"]["walks"]})
@@ -123,8 +124,9 @@ EXIT["scout_blocked_filters.py"] = dict(dl="527 · 529 · 532 · 608", sleeves="
     "frenzy_willy_ht_tp_pct": 6.0, "frenzy_willy_ht_high_target_enabled": False, "frenzy_willy_ht_late_tp_enabled": False,
     "frenzy_willy_ht_max_hold_minutes": 1440.0, "frenzy_willy_stop_pct": 4.0})
 # 🏃👁 (636) TP_RUNNER observe lines: the runner is priced from each REAL booked TP fill (HT +6 / EXH TP 7) → a change to either sleeve's TP,
-# stop or hold makes the lines measure a TP that no longer runs → ⚠ STALE (re-base or retire the same day)
-EXIT["scout_tp_runner_636.py"] = dict(dl="636", sleeves="FRENZY_WILLY_HT · EXHAUSTION_SHORT (TP hits)", walks={
+# stop or hold makes the lines measure a TP that no longer runs → ⚠ STALE (re-base or retire the same day). 🪜 (647) EXH_RUNNER_F6 (the floored
+# EXH runner, floor +6 net) rides the same file and the same EXH pins.
+EXIT["scout_tp_runner_636.py"] = dict(dl="636 · 647", sleeves="FRENZY_WILLY_HT · EXHAUSTION_SHORT (TP hits)", walks={
     "frenzy_willy_ht_tp_pct": 6.0, "frenzy_willy_ht_high_target_enabled": False, "frenzy_willy_ht_late_tp_enabled": False,
     "frenzy_willy_ht_max_hold_minutes": 1440.0, "frenzy_willy_stop_pct": 4.0,
     "exhaustion_tp_atr_mult": 20.0, "exhaustion_tp_cap_pct": 7.0, "exhaustion_sl_atr_mult": 1.5, "exhaustion_sl_cap_pct": 6.0,

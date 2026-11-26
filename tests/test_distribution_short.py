@@ -779,5 +779,5 @@ def test_dist_tp_shadow_605():
     json.dump(st, open(sp, "w"))
     o3 = "\n".join(S.report(frame=fr, since_ms=fl, state_path=sp, now_ms=now, newest=pd.Timestamp(now, unit="ms"), bars_fn=bars_fn))
     assert "TP 5: X" in o3                                                                    # frozen once, never re-decided
-    assert R.EXIT["scout_dist_tp_shadow.py"]["dl"] == "605" and S.DL == 605
+    assert R.EXIT["scout_dist_tp_shadow.py"]["dl"] == "605 · 647" and S.DL == 605   # 🪢 (647) the trail line rides the file
     assert "import scout_dist_tp_shadow as _dtp605" in open(os.path.join(ROOT, "scripts", "opportunity_scout.py"), encoding="utf-8").read()

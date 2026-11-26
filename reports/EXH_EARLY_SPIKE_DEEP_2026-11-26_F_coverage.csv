@@ -1,0 +1,122 @@
+var,theory,cov_design,cov_holdout,n_groups
+s_oi_vol,T3 crowding,99.55423476968797,100.0,5
+s_ls_top_acc,T3 crowding,99.55423476968797,99.90059642147118,5
+s_ls_top_pos,T3 crowding,99.55423476968797,99.95029821073558,5
+s_ls_glob,T3 crowding,99.55423476968797,99.95029821073558,5
+s_taker_1h,T7 taker flow,99.55423476968797,100.0,5
+s_f_last,T3 crowding,100.0,95.07952286282307,7
+s_ssc,,100.0,100.0,5
+s_vd,T2 exhaustion depth,100.0,100.0,5
+g_RSI5,,100.0,100.0,2
+g_RSI1H,,100.0,100.0,2
+g_BBRE15,,100.0,100.0,2
+g_STOCH15,,100.0,100.0,2
+g_VSW15,,100.0,100.0,2
+g_MACD15,,100.0,100.0,2
+g_EMAX15,,100.0,100.0,2
+g_ST15,,100.0,100.0,2
+g_DON15,,100.0,100.0,2
+g_VWAPF,,100.0,100.0,2
+g_VWAPSTR,,100.0,100.0,2
+g_FB4,,100.0,100.0,2
+g_FB1,,100.0,100.0,2
+g_T1,,100.0,100.0,2
+g_DV15,,100.0,100.0,2
+g_DT,,100.0,100.0,2
+g_P2K,,100.0,100.0,2
+g_P2R,,100.0,100.0,2
+g_WS2,,100.0,100.0,2
+g_TIME2,,100.0,100.0,2
+g_TIME4,,100.0,100.0,2
+g_TIME8,,100.0,100.0,2
+g_TIME12,,100.0,100.0,2
+g_TIME24,,100.0,100.0,2
+atr15_pct,T5 coin quality,100.0,100.0,5
+vol24,T5 coin quality,100.0,100.0,5
+lvol24,,100.0,100.0,5
+vd,T2 exhaustion depth,100.0,100.0,5
+vd24,T2 exhaustion depth,100.0,100.0,5
+q5,T5 coin quality,100.0,100.0,5
+hrs_since_peak,T6 time / second peak,100.0,100.0,5
+run_pct,T1 fuel left,100.0,100.0,5
+dd_peak_pct,T1 fuel left,100.0,100.0,5
+dist_vwap_pct,T1 fuel left,100.0,100.0,7
+dist_base_pct,T1 fuel left,100.0,100.0,5
+vmult15,T2 exhaustion depth,100.0,100.0,5
+rsi5,,100.0,100.0,5
+rsi15,,100.0,100.0,5
+adx15,,100.0,100.0,5
+di_diff15,,100.0,100.0,5
+gap15,,100.0,100.0,5
+bar_ret_pct,,100.0,100.0,5
+upwick_share,,100.0,100.0,5
+rsi1h,T8 DIST strength,100.0,100.0,5
+adx1h,,100.0,100.0,5
+di_diff1h,T8 DIST strength,100.0,100.0,5
+gap1h,T8 DIST strength,100.0,100.0,7
+atr1h_pct,,100.0,100.0,5
+rsi4h,T8 DIST strength,100.0,100.0,5
+ret1h_pct,T1 fuel left,100.0,100.0,7
+ret4h_pct,T1 fuel left,100.0,100.0,5
+ret24h_pct,T1 fuel left,100.0,100.0,5
+list_age_d,T5 coin quality,100.0,100.0,5
+fund_last,T3 crowding,100.0,100.0,7
+fund_hourly,,100.0,100.0,2
+prem_last,T3 crowding,60.326894502228825,99.6520874751491,7
+prem_chg1h,,60.326894502228825,99.6520874751491,7
+prem_vs24h,,60.326894502228825,99.6520874751491,7
+oi_chg1h,T3 crowding,98.95988112927192,100.0,7
+oi_chg4h,T3 crowding,98.29123328380386,100.0,5
+oi_to_vol24,T3 crowding,99.03417533432392,100.0,5
+oi_quad,,99.03417533432392,100.0,5
+taker_1h,T7 taker flow,99.03417533432392,100.0,5
+top_pos_ls,T3 crowding,99.03417533432392,99.95029821073558,5
+top_acct_ls,T3 crowding,99.03417533432392,99.90059642147118,5
+glob_ls,T3 crowding,99.03417533432392,99.95029821073558,5
+top_pos_chg4h,T3 crowding,98.29123328380386,99.95029821073558,7
+spot_share1h,,100.0,100.0,5
+ssc,,100.0,100.0,5
+btc_ret1h,T4 market support,100.0,100.0,7
+btc_ret4h,T4 market support,100.0,100.0,7
+btc_ret1d,T4 market support,100.0,100.0,7
+btc_regime,T4 market support,100.0,100.0,5
+btc_adx5,,100.0,100.0,5
+btc_rsi5,,100.0,100.0,5
+btc_rsi1h,,100.0,100.0,5
+btc_slope1h_sign,T4 market support,100.0,100.0,5
+btc_rsi4h,,100.0,100.0,5
+btc_d1_regime,T4 market support,100.0,100.0,0
+breadth,T4 market support,100.0,100.0,5
+breadth_n,,100.0,100.0,5
+frz_24h,,100.0,100.0,5
+frz_active72,,100.0,100.0,5
+rk,,100.0,100.0,5
+rk_best,,100.0,100.0,5
+rk_drop,,100.0,100.0,2
+n_newer_above,,100.0,100.0,2
+vshare,,100.0,100.0,5
+vshare_rel,,100.0,100.0,0
+n_flagged,,100.0,100.0,5
+mcap,T5 coin quality,76.67161961367015,89.86083499005964,5
+g_R_K5,,100.0,100.0,2
+mcap_le50,,76.67161961367015,89.86083499005964,2
+n_prior_exh_sig,T6 time / second peak,100.0,100.0,2
+n_prior_vsw_red,T6 time / second peak,100.0,100.0,5
+st_open_same,,100.0,100.0,5
+st_fills24h,,100.0,100.0,5
+st_stops24h,,100.0,100.0,5
+st_wr24h_closed,,85.73551263001485,96.96819085487077,5
+st_prior_fills_ep,T6 time / second peak,100.0,100.0,2
+st_prior_fill_won,,26.671619613670135,35.337972166998014,2
+close_pos15,,100.0,100.0,5
+lowwick15,,100.0,100.0,5
+range15_pct,,100.0,100.0,5
+last5_share,,100.0,100.0,5
+oi_chg15m,T3 crowding,99.47994056463597,100.0,7
+oi_chg30m,T3 crowding,99.55423476968797,100.0,7
+top_pos_chg1h,,99.55423476968797,99.95029821073558,7
+top_acct_chg4h,,99.40564635958395,99.85089463220676,7
+top_pos_chg4h_rel,,99.40564635958395,99.95029821073558,7
+top_acct_chg4h_rel,,99.40564635958395,99.85089463220676,7
+pos_minus_acct_rel,,99.40564635958395,99.85089463220676,7
+glob_chg4h,,99.40564635958395,99.95029821073558,7

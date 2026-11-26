@@ -1562,6 +1562,14 @@ def run():
     except Exception as _eb80_e:
         log(f"EXH_BEAR80 line failed: {_eb80_e}")
         _rg_sec += ["## 🌡 EXH_BEAR80", "", f"Unavailable this run ({str(_eb80_e)[:120]}).", ""]
+    try:                                               # ⏱ Nov-26 EXH_EARLY_SPIKE watch line (DECISION_LOG 648; forward, booked)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_exh_early_spike_648 as _ees
+        _rg_sec += _ees.run(now_ms)
+    except Exception as _ees_e:
+        log(f"EXH_EARLY_SPIKE line failed: {_ees_e}")
+        _rg_sec += ["## ⏱ EXH_EARLY_SPIKE", "", f"Unavailable this run ({str(_ees_e)[:120]}).", ""]
     # ⛔ (DECISION_LOG 609) the DL 579 exit-override gate (TP 10 vs the study's TP 5) is RETIRED — the sleeve no longer runs TP 10
     # (scout_exh_exit_override.py stays as the shared pricing library); its successor is the EXH_TP7 gate below
     try:                                               # 🎯🔒 (DECISION_LOG 609) EXH TP 7 vs TP 10 on real fills — the revert gate of the TP-7 change

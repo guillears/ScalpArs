@@ -223,3 +223,90 @@ def test_load_sweeps_old_tmp_orphans(_iso):
     assert M.load_persisted() == 0                                                      # no cache file: still sweeps, never raises
     assert not old.exists() and new.exists() and other.exists()                         # only OUR orphans older than 10 min
     assert M._sweep_orphans(str(d / "nope")) == 0                                       # missing dir → 0, no raise
+
+
+def test_alpha_fallback_parse_and_pick():
+    """(DECISION_LOG 646) Alpha token-list fallback: active tokens only, exactly one price-matched token per ticker, multiplier pairs."""
+    pl = {"data": [dict(symbol="ELSA", marketCap="21505963.5", price="0.0841"),
+                   dict(symbol="DUP", marketCap="5e6", price="1.00"), dict(symbol="DUP", marketCap="9e6", price="1.02"),
+                   dict(symbol="TWIN", marketCap="5e6", price="1.00"), dict(symbol="TWIN", marketCap="9e6", price="40"),
+                   dict(symbol="OFF", marketCap="5e6", price="1", offline=True), dict(symbol="GONE", marketCap="5e6", price="1", fullyDelisted=True),
+                   dict(symbol="ZERO", marketCap="0", price="1"), dict(symbol="BAD", marketCap="x", price="1"),
+                   dict(symbol="CAT", marketCap="3e7", price="0.000012")]}
+    t = M.parse_alpha(pl)
+    assert set(t) == {"ELSA", "DUP", "TWIN", "CAT"} and M.parse_alpha(None) == {} and M.parse_alpha({"data": "x"}) == {}
+    assert M.alpha_pick(t, "ELSAUSDT", "0.0832") == 21505963.5                    # within 25 %
+    assert M.alpha_pick(t, "ELSAUSDT", "0.20") is None                            # a different coin's price → refused
+    assert M.alpha_pick(t, "ELSAUSDT", None) is None and M.alpha_pick(t, "ELSAUSDT", "nan") is None   # no price check → no cap
+    assert M.alpha_pick(t, "DUPUSDT", "1.01") is None                            # two active tokens price alike → refused
+    assert M.alpha_pick(t, "TWINUSDT", "1.01") == 5e6                            # the price check picks the one that matches
+    assert M.alpha_pick(t, "1000CATUSDT", "0.0121") == 3e7                       # 1000X: futures price = 1000 × token price
+    assert M.alpha_pick(t, "OFFUSDT", "1") is None and M.alpha_pick(t, "ELSABTC", "1") is None
+
+
+def test_alpha_fallback_feeds_turnover_cap_only(monkeypatch):
+    """(DL 646) an Info-panel miss fills the Alpha cap into turnover_cap() only — get() (FLATBASE route, stamps) stays None; a card found
+    never triggers the fallback; the Alpha list is cached (TTL)."""
+    calls = []
+
+    class R:
+        def __init__(self, js, code=200):
+            self._j, self.status_code = js, code
+
+        def json(self):
+            return self._j
+
+        @property
+        def content(self):
+            import json as _js
+            return _js.dumps(self._j).encode()
+
+    class C:
+        async def get(self, url, params=None):
+            calls.append(url)
+            if url == M.URL:
+                return R({"data": None} if params["symbol"] == "elsa" else {"data": {"alias": params["symbol"].upper(), "mc": 5e7, "rk": 9}})
+            if url == M.ALPHA_URL:
+                return R({"data": [dict(symbol="ELSA", marketCap="2e7", price="0.084")]})
+            return R({"symbol": params["symbol"], "price": "0.0832"})
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+    async def no_sleep(*a):
+        return None
+
+    async def no_save():
+        return True
+    import httpx
+    monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **k: C())
+    monkeypatch.setattr(M.asyncio, "sleep", no_sleep)
+    monkeypatch.setattr(M, "save_persisted", no_save)
+    monkeypatch.setattr(M, "_alpha", {"ts": 0.0, "ok_ts": 0.0, "by": {}})
+    monkeypatch.setattr(M, "_alpha_lock", None)
+    monkeypatch.setattr(M, "_alpha_cache", {})
+    monkeypatch.setattr(M, "_cache", {})
+    asyncio.run(M._refresh(["EVAAUSDT"]))
+    assert M.get("EVAAUSDT") == (5e7, 9) and M.turnover_cap("EVAAUSDT") == 5e7 and M.ALPHA_URL not in calls   # card → no fallback
+    asyncio.run(M._refresh(["ELSAUSDT"]))
+    assert M.get("ELSAUSDT") == (None, None) and M.turnover_cap("ELSAUSDT") == 2e7
+    n = calls.count(M.ALPHA_URL)
+    asyncio.run(M._refresh(["ELSAUSDT"]))
+    assert calls.count(M.ALPHA_URL) == n                                                                     # list cached (TTL)
+    M._alpha_cache["ELSAUSDT"] = (2e7, 0.0)
+    assert M.turnover_cap("ELSAUSDT") is None                                                                # same staleness rule
+    M._alpha["ok_ts"] = 0.0; M._alpha["ts"] = M.time.time()                                                   # a table whose last GOOD parse is old
+    assert asyncio.run(M._alpha_mcap(C(), "ELSAUSDT")) is None                                               # is never used
+    assert M.alpha_symbols("1000CATUSDT") == ["1000CAT", "CAT"] and M.alpha_symbols("X") == []
+
+
+def test_turnover_readers_use_turnover_cap_and_flatbase_does_not():
+    import inspect
+    from services import trading_engine as TE
+    src = inspect.getsource(TE.TradingEngine._willy_turnover)
+    assert "turnover_cap(pair)" in src
+    fb = open(TE.__file__).read()
+    assert "_mc = _mcs.get(pair)[0]" in fb                                                                  # FLATBASE route unchanged

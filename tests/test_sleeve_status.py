@@ -186,3 +186,22 @@ def test_dist_not_vsw_shows_the_multiple():
     assert ln3["reason"] == "candle not red (7.10×)"
     ln4 = SS._decision_line("DIST", dict(last, reason="exchange quote volume 5.00× the 20-candle mean (need ≥ 5×, red)"), 2_000, SS.DIST_REASON)
     assert ln4["reason"] == "red candle 5.00× (needs 5×)"   # rounded at 2 dp: a red candle just under the cut, not "not red"
+
+
+def test_plain_willy_outcome_is_not_an_ht_line():
+    """(DECISION_LOG 646, operator: "HT: WILLY A opened") a plain FRENZY_WILLY's own open-path outcome never shows on the HT line; the
+    routing texts that concern HT still do; an older HT text is shown instead of the newer plain outcome."""
+    import datetime as dt
+    now = int(dt.datetime(2026, 11, 26, 2, 0, tzinfo=dt.timezone.utc).timestamp() * 1000)
+    for t in ("11-26 00:35 WILLY A opened", "11-26 00:35 WILLY A refused: price moved 3.11% before the order (max 1.0%)",
+              "11-26 00:35 WILLY B already entered — a FRENZY_WILLY on this pair opened at / after this bar"):
+        assert S.build("MOVEUSDT", now, TH, flag=dict(willy_last=t)) == [], t
+    for t, why in (("11-26 01:45 WILLY A armed · red bar refused: turnover unreadable", "turnover unreadable"),
+                   ("11-26 01:45 WILLY A armed · waiting red", "11-26 01:45 WILLY A armed · waiting red")):
+        L = S.build("ELSAUSDT", now, TH, flag=dict(willy_last=t))
+        assert L and L[0]["sleeve"] == "HT", t
+    L = S.build("MOVEUSDT", now, TH, flag=dict(willy_ht_last="11-25 20:00 WILLY HT A refused: armed filter WILLY_FAILED_SPIKE",
+                                               willy_last="11-26 00:35 WILLY A opened"))
+    assert L[0]["sleeve"] == "HT" and "FAILED_SPIKE" in L[0]["reason"]
+    assert not S.PLAIN_OUTCOME_RE.search("11-26 00:35 WILLY HT A opened")                    # HT's own text is never filtered
+    assert not S.PLAIN_OUTCOME_RE.search("11-26 00:35 WILLY A (R_NOMISS) refused: 24 h volume $9 < $20M")

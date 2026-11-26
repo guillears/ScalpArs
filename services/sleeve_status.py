@@ -19,6 +19,11 @@ HOUR_MS = 3_600_000
 SLEEVE_OF_STRATEGY = {"EXHAUSTION_SHORT": "EXH", "DISTRIBUTION_SHORT": "DIST", "FLATBASE_SHORT": "FB", "FRENZY_WILLY_HT": "HT",
                       "FRENZY_WILLY": "WILLY", "FRENZY_LONG": "LONG"}
 PLAIN_OFF_TXT = "plain WILLY entries OFF"   # 🎲 (DECISION_LOG 587) the engine's WILLY_PLAIN_OFF outcome text (willy_last)
+# 🎲 (DECISION_LOG 646, operator: "HT: WILLY A opened" read as an HT block) a PLAIN FRENZY_WILLY open-path outcome in willy_last — the
+# setup passed turnover, so it was never an HT candidate: "WILLY A opened" / "WILLY A refused: …" / "WILLY A already entered". The routing
+# texts that DO concern HT ("WILLY A armed · …", "… red bar refused: turnover …", "(R_NOMISS) refused") never match. HT's own texts
+# ("WILLY HT A …") live in willy_ht_last.
+PLAIN_OUTCOME_RE = _re.compile(r"\bWILLY [AB] (?:opened\b|refused: |already entered)")
 ICON = {"EXH": "🪫", "WIDE": "🌐", "DIST": "📉", "FB": "🩳", "HT": "🎲", "WILLY": "🎲", "LONG": "🔥"}
 RSI_MAX_AGE_MS = 30 * 60_000
 FB_STATE_TEXT = {"SHADOW": "shadow · turnover ≤ 1, no order", "MISSED": "missed · the S4 close was not judged",
@@ -182,6 +187,7 @@ def build(pair, now_ms, th, *, open_es=None, flag=None, exh_eps: Iterable = (), 
                 cands = [utc_prefix_ms(flag.get(k), now_ms) for k in ('willy_ht_last', 'willy_last') if flag.get(k)]
                 # (587 re-review 11) a "plain WILLY entries OFF" refusal is a WILLY outcome by design, never an HT block → not shown
                 cands = [c for c in cands if PLAIN_OFF_TXT not in c[1]]
+                cands = [c for c in cands if not PLAIN_OUTCOME_RE.search(c[1])]   # (646) a plain WILLY's own outcome is not an HT line
                 if cands:
                     at, txt = max(cands, key=lambda c: (c[0] or 0))   # the NEWER of the two outcome texts (UTC prefix stripped: reason AND hover)
                     tail = txt.split("refused: ", 1)[1] if "refused: " in txt else txt.split(" · ")[-1]

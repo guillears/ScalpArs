@@ -240,6 +240,143 @@ def load_persisted() -> int:
         return 0
 
 
+# 🅰 (DECISION_LOG 646) FALLBACK for coins the Info-panel endpoint has no card for (Binance ALPHA coins listed on futures only, e.g. ELSAUSDT:
+# data = null → the WILLY / HT turnover filter read "unreadable" and refused every setup, 3× 11-21 → 11-25). Binance's own Alpha token list
+# (public, the same JSON the Alpha page reads) carries marketCap per token. Accepted ONLY when exactly one ACTIVE Alpha token with that
+# symbol has a price within ALPHA_PRICE_TOL of the pair's futures price (× the pair's 1000… multiplier) — a different coin with the same
+# ticker is never accepted (Alpha has duplicate tickers across chains). Any failure → None, as before.
+# SCOPE: the Alpha cap lives in its OWN cache (_alpha_cache) and is read ONLY through turnover_cap() — the WILLY / HT turnover filter and
+# its displayed ratio. get() (FLATBASE's turnover route, whose cap-unknown cohort TRADES; the entry_mcap_usd / cmc_rank stamps) is unchanged.
+ALPHA_URL = "https://www.binance.com/bapi/defi/v1/public/wallet-direct/buw/wallet/cex/alpha/all/token/list"
+FAPI_PRICE_URL = "https://fapi.binance.com/fapi/v1/ticker/price"   # weight 1, only on the fallback path
+ALPHA_TTL_S = 600.0          # the list is re-read at most every 10 min (one ≈ 700-token download serves every pair)
+ALPHA_RETRY_S = 120.0        # after a failed download, wait this long before trying again
+ALPHA_PRICE_TOL = 0.25       # |futures price ÷ (multiplier × Alpha price) − 1| must be ≤ this
+_alpha: Dict[str, object] = {"ts": 0.0, "ok_ts": 0.0, "by": {}}   # ts = last download attempt · ok_ts = last good parse
+_alpha_lock: Optional[asyncio.Lock] = None   # one download at a time (a second task waits, then reads the fresh table)
+_alpha_cache: Dict[str, Tuple[float, float]] = {}   # pair → (mcap_usd, fetched_at) — Alpha fallback only, never persisted
+
+
+def turnover_cap(pair: str) -> Optional[float]:
+    """🅰 (DL 646) the market cap the WILLY / HT turnover filter uses: the Info-panel cap (get), else the Alpha fallback cap — same staleness
+    rule, never the network. None when neither is known."""
+    mc = get(pair)[0]
+    if mc is not None:
+        return mc
+    v = _alpha_cache.get(pair)
+    if not v or time.time() - v[1] > 3 * _interval_s():
+        return None
+    return v[0]
+
+
+async def _fill_alpha(client, pair: str) -> None:
+    """after an Info-panel miss: the Alpha fallback into _alpha_cache (background paths only). Never raises."""
+    try:
+        am = await _alpha_mcap(client, pair)
+        if am is not None:
+            _alpha_cache[pair] = (am[0], am[1])   # stamped with the TABLE's age, so turnover_cap's staleness rule sees it
+    except Exception:
+        pass
+
+
+def parse_alpha(payload) -> Dict[str, list]:
+    """Alpha token-list JSON → {SYMBOL: [(mcap_usd, price_usd), …]} over ACTIVE tokens (not offline, not fully delisted) with a positive,
+    finite market cap and price. {} on anything unexpected. Pure."""
+    out: Dict[str, list] = {}
+    try:
+        rows = (payload or {}).get("data") or []
+    except AttributeError:
+        return out
+    if not isinstance(rows, list):
+        return out
+    for r in rows:
+        try:
+            if not isinstance(r, dict) or r.get("offline") is True or r.get("fullyDelisted") is True:
+                continue
+            sym = str(r.get("symbol") or "").upper().strip()
+            mc, px = float(r.get("marketCap")), float(r.get("price"))
+            if sym and math.isfinite(mc) and mc > 0 and math.isfinite(px) and px > 0:
+                out.setdefault(sym, []).append((mc, px))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def _alpha_cands(p: str):
+    """[(SYMBOL, multiplier)] for an upper-case USDT pair: the full base, then the 1000…-stripped one."""
+    full = p[:-4]
+    out = [(full, 1.0)]
+    m = _MULT_PREFIX.match(full)
+    if m and full[m.end():]:
+        out.append((full[m.end():], float(m.group(1))))
+    return out
+
+
+def alpha_symbols(pair) -> list:
+    """the Alpha tickers a pair could map to ([] for a non-USDT pair). Pure."""
+    if not isinstance(pair, str):
+        return []
+    p = pair.upper().strip()
+    return [s_ for s_, _ in _alpha_cands(p)] if p.endswith("USDT") and len(p) > 4 else []
+
+
+def alpha_pick(table: Dict[str, list], pair: str, fut_price) -> Optional[float]:
+    """the Alpha market cap for a futures pair, or None. Tries the full base, then the multiplier-stripped one (1000X → X, price × 1000);
+    a candidate is accepted only when exactly ONE active token with that symbol prices within ALPHA_PRICE_TOL of the futures price. An
+    unreadable futures price → None (no price check = no cap). Pure."""
+    try:
+        fp = float(fut_price)
+    except (TypeError, ValueError):
+        return None
+    if not (math.isfinite(fp) and fp > 0) or not isinstance(pair, str):
+        return None
+    p = pair.upper().strip()
+    if not p.endswith("USDT") or len(p) <= 4:
+        return None
+    for sym, mult in _alpha_cands(p):
+        ok = [mc for mc, px in (table or {}).get(sym, []) if abs(fp / (mult * px) - 1.0) <= ALPHA_PRICE_TOL]
+        if len(ok) == 1:
+            return ok[0]
+        if len(ok) > 1:
+            return None   # two active tokens price alike under one ticker: refuse rather than guess
+    return None
+
+
+async def _alpha_mcap(client, pair: str) -> Optional[float]:
+    """the fallback read for one pair (network; background paths only). → (mcap_usd, table_age_ts) or None. Never raises.
+    The list is re-downloaded after ALPHA_TTL_S (after ALPHA_RETRY_S when the last attempt failed); a table whose last GOOD parse is
+    older than 3 × the refresh interval is not used (a dead endpoint never serves stale caps). One download at a time (lock)."""
+    global _alpha_lock
+    try:
+        if _alpha_lock is None:
+            _alpha_lock = asyncio.Lock()
+        async with _alpha_lock:
+            now = time.time()
+            ok_age = now - float(_alpha["ok_ts"])
+            due = ALPHA_RETRY_S if (not _alpha["by"] or float(_alpha["ok_ts"]) < float(_alpha["ts"])) else ALPHA_TTL_S
+            if now - float(_alpha["ts"]) > due or (ok_age > ALPHA_TTL_S and now - float(_alpha["ts"]) > ALPHA_RETRY_S):
+                _alpha["ts"] = now
+                r = await client.get(ALPHA_URL)
+                if r.status_code == 200:
+                    t = parse_alpha(await asyncio.to_thread(json.loads, r.content))   # the ≈ 1 MB decode off the event loop
+                    if t:
+                        _alpha["by"] = t; _alpha["ok_ts"] = time.time()
+        by, ok_ts = _alpha["by"], float(_alpha["ok_ts"])
+        if not by or time.time() - ok_ts > 3 * _interval_s():
+            return None
+        if not any(sym in by for sym in alpha_symbols(pair)):
+            return None   # no candidate ticker on Alpha: no price request
+        r = await client.get(FAPI_PRICE_URL, params={"symbol": pair.upper()})
+        fp = r.json().get("price") if r.status_code == 200 else None
+        mc = alpha_pick(by, pair, fp)
+        if mc is not None:
+            logger.info(f"[MCAP] {pair}: no Info-panel card — Alpha token list cap ${mc / 1e6:.1f}M (price-checked)")
+            return mc, ok_ts
+        return None
+    except Exception:
+        return None
+
+
 async def _fetch_pair(client, pair: str) -> Tuple[Optional[float], Optional[int]]:
     """one pair's (mcap_usd, cmc_rank) from the endpoint (every lookup candidate, polite pacing) — (None, None) on any failure."""
     mc, rk = None, None
@@ -279,6 +416,9 @@ def _start_one(pair: str):
         v = _cache.get(pair)
         if v and time.time() - v[2] <= _interval_s():
             return None, False   # fresh already
+        va = _alpha_cache.get(pair)
+        if va and time.time() - va[1] <= _interval_s():
+            return None, False   # 🅰 (646) a fresh Alpha cap — nothing more to fetch
         if time.time() - _one_req.get(pair, 0.0) < ONE_PAIR_DEDUPE_S:
             return None, False
         _one_req[pair] = time.time()
@@ -288,6 +428,8 @@ def _start_one(pair: str):
                 import httpx
                 async with httpx.AsyncClient(timeout=8.0, headers={"User-Agent": "Mozilla/5.0"}) as client:
                     mc, rk = await _fetch_pair(client, pair)
+                    if mc is None:
+                        await _fill_alpha(client, pair)   # 🅰 (646) turnover_cap only
                 if mc is not None:
                     _cache[pair] = (mc, rk, time.time())
                     await save_persisted()   # 🗄 background: a restart right after still has this cap
@@ -342,6 +484,7 @@ async def _refresh(pairs: Iterable[str]) -> None:
                     ok += 1
                 else:
                     fail += 1
+                    await _fill_alpha(client, pair)   # 🅰 (646) turnover_cap only
                 await asyncio.sleep(0.15)          # ~50 pairs ≈ 10 s per refresh — polite to the endpoint
         if ok:
             await save_persisted()   # 🗄 background task (never the trading path), atomic, fail-safe

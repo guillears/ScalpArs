@@ -13428,7 +13428,7 @@ class TradingEngine:
         from services.mcap_service.get (in-memory cache only — never the network on this path; its staleness rule applies). → (R or None)."""
         try:
             from services import mcap_service as _mcs
-            return vol_mcap_ratio(vol24, _mcs.get(pair)[0])
+            return vol_mcap_ratio(vol24, _mcs.turnover_cap(pair))   # 🅰 (DL 646) Info-panel cap, else the Alpha fallback
         except Exception:
             return None
 
@@ -13458,7 +13458,7 @@ class TradingEngine:
                 _note[pair] = "24 h volume unreadable"
                 return None                      # the volume is the missing half: no cap fetch can fix it
             from services import mcap_service as _mcs
-            if _mcs.get(pair)[0] is not None:
+            if _mcs.turnover_cap(pair) is not None:
                 _note[pair] = "cap cached, ratio unreadable"
                 return None
             _b = self.__dict__.setdefault('_willy_cap_wait_budget', {})
@@ -13552,7 +13552,7 @@ class TradingEngine:
             try:   # 🔄 (round-3 #4) a flagged pair without a cap gets a one-pair background fetch (deduped 10 min) — before WILLY needs it
                 if float(getattr(th, 'frenzy_willy_max_vol_mcap_ratio', 0) or 0) > 0:
                     from services import mcap_service as _mcs
-                    if _mcs.get(pair)[0] is None:
+                    if _mcs.turnover_cap(pair) is None:
                         _mcs.request_pair(pair)
             except Exception:
                 pass

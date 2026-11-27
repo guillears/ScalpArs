@@ -151,8 +151,11 @@ def _flatbase_row_target(th, row) -> Optional[Tuple[float, str]]:
         if not (e and e > 0 and q and q > 0) or f is None:
             return None
         import config as _cfg
-        from services.flatbase import rtp_net_tp
-        net = rtp_net_tp(e, f / (e * q) * 100.0, float(getattr(_cfg.trading_config, 'maker_fee', 0.00018)), th)
+        from services.flatbase import rtp_net_tp, paid_funding_pct
+        # 💸 (DECISION_LOG 653) flatbase_tp_counts_funding: the limit moves out by the funding PAID on this row (funding_fee_usd, the accrual's
+        # DB total) — the monitor sweep re-prices it after each settlement (target moved → re-price)
+        net = rtp_net_tp(e, f / (e * q) * 100.0, float(getattr(_cfg.trading_config, 'maker_fee', 0.00018)), th,
+                         funding_paid_pct=paid_funding_pct(getattr(row, 'funding_fee_usd', None), e, q))
         return (net, "FRENZY_TP") if net and net > 0 else None
     except Exception:
         return None

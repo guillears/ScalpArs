@@ -112,7 +112,7 @@ def write(S, Tt, J, meta, book, mark):
         if sp is None:
             ex.append(dict(sleeve=sl, exit="NOT PRICED — " + C.NOT_PRICED_WHY.get(sl, "")))
         elif sp["kind"] == "price":
-            ex.append(dict(sleeve=sl, exit=f"TP −{sp['tp']:g} % maker · stop +{sp['sl']:g} %{' incl. funding paid' if sp['stop_counts_funding'] else ''} · {sp['hold_min'] // 60} h"))
+            ex.append(dict(sleeve=sl, exit=f"TP −{sp['tp']:g} % maker{' + funding paid' if sp.get('tp_counts_funding') else ''} · stop +{sp['sl']:g} %{' incl. funding paid' if sp['stop_counts_funding'] else ''} · {sp['hold_min'] // 60} h"))
         elif sp["kind"] == "atr":
             ex.append(dict(sleeve=sl, exit=f"TP min({sp['tp_atr']:g}×ATR, {sp['tp_cap']:g}) % maker · SL min({sp['sl_atr']:g}×ATR, {sp['sl_cap']:g}) % · "
                                            f"{sp['hold_min'] // 60} h (ATR: journal stamp, else Wilder ATR14 on 15m closed ≤ the signal)"))

@@ -1701,6 +1701,14 @@ class SignalThresholds(BaseModel):
     # cuts > saves). 🔒 Revert gate (alert only, scripts/scout_flatbase_confirm_watch.py FS lines): the first 5 funding-fired stops vs the price-only
     # stop on the same fill — Σ Δ < 0 → REVERT · any CUT (the price-only stop would have ended in profit) → REVIEW. Code default off.
     flatbase_stop_counts_funding: bool = False
+    # 💸 FLATBASE_TP_COUNTS_FUNDING (DECISION_LOG 653, operator 2026-11-27 "yes build the net take profit"): ON = the take profit moves out by
+    # the NET funding PAID so far (0.05 % steps; a net receipt never moves it in) — the resting maker limit sits at fill × (1 − (tp + paid) %),
+    # re-priced by the resting-TP sweep after each accrual write (≤ ~65 min after a settlement: on hourly coins about one settlement behind). Evidence: backtest 545 · +1.155 → +1.224 %/fill (161 changed: 156 better / 5 worse;
+    # DESIGN +0.17 · HOLDOUT +0.05) · real kept fills (17 master + 5 batch) +2.06 → +2.18, 6 changed, all better (POWR +3.12 → +4.93);
+    # DL 616's family-wise p 0.46 (many cells). 🔒 Revert (scripts/scout_fb_net_tp_653.py, alert only, frozen once): the first 20 closed FB
+    # fills from the commit, each walked under the old price TP on its own path → Σ (net-TP − price-TP) < 0, or ≥ 3 fills that hit the price
+    # TP but stopped under the net TP → flag REVERT. Code default OFF; trading_config.json ON.
+    flatbase_tp_counts_funding: bool = False
     flatbase_invest_mult: float = 0.5             # DL 577 (operator 2026-11-17 "piece 1 at 0.5x 5x": the full-history Kelly-after-clustering size, ≈ 0.45–0.5× notional) · was 0.4 DL 528 C5 (5 % cap: one −10 stop ≈ 4.8 % of the account) · was 0.2 = momentum_long_invest_mult (DL 298): the margin share
     flatbase_lev_mult: float = 0.25               # × the STRONG_BUY leverage (20 × 0.25 = 5×; DL 544 operator early revert of the DL 533 8× step: one −10 stop at 8× ≈ 7.8 % of the account > the 5 %-per-trade limit, at 5× ≈ 4.9 %) — its own field; 8× is its MAX (−10 stop, backstop 10.5 % ≤ the 11.04 % liquidation-share cap; liquidation ≈ 12.0 %)
     # its OWN optional open cap ON TOP of the shared bot slots (DL 515), 0 = no cap. Operator decided 10 on 2026-10-22 (the DL 348 no-slot lane): the study's bursts reached 24 open

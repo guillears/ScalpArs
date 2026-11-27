@@ -208,7 +208,7 @@ def price_signal(r, spec, k, coin, now_ms, data_end_ms, fb_end_ms=None):
     fund, fund_ok = SRC.funding_history(r["pair"], e_ms, e_ms + spec["hold_min"] * C.MIN_MS, now_ms)
     pk = k.iloc[i0:]
     w = X.walk(pk.o.to_numpy(), pk.h.to_numpy(), pk.l.to_numpy(), pk.c.to_numpy(), pk.open_ms.to_numpy(), e, side, tp, sl, spec["hold_min"],
-               funding=fund, stop_counts_funding=spec["stop_counts_funding"], entry_slip_pct=eslip, exit_slip_pct=0.0, entry_ms=e_ms)
+               funding=fund, stop_counts_funding=spec["stop_counts_funding"], tp_counts_funding=spec.get("tp_counts_funding", False), entry_slip_pct=eslip, exit_slip_pct=0.0, entry_ms=e_ms)
     xslip, xslip_src = 0.0, "maker_tp"
     if w["reason"] not in ("TP", "NO_PATH", "NO_LEVELS"):
         xf = fb_cost_at(coin, int(w["exit_ms"]), eout) if w["exit_ms"] == w["exit_ms"] else math.nan

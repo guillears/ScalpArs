@@ -26,6 +26,7 @@ _NO_LITE_C = {"frenzy_lite_c_enabled": False}                     # LITE walked 
 
 EXIT = {
     "scout_flatbase_confirm_watch.py": dict(dl="417 · 428 · 604 · 607", sleeves="FLATBASE_SHORT", walks={"flatbase_tp_pct": 5.0, "flatbase_stop_pct": 10.0, "flatbase_max_hold_hours": 72.0,
+                                                                                         "flatbase_tp_counts_funding": False,   # 💸 (653) its TP6 / FS arms walk the PRICE TP → ⚠ STALE under the net TP
                                                                                          "flatbase_confirm_hours": 24.0}),   # ✅ (428) the revert gate reads confirmed fills
     # ⛔ (609) the DL 579 EXHAUSTION exit-override gate (TP 10 vs the study's TP 5) RETIRED 2026-11-21 — the sleeve runs TP 7 now; the module
     # stays as the shared pricing library (scout_exh_ssc_oivol / scout_distribution_586 / scout_exh_tp7_609 import it) → listed in NONE
@@ -37,6 +38,9 @@ EXIT = {
     "scout_exh_ssc_oivol.py": dict(dl="582 · 609", sleeves="EXHAUSTION_SHORT (blocked EXH_SSC_OIVOL signals)", walks={"exhaustion_tp_atr_mult": 20.0,
                                    "exhaustion_tp_cap_pct": 7.0, "exhaustion_sl_atr_mult": 1.5, "exhaustion_sl_cap_pct": 6.0,
                                    "exhaustion_max_hold_hours": 24.0}),
+    # 💸 (653) FB net TP revert gate walks each fill under the old price TP and the net TP (stop +10 incl. funding, 72 h) → STALE on a change
+    "scout_fb_net_tp_653.py": dict(dl="653", sleeves="FLATBASE_SHORT", walks={"flatbase_tp_pct": 5.0, "flatbase_stop_pct": 10.0, "flatbase_tp_counts_funding": True, "flatbase_stop_counts_funding": True,
+                                   "flatbase_max_hold_hours": 72.0}),
     # 📉🌡 (651) DIST_CRASH_FUNDING revert gate prices blocked DIST signals with Exit B → STALE on a DIST exit change
     "scout_dist_crash_funding_651.py": dict(dl="651", sleeves="DISTRIBUTION_SHORT (blocked DIST_CRASH_FUNDING signals)", walks={"distribution_tp_atr_mult": 20.0,
                                             "distribution_tp_cap_pct": 10.0, "distribution_sl_atr_mult": 1.5, "distribution_sl_cap_pct": 6.0,
@@ -64,7 +68,8 @@ EXIT = {
     # traded fills reads them under the SAME exit (real_by_exit_fn); the FBX switch-back gate walks both. The exit-shadow reads (DL 367 / 370
     # / 390) and OBS-FB1 stay FROZEN to the +8 / −15 rule by design (labelled in their lines; parity is era-aware) — not stale, not the live exit.
     "scout_flatbase_short.py": dict(dl="348 · 367 · 370 · 390 · 407 · 408", sleeves="FLATBASE_SHORT (+ blocked WILLY leg)",
-                                    walks={"flatbase_tp_pct": 5.0, "flatbase_stop_pct": 10.0, "flatbase_max_hold_hours": 72.0, **_OLD_WILLY}),
+                                    walks={"flatbase_tp_pct": 5.0, "flatbase_stop_pct": 10.0, "flatbase_max_hold_hours": 72.0,
+                                           "flatbase_tp_counts_funding": False, **_OLD_WILLY}),   # 💸 (653) its shadows walk the PRICE TP
     # 🚪 (411) exit shadows on FLIPS only (fades / momentum answered by history, operator 10-29) — the walks use each fill's LIVE stop
     # (−0.7 widened to 1.5 × entry ATR, capped −1.2) and Δ reads the BOOKED flip exit (FAN flips' short runner trail, flip_fan_runner_strpk):
     # a change to any of these keys makes the line STALE (the −0.7 base is a confidence-tier stop_loss outside `thresholds` — not pinned)

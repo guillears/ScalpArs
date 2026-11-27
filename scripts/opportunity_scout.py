@@ -1661,6 +1661,14 @@ def run():
     except Exception as _dcf_e:
         log(f"DL 651 DIST_CRASH_FUNDING gate failed: {_dcf_e}")
         _rg_sec += ["## 📉🌡 DIST_CRASH_FUNDING (DL 651)", "", f"Unavailable this run ({str(_dcf_e)[:120]}).", ""]
+    try:                                               # 💸 Nov-27 FLATBASE net take profit revert gate (DECISION_LOG 653; net vs price TP on each fill)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_fb_net_tp_653 as _fbn
+        _rg_sec += _fbn.run()
+    except Exception as _fbn_e:
+        log(f"DL 653 FB net TP gate failed: {_fbn_e}")
+        _rg_sec += ["## 💸 FLATBASE net TP (DL 653)", "", f"Unavailable this run ({str(_fbn_e)[:120]}).", ""]
     try:   # 🎯👁 (DECISION_LOG 605) DIST TP 5 / 8 vs today's TP on real fills — observe only
         _sd = os.path.dirname(os.path.abspath(__file__))
         _sd in sys.path or sys.path.insert(0, _sd)

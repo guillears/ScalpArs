@@ -19,7 +19,7 @@ import numpy as np
 from common import MAKER_PCT, STOP_FILL, TAKER_PCT, TP_THROUGH_PCT
 
 
-def walk(o, h, l, c, t, entry_px, side, tp_pct, sl_pct, hold_min, funding=None, stop_counts_funding=False,
+def walk(o, h, l, c, t, entry_px, side, tp_pct, sl_pct, hold_min, funding=None, stop_counts_funding=False, tp_counts_funding=False,
          entry_slip_pct=0.0, exit_slip_pct=0.0, taker_pct=None, maker_pct=None, through_pct=TP_THROUGH_PCT, entry_ms=None,
          stop_fill=STOP_FILL):
     """→ dict(reason, exit_px, exit_ms, minutes, final, gross_pct, fees_pct, slip_pct, funding_pct, net_pct, mfe_pct, mae_pct,
@@ -51,6 +51,9 @@ def walk(o, h, l, c, t, entry_px, side, tp_pct, sl_pct, hold_min, funding=None, 
             fcum += pay
             fi += 1
         paid = max(0.0, -fcum) if stop_counts_funding else 0.0
+        if tp_counts_funding:   # 💸 (DECISION_LOG 653) the FLATBASE TP moves out by the funding paid (received never moves it)
+            tp_px = e * (1 + side * (tp_pct + max(0.0, -fcum)) / 100.0)
+            tp_trig = tp_px * (1 + side * through_pct / 100.0)
         sl_eff = sl_pct - paid
         sl_px = e * (1 - side * sl_eff / 100.0)
         fav = (h[k] / e - 1) * 100 * side if side > 0 else (l[k] / e - 1) * 100 * side

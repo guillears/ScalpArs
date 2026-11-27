@@ -96,7 +96,7 @@ def flatbase_config_errors(th, base_leverage=20.0) -> list:
     (base_leverage × flatbase_lev_mult, the STRONG_BUY level the sleeves open at) must sit ≥ MANUAL_BACKSTOP_MIN_GAP_PCT beyond the stop."""
     errs = []
     for k in ('flatbase_short_enabled', 'resting_tp_flatbase_enabled', 'flatbase_shares_bot_slots', 'flatbase_higher_high_block',
-              'flatbase_funding_above_base_block', 'flatbase_stop_counts_funding'):   # 🧺 (515) · 🔺 (540) · 💸 (601) · 💸 (607)
+              'flatbase_funding_above_base_block', 'flatbase_stop_counts_funding', 'flatbase_tp_counts_funding'):   # 🧺 (515) · 🔺 (540) · 💸 (601) · 💸 (607) · 💸 (653)
         if not isinstance(getattr(th, k, False), bool):
             errs.append(f"{k} must be true or false")
     _nb = _fin(getattr(th, 'flatbase_min_dist_above_base_pct', 0.0))   # 📏 (DECISION_LOG 577) the near-base skip
@@ -433,18 +433,21 @@ def flatbase_exit_for(entry_px, price, held_minutes, th, resting_tp=False, fundi
     (the backstop and the time cap still run). line = the price move % that fired (TP / stop) or the current move (time).
     💸 (DECISION_LOG 607, operator 2026-11-21) flatbase_stop_counts_funding ON → the stop reads the price move MINUS the funding PAID so far
     (funding_paid_pct ≥ 0, % of the entry notional; received funding never counts): STOP_LOSS when move − paid ≤ −stop % (KERNEL #25: price
-    +10 % plus 1.6 % hourly funding booked −11.7 %). The TP and the time cap are unchanged."""
+    +10 % plus 1.6 % hourly funding booked −11.7 %). The time cap is unchanged.
+    💸 (DECISION_LOG 653, operator 2026-11-27) flatbase_tp_counts_funding ON → the TP moves out by the NET funding paid (0.05 % steps): FRENZY_TP
+    when move ≥ tp % + paid (a ≈ +5 % NET target; a net receipt never moves it in). Live it moves ≤ ~65 min after a settlement (the accrual
+    cadence: 10-min wake, ≤ 1 read / 55 min per row) — on hourly coins about one settlement behind. The resting limit is re-priced the same way (flatbase.tp_price_pct via resting_tp._flatbase_row_target)."""
     p = flatbase_params(th)
     try:
         mv = short_move_pct(entry_px, price)
-        _paid = 0.0
-        if bool(getattr(th, 'flatbase_stop_counts_funding', False)):
-            _fp = _fin(funding_paid_pct)
-            _paid = _fp if (_fp is not None and 0 < _fp < 100) else 0.0
+        _fp = _fin(funding_paid_pct)
+        _fpaid = _fp if (_fp is not None and 0 < _fp < 100) else 0.0
+        _paid = _fpaid if bool(getattr(th, 'flatbase_stop_counts_funding', False)) else 0.0
+        _tp = tp_price_pct(th, _fp)   # 💸 (653) the same bound / step as the resting limit
         if mv is not None and mv - _paid <= -p['stop'] + 1e-9:   # (1e-9: a price exactly ON the level fires — float noise never holds it open)
             return True, "STOP_LOSS", -p['stop']
-        if mv is not None and mv >= p['tp'] - 1e-9 and not resting_tp:
-            return True, "FRENZY_TP", p['tp']
+        if mv is not None and mv >= _tp - 1e-9 and not resting_tp:
+            return True, "FRENZY_TP", _tp
         if held_minutes is not None and float(held_minutes) >= p['max_hold_h'] * 60.0:
             return True, "MAX_HOLD_TIME", (mv if mv is not None else -p['stop'])   # always a number: the caller's log format never raises
         return False, "MAX_HOLD_TIME", -p['stop']
@@ -456,13 +459,29 @@ def max_hold_minutes(th) -> int:
     return int(round(flatbase_params(th)['max_hold_h'] * 60))
 
 
-def rtp_net_tp(entry_px, entry_fee_pct, maker_fee_rate, th) -> Optional[float]:
+def tp_price_pct(th, funding_paid_pct=None) -> float:
+    """💸 (DECISION_LOG 653) the PRICE distance of the take profit: flatbase_tp_pct, plus the NET funding paid so far (% of the entry
+    notional; a net receipt / unreadable / absurd → + 0) when flatbase_tp_counts_funding is on. Rounded DOWN to 0.05 % steps (review: one
+    re-price per 0.05 % of funding, not per tick — the sweep caps live exchange actions). Never raises."""
+    tp = flatbase_params(th)['tp']
+    try:
+        if bool(getattr(th, 'flatbase_tp_counts_funding', False)):
+            f = _fin(funding_paid_pct)
+            if f is not None and 0 < f < 50:
+                return tp + math.floor(f / 0.05 + 1e-9) * 0.05
+    except Exception:
+        pass
+    return tp
+
+
+def rtp_net_tp(entry_px, entry_fee_pct, maker_fee_rate, th, funding_paid_pct=None) -> Optional[float]:
     """the NET take profit (the resting-TP machinery speaks net %) whose maker limit rests at price × (1 − tp %): 100·m − entry fee % −
-    the maker fee on the exit notional (services.exec_shadow.net_pct_at, solved for the limit at −tp). None on bad input."""
+    the maker fee on the exit notional (services.exec_shadow.net_pct_at, solved for the limit at −tp). 💸 (653) tp = tp_price_pct (+ the
+    funding paid when flatbase_tp_counts_funding is on). None on bad input."""
     e, ef, mk = _fin(entry_px), _fin(entry_fee_pct), _fin(maker_fee_rate)
     if not (e and e > 0) or ef is None or mk is None or ef < 0 or mk < 0:
         return None
-    m = flatbase_params(th)['tp'] / 100.0
+    m = tp_price_pct(th, funding_paid_pct) / 100.0
     net = 100.0 * m - ef - mk * 100.0 * (1.0 - m)
     return round(net, 6) if net > 0 else None
 

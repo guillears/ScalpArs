@@ -10178,7 +10178,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             return (f" · target at the spike high, up to +{_g('frenzy_willy_high_tp_max_pct', 8.0):g} / SL −{_g('frenzy_willy_stop_pct', 4.0):g} / "
                     f"{_g('frenzy_willy_max_hold_minutes', 90):g} min · late +{_g('frenzy_willy_late_tp_pct', 0.25):g} after {_g('frenzy_willy_late_tp_minutes', 30.0):g} min")
         if es == "FLATBASE_SHORT":
-            return f" · TP +{_g('flatbase_tp_pct', 5.0):g} / SL −{_g('flatbase_stop_pct', 10.0):g} / {_g('flatbase_max_hold_hours', 72.0):g} h"
+            return (f" · TP +{_g('flatbase_tp_pct', 5.0):g}{' + funding paid' if _g('flatbase_tp_counts_funding', False) is True else ''} / "
+                    f"SL −{_g('flatbase_stop_pct', 10.0):g}{' incl. funding paid' if _g('flatbase_stop_counts_funding', False) is True else ''} / "
+                    f"{_g('flatbase_max_hold_hours', 72.0):g} h")   # 💸 (607 / 653)
         if es == "EXHAUSTION_SHORT":
             return (f" · TP min({_g('exhaustion_tp_atr_mult', 3.0):g}×ATR, {_g('exhaustion_tp_cap_pct', 5.0):g} %) / SL min({_g('exhaustion_sl_atr_mult', 1.5):g}×ATR, "
                     f"{_g('exhaustion_sl_cap_pct', 5.0):g} %) / {_g('exhaustion_max_hold_hours', 24.0):g} h")

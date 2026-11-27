@@ -54,7 +54,8 @@ def exit_specs(th):
     out = {
         "FLATBASE_SHORT": dict(kind="price", side=-1, tp=float(g("flatbase_tp_pct")), sl=float(g("flatbase_stop_pct")),
                                hold_min=int(round(float(g("flatbase_max_hold_hours")) * 60)),
-                               stop_counts_funding=bool(g("flatbase_stop_counts_funding", False))),
+                               stop_counts_funding=bool(g("flatbase_stop_counts_funding", False)),
+                               tp_counts_funding=bool(g("flatbase_tp_counts_funding", False))),   # 💸 (DECISION_LOG 653)
         "EXHAUSTION_SHORT": dict(kind="atr", side=-1, tp_atr=float(g("exhaustion_tp_atr_mult")), tp_cap=float(g("exhaustion_tp_cap_pct")),
                                  sl_atr=float(g("exhaustion_sl_atr_mult")), sl_cap=float(g("exhaustion_sl_cap_pct")),
                                  hold_min=int(round(float(g("exhaustion_max_hold_hours")) * 60)), stop_counts_funding=False),

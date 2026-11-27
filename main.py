@@ -5231,6 +5231,8 @@ def _frenzy_monitor_payload():
                 # 🪫 (578) EXHAUSTION_SHORT: switch, the values the engine USES, the episodes it is tracking now
                 "exhaustion_enabled": getattr(_th, 'exhaustion_short_enabled', False) is True,
                 "exhaustion_ssc_oivol_enabled": getattr(_th, 'exhaustion_ssc_oivol_block_enabled', False) is True,   # 🧯 (582)
+                "exhaustion_bear80_enabled": getattr(_th, 'exhaustion_bear80_block_enabled', False) is True,   # 🌡 (650)
+                "exhaustion_early_spike_enabled": getattr(_th, 'exhaustion_early_spike_block_enabled', False) is True,   # ⏱ (650)
                 "exhaustion": __import__('services.exhaustion', fromlist=['exhaustion_params']).exhaustion_params(_th),
                 "exhaustion_wide_enabled": getattr(_th, 'exhaustion_wide_enabled', False) is True,   # 🌐 (585)
                 # 📉 (586) DISTRIBUTION_SHORT: switch + the values the engine USES (it reads EXHAUSTION's tracked FRENZY episodes)

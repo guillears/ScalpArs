@@ -32,7 +32,8 @@ FB_STATE_TEXT = {"SHADOW": "shadow · turnover ≤ 1, no order", "MISSED": "miss
 EXH_REASON = {"EXH_NO_SPOT": "no spot", "EXH_SSC_OIVOL": "OI filter", "EXH_SSC_OIVOL_UNREAD": "OI unread", "EXH_VOL_DECAY": "vol_decay",
               "EXH_SPOT_SHARE": "spot share", "EXH_VOL24_LOW": "24 h volume", "EXH_PAIR_HELD": "pair held", "EXH_NO_DATA": "no data",
               "EXH_NO_SIGNAL": "no cross", "EXH_LATE": "late", "EXH_BOOK_FULL": "book full", "EXH_READ_CAP": "read cap", "EXH_FAILED": "error",
-              "EXH_OPEN_REFUSED": "open refused", "EXH_SPOT_MISMATCH": "spot mismatch"}   # 🔤 (589 re-review 5)
+              "EXH_OPEN_REFUSED": "open refused", "EXH_SPOT_MISMATCH": "spot mismatch",
+              "EXH_BEAR80": "market too bearish", "EXH_BEAR80_UNREAD": "breadth unread", "EXH_EARLY_SPIKE": "too soon after spike"}   # 🔤 (589 re-review 5) · 🌡⏱ (650)
 DIST_REASON = {"DIST_POS_CHG": "top traders not cutting", "DIST_POS_UNREAD": "positions unread", "DIST_NOT_VSW": "volume < 5×",
                "DIST_VOL24_LOW": "24 h volume", "DIST_PAIR_HELD": "pair held", "DIST_NO_DATA": "no data", "DIST_LATE": "late",
                "DIST_BOOK_FULL": "book full", "DIST_RSI1H_UNREAD": "RSI1h unread", "DIST_FAILED": "error", "DIST_OPEN_REFUSED": "open refused"}

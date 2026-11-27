@@ -31,7 +31,8 @@ def _th(**kw):
              exhaustion_sl_cap_pct=5.0, exhaustion_max_hold_hours=24.0, exhaustion_max_hours_after_spike=72.0, exhaustion_min_vol_usd=20e6,
              exhaustion_invest_mult=0.5, exhaustion_lev_mult=0.25, resting_tp_exhaustion_enabled=True, broker_backstop_pct=2.5,
              exhaustion_ssc_oivol_block_enabled=False, exhaustion_ssc_oivol_ssc_min=-0.0366, exhaustion_ssc_oivol_oivol_min=0.128,
-             exhaustion_wide_enabled=False, distribution_short_enabled=False)   # 🌐 (585) / 📉 (586) off here: their own test files drive them   # 🧯 (582) off here: tests/test_exh_ssc_oivol.py drives it
+             exhaustion_wide_enabled=False, distribution_short_enabled=False,
+             exhaustion_bear80_block_enabled=False, exhaustion_early_spike_block_enabled=False)   # 🌡⏱ (650) off here: tests/test_exh_regime_650.py drives them   # 🌐 (585) / 📉 (586) off here: their own test files drive them   # 🧯 (582) off here: tests/test_exh_ssc_oivol.py drives it
     d.update(kw)
     return NS(**d)
 

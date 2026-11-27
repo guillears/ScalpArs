@@ -58,13 +58,15 @@ SLIP_A, SLIP_B = -0.041640290342889685, 0.27612727721342023   # reports/SPOT_SHA
 DEFAULTS = dict(rsi_period=14, rsi_level=70.0, vol_decay_min=0.6366, ssc_max=-0.0066, tp_atr=3.0, tp_cap=5.0, sl_atr=1.5, sl_cap=5.0,
                 max_hold_h=24.0, max_h=72.0, min_vol=20e6, invest=0.5, lev=0.25,
                 oivol_ssc_min=-0.0366, oivol_min=0.128,   # 🧯 (DECISION_LOG 582) EXH_SSC_OIVOL block cuts
-                wide_vol_mult=15.0, wide_min_vol=5e6)     # 🌐 (DECISION_LOG 585) the WIDE universe
+                wide_vol_mult=15.0, wide_min_vol=5e6,     # 🌐 (DECISION_LOG 585) the WIDE universe
+                bear_max=80.0, min_h_spike=0.5)           # 🌡⏱ (DECISION_LOG 650) EXH_BEAR80 / EXH_EARLY_SPIKE cuts
 FIELDS = dict(rsi_period='exhaustion_rsi_period', rsi_level='exhaustion_rsi_level', vol_decay_min='exhaustion_vol_decay_min',
               ssc_max='exhaustion_spot_share_chg_max', tp_atr='exhaustion_tp_atr_mult', tp_cap='exhaustion_tp_cap_pct',
               sl_atr='exhaustion_sl_atr_mult', sl_cap='exhaustion_sl_cap_pct', max_hold_h='exhaustion_max_hold_hours',
               max_h='exhaustion_max_hours_after_spike', min_vol='exhaustion_min_vol_usd', invest='exhaustion_invest_mult',
               lev='exhaustion_lev_mult', oivol_ssc_min='exhaustion_ssc_oivol_ssc_min', oivol_min='exhaustion_ssc_oivol_oivol_min',
-              wide_vol_mult='exhaustion_wide_spike_vol_mult', wide_min_vol='exhaustion_wide_min_vol_usd')
+              wide_vol_mult='exhaustion_wide_spike_vol_mult', wide_min_vol='exhaustion_wide_min_vol_usd',
+              bear_max='exhaustion_bear_pct_max', min_h_spike='exhaustion_min_hours_after_spike')
 MAX_H_CAP = 100.0                          # the 1,500-bar window must hold the spike bar, 25 h of volume and the RSI warm-up
 _RANGES = dict(rsi_period=("a whole number ≥ 2 and ≤ 50", lambda x: 2 <= x <= 50 and x == int(x)),
                rsi_level=("a number > 50 and < 100", lambda x: 50 < x < 100),
@@ -79,7 +81,9 @@ _RANGES = dict(rsi_period=("a whole number ≥ 2 and ≤ 50", lambda x: 2 <= x <
                oivol_ssc_min=("a number ≥ −1 and ≤ 1 (spot-share change, a fraction)", lambda x: -1.0 <= x <= 1.0),
                oivol_min=("a number ≥ 0 and ≤ 100 (open interest ÷ 24 h quote volume)", lambda x: 0 <= x <= 100.0),
                wide_vol_mult=("a number > 0 and ≤ 100 (× the normal hour)", lambda x: 0 < x <= 100.0),
-               wide_min_vol=("a number ≥ 0 (USD)", lambda x: x >= 0))
+               wide_min_vol=("a number ≥ 0 (USD)", lambda x: x >= 0),
+               bear_max=("a number ≥ 50 and ≤ 100 (market bearish %)", lambda x: 50 <= x <= 100),
+               min_h_spike=("a number ≥ 0 and ≤ 24 (hours after the spike)", lambda x: 0 <= x <= 24))
 
 # the journal's status (models.ExhaustionSignal) — one row per evaluated signal
 ST_OPENED, ST_BLOCKED, ST_REFUSED = "OPENED", "BLOCKED", "REFUSED"
@@ -88,6 +92,7 @@ B_NO_DATA, B_NO_SPOT, B_VOL24, B_VOL_DECAY, B_SPOT_SHARE, B_NO_SIGNAL = ("EXH_NO
                                                                          "EXH_SPOT_SHARE", "EXH_NO_SIGNAL")
 B_PAIR_HELD, B_OPEN_REFUSED, B_FAILED, B_LATE = "EXH_PAIR_HELD", "EXH_OPEN_REFUSED", "EXH_FAILED", "EXH_LATE"
 B_SSC_OIVOL, B_SSC_OIVOL_UNREAD = "EXH_SSC_OIVOL", "EXH_SSC_OIVOL_UNREAD"   # 🧯 (DECISION_LOG 582) the block · the fail-open counter
+B_BEAR80, B_BEAR80_UNREAD, B_EARLY_SPIKE = "EXH_BEAR80", "EXH_BEAR80_UNREAD", "EXH_EARLY_SPIKE"   # 🌡⏱ (DECISION_LOG 650)
 C_SPOT_MAPPED = "EXH_SPOT_MAPPED"   # 🔤 (DECISION_LOG 589) engine counter (NOT a filter block): a perp read against its prefix-stripped spot symbol
 B_SPOT_MISMATCH = "EXH_SPOT_MISMATCH"   # 🔤 (589 re-review 5) a mapped spot coin that does not price like the perp (or an unreadable close) → blocked
 B_SPOT_MISMATCH_TXT = "mapped spot price mismatch"
@@ -123,7 +128,8 @@ def exhaustion_config_errors(th, base_leverage=20.0) -> list:
     (base_leverage × exhaustion_lev_mult) must sit ≥ MANUAL_BACKSTOP_MIN_GAP_PCT beyond the widest stop (exhaustion_sl_cap_pct)."""
     errs = []
     for k in ('exhaustion_short_enabled', 'resting_tp_exhaustion_enabled', 'momentum_long_entries_enabled', 'momentum_short_entries_enabled',
-              'exhaustion_ssc_oivol_block_enabled', 'exhaustion_wide_enabled'):
+              'exhaustion_ssc_oivol_block_enabled', 'exhaustion_wide_enabled', 'exhaustion_bear80_block_enabled',
+              'exhaustion_early_spike_block_enabled'):
         if not isinstance(getattr(th, k, True), bool):
             errs.append(f"{k} must be true or false")
     vals = {}
@@ -525,6 +531,48 @@ def ssc_oivol_block(ssc, oi_usd, vol24, th) -> Tuple[bool, bool, Optional[float]
     if ov is None or s is None:
         return False, True, ov
     return bool(s > p['oivol_ssc_min'] and ov > p['oivol_min']), False, ov
+
+
+# ── 🌡⏱ EXH_BEAR80 + EXH_EARLY_SPIKE entry blocks (DECISION_LOG 650 — operator, DECLARED OVERRIDE) ───────────────────────────────────────
+# FRENZY-universe signals only (the lines were built and backtested on FRENZY episodes; WIDE keeps its own DL 585 gate). Judged after every
+# other RULE gate (execution refusals — book full / late / depth guard — come later and are not modelled), so a block = a signal the rule
+# stack would otherwise have sent to the order path (what the revert scout prices). BEAR80: the market breadth
+# (the scan's published breadth snapshot — the value stamped as entry_bear_pct, which the observe line read) > bear_max (80, strict); no
+# snapshot ≤ 30 min old (restart / stalled scan) → None → FAIL-OPEN (counted EXH_BEAR80_UNREAD). EARLY_SPIKE: hours after the spike (rounded to 2 decimals, exactly the
+# entry_frenzy_hours stamp) < min_h_spike (0.5, strict). BEAR80 is judged first (a signal in both zones is counted once, as BEAR80).
+
+def bear80_enabled(th) -> bool:
+    """the EXH_BEAR80 switch (exhaustion_bear80_block_enabled); anything but True = off."""
+    return getattr(th, 'exhaustion_bear80_block_enabled', False) is True
+
+
+def early_spike_enabled(th) -> bool:
+    """the EXH_EARLY_SPIKE switch (exhaustion_early_spike_block_enabled); anything but True = off."""
+    return getattr(th, 'exhaustion_early_spike_block_enabled', False) is True
+
+
+def regime_block(bear_pct, T, sp, universe, th) -> Tuple[Optional[str], bool, Optional[str]]:
+    """(block code or None, bear unread, reason). bear_pct = the market bearish % now (None = not computed) · T = the signal bar close ms ·
+    sp = the spike ms (the hours read = round((T − sp) / 1 h, 2), the stamp) · universe = FRENZY / WIDE (WIDE → never blocked). Each switch
+    is checked here. Never raises."""
+    try:
+        if str(universe or UNIV_FRENZY).upper() != UNIV_FRENZY:
+            return None, False, None
+        p = exhaustion_params(th)
+        unread = False
+        if bear80_enabled(th):
+            b = _fin(bear_pct)
+            if b is None:
+                unread = True
+            elif b > p['bear_max']:
+                return B_BEAR80, False, f"market {b:.1f} % bearish > {p['bear_max']:g} % — DL 650 declared override, shadow-priced"
+        if early_spike_enabled(th):
+            h = round((int(T) - int(sp)) / 3_600_000, 2)
+            if h < p['min_h_spike']:
+                return B_EARLY_SPIKE, unread, f"{h:.2f} h after the spike < {p['min_h_spike']:g} h — DL 650 declared override, shadow-priced"
+        return None, unread, None
+    except Exception:   # (650 review) never raises — any bad input → no block
+        return None, False, None
 
 
 # ── EXIT (paper = live) ────────────────────────────────────────────────────────────────────────────────────────────────────────────

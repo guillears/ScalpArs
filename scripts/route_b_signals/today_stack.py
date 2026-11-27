@@ -37,6 +37,9 @@ Guard: ENTRY_SNAPSHOT pins every ENTRY setting of the Route B sleeves — switch
 blocks and the shared funding guard), minus exit / size / sleeve-master keys (exits are read live by common.exit_specs) — as of DL 635.
 The test suite fails when trading_config.json differs: a changed entry setting must get a RECHECKS decision (signals the engine judged
 with the old setting are re-judged, or the reason none is needed is stated) before the snapshot moves.
+Not re-checked (DL 650, 2026-11-27): EXH_BEAR80 / EXH_EARLY_SPIKE — the Route B signal rows carry neither the market breadth nor the
+spike hours, so EXHAUSTION rows TAKEN before the DL 650 deploy in those zones stay counted as taken (the batch had 7 such fills of 210 EXH
+signals); their own priced revert gate is scripts/scout_exh_regime_650.py. Re-check them here if the journal ever stamps both inputs.
 Not re-checked, by design: DL 629 (commit 2026-11-23 01:39 UTC, WILLY turnover-unreadable TIMING bug fix — a routing delay, not a filter; refused
 setups were re-judged on a later red bar and journaled as such). Pure except `fetch_bars_1m` (Binance, through the shared limiter).
 """
@@ -84,6 +87,10 @@ ENTRY_SNAPSHOT = {
     'exhaustion_min_vol_usd': 20000000.0,
     'exhaustion_rsi_level': 70.0,
     'exhaustion_rsi_period': 14,
+    'exhaustion_bear80_block_enabled': True,
+    'exhaustion_bear_pct_max': 80.0,
+    'exhaustion_early_spike_block_enabled': True,
+    'exhaustion_min_hours_after_spike': 0.5,
     'exhaustion_spot_share_chg_max': -0.0066,
     'exhaustion_ssc_oivol_block_enabled': True,
     'exhaustion_ssc_oivol_oivol_min': 0.128,

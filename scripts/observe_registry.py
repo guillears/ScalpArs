@@ -37,6 +37,10 @@ EXIT = {
     "scout_exh_ssc_oivol.py": dict(dl="582 · 609", sleeves="EXHAUSTION_SHORT (blocked EXH_SSC_OIVOL signals)", walks={"exhaustion_tp_atr_mult": 20.0,
                                    "exhaustion_tp_cap_pct": 7.0, "exhaustion_sl_atr_mult": 1.5, "exhaustion_sl_cap_pct": 6.0,
                                    "exhaustion_max_hold_hours": 24.0}),
+    # 🌡⏱ (650) EXH_BEAR80 + EXH_EARLY_SPIKE shadow revert gates price every blocked signal with the live EXHAUSTION exit → STALE on a change
+    "scout_exh_regime_650.py": dict(dl="650", sleeves="EXHAUSTION_SHORT (blocked EXH_BEAR80 / EXH_EARLY_SPIKE signals)", walks={"exhaustion_tp_atr_mult": 20.0,
+                                    "exhaustion_tp_cap_pct": 7.0, "exhaustion_sl_atr_mult": 1.5, "exhaustion_sl_cap_pct": 6.0,
+                                    "exhaustion_max_hold_hours": 24.0}),
     # 🚫🔭 (630) EXH_NO_SPOT forward watch: no-spot setups that pass every other rule, priced on the live EXHAUSTION exit → STALE on a change
     "scout_exh_nospot_630.py": dict(dl="630", sleeves="EXHAUSTION_SHORT (refused EXH_NO_SPOT setups)", walks={"exhaustion_tp_atr_mult": 20.0,
                                     "exhaustion_tp_cap_pct": 7.0, "exhaustion_sl_atr_mult": 1.5, "exhaustion_sl_cap_pct": 6.0,

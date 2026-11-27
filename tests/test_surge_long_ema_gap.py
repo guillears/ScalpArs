@@ -59,7 +59,7 @@ def test_ui_input_load_save_and_export_line():
     assert "surge_long_min_ema13_50_gap_pct: (function(){ const v = String(document.getElementById('config-sg-long-min-gap')" in html
     assert "_e.value = (_v === null || _v === undefined) ? '' : _v; } }   // 📐 Oct-13 (287)" in html
     start = html.index("function _buildConfigLines(")
-    assert "_bt.surge_long_min_ema13_50_gap_pct" in html[start:start + 60000]   # the shared config block both text exports use
+    assert "_bt.surge_long_min_ema13_50_gap_pct" in html[start:start + 70000]   # the shared config block both text exports use (window widened at DL 650: the EXH line grew)
 
 
 def test_window_ledger_counts_the_refusals_on_every_surface():

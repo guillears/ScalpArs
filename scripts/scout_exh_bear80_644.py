@@ -123,7 +123,7 @@ def _valid(rec):
 def run(now_ms=None, paths=None, state_path=STATE, since_ms=None):
     """→ markdown lines. since_ms None → the DECISION_LOG 644 commit + 10 min (not in git → NOT EVALUABLE). state_path None → no write."""
     now_ms = int(time.time() * 1000) if now_ms is None else int(now_ms)
-    L = [f"## 🌡 {LINE} — EXHAUSTION shorts with > 80 % of coins bearish (registered 2026-11-25, DECISION_LOG {DL}, OBSERVE only)", ""]
+    L = [f"## 🌡 {LINE} — EXHAUSTION shorts with > 80 % of coins bearish (registered 2026-11-25, DECISION_LOG {DL}, OBSERVE only)", "🔒 ARMED as an entry block since DECISION_LOG 650 (2026-11-27, declared override): new zone fills ≈ 0 — the verdict now lives in the shadow revert gate (scripts/scout_exh_regime_650.py); this line keeps showing the fills the block let through / pre-arm.", ""]
     given = since_ms
     if since_ms is None:
         since_ms = _GK.dl_deploy_ms(DL, lag_min=10, label=f"{LINE} (DL {DL})")

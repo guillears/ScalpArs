@@ -1764,6 +1764,21 @@ class SignalThresholds(BaseModel):
     exhaustion_ssc_oivol_block_enabled: bool = False
     exhaustion_ssc_oivol_ssc_min: float = -0.0366   # block only when spot_share_chg is ABOVE this (a small spot-share fall)
     exhaustion_ssc_oivol_oivol_min: float = 0.128   # … and OI ÷ 24 h quote volume is ABOVE this (strict)
+    # 🌡⏱ 2026-11-27 EXH_BEAR80 + EXH_EARLY_SPIKE entry blocks (DECISION_LOG 650 — operator "yes build it", DECLARED OVERRIDE below the
+    # locked gates: their observe lines (DL 644 / 648) had 2 / 15 and 1 / 15 forward zone fills; the case is the operator's "we do not want a
+    # breakeven bot" rule). FRENZY-universe signals only, judged after every other gate: BLOCK when the market breadth (the bot's own
+    # _market_bear_pct, = the entry_bear_pct stamp) is > exhaustion_bear_pct_max (80) · BLOCK when the signal comes < exhaustion_min_hours_after_spike
+    # (0.5 h, = entry_frenzy_hours) after the spike. Evidence (reports/BATCH28_REVIEW_2026-11-27 + EXH_SPIKE_AGE / EXH_BREADTH): 2-year
+    # backtest at TP 7, both zones 482 · 42 % · −0.15 %/fill (BEAR80 336 · −0.04 · EARLY 166 · −0.36); blocking both: DCR 1.03 → 1.12 %/day,
+    # max DD −62.7 → −55.3 % (HOLDOUT −62.7 → −41.5), worst day −26.6 → −24.1 %; COST in the latest half-year 2026-H2 (DCR 2.44 → 2.09) and the
+    # zones are ≈ 0 since 2025-H2 (BEAR80 +0.15, EARLY −0.04). Batch 11-18 → 11-27 (4 of 7 zone fills in-sample): 22 fills −0.19 → 15 fills
+    # +1.44 %/fill, DCR −0.52 → +1.32 %/day. 🔒 REVERT (scripts/scout_exh_regime_650.py, alert only, frozen once per line): the first 10 priced
+    # blocked signals on ≥ 5 UTC days (live exit, modelled slip) → blocked mean ≥ the kept EXHAUSTION fills' booked mean over the same window
+    # (≥ 5 kept fills; else ≥ +0.66, the 2-year sleeve mean) → flag REVERT. Code default OFF; trading_config.json ON.
+    exhaustion_bear80_block_enabled: bool = False
+    exhaustion_bear_pct_max: float = 80.0           # block when the market bearish % is ABOVE this (strict)
+    exhaustion_early_spike_block_enabled: bool = False
+    exhaustion_min_hours_after_spike: float = 0.5   # block when the signal comes LESS than this many hours after the spike (strict)
     # 🪫🌐 2026-11-18 EXHAUSTION WIDE universe (DECISION_LOG 585 — operator-approved PAPER run, DECLARED OVERRIDE: reports/LEADS_DEEP_2026-11-18.md
     # L4 stamped OBSERVE — it fails B1, 3 of 7 half-years < 0 after DL 582; the frozen cell is the plateau PEAK → 30–50 % haircut). An EXTENSION of
     # EXHAUSTION_SHORT, not a new sleeve: its own detector also tracks spikes by the SAME bar rule at a volume multiple ≥ this (15×, not 20×) on

@@ -1604,6 +1604,14 @@ def run():
     except Exception as _sso_e:
         log(f"EXH_SSC_OIVOL gate failed: {_sso_e}")
         _rg_sec += ["## 🧯 EXH_SSC_OIVOL (DL 582)", "", f"Unavailable this run ({str(_sso_e)[:120]}).", ""]
+    try:                                               # 🌡⏱ Nov-27 EXH_BEAR80 + EXH_EARLY_SPIKE shadow revert gates (DECISION_LOG 650; blocked signals priced)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_exh_regime_650 as _srg
+        _rg_sec += _srg.run(now_ms)
+    except Exception as _srg_e:
+        log(f"EXH_BEAR80 / EARLY_SPIKE gate failed: {_srg_e}")
+        _rg_sec += ["## 🌡⏱ EXH_BEAR80 + EXH_EARLY_SPIKE (DL 650)", "", f"Unavailable this run ({str(_srg_e)[:120]}).", ""]
     try:                                               # 🚫🔭 Nov-23 EXH_NO_SPOT forward watch (DECISION_LOG 630; refused no-spot setups priced, observe)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

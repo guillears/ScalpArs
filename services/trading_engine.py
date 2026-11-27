@@ -1339,6 +1339,7 @@ _market_top_n: int = 0          # 105: how many TRADEABLE pairs the reading abov
 _market_bear_pct: float = 0.0
 _market_stamps_at: float = 0.0   # 🩹 (DECISION_LOG 593) time.time() when a scan last published breadth + global volume (Phase 2 done)
 _market_stamps_snap: tuple = None   # 🩹 (593 review) (at, bull %, bear %, global volume) published together — read as one
+EXH_BREADTH_MAX_AGE_S = 1800   # 🌡 (DECISION_LOG 650) EXH_BEAR80 reads breadth only from a scan snapshot ≤ 30 min old (else UNREAD → trade)
 # 🌊 Aug-21 gate 57: Bull-Run Monitor state (in-memory; flips also logged for post-restart
 # forensics). state ∈ DARK/AMBER/GREEN. Schmitt band + crash-latch computed in
 # _update_bullrun_monitor (throttled). Entries additionally require updated_at fresh
@@ -11558,6 +11559,23 @@ class TradingEngine:
                  f"(OI ${_oi_usd / 1e6:.2f}M · vol24 ${f['vol24'] / 1e6:.1f}M) — DL 582 declared override, shadow-priced"),
                 sp, f=f, sig=sig, tp=tp, sl=sl, oi_usd=_oi_usd, oi_vol=_oi_vol, model_slip=_sh_slip, shadow_notional=_sh_not)
             return
+        # 🌡⏱ ③c (DECISION_LOG 650, DECLARED OVERRIDE) EXH_BEAR80 / EXH_EARLY_SPIKE — FRENZY universe, after every other RULE gate (execution
+        # refusals — book full / late / depth — come later in open_position and are not modelled by the shadow price): market > 80 % bearish, or < 0.5 h after the spike → BLOCKED, journaled with what the
+        # revert scout (scripts/scout_exh_regime_650.py) prices it with. Breadth not computed yet → FAIL-OPEN (counted EXH_BEAR80_UNREAD).
+        # (650 review) the breadth global defaults to 0.0 and is never None → read the scan's own published snapshot instead and treat a
+        # missing / stale one (> 30 min, the DL 593 stamp rule) as UNREAD (fail-open, counted) — never "0 % bearish".
+        _snap = globals().get('_market_stamps_snap')
+        _bear_now = (_snap[2] if (isinstance(_snap, tuple) and len(_snap) >= 3 and _snap[0]
+                                  and (_leash_time.time() - float(_snap[0])) <= EXH_BREADTH_MAX_AGE_S) else None)
+        _rg_code, _rg_unread, _rg_why = _exh_rules.regime_block(_bear_now, T, sp, universe, th)
+        if _rg_unread:
+            self._exh_count(_exh_rules.B_BEAR80_UNREAD, pair)
+        if _rg_code:
+            self._exh_count(_rg_code, pair)
+            _sh_not = await self._exh_shadow_notional(db)
+            await self._exh_journal(pair, T, _exh_rules.ST_BLOCKED, _rg_code, _rg_why, sp, f=f, sig=sig, tp=tp, sl=sl, oi_usd=_oi_usd,
+                                    oi_vol=_oi_vol, model_slip=_exh_rules.model_slip_pct(_sh_not, f.get('q5')), shadow_notional=_sh_not)
+            return
         _sym = (info or {}).get('symbol') or pair.replace('USDT', '/USDT:USDT')
         try:
             _fr = await asyncio.wait_for(binance_service.fetch_funding_rate(_sym, max_age_s=300), 4.0)   # public premiumIndex (observe stamp)
@@ -11574,7 +11592,8 @@ class TradingEngine:
         order = await self.open_position(
             db=db, pair=pair, direction="SHORT", confidence="STRONG_BUY", current_price=float(f['close']),
             entry_atr_pct=(round(_atr5, 4) if _atr5 is not None else None), entry_pair_volume_24h_usd=f.get('vol24'), entry_funding_rate=_fr,
-            entry_bull_pct=globals().get('_market_bull_pct'), entry_bear_pct=globals().get('_market_bear_pct'),
+            entry_bull_pct=(globals().get('_market_bull_pct') if _bear_now is not None else None),
+            entry_bear_pct=_bear_now,   # 🌡 (650 deep review) stale / no breadth → NULL, so the DL 593 backfill fills it (never a fake 0 %)
             exhaustion_short=True, exhaustion_bar_close_ms=int(T),
             entry_frenzy_spike_at=datetime.utcfromtimestamp(int(sp) / 1000), entry_frenzy_hours=round((int(T) - int(sp)) / 3_600_000, 2),
             entry_exh_rsi_prev=(round(f['rsi_prev'], 4) if f.get('rsi_prev') is not None else None),

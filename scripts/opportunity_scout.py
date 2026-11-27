@@ -1669,6 +1669,14 @@ def run():
     except Exception as _fbn_e:
         log(f"DL 653 FB net TP gate failed: {_fbn_e}")
         _rg_sec += ["## 💸 FLATBASE net TP (DL 653)", "", f"Unavailable this run ({str(_fbn_e)[:120]}).", ""]
+    try:                                               # 🤫 Nov-27 FLATBASE quiet-base observe line (DECISION_LOG 654; size-up candidate, never a filter)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_fb_quiet_base_654 as _fqb
+        _rg_sec += _fqb.run(now_ms=now_ms)
+    except Exception as _fqb_e:
+        log(f"DL 654 FB quiet base line failed: {_fqb_e}")
+        _rg_sec += ["## 🤫 FB_QUIET_BASE (DL 654)", "", f"Unavailable this run ({str(_fqb_e)[:120]}).", ""]
     try:   # 🎯👁 (DECISION_LOG 605) DIST TP 5 / 8 vs today's TP on real fills — observe only
         _sd = os.path.dirname(os.path.abspath(__file__))
         _sd in sys.path or sys.path.insert(0, _sd)

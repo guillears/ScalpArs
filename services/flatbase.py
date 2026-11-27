@@ -181,6 +181,47 @@ def flat14_from_bars(rows, base_close, tf_ms=FLAT_TF_MS) -> Tuple[Optional[float
         return None, None, 0
 
 
+QUIET_BASE_VOL_MAX_PCT = 3.732           # 🤫 (DECISION_LOG 654) OBSERVE line only: the backtest's quietest tercile cut (545 kept fills, frozen
+                                         # 2026-11-27) — no engine rule reads it; scripts/scout_fb_quiet_base_654.py splits real fills on it
+QUIET_BASE_MIN_DAYS = 12                 # the study's minimum (FLATBASE_THEORY_2026-11-27: fewer than 12 daily closes → unscored)
+
+
+def base_vol14_from_bars(rows, base_close, tf_ms=FLAT_TF_MS) -> Optional[float]:
+    """🤫 (DECISION_LOG 654) the base's DAILY volatility, % = population std of the daily log returns over the same 14-day window as
+    flat14_from_bars (bars whose CLOSE lies in (base_close − 14 d, base_close]); a day = 24 h counted from the window start, its close = the
+    last close present that day (FLATBASE_THEORY_2026-11-27 F2_vol, exact definition). Observe stamp only — no rule reads it. None when the
+    window is not scorable like flat14 (< 90 % of bars, a listing younger than 14 days, bad data) or < 12 daily closes. Never raises."""
+    try:
+        bc = int(base_close)
+        lo = bc - FLAT_DAYS * DAY_MS
+        tf = int(tf_ms)
+        expected = FLAT_DAYS * DAY_MS // tf
+        seen = {}
+        first_open = None
+        for r in rows or []:
+            if not r or len(r) < 5:
+                continue
+            first_open = int(r[0]) if first_open is None else min(first_open, int(r[0]))
+            if lo < int(r[0]) + tf <= bc:
+                c = float(r[4])
+                if not (math.isfinite(c) and c > 0):
+                    return None
+                seen[int(r[0])] = c
+        if not seen or len(seen) / float(expected) < FLAT_COVER_MIN - 1e-12 or first_open is None or first_open > lo:
+            return None
+        day_close = {}
+        for t in sorted(seen):
+            day_close[(t - lo) // DAY_MS] = seen[t]          # ascending → the last close of each day wins
+        cs = [day_close[k] for k in sorted(day_close)]
+        if len(cs) < QUIET_BASE_MIN_DAYS:
+            return None
+        lr = [math.log(cs[i] / cs[i - 1]) for i in range(1, len(cs))]
+        m = sum(lr) / len(lr)
+        return math.sqrt(sum((x - m) ** 2 for x in lr) / len(lr)) * 100.0
+    except Exception:   # (review) observe stamp — never let it abort the FLAT read
+        return None
+
+
 def flat_ok(range_frac, th) -> bool:
     """FLAT = range ≤ flatbase_flat_max (unknown range → not flat, fail-closed)."""
     r = _fin(range_frac)

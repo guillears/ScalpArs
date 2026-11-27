@@ -36,7 +36,7 @@ NOT_A_MOMENTUM_STAMP = {
     "entry_dist_bar_ret_pct", "entry_dist_vsw_mult", "entry_dist_pos_ratio", "entry_dist_pos_chg_4h", "entry_dist_atr_pct", "entry_dist_tp_pct",
     "entry_dist_sl_pct", "entry_dist_decision_price", "entry_dist_q5_usd", "entry_dist_model_slip_pct",
     "entry_dist_rsi1h", "entry_dist_di_diff1h", "entry_dist_gap15", "entry_dist_pos_lag_min", "entry_dist_pos_span_min",   # 📉 (DECISION_LOG 586) DISTRIBUTION_SHORT stamps (sleeve-only)
-    "entry_flatbase_flat14_pct", "entry_flatbase_flat_cov_pct", "entry_flatbase_off_peak_pct", "entry_flatbase_peak_age_h",   # 🩳 (348) FLATBASE_SHORT episode stamps (sleeve-only)
+    "entry_flatbase_flat14_pct", "entry_flatbase_flat_cov_pct", "entry_flatbase_off_peak_pct", "entry_flatbase_peak_age_h", "entry_flatbase_base_vol_pct",   # 🩳 (348) · 🤫 (654) FLATBASE_SHORT episode stamps (sleeve-only)
 }
 
 

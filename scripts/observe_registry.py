@@ -147,6 +147,9 @@ EXIT["scout_tp_runner_636.py"] = dict(dl="636 · 647", sleeves="FRENZY_WILLY_HT 
 PROXY = {"scout_bearrun_v2.py": "359", "scout_bearrun_r24.py": "369",
          "scout_g51_band1_watch.py": "463"}   # 👁 (463) refused band-① signals on the audit's +0.40 / −0.70 ruler, never the live exit
 BOOKED = {   # booked P&L — `era` = drops fills by WILLY exit era (registered on the old +1.25 exit)
+    # 🤫 (654) FB_QUIET_BASE judges booked FLATBASE fills (quiet base vs the rest) → pinned to the exit the sleeve runs (net TP 653, funding stop 607)
+    "scout_fb_quiet_base_654.py": {"flatbase_tp_pct": 5.0, "flatbase_stop_pct": 10.0, "flatbase_max_hold_hours": 72.0,
+                                   "flatbase_tp_counts_funding": True, "flatbase_stop_counts_funding": True},
     # 🪫 (578) the EXHAUSTION_SHORT revert gate reads booked fills (re-priced with the modelled slippage) → pinned to the exit the sleeve runs
     # 🔁 (579) re-based 2026-11-18 on the exit override (TP 10 % / SL ≤ 6 %): it counts only fills of that exit era
     "scout_exhaustion_short.py": {"exhaustion_tp_atr_mult": 20.0, "exhaustion_tp_cap_pct": 7.0, "exhaustion_sl_atr_mult": 1.5,

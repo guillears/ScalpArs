@@ -329,7 +329,7 @@ async def init_db():
                     if _mb_col not in columns:
                         connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_mb_col} {_mb_type}"))
                 for _fb_col in ('entry_flatbase_flat14_pct', 'entry_flatbase_flat_cov_pct', 'entry_flatbase_off_peak_pct',
-                                'entry_flatbase_peak_age_h'):   # 🩳 (DECISION_LOG 348) FLATBASE_SHORT stamps · ⏱ (401) hours since the peak
+                                'entry_flatbase_peak_age_h', 'entry_flatbase_base_vol_pct'):   # 🩳 (DECISION_LOG 348) FLATBASE_SHORT stamps · ⏱ (401) hours since the peak · 🤫 (654) base daily vol
                     if _fb_col not in columns:
                         connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_fb_col} FLOAT"))
                 for _ex_col in ('entry_exh_rsi_prev', 'entry_exh_rsi', 'entry_exh_vol_decay', 'entry_exh_spot_share_chg', 'entry_exh_atr_pct',
@@ -938,6 +938,8 @@ async def init_db():
                 _fbe_cols = [c['name'] for c in inspector.get_columns('flatbase_episodes')]
                 if 'peak_age_h' not in _fbe_cols:
                     connection.execute(text("ALTER TABLE flatbase_episodes ADD COLUMN peak_age_h FLOAT"))
+                if 'base_vol_pct' not in _fbe_cols:   # 🤫 (DECISION_LOG 654) the base's daily volatility (observe stamp)
+                    connection.execute(text("ALTER TABLE flatbase_episodes ADD COLUMN base_vol_pct FLOAT"))
             # 🌊 Oct-4: surge_triggers.gvol (market volume on the trigger bar)
             if 'surge_triggers' in inspector.get_table_names():
                 _sgt_cols = [c['name'] for c in inspector.get_columns('surge_triggers')]

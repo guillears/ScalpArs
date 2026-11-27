@@ -387,6 +387,7 @@ class Order(Base):
     entry_flatbase_flat_cov_pct = Column(Float, nullable=True)     # share of the 14-day bars present when that range was read, %
     entry_flatbase_off_peak_pct = Column(Float, nullable=True)     # the entry bar's close vs the episode peak (highest high since the spike bar), %
     entry_flatbase_peak_age_h = Column(Float, nullable=True)       # 🩳⏱ (DECISION_LOG 401) hours from the peak bar's close to the entry bar's close
+    entry_flatbase_base_vol_pct = Column(Float, nullable=True)     # 🤫 (DECISION_LOG 654) the base's daily volatility over the same 14 days, % (observe stamp)
     # 🪫 (DECISION_LOG 578) EXHAUSTION_SHORT entry stamps (services/exhaustion.py) — the episode rides entry_frenzy_spike_at / entry_frenzy_hours,
     # the 24 h volume entry_pair_volume_24h_usd, the funding entry_funding_rate, the fill vs the decision entry_slippage_pct
     entry_exh_rsi_prev = Column(Float, nullable=True)              # Wilder RSI(14) of the 15m bar BEFORE the signal bar (> 70)
@@ -1495,6 +1496,7 @@ class FlatbaseEpisode(Base):
     reason = Column(String(200), nullable=True)
     flat14_pct = Column(Float, nullable=True)                      # the 14-day close range at the base bar, % (NULL until read / unreadable)
     flat_cov_pct = Column(Float, nullable=True)                    # share of the 14-day bars present, %
+    base_vol_pct = Column(Float, nullable=True)                    # 🤫 (DECISION_LOG 654) daily volatility of the same 14 days, % (observe stamp)
     flat_attempts = Column(Integer, nullable=False, default=0)     # history reads tried (≤ services.flatbase.FLAT_MAX_ATTEMPTS)
     decided_at = Column(DateTime, nullable=True)                   # when the status left TRACKING
     entry_bar_at = Column(DateTime, nullable=True)                 # OPEN time of the S4 bar (its close = entry decision)

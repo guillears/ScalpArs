@@ -48,7 +48,7 @@ from services.watch_filters import frenzy_blocks as watch_frenzy_blocks, ml_bloc
 from services.frenzy import FRENZY_WILLY_HT, WILLY_EXIT_CLASS, frenzy_willy_ht_frac   # 🎲¼ (DECISION_LOG 341) the quarter-size WILLY
 from services.funding_accrual import open_funding_usd, OPEN_FUNDING_USD as _FA_OPEN_FUNDING   # 💸 (DECISION_LOG 607) the accrued funding the FLATBASE stop reads
 from services.flatbase import (FLATBASE_SHORT, FLATBASE_CLASS, flatbase_enabled, flatbase_params, flatbase_exit_for, paid_funding_pct,   # 🩳 (DECISION_LOG 348)
-                               flat14_from_bars, flat_ok, s4_scan, is_boundary_close, turnover_route, base_close_ms, max_hold_minutes as flatbase_max_hold_minutes,
+                               flat14_from_bars, base_vol14_from_bars, flat_ok, s4_scan, is_boundary_close, turnover_route, base_close_ms, max_hold_minutes as flatbase_max_hold_minutes,
                                FLAT_PAGES, FLAT_PAGE_LIMIT, FLAT_MAX_ATTEMPTS, FLAT_TF, FLAT_EXPECTED, ENTRY_MAX_LATE_S as FLATBASE_ENTRY_MAX_LATE_S,
                                ST_TRACKING, ST_OPENED, ST_SHADOW, ST_MISSED, ST_EXPIRED, ST_NOT_FLAT, ST_UNREADABLE, ST_REFUSED,
                                ACT_ENTER, ACT_MISSED, ACT_EXPIRED, ACT_NO_DATA, ROUTE_SHADOW,
@@ -10575,6 +10575,7 @@ class TradingEngine:
         rec = dict(id=r.id, status=r.status, first_seen_ms=self._fbs_ms(r.first_seen_at),
                    flat=(float(r.flat14_pct) / 100.0 if r.flat14_pct is not None else None),
                    cov=(float(r.flat_cov_pct) / 100.0 if r.flat_cov_pct is not None else None),
+                   base_vol=(float(r.base_vol_pct) if getattr(r, 'base_vol_pct', None) is not None else None),   # 🤫 (654)
                    attempts=int(r.flat_attempts or 0), retry_bar=None, busy=False)
         bo = self._fbs_ms(r.entry_bar_at) if r.entry_bar_at is not None else None
         if r.status == ST_TRACKING and str(r.reason or '').startswith(CONFIRM_TAG) and bo is not None and r.entry_price:
@@ -10759,9 +10760,12 @@ class TradingEngine:
                     logger.warning(f"[FLATBASE_SHORT] {pair}: 14-day history read failed (attempt {rec['attempts']}/{FLAT_MAX_ATTEMPTS}) — retried next bar")
                 return
             rng, cov, n = flat14_from_bars(rows, bc)
+            _bv = base_vol14_from_bars(rows, bc)   # 🤫 (DECISION_LOG 654) observe stamp from the same rows — no rule reads it
             vals = dict(flat_attempts=rec['attempts'], flat_cov_pct=(round(cov * 100, 2) if cov is not None else None),
-                        flat14_pct=(round(rng * 100, 4) if rng is not None else None))
+                        flat14_pct=(round(rng * 100, 4) if rng is not None else None),
+                        base_vol_pct=(round(_bv, 4) if _bv is not None else None))
             rec['cov'] = cov
+            rec['base_vol'] = vals['base_vol_pct']
             if rng is None:
                 self._fbs_count("FLATBASE_FLAT_UNREADABLE", pair)
                 await self._flatbase_write(rec['id'], **vals)
@@ -11098,7 +11102,8 @@ class TradingEngine:
             entry_frenzy_run_pct=(round(scan['run_pct'], 2) if scan.get('run_pct') is not None else None),
             entry_flatbase_flat14_pct=round(rec['flat'] * 100, 4),
             entry_flatbase_flat_cov_pct=(round(rec['cov'] * 100, 2) if rec.get('cov') is not None else None),
-            entry_flatbase_off_peak_pct=feats['off_peak_pct'], entry_flatbase_peak_age_h=feats['peak_age_h'])
+            entry_flatbase_off_peak_pct=feats['off_peak_pct'], entry_flatbase_peak_age_h=feats['peak_age_h'],
+            entry_flatbase_base_vol_pct=rec.get('base_vol'))   # 🤫 (DECISION_LOG 654) observe stamp
         if order:
             await self._flatbase_finalize(pair, spike_ms, ST_OPENED, f"opened #{order.id}" + (
                 f" after the FB_CONFIRM 4-h close {datetime.utcfromtimestamp((int(_cfm['bar_open']) + 300_000) / 1000):%m-%d %H:%M} UTC at {_p_close:g}"
@@ -15179,6 +15184,7 @@ class TradingEngine:
         entry_flatbase_flat_cov_pct: Optional[float] = None,
         entry_flatbase_off_peak_pct: Optional[float] = None,
         entry_flatbase_peak_age_h: Optional[float] = None,   # 🩳⏱ (DECISION_LOG 401) hours since the episode peak at the S4 bar
+        entry_flatbase_base_vol_pct: Optional[float] = None,   # 🤫 (DECISION_LOG 654) the base's daily volatility, % (observe stamp)
         # 🪫 2026-11-18 EXHAUSTION_SHORT (DECISION_LOG 578): a SHORT from _exhaustion_judge (a FRENZY coin's 15m RSI cross 70 → ≤ 70 that passed
         # vol_decay + spot-share). Tagged EXHAUSTION_SHORT; rides the SURGE open path (alt entry filters / pattern cells bypassed, the book read +
         # entry depth guard, the funding guard, direct taker, NO dislocation guard — the study entered at the next open) with its own size
@@ -17721,6 +17727,7 @@ class TradingEngine:
             entry_flatbase_flat14_pct=(entry_flatbase_flat14_pct if _fbs else None), entry_flatbase_flat_cov_pct=(entry_flatbase_flat_cov_pct if _fbs else None),
             entry_flatbase_off_peak_pct=(entry_flatbase_off_peak_pct if _fbs else None),
             entry_flatbase_peak_age_h=(entry_flatbase_peak_age_h if _fbs else None),
+            entry_flatbase_base_vol_pct=(entry_flatbase_base_vol_pct if _fbs else None),   # 🤫 (654)
             # 🪫 (578) EXHAUSTION_SHORT: the episode + the rule's readings + the exit levels this row runs + the modelled slippage at this notional
             **({} if not _exh else dict(
                 entry_exh_rsi_prev=entry_exh_rsi_prev, entry_exh_rsi=entry_exh_rsi, entry_exh_vol_decay=entry_exh_vol_decay,

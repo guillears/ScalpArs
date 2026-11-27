@@ -1,0 +1,22 @@
+HT breakeven WR at TP +6 / SL −4 (all 1,142): 40.3% (avg win +6.00 · avg loss −4.05)
+
+## FAILED_SPIKE — judged on the 722 signals the other two let through
+blocked 462 · 37% · -0.29 | kept 260 · 40% · -0.02 · gap +0.27 · luck p 0.204 · P(blocked mean<0) 0.89 · days 313 · top pair 2% / day 1% of the blocked loss · WR vs breakeven 37% vs 40%
+block: DESIGN blocked 43 · 47% · +0.51 vs kept 32 · 31% · -0.81 · HOLDOUT blocked 419 · 37% · -0.37 vs kept 228 · 41% · +0.09
+half-years (blocked avg | kept avg): 2025-H1 +0.51 (43) | -0.81 · 2025-H2 +0.36 (89) | +0.78 · 2026-H1 -0.31 (162) | -1.08 · 2026-H2 -0.81 (168) | +0.47
+2026 only: blocked 330 · 35% · -0.57 | kept 170 · 39% · -0.14
+dose-response by vs_vwap: [-1000000000.0, -3.0): 124 · 34% · -0.63 · [-3.0, -1.0): 74 · 31% · -0.91 · [-1.0, 0.0): 264 · 41% · +0.05 · [0.0, 1.0): 112 · 38% · -0.25 · [1.0, 3.0): 64 · 45% · +0.50 · [3.0, 1000000000.0): 84 · 39% · -0.10
+
+## NEAR_HIGH — judged on the 373 signals the other two let through
+blocked 113 · 32% · -0.93 | kept 260 · 40% · -0.02 · gap +0.91 · luck p 0.079 · P(blocked mean<0) 0.98 · days 106 · top pair 4% / day 3% of the blocked loss · WR vs breakeven 32% vs 40%
+block: DESIGN blocked 19 · 47% · +0.52 vs kept 32 · 31% · -0.81 · HOLDOUT blocked 94 · 29% · -1.22 vs kept 228 · 41% · +0.09
+half-years (blocked avg | kept avg): 2025-H1 +0.52 (19) | -0.81 · 2025-H2 -0.23 (22) | +0.78 · 2026-H1 -1.42 (35) | -1.08 · 2026-H2 -1.62 (37) | +0.47
+2026 only: blocked 72 · 25% · -1.52 | kept 170 · 39% · -0.14
+dose-response by dip: [-1000000000.0, 0.5): 15 · 20% · -2.47 · [0.5, 1.0): 50 · 36% · -0.48 · [1.0, 1.4): 48 · 31% · -0.92 · [1.4, 2.0): 57 · 47% · +0.74 · [2.0, 4.0): 111 · 33% · -0.69 · [4.0, 1000000000.0): 92 · 43% · +0.33
+
+## BURST — judged on the 299 signals the other two let through
+blocked 39 · 33% · -0.71 | kept 260 · 40% · -0.02 · gap +0.69 · luck p 0.150 · P(blocked mean<0) 0.82 · days 36 · top pair 15% / day 8% of the blocked loss · WR vs breakeven 33% vs 40%
+block: DESIGN blocked 1 · 0% · -4.10 vs kept 32 · 31% · -0.81 · HOLDOUT blocked 38 · 34% · -0.62 vs kept 228 · 41% · +0.09
+half-years (blocked avg | kept avg): 2025-H1 -4.10 (1) | -0.81 · 2025-H2 +1.50 (9) | +0.78 · 2026-H1 -1.05 (10) | -1.08 · 2026-H2 -1.40 (19) | +0.47
+2026 only: blocked 29 · 28% · -1.28 | kept 170 · 39% · -0.14
+dose-response by cloc (bursts only, pre_vol > 1.60): [-1000000000.0, 0.25): 13 · 15% · -2.54 · [0.25, 0.5): 26 · 42% · +0.20 · [0.5, 0.75): 111 · 41% · +0.05 · [0.75, 1000000000.0): 26 · 54% · +1.34

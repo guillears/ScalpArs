@@ -1,0 +1,41 @@
+HT blockers audit — 1142 of 1142 unfiltered rebuild HT entries priced at TP +6 / SL −4 / 24 h (1m, funding, 0.10 slip)
+parity vs fills_out tp6: 299 matched · same sign 100.0% · |Δ| ≤ 0.05 100.0% · mean Δ +0.000
+H proxy (6 h max) vs the known spike high on 415: NEAR_HIGH decision agrees 85.8%
+burst readable 100%
+
+## Each blocker alone on the unfiltered cohort (no one-per-coin) — blocked | kept
+| blocker | blocked N · WR · avg · Σ | kept | DESIGN blocked / kept | HOLDOUT blocked / kept | P(blocked mean<0) day-boot | sole blocker |
+|---|---|---|---|---|---|---|
+| FAILED_SPIKE | 726 · 37% · -0.30 · Σ -219 | 416 · 37% · -0.37 · Σ -153 | +0.73 / -0.39 | -0.42 / -0.37 | 0.94 | 464 · 38% · -0.28 · Σ -132 |
+| NEAR_HIGH | 137 · 34% · -0.70 · Σ -96 | 1005 · 38% · -0.27 · Σ -275 | +0.38 / +0.25 | -0.91 / -0.33 | 0.95 | 113 · 32% · -0.93 · Σ -105 |
+| BURST | 287 · 35% · -0.50 · Σ -142 | 855 · 38% · -0.27 · Σ -229 | +1.00 / +0.04 | -0.67 / -0.31 | 0.96 | 39 · 33% · -0.71 · Σ -28 |
+
+## Half-years — blocked avg (N) per blocker | kept by all three
+2025-H1: FAILED_SPIKE +0.73 (75) · NEAR_HIGH +0.38 (22) · BURST +1.00 (30) · kept -0.81 (32)
+2025-H2: FAILED_SPIKE -0.01 (147) · NEAR_HIGH +0.06 (28) · BURST -0.48 (62) · kept +0.78 (58)
+2026-H1: FAILED_SPIKE -0.36 (249) · NEAR_HIGH -1.38 (42) · BURST -0.53 (92) · kept -1.08 (67)
+2026-H2: FAILED_SPIKE -0.71 (255) · NEAR_HIGH -1.07 (45) · BURST -0.91 (103) · kept +0.47 (103)
+
+## Sleeve before → after (one position per coin, one size 0.61; DCR over every calendar day of the span)
+| stack | N · WR · avg · Σ | DCR %/day | max DD | worst day |
+|---|---|---|---|---|
+| no blockers | 1136 · 37% · -0.34 · Σ -387 | -0.437 | -96.6 % | -15.0 % |
+| FAILED_SPIKE only | 415 · 37% · -0.38 · Σ -159 | -0.175 | -76.7 % | -9.6 % |
+| NEAR_HIGH only | 1001 · 37% · -0.28 · Σ -279 | -0.330 | -93.5 % | -12.5 % |
+| BURST only | 851 · 37% · -0.28 · Σ -242 | -0.284 | -91.7 % | -11.3 % |
+| FAILED_SPIKE + NEAR_HIGH | 299 · 39% · -0.11 · Σ -32 | -0.051 | -53.0 % | -7.5 % |
+| today: all three | 260 · 40% · -0.02 · Σ -5 | -0.023 | -44.2 % | -7.5 % |
+| all three minus FAILED_SPIKE | 722 · 38% · -0.19 · Σ -138 | -0.179 | -83.5 % | -8.8 % |
+| all three minus NEAR_HIGH | 372 · 37% · -0.31 · Σ -116 | -0.132 | -69.6 % | -7.5 % |
+| all three minus BURST | 299 · 39% · -0.11 · Σ -32 | -0.051 | -53.0 % | -7.5 % |
+
+## 2026 only (the live year) — same stacks
+no blockers: 775 · 34% · -0.60 · Σ -462
+FAILED_SPIKE only: 274 · 34% · -0.67 · Σ -183
+NEAR_HIGH only: 688 · 35% · -0.52 · Σ -356
+BURST only: 582 · 35% · -0.55 · Σ -317
+FAILED_SPIKE + NEAR_HIGH: 199 · 37% · -0.31 · Σ -61
+today: all three: 170 · 39% · -0.14 · Σ -24
+all three minus FAILED_SPIKE: 500 · 36% · -0.42 · Σ -211
+all three minus NEAR_HIGH: 242 · 35% · -0.55 · Σ -134
+all three minus BURST: 199 · 37% · -0.31 · Σ -61

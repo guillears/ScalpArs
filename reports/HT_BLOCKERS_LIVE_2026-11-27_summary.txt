@@ -1,0 +1,15 @@
+HT refusals since arming (2026-11-12) and since the last HT fill (2026-11-21 02:30:14 UTC)
+## since arming
+DEPTH_GUARD: 2 refused · 2 priced · TP 0 / STOP 2 · WR 0% · avg -4.04 · Σ -8.1 · 2 days
+FUNDING_GUARD: 1 refused · 1 priced · TP 1 / STOP 0 · WR 100% · avg +6.00 · Σ +6.0 · 1 days
+WILLY_FAILED_SPIKE: 33 refused · 32 priced · TP 6 / STOP 26 · WR 19% · avg -2.28 · Σ -72.8 · 12 days
+WILLY_HT_BURST_REJECTION: 1 refused · 1 priced · TP 1 / STOP 0 · WR 100% · avg +6.00 · Σ +6.0 · 1 days
+WILLY_HT_NEAR_HIGH: 4 refused · 4 priced · TP 2 / STOP 2 · WR 50% · avg +1.00 · Σ +4.0 · 3 days
+ALL: 41 refused · 40 priced · TP 10 / STOP 30 · WR 25% · avg -1.62 · Σ -64.9 · 13 days
+## since last fill
+FUNDING_GUARD: 1 refused · 1 priced · TP 1 / STOP 0 · WR 100% · avg +6.00 · Σ +6.0 · 1 days
+WILLY_FAILED_SPIKE: 14 refused · 13 priced · TP 3 / STOP 10 · WR 23% · avg -1.70 · Σ -22.0 · 6 days
+WILLY_HT_BURST_REJECTION: 1 refused · 1 priced · TP 1 / STOP 0 · WR 100% · avg +6.00 · Σ +6.0 · 1 days
+WILLY_HT_NEAR_HIGH: 4 refused · 4 priced · TP 2 / STOP 2 · WR 50% · avg +1.00 · Σ +4.0 · 3 days
+ALL: 20 refused · 19 priced · TP 7 / STOP 12 · WR 37% · avg -0.32 · Σ -6.0 · 6 days
+FAILED_SPIKE since last fill by depth: shallow (−1…0) n: 3 refused · 3 priced · TP 0 / STOP 3 · WR 0% · avg -4.00 · Σ -12.0 · 2 days · deeper n: 10 refused · 10 priced · TP 3 / STOP 7 · WR 30% · avg -1.00 · Σ -10.0 · 6 days

@@ -976,10 +976,24 @@ def test_obs_fb2_cells_price_both_exits_with_hold():
     def kl(sym, start, n):   # price slides 6 % down over 12 bars, then flat: +5 (TP5_SL10) hits first, +8 never
         return [[s0 + i * 300_000, 100 - 0.5 * min(i, 12), 100 - 0.5 * min(i, 12) + 0.1, 100 - 0.5 * min(i, 12) - 0.1, 100 - 0.5 * min(i, 12), 1]
                 for i in range(n)]
-    a = SF2.price_shadow_cell(row, "LOW×TP5_SL10", None, 0, fetch=False, klines=kl, slip_pct=0.0, funding=lambda *x: -0.05)
+    seen = []
+    def wf(pair, te, E, tp, sl, now, entry):   # 🔁 (656) the net cell prices TODAY's exit through walk_fill
+        seen.append((pair, te, E, tp, sl, entry))
+        return dict(NTP_net=4.9, NTP_hold=1.5, NTP_why="TP")
+    a = SF2.price_shadow_cell(row, "LOW×NET5_SL10", None, 0, fetch=False, walk_fn=wf)
     b = SF2.price_shadow_cell(row, "LOW×TODAY", None, 0, fetch=False, klines=kl, slip_pct=0.0, funding=lambda *x: -0.05)
-    assert a is not None and a[0] == pytest.approx(5.0 - 0.045 - 0.018 - 0.05, abs=0.1) and a[1] < 120   # +5 maker TP, funding incl.
+    assert a == (4.9, 90.0, True) and seen == [("AUSDT", s0, None, 5.0, 10.0, "open")]   # the 5m open after the S4 bar
     assert b is not None and b[1] >= 71 * 60 and b[0] > a[0]               # +8 never → held to the 72 h close (≈ +6 %)
+    assert SF2.price_shadow_cell(row, "LOW×NET5_SL10", None, 0, walk_fn=lambda *x: None) is None          # path not published
+    assert SF2.price_shadow_cell(row, "LOW×NET5_SL10", None, 0, walk_fn=lambda *x: 1 / 0) is None          # a fetch error → retried
+    assert SF2.price_shadow_cell(row, "LOW×NET5_SL10", None, 0, fetch=False) is None                        # --no-fetch
+    assert "LOW×TP5_SL10" not in SF2.OBS_FB2_CELLS                          # the price-TP cell never froze → re-based, not kept
+    # the comparator: booked when the fill RAN the net TP, else re-walked under it
+    real = pd.DataFrame(dict(o=[t, t + pd.Timedelta(days=2)], pair=["AUSDT", "BUSDT"], net=[-1.0, 3.0], entry_price=[1.0, 1.0]))
+    fl = int((t + pd.Timedelta(days=1)).value // 1_000_000)
+    got, miss = SF2.net_real_fn(real, 0, wf, net_floor_ms=fl)
+    assert [x for _, x in got] == [4.9, 3.0] and miss == 0
+    assert SF2.net_real_fn(real, 0, lambda *x: None, net_floor_ms=fl) == ([(real.o[1], 3.0)], 1)
 
 
 def test_obs_fb2_verdict_bar():
@@ -1063,8 +1077,9 @@ def test_fbx_lines_counts_fresh_and_shows_straddlers(tmp_path):
 def test_registry_flatbase_line_matches_the_live_exit():
     import observe_registry as OR
     d = OR.diffs(OR.EXIT["scout_flatbase_short.py"]["walks"], OR.thresholds())
-    assert not [k for k, _, _ in d if k.startswith("flatbase_") and k != "flatbase_tp_counts_funding"]   # re-based on DL 408 (the WILLY leg's own era is separate)
-    assert [k for k, _, _ in d if k == "flatbase_tp_counts_funding"] in ([], ["flatbase_tp_counts_funding"])   # 💸 (653) ⚠ STALE on purpose under the net TP
+    assert not [k for k, _, _ in d if k.startswith("flatbase_")]   # 🔁 re-based on the net TP (DL 656); the WILLY leg's own era is separate
+    d2 = OR.diffs(OR.EXIT["scout_flatbase_confirm_watch.py"]["walks"], OR.thresholds())
+    assert not d2                                                    # 🔁 (656) every confirm-watch walk prices today's exit
 
 
 def test_fbx_retired_and_risk_gate_freeze_once_finals_and_open(tmp_path):
@@ -1081,20 +1096,28 @@ def test_fbx_retired_and_risk_gate_freeze_once_finals_and_open(tmp_path):
     walks = {(x, f"P{i}USDT"): wk(7.9, 4.9) for i, x in enumerate(o)}
     st = str(tmp_path / "fbx.json")
     json.dump({"early": dict(verdict="REVERT", text="old", at="2026-11-08T00:00")}, open(st, "w"))
-    t1 = " ".join(SF2.fbx_lines(real, walks, sw_ms, state_path=st, risk_since_ms=sw_ms))
+    # 🔁 (656) FBX_RISK walks both exits under today's mechanics (walk_fill NTP, real funding): tp 8 / sl 15 vs tp 5 / sl 10
+    wf = lambda v8: (lambda pair, te, E, tp, sl, now, entry: dict(NTP_net=(v8 if tp == 8.0 else 4.9)) if (tp, sl) in ((8.0, 15.0), (5.0, 10.0)) else 1 / 0)
+    now = int((o[-1] + pd.Timedelta(days=10)).value // 1_000_000)
+    t1 = " ".join(SF2.fbx_lines(real, walks, sw_ms, state_path=st, risk_since_ms=sw_ms, now_ms=now, walk_fn=wf(7.9)))
     assert "EARLY RETIRED (DL 531): REVERT — old" in t1 and "FINAL RETIRED (DL 531): never frozen" in t1
-    assert "FBX_RISK" in t1 and "SWITCH CANDIDATE" in t1                           # 7.9 × 0.67 = 5.27 > 4.9 at risk-equal size
-    assert set(json.load(open(st))) == {"early", "risk531"}                        # no new EARLY / FINAL freeze
-    walks2 = {k: wk(6.0, 4.9) for k in walks}                                      # 6.0 × 0.67 = 4.0 < 4.9 — but the read is frozen
-    t2 = " ".join(SF2.fbx_lines(real, walks2, sw_ms, state_path=st, risk_since_ms=sw_ms))
-    assert "SWITCH CANDIDATE" in t2 and "frozen" in t2
-    assert "KEEP" in " ".join(SF2.fbx_lines(real, walks2, sw_ms, state_path=None, risk_since_ms=sw_ms))
-    fin = {(o[0], "P0USDT")}
-    t3 = " ".join(SF2.fbx_lines(real, walks2, sw_ms, state_path=None, finals=fin, risk_since_ms=sw_ms))
-    assert "UNPRICEABLE_FINAL 1" in t3 and "15 fills on 8 days" in t3               # the out fill is skipped: the next 15 decide
+    assert "FBX_RISK" in t1 and "re-based DL 656" in t1 and "SWITCH CANDIDATE" in t1   # 7.9 × 0.67 = 5.27 > 4.9 at risk-equal size
+    assert set(json.load(open(st))) == {"early", SF2.FBXR_KEY} and SF2.FBXR_KEY == "risk656"   # no new EARLY / FINAL freeze
+    t2 = " ".join(SF2.fbx_lines(real, walks, sw_ms, state_path=st, risk_since_ms=sw_ms, now_ms=now, walk_fn=wf(6.0)))
+    assert "SWITCH CANDIDATE" in t2 and "frozen" in t2                             # 6.0 × 0.67 = 4.0 < 4.9 — but the read is frozen
+    assert "frozen" in " ".join(SF2.fbx_lines(real, walks, sw_ms, state_path=st, risk_since_ms=sw_ms, now_ms=now,
+                                              walk_fn=lambda *a: pytest.fail("fetched after the freeze")))   # (656 review) no more fetching
+    assert "KEEP" in " ".join(SF2.fbx_lines(real, walks, sw_ms, state_path=None, risk_since_ms=sw_ms, now_ms=now, walk_fn=wf(6.0)))
+    nd = lambda pair, te, E, tp, sl, now_, entry: "NO_DATA" if pair == "P0USDT" else wf(6.0)(pair, te, E, tp, sl, now_, entry)
+    t3 = " ".join(SF2.fbx_lines(real, walks, sw_ms, state_path=None, risk_since_ms=sw_ms, now_ms=now, walk_fn=nd))
+    assert "1 never priceable (out)" in t3 and "15 fills on 8 days" in t3           # the out fill is skipped: the next 15 decide
     opn = pd.DataFrame(dict(o=[o[0] + pd.Timedelta(minutes=5)], pair=["OPENUSDT"]))
-    t4 = " ".join(SF2.fbx_lines(real, walks2, sw_ms, state_path=None, open_rows=opn, risk_since_ms=sw_ms))
+    t4 = " ".join(SF2.fbx_lines(real, walks, sw_ms, state_path=None, open_rows=opn, risk_since_ms=sw_ms, now_ms=now, walk_fn=wf(6.0)))
     assert "still open 1" in t4 and "HOLD" in t4
+    t5 = " ".join(SF2.fbx_lines(real, walks, sw_ms, state_path=None, risk_since_ms=sw_ms, now_ms=now, walk_fn=lambda *a: 1 / 0))
+    assert "HOLD" in t5                                                            # a fetch error holds the read, never drops a fill
+    json.dump({"risk531": dict(verdict="KEEP", text="price TP", at="t")}, open(st, "w"))
+    assert "superseded by the DL 656 re-base" in " ".join(SF2.fbx_lines(real, walks, sw_ms, state_path=st, risk_since_ms=sw_ms, now_ms=now, walk_fn=wf(6.0)))
     assert SF2.fbx_risk_verdict([])[0] == "COLLECTING"
 
 
@@ -1303,7 +1326,10 @@ def test_higher_high_config_ui_scout():
     assert W.hh_verdict([4.94, 4.94, 4.94])[0] == "REVERT"                             # Σ +14.8 > +10 → early revert
     assert W.hh_verdict([-10.09, 4.94, 4.94, -10.09, 4.94])[0] == "KEEP"               # the 5 skips lost Σ −5.36
     assert W.hh_verdict([-10.09, 4.94, 4.94, 4.94, -1.0])[0] == "REVERT"               # Σ ≥ 0 at 5
-    assert np.isnan(W.walk_from([], 0))
+    v, s_ = W.net_open("XUSDT", 0, 0, lambda *a: "NO_DATA")
+    assert np.isnan(v) and s_ == "NO_DATA"
+    assert W.net_open("XUSDT", 0, 0, lambda *a: None)[1] == "PENDING" and W.net_open("XUSDT", 0, 0, lambda *a: 1 / 0)[1] == "STOPPED"
+    assert W.net_open("XUSDT", 0, 0, lambda p_, t_, e_, tp, sl, n_, en: dict(NTP_net=tp - sl / 100 if en == "open" else 0.0)) == (4.9, "PRICED")
     src = open(os.path.join(ROOT, "scripts", "scout_flatbase_confirm_watch.py"), encoding="utf-8").read()
     assert "~led.fb_reason.astype(str).str.startswith(HH_TAG)" in src                  # the FB_CONFIRM skip side line never prices them as S4 skips
 
@@ -1457,7 +1483,7 @@ def test_funding_above_base_scout_gate():
     assert W.fa_verdict([5.0, float("nan")] + [-10.0] * 7, [1, 99, 2, 3, 4, 5, 6, 7, 8])[0] == "KEEP"   # a NaN drops with its window
     src = open(os.path.join(ROOT, "scripts", "scout_flatbase_confirm_watch.py"), encoding="utf-8").read()
     assert "~led.fb_reason.astype(str).str.startswith(FA_TAG)" in src                          # never priced as a FB_CONFIRM skip
-    assert '("funding-above-base gate", lambda: fa_lines(now_ms, dec_paths, bars_fn))' in src
+    assert '("funding-above-base gate", lambda: fa_lines(now_ms, dec_paths, ntp_walk_fn))' in src
 
 
 def test_fb_tp6_shadow_walk_and_gate():
@@ -1502,26 +1528,28 @@ def test_fb_tp6_shadow_walk_and_gate():
         o = t0 + pd.Timedelta(hours=4 * i)
         rows.append(dict(pair=f"P{i}USDT", o=o, te=int(o.value // 1_000_000), E=100.0, pct=4.94, closed_at="x", close_reason="FRENZY_TP"))
     c = pd.DataFrame(rows)
-    def bars_fn(pair, te_, now):
+    def wf(pair, te_, E_, tp, sl, now_, entry):   # 🔁 (656) TODAY's exit at TP +5 and +6 (net of funding), both via walk_fill
+        assert entry == "fill" and sl == 10.0
         if pair == "P0USDT":
-            return []                                                            # never priceable
-        b0 = te_ // m * m
-        return [[b0 + m, 100.0, 100.0, 93.0, 94.0]]                              # through −6 at once → Δ +1
+            return "NO_DATA"                                                     # never priceable
+        return dict(NTP_net=tp - 0.06, NTP_why="TP")                             # +6 books one point more → Δ +1
     now = int((t0 + pd.Timedelta(days=30)).value // 1_000_000)
     st, saved = {}, []
     monkey_save = W.NF.du_save_state
     W.NF.du_save_state = lambda s_, p_: saved.append(dict(s_))
+    assert W.TP6_KEY == "FB_TP6_SHADOW@656"                                      # re-based → a fresh frozen key
     try:
         fl = int(t0.value // 1_000_000) - 1
-        o0 = "\n".join(W.tp6_lines(c, now, st, "x.json", since_ms=fl, bars_fn=bars_fn))   # no export time → freezing deferred
+        o0 = "\n".join(W.tp6_lines(c, now, st, "x.json", since_ms=fl, walk_fn=wf, net_floor_ms=fl))   # no export time → freezing deferred
         assert "freezing deferred" in o0 and W.TP6_KEY not in st and not saved
-        o1 = "\n".join(W.tp6_lines(c, now, st, "x.json", since_ms=fl, newest=pd.Timestamp(now, unit="ms"),
-                                    bars_fn=lambda p_, t_, n_: None if p_ == "P5USDT" else bars_fn(p_, t_, n_)))
-        assert "P5USDT" in o1 and W.TP6_KEY not in st and not saved                       # a fetch stop holds, never drops, never freezes
-        out = "\n".join(W.tp6_lines(c, now, st, "x.json", since_ms=fl, bars_fn=bars_fn, newest=pd.Timestamp(now, unit="ms")))
+        assert "parity +5 walk vs booked (fills that ran the net TP, N 30)" in o0
+        o1 = "\n".join(W.tp6_lines(c, now, st, "x.json", since_ms=fl, newest=pd.Timestamp(now, unit="ms"), net_floor_ms=None,
+                                    walk_fn=lambda p_, *a: 1 / 0 if p_ == "P5USDT" else wf(p_, *a)))
+        assert "P5USDT" in o1 and W.TP6_KEY not in st and not saved and "parity" not in o1   # a fetch stop holds, never drops, never freezes
+        out = "\n".join(W.tp6_lines(c, now, st, "x.json", since_ms=fl, walk_fn=wf, newest=pd.Timestamp(now, unit="ms"), net_floor_ms=None))
         assert "P0USDT" in out and "NOT_EVALUABLE" in out and st[W.TP6_KEY]["state"] == "SHIP CANDIDATE" and len(saved) == 1
         st[W.TP6_KEY] = dict(state="NO SHIP", detail="frozen", run_at="t")             # a frozen record is never re-decided
-        out2 = "\n".join(W.tp6_lines(c, now, st, "x.json", since_ms=fl, bars_fn=bars_fn, newest=pd.Timestamp(now, unit="ms")))
+        out2 = "\n".join(W.tp6_lines(c, now, st, "x.json", since_ms=fl, walk_fn=wf, newest=pd.Timestamp(now, unit="ms"), net_floor_ms=None))
         assert "Frozen read (t): NO SHIP" in out2 and len(saved) == 1
     finally:
         W.NF.du_save_state = monkey_save
@@ -1608,21 +1636,39 @@ def test_flatbase_stop_counts_funding_607():
     W.NF.du_save_state = lambda s_, p_: saved.append(dict(s_))
     try:
         fl = int(t0.value // 1_000_000) - 1
-        out = "\n".join(W.fs_lines(c, now, st, "x.json", since_ms=fl, bars_fn=bars_fn, newest=pd.Timestamp(now, unit="ms")))
+        out = "\n".join(W.fs_lines(c, now, st, "x.json", since_ms=fl, bars_fn=bars_fn, newest=pd.Timestamp(now, unit="ms"), net_floor_ms=None))
         assert "stops 7 · funding-fired 6 · priced 6" in out
         # price-only: STOP_NET −10.09 − 1.5 funding = −11.59 → Δ = −10.5 − (−11.59) = +1.09 each → KEEP
         assert st[W.FS_KEY]["state"] == "KEEP" and len(saved) == 1 and "Δ +1.09" in out
         st[W.FS_KEY] = dict(state="REVERT", detail="frozen", run_at="t")
-        out2 = "\n".join(W.fs_lines(c, now, st, "x.json", since_ms=fl, bars_fn=bars_fn, newest=pd.Timestamp(now, unit="ms")))
+        out2 = "\n".join(W.fs_lines(c, now, st, "x.json", since_ms=fl, bars_fn=bars_fn, newest=pd.Timestamp(now, unit="ms"), net_floor_ms=None))
         assert "Frozen read (t): REVERT" in out2 and len(saved) == 1                       # frozen once, never re-decided
         st2 = {}
         o3 = "\n".join(W.fs_lines(c, now, st2, "x.json", since_ms=fl, bars_fn=lambda p_, t_, n_: None if p_ == "P2USDT" else bars_fn(p_, t_, n_),
-                                  newest=pd.Timestamp(now, unit="ms")))
+                                  newest=pd.Timestamp(now, unit="ms"), net_floor_ms=None))
         assert W.FS_KEY not in st2 and "P2USDT" in o3 and "pending / unpriced" in o3       # a fetch stop holds, never drops
         # the +10 % level traded at / before the exit minute → a price-level stop (or a wick live rode through): not counted
         c4 = c.assign(closed_at=[(o + pd.Timedelta(minutes=5)).isoformat() for o in c.o])
-        o4 = "\n".join(W.fs_lines(c4, now, {}, None, since_ms=fl, bars_fn=bars_fn, newest=pd.Timestamp(now, unit="ms")))
+        o4 = "\n".join(W.fs_lines(c4, now, {}, None, since_ms=fl, bars_fn=bars_fn, newest=pd.Timestamp(now, unit="ms"), net_floor_ms=None))
         assert o4.count("a price-level stop, not counted") == 6 and "priced 0" in o4
+        # 🔁 (656) per era: a fired stop opened ≥ the DL 653 deploy ran the NET TP → its price-only side = net TP + price-only stop
+        # (walk_fill NTP_PSL, funding to its own exit inside); the count runs on across eras
+        nw = lambda psl: (lambda pair, te_, E_, tp, sl, now_, entry: dict(NTP_PSL_net=psl, NTP_PSL_why="STOP", NTP_net=-10.6, NTP_why="STOP"))
+        st5 = {}
+        o5 = "\n".join(W.fs_lines(c, now, st5, "x.json", since_ms=fl, bars_fn=bars_fn, newest=pd.Timestamp(now, unit="ms"),
+                                  walk_fn=nw(-11.0), net_floor_ms=fl))
+        assert "priced 6 (6 under the net TP)" in o5 and "Δ +0.50" in o5 and st5[W.FS_KEY]["state"] == "KEEP"   # −10.5 − (−11.0)
+        st6 = {}
+        o6 = "\n".join(W.fs_lines(c, now, st6, "x.json", since_ms=fl, bars_fn=bars_fn, newest=pd.Timestamp(now, unit="ms"),
+                                  walk_fn=nw(4.9), net_floor_ms=fl))
+        assert "CUT" in o6 and st6[W.FS_KEY]["state"] == "REVERT"                     # the price-only stop would have booked the net TP
+        mid = int(c.o.iloc[3].value // 1_000_000)                                      # the 653 deploy inside the cohort → both eras count
+        o7 = "\n".join(W.fs_lines(c, now, {}, None, since_ms=fl, bars_fn=bars_fn, newest=pd.Timestamp(now, unit="ms"),
+                                  walk_fn=nw(-11.0), net_floor_ms=mid))
+        assert "priced 6 (3 under the net TP)" in o7 and o7.count("Δ +1.09") == 3 and o7.count("Δ +0.50") == 3
+        o8 = "\n".join(W.fs_lines(c, now, {}, None, since_ms=fl, bars_fn=bars_fn, newest=pd.Timestamp(now, unit="ms"),
+                                  walk_fn=lambda *a: 1 / 0, net_floor_ms=fl))
+        assert "net-TP path pending / unpriced" in o8 and "priced 0" in o8              # a fetch error holds the read
     finally:
         W.NF.du_save_state = sv
     src = open(os.path.join(ROOT, "scripts", "scout_flatbase_confirm_watch.py"), encoding="utf-8").read()

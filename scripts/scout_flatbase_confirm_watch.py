@@ -31,8 +31,13 @@ FROZEN BAR (operator's aim: well above breakeven, same style as DL 416), read pe
            order — is "not a confirm entry"); no ledger row → unscored.
 📈 RE-SIZE  (operator 2026-11-02: "if FB_CONFIRM performs well, the re-sizing is next") a frozen KEEP opens the DL 363 ladder step
            0.2 → 0.5 invest for the operator (confirmed fills only, real-path DCR before → after, flatbase_max_open re-decided).
-🎯 TP6      (DECISION_LOG 604, observe) FB_TP6_SHADOW: every new real fill walked at TP −6 vs −5 (1m, real fill price); frozen ship read at
+🎯 TP6      (DECISION_LOG 604, observe) FB_TP6_SHADOW: every new real fill walked at TP +6 vs +5 (real fill price); frozen ship read at
            ≥ 30 fills on ≥ 15 windows: one-sided 95 % window bootstrap P(Δ > 0) ∧ mean Δ without the best 5 % > 0 → SHIP CANDIDATE (operator).
+🔁 RE-BASE  (DECISION_LOG 656, 2026-11-27, operator "re-base the three") every walk of TODAY's exit in this file — TP6 (fresh key
+           FB_TP6_SHADOW@656), the FB_FUNDING_STOP gate (per era: price TP before the DL 653 deploy, net TP from it), the HH / NB / FA gates,
+           the skipped side line and the M1 shadow — prices TP +5 net of the funding paid / stop +10 counting it / 72 h with REAL funding
+           (scout_fb_net_tp_653.walk_fill, 5m). None of those reads had frozen. The closed FB_CONFIRM observe line and the frozen REVERT
+           gate stay on the exit they were decided on (history).
 STATE      reports/SCOUT_FB_CONFIRM.json (gitignored; the revert verdict under key FLATBASE_SHORT_REVERT).
 Usage: venv/bin/python -I scripts/scout_flatbase_confirm_watch.py
 """
@@ -197,10 +202,12 @@ def crossing_prefix(rows):
     return None
 
 
-def run(now_ms=None, paths=None, state_path=STATE, since_ms=None, bars_fn=None, ship_ms=None, dec_paths=None, m1_bars_fn=None, tp6_bars_fn=None):
+def run(now_ms=None, paths=None, state_path=STATE, since_ms=None, bars_fn=None, ship_ms=None, dec_paths=None, m1_bars_fn=None, tp6_bars_fn=None,
+        ntp_walk_fn=None):
     """→ markdown lines. since_ms None → the DECISION_LOG 417 commit + 10 min (not in git → NOT EVALUABLE). state_path None → no write. bars_fn(pair, te, now_ms) → bars or None; None → public klines.
     ship_ms None → the DECISION_LOG 428 commit + 10 min (not in git yet → the observe line still runs, no revert gate); False → not shipped.
-    dec_paths → the decisions exports for the SKIPPED side line (None → Downloads + exports_archive/)."""
+    dec_paths → the decisions exports for the SKIPPED side line (None → Downloads + exports_archive/).
+    ntp_walk_fn → scout_fb_net_tp_653.walk_fill's signature (None → public klines + funding): every walk of TODAY's exit (DL 656)."""
     now_ms = int(time.time() * 1000) if now_ms is None else int(now_ms)
     L = [f"## 👁 FB_CONFIRM — FLATBASE_SHORT entered after a 4-hour close below the signal, vs today's entry (pre-registered 2026-10-30, DECISION_LOG {DL}, OBSERVE only)", ""]
     since_given = since_ms
@@ -279,14 +286,15 @@ def run(now_ms=None, paths=None, state_path=STATE, since_ms=None, bars_fn=None, 
     if ship is not None:
         post = allc[allc.o >= ship] if len(allc) else allc
         for nm, fn in (("revert gate", lambda: revert_lines(post, newest, now_ms, st if ok else None, state_path if ok else None)),
-                       ("skipped side line", lambda: skipped_lines(ship, now_ms, dec_paths, bars_fn)),
-                       ("higher-high gate", lambda: hh_lines(now_ms, st if ok else None, state_path if ok else None, dec_paths, bars_fn)),
-                       ("near-base gate", lambda: nb_lines(now_ms, dec_paths, bars_fn)),
-                       ("funding-above-base gate", lambda: fa_lines(now_ms, dec_paths, bars_fn)),
-                       ("FB_TP6_SHADOW", lambda: tp6_lines(allc, now_ms, st if ok else None, state_path if ok else None, None, tp6_bars_fn, newest)),
-                       ("FB funding stop", lambda: fs_lines(allc, now_ms, st if ok else None, state_path if ok else None, None, tp6_bars_fn, newest)),
+                       ("skipped side line", lambda: skipped_lines(ship, now_ms, dec_paths, ntp_walk_fn)),
+                       ("higher-high gate", lambda: hh_lines(now_ms, st if ok else None, state_path if ok else None, dec_paths, ntp_walk_fn)),
+                       ("near-base gate", lambda: nb_lines(now_ms, dec_paths, ntp_walk_fn)),
+                       ("funding-above-base gate", lambda: fa_lines(now_ms, dec_paths, ntp_walk_fn)),
+                       ("FB_TP6_SHADOW", lambda: tp6_lines(allc, now_ms, st if ok else None, state_path if ok else None, None, ntp_walk_fn, newest)),
+                       ("FB funding stop", lambda: fs_lines(allc, now_ms, st if ok else None, state_path if ok else None, None, tp6_bars_fn, newest,
+                                                            ntp_walk_fn)),
                        ("BANK-TYPE", lambda: bank_lines(post, now_ms, st if ok else None, state_path if ok else None, dec_paths, newest,
-                                                        bars_fn=m1_bars_fn))):
+                                                        bars_fn=m1_bars_fn, walk_fn=ntp_walk_fn))):
             try:   # one section's failure never hides the others (the revert gate above all)
                 L += fn()
             except Exception as e:
@@ -318,41 +326,29 @@ M1_MARGIN = 1.0                     # 🏦🪞 (DECISION_LOG 539) the M1 shadow:
 S4_MATCH_PCT = 0.05                 # the S4 bar = the 4-h close before the fill whose close matches the stamped S4 price within this %
 
 
-def price_m1(bars, s4_px, te, now_ms):
-    """🏦🪞 (539) the M1 filter on ONE real shallow fill, priced on its own 5m path. bars = [[open ms, o, h, l, c], …] CLOSED, ascending,
+def m1_entry(bars, s4_px, te):
+    """🏦🪞 (539) the M1 filter's ENTRY on ONE real shallow fill, from its own 5m path. bars = [[open ms, o, h, l, c], …] CLOSED, ascending,
     covering ≥ 24 h before te → 96 h after. The S4 bar = the 4-h close before te whose close matches s4_px (± S4_MATCH_PCT); M1 enters at
     the next 5m open after the FIRST 4-h close ≤ S4 × (1 − M1_MARGIN %) within 24 h of the S4 close (after te — the shallow confirm itself
-    is < 1 %), else SKIP (0 %); then today's exit from ITS entry (+5 / −10, 72 h). → (why, net %): TP · STOP · TIME · SKIP · PENDING ·
-    UNPRICED (no matching S4 bar / no path). PURE."""
+    is < 1 %), else SKIP (0 %). → (why, entry bar open ms or None): ENTER · SKIP · PENDING · UNPRICED (no matching S4 bar / no path).
+    The exit from that entry is today's (net_open, DL 656). PURE."""
     if not len(bars) or not (s4_px and s4_px > 0):
-        return "UNPRICED", np.nan
+        return "UNPRICED", None
     b = np.asarray(bars, float)
-    t, o, h, l, c = b[:, 0].astype("int64"), b[:, 1], b[:, 2], b[:, 3], b[:, 4]
+    t, c = b[:, 0].astype("int64"), b[:, 4]
     ce = t + M5
     cand = np.flatnonzero((ce % H4 == 0) & (ce <= te - H4) & (ce >= te - CONFIRM_H * HOUR))   # 539 review: never the confirm bar itself
     if not len(cand):
-        return "UNPRICED", np.nan
+        return "UNPRICED", None
     dev = np.abs(c[cand] / s4_px - 1) * 100
     k = int(len(dev) - 1 - np.argmin(dev[::-1]))   # a tie → the LATEST matching 4-h close (the S4 that started this wait)
     if dev[k] > S4_MATCH_PCT:
-        return "UNPRICED", np.nan
+        return "UNPRICED", None
     end = int(ce[cand[k]]) + CONFIRM_H * HOUR
     hit = np.flatnonzero((ce % H4 == 0) & (ce > te) & (ce <= end) & (c <= s4_px * (1 - M1_MARGIN / 100)))
     if not len(hit):
-        return ("SKIP", 0.0) if int(ce[-1]) >= end else ("PENDING", np.nan)
-    i0 = int(hit[0]) + 1
-    if i0 >= len(t):
-        return "PENDING", np.nan
-    Ee, t0 = float(o[i0]), int(t[i0])
-    for i in range(i0, len(t)):
-        if t[i] >= t0 + MAX_H * HOUR:
-            return "TIME", float(-(o[i] / Ee - 1) * 100 - TIME_FEE)
-        line = Ee * (1 + STOP_GROSS / 100)
-        if h[i] >= line:
-            return "STOP", float(STOP_NET if o[i] < line else -(o[i] / Ee - 1) * 100 - TIME_FEE)
-        if l[i] < Ee * (1 - TP_GROSS / 100):
-            return "TP", TP_NET
-    return "PENDING", np.nan
+        return ("SKIP", None) if int(ce[-1]) >= end else ("PENDING", None)
+    return "ENTER", int(ce[hit[0]])
 
 
 def fetch_bars_m1(pair, te, now_ms, bud):
@@ -372,9 +368,10 @@ def fetch_bars_m1(pair, te, now_ms, bud):
     return out
 
 
-def m1_lines(sh, now_ms, bars_fn=None):
+def m1_lines(sh, now_ms, bars_fn=None, walk_fn=None):
     """🏦🪞 (539, operator 11-13: price every real shallow fill both ways) — observe only, NO verdict: the frozen DL 429 read decides."""
-    L = [f"  🪞 M1 shadow (DECISION_LOG 539, observe — the confirm must close ≥ {M1_MARGIN:g} % below S4, else keep waiting ≤ 24 h, else skip):"]
+    L = [f"  🪞 M1 shadow (DECISION_LOG 539, observe — the confirm must close ≥ {M1_MARGIN:g} % below S4, else keep waiting ≤ 24 h, else skip; "
+         f"{NET_TXT}):"]
     if not len(sh):
         return L + ["    no shallow fills yet."]
     bud = LS.Budget()
@@ -383,10 +380,14 @@ def m1_lines(sh, now_ms, bars_fn=None):
         s4 = (float(r.entry_frenzy_vwap) * (1 + float(r.entry_frenzy_vs_vwap_pct) / 100)
               if pd.notna(getattr(r, "entry_frenzy_vwap", np.nan)) and pd.notna(getattr(r, "entry_frenzy_vs_vwap_pct", np.nan)) else None)
         bars = (bars_fn or fetch_bars_m1)(r.pair, int(r.te), now_ms, bud)
-        why, pct = price_m1(bars or [], s4, int(r.te), now_ms) if bars is not None else ("UNPRICED", np.nan)
+        why, t_in = m1_entry(bars or [], s4, int(r.te)) if bars is not None else ("UNPRICED", None)
+        pct = 0.0 if why == "SKIP" else np.nan
+        if why == "ENTER":                                   # 🔁 (656) the exit from M1's own entry = today's (net TP + funding stop)
+            pct, ns = net_open(r.pair, t_in, now_ms, walk_fn)
+            why = "PRICED" if ns == "PRICED" else ("UNPRICED" if ns == "NO_DATA" else "PENDING")
         rows.append((r, why, pct))
         L.append(f"    · {r.pair} {r.o:%m-%d %H:%M} today {r.pct:+.2f} % → M1 {why} {'' if pct != pct else f'{pct:+.2f} %'}")
-    done = [(r, p) for r, w, p in rows if w in ("TP", "STOP", "TIME", "SKIP")]
+    done = [(r, p) for r, w, p in rows if w in ("PRICED", "SKIP")]
     if done:
         a = sum(float(r.pct) for r, _ in done)
         b = sum(float(p) for _, p in done)
@@ -394,7 +395,7 @@ def m1_lines(sh, now_ms, bars_fn=None):
     return L
 
 
-def bank_lines(c, now_ms, st, state_path, dec_paths=None, newest=None, bars_fn=None):
+def bank_lines(c, now_ms, st, state_path, dec_paths=None, newest=None, bars_fn=None, walk_fn=None):
     """🏦 (429) the BANK-type tracker on the confirmed fills (opened ≥ the ship)."""
     L = [f"### 🏦 BANK-TYPE — confirm close < {BANK_DEPTH:g} % below the S4 close (DECISION_LOG 429; registration BANK 10-26 0.81 % · −10.09, never counted)", ""]
     keep, _ = _GK.split_operator_closed(c) if len(c) else (c, c)
@@ -418,7 +419,7 @@ def bank_lines(c, now_ms, st, state_path, dec_paths=None, newest=None, bars_fn=N
     for r in sh.itertuples():
         L.append(f"    · {r.pair} {r.o:%m-%d %H:%M} depth {r.depth:.2f} % · {r.pct:+.2f} %")
     try:   # 🏦🪞 (539) never takes the frozen BANK read down with it
-        L += m1_lines(sh, now_ms, bars_fn)
+        L += m1_lines(sh, now_ms, bars_fn, walk_fn)
     except Exception as e:
         L.append(f"  🪞 M1 shadow unavailable this run ({str(e)[:80]})")
     rec = (st or {}).get(BANK_KEY)
@@ -506,20 +507,28 @@ FA_N, FA_WIN, FA_EARLY_N = 8, 5, 4      # 💸 (601) TIGHT frozen revert gate (d
                                         # span ≥ 5 market windows (distinct 4-h decision closes) → avg ≥ 0 → REVERT, else KEEP · the first 4 all winners → REVIEW
 
 
-def walk_from(bars, te):
-    """today's FLATBASE exit (+5 / −10, 72 h, the live booked net values) for a short entered at the first 5m open ≥ te. → net % or NaN (pending). PURE."""
-    b = [q for q in (bars or []) if int(q[0]) >= te]
-    if not b:
-        return np.nan
-    Ee = float(b[0][1])
-    for q in b:
-        if int(q[0]) >= te + MAX_H * HOUR:
-            return float(-(q[1] / Ee - 1) * 100 - TIME_FEE)
-        if q[2] >= Ee * (1 + STOP_GROSS / 100):
-            return STOP_NET if q[1] < Ee * (1 + STOP_GROSS / 100) else float(-(q[1] / Ee - 1) * 100 - TIME_FEE)
-        if q[3] < Ee * (1 - TP_GROSS / 100):
-            return TP_NET
-    return np.nan
+NET_DL, REBASE_DL = 653, 656         # 🔁 (DECISION_LOG 656) every walk in this file prices TODAY's exit: the net TP (653) + the funding stop (607)
+NET_TXT = ("today's exit: TP +5 net of the funding paid (DL 653) / stop +10 counting the funding paid (DL 607) / 72 h, real Binance funding, "
+           "5m walk, stop first on a bar touching both, 0.10 % slip on taker exits — scout_fb_net_tp_653.walk_fill, re-based DL 656")
+
+
+def _ntp():
+    import scout_fb_net_tp_653 as NT   # the ONE Flatbase net-exit pricer (scout_fb_net_tp_653.walk_fill)
+    return NT
+
+
+def net_open(pair, te, now_ms, walk_fn=None):
+    """🔁 (656) a refused / shadow setup shorted at the 5m open at te (ms, on the grid) under TODAY's exit → (net %, state): PRICED ·
+    PENDING (the 72 h path is not published yet) · STOPPED (a fetch error — transient, holds the read, never dropped) · NO_DATA (no bars).
+    walk_fn = scout_fb_net_tp_653.walk_fill's signature (tests inject one)."""
+    fn = walk_fn or _ntp().walk_fill
+    try:
+        w = fn(str(pair), int(te), None, TP_GROSS, STOP_GROSS, now_ms, "open")
+    except Exception:
+        return np.nan, "STOPPED"
+    if isinstance(w, dict):
+        return float(w["NTP_net"]), "PRICED"
+    return np.nan, ("NO_DATA" if w == "NO_DATA" else "PENDING")
 
 
 def hh_verdict(vals):
@@ -536,10 +545,10 @@ def hh_verdict(vals):
     return "COLLECTING", f"{len(v)}/{HH_N} skips priced (Σ {sum(v):+.2f})"
 
 
-def hh_lines(now_ms, st, state_path, dec_paths=None, bars_fn=None):
+def hh_lines(now_ms, st, state_path, dec_paths=None, walk_fn=None):
     """🔺 (540) every FLATBASE_HIGHER_HIGH refusal priced as if shorted at the confirm close (next 5m open, today's exit) + the frozen revert gate."""
     L = ["### 🔺 FLATBASE_HIGHER_HIGH (DECISION_LOG 540, declared override) — the skipped higher-high confirms priced as if traded (positive = the skip cost money; "
-         "5m walk, stop checked first on a bar touching both → tilt toward KEEP; no entry slippage / funding → tilt toward REVERT)", ""]
+         f"{NET_TXT}; no entry slippage → tilt toward REVERT)", ""]
     try:
         import scout_flatbase_short as FS
         led = FS.load_ledger(FS.read_decisions(dec_paths))
@@ -551,12 +560,11 @@ def hh_lines(now_ms, st, state_path, dec_paths=None, bars_fn=None):
         return L + [f"⚠ frozen {HH_KEY} record damaged — operator restore needed; not re-decided.", ""]
     if not len(sk):
         L.append("  none yet.")
-    bud, vals = LS.Budget(), []
+    vals = []
     for r in sk.itertuples():
         te = int(r.s4_ms) + M5                                            # the confirm bar's close = the entry the filter refused
-        bars = bars_fn(r.pair, te, now_ms) if bars_fn else fetch_bars(r.pair, te, now_ms, bud)
-        v = walk_from(bars, te) if bars else np.nan
-        if v != v and now_ms > te + (MAX_H + 24) * HOUR:   # (540 review) never priceable after the hold + 1 day → out, the gate never stalls
+        v, vs = net_open(r.pair, te, now_ms, walk_fn)                     # 🔁 (656) today's exit, real funding
+        if vs == "NO_DATA" and now_ms > te + (MAX_H + 24) * HOUR:   # (540 review) never priceable after the hold + 1 day → out, the gate never stalls
             L.append(f"  · {r.pair} confirm {pd.Timestamp(int(r.s4_ms), unit='ms'):%m-%d %H:%M} → NOT_EVALUABLE (no price path) — out of the gate")
             continue
         vals.append(v)
@@ -608,10 +616,10 @@ def fa_verdict(vals, windows=None):
     return "COLLECTING", f"{len(v)}/{FA_N} skips priced on {len(set(w))}/{FA_WIN} windows (avg {(sum(v) / len(v)) if v else 0:+.2f})"
 
 
-def fa_lines(now_ms, dec_paths=None, bars_fn=None):
+def fa_lines(now_ms, dec_paths=None, walk_fn=None):
     """💸 (601) every FLATBASE_FUNDING_ABOVE_BASE refusal priced as if shorted at the decision close (next 5m open, today's exit) + the gate."""
     L = ["### 💸 FLATBASE_FUNDING_ABOVE_BASE (DECISION_LOG 601, declared override) — the skipped trades priced as if traded (positive = the skip "
-         "cost money; 5m walk, no entry slippage; no funding — a short here would have RECEIVED funding → tilt toward KEEP, read by hand)", ""]
+         f"cost money; {NET_TXT} — the funding these shorts would have received is counted; no entry slippage → tilt toward REVERT)", ""]
     try:
         import scout_flatbase_short as FS
         led = FS.load_ledger(FS.read_decisions(dec_paths))
@@ -620,12 +628,11 @@ def fa_lines(now_ms, dec_paths=None, bars_fn=None):
         return L + [f"  unreadable ({str(e)[:80]})", ""]
     if not len(sk):
         L.append("  none yet.")
-    bud, vals, wins = LS.Budget(), [], []
+    vals, wins = [], []
     for r in sk.itertuples():
         te = int(r.s4_ms) + M5                                            # the decision bar's close = the entry the filter refused
-        bars = bars_fn(r.pair, te, now_ms) if bars_fn else fetch_bars(r.pair, te, now_ms, bud)
-        v = walk_from(bars, te) if bars else np.nan
-        if v != v and now_ms > te + (MAX_H + 24) * HOUR:
+        v, vs = net_open(r.pair, te, now_ms, walk_fn)                     # 🔁 (656) today's exit, real funding
+        if vs == "NO_DATA" and now_ms > te + (MAX_H + 24) * HOUR:
             L.append(f"  · {r.pair} {pd.Timestamp(int(r.s4_ms), unit='ms'):%m-%d %H:%M} → NOT_EVALUABLE (no price path) — out of the gate")
             continue
         vals.append(v); wins.append((int(r.s4_ms) + M5) // (4 * HOUR))
@@ -640,7 +647,8 @@ def fa_lines(now_ms, dec_paths=None, bars_fn=None):
     return L + [""]
 
 
-TP6_DL, TP6_KEY = 604, "FB_TP6_SHADOW"   # 🎯 (DECISION_LOG 604, operator 2026-11-20 "register the FB_TP6_SHADOW watch line") — OBSERVE only
+TP6_DL, TP6_KEY = 604, "FB_TP6_SHADOW@656"   # 🎯 (DECISION_LOG 604, operator 2026-11-20 "register the FB_TP6_SHADOW watch line") — OBSERVE only
+                                        # 🔁 (656) re-based 2026-11-27 on the net TP: both sides priced under TODAY's exit → a fresh state key
 TP6_TP, TP6_THRU = 6.0, 0.05            # the shadow TP (gross %) and the trade-through a resting maker TP needs (TP_GRID_2026-11-20_FB rule)
 TP6_N, TP6_WIN, TP6_P = 30, 15, 0.95    # 🔒 frozen ship read: ≥ 30 new real fills on ≥ 15 market windows → one-sided 95 % window bootstrap
 TP6_BOOT, TP6_SEED, TP6_TOP = 4000, 7, 0.05   # + leave-the-best-5 %-out mean Δ > 0 → SHIP CANDIDATE (operator decides; never automatic)
@@ -712,39 +720,48 @@ def tp6_prefix_k(windows):
     return None
 
 
-def tp6_lines(c, now_ms, st=None, state_path=None, since_ms=None, bars_fn=None, newest=None):
-    """🎯 (604) FB_TP6_SHADOW: every new CLOSED FLATBASE fill walked at TP −6 and TP −5 (same 1m model, real fill price) → paired Δ +
-    the frozen ship read (frozen once into the state file). c = load()'s CLOSED fills, read in open order; the freeze waits for the newest export ≥
-    the last priced fill + 72 h and for a run with no fetch stop (DL 604)."""
-    L = [f"### 🎯 FB_TP6_SHADOW (DECISION_LOG {TP6_DL}, OBSERVE only) — TP −6 vs today's −5 on every new real FLATBASE fill (stop +10, 72 h; "
-         f"1m walk from the real fill price from the next minute, TP needs {TP6_THRU:g} % through, stop first on a bar touching both; no funding)", ""]
+def tp6_lines(c, now_ms, st=None, state_path=None, since_ms=None, walk_fn=None, newest=None, net_floor_ms="auto"):
+    """🎯 (604; 🔁 re-based DL 656) FB_TP6_SHADOW: every new CLOSED FLATBASE fill walked under TODAY's exit at TP +6 and at TP +5 (both net
+    of the funding paid, stop +10 counting it, real funding — scout_fb_net_tp_653.walk_fill, the same 5m model both sides, from the real
+    fill price) → paired Δ + the frozen ship read (frozen once into the state file under TP6_KEY). Every fill since the DL 604 deploy is
+    re-priced under today's exit (model vs model, so fills that traded the old price TP count too). c = load()'s CLOSED fills, read in open
+    order; the freeze waits for the newest export ≥ the last priced fill + 72 h and for a run with no fetch stop (DL 604)."""
+    L = [f"### 🎯 FB_TP6_SHADOW (DECISION_LOG {TP6_DL}, OBSERVE only; re-based DL {REBASE_DL}) — TP +6 vs today's +5, both net of the funding "
+         f"paid, on every new real FLATBASE fill ({NET_TXT})", ""]
     if since_ms is None:
         since_ms = _GK.dl_deploy_ms(TP6_DL, lag_min=10, label="FB_TP6_SHADOW")
     if since_ms is None:
         return L + [f"⚠ NOT EVALUABLE — the DECISION_LOG {TP6_DL} commit is not in git yet; nothing is counted.", ""]
+    if net_floor_ms == "auto":
+        net_floor_ms = _GK.dl_deploy_ms(NET_DL, lag_min=10, label="FLATBASE net TP")
+    fn = walk_fn or _ntp().walk_fill
     cc = c[c.o >= pd.Timestamp(int(since_ms), unit="ms")] if len(c) else c
     keep, ox = _GK.split_operator_closed(cc) if len(cc) else (cc, cc)
     rec = (st or {}).get(TP6_KEY)
     if rec is not None and not (isinstance(rec, dict) and {"state", "detail", "run_at"} <= set(rec)):
         return L + [f"⚠ frozen {TP6_KEY} record damaged — operator restore needed; not re-decided.", ""]
-    bud, D, W, O, par, gave, stopped = LS.Budget(), [], [], [], [], 0, False
+    D, W, O, par, gave, stopped = [], [], [], [], 0, False
     for r in keep.itertuples():
-        bars = bars_fn(r.pair, int(r.te), now_ms) if bars_fn else fetch_bars_1m(r.pair, int(r.te), now_ms, bud)
-        stopped |= bars is None                                    # (604 review) a fetch stop = transient: hold, never drop, never freeze
-        w5, v5 = walk_tp(bars, float(r.E), int(r.te), TP_GROSS) if bars else ("UNPRICED", np.nan)
-        w6, v6 = walk_tp(bars, float(r.E), int(r.te), TP6_TP) if bars else ("UNPRICED", np.nan)
-        d = v6 - v5 if (v5 == v5 and v6 == v6) else np.nan
-        if d != d and bars is not None and now_ms > int(r.te) + (MAX_H + 24) * HOUR:   # (604 review, hh_lines rule) never priceable after the hold + 1 day → out
-            L.append(f"  · {r.pair} {r.o:%m-%d %H:%M} → NOT_EVALUABLE (no complete price path) — out of the read")
-            continue
-        if d != d:
-            L.append(f"  · {r.pair} {r.o:%m-%d %H:%M} booked {r.pct:+.2f} → {w5} / {w6} (pending / unpriced — holds the read)")
+        try:
+            w5 = fn(str(r.pair), int(r.te), float(r.E), TP_GROSS, STOP_GROSS, now_ms, "fill")
+            w6 = fn(str(r.pair), int(r.te), float(r.E), TP6_TP, STOP_GROSS, now_ms, "fill") if isinstance(w5, dict) else w5
+        except Exception:
+            w5 = w6 = None
+            stopped = True                                         # (604 review) a fetch stop = transient: hold, never drop, never freeze
+        if not (isinstance(w5, dict) and isinstance(w6, dict)):
+            if w5 == "NO_DATA" and now_ms > int(r.te) + (MAX_H + 24) * HOUR:   # (604 review) never priceable after the hold + 1 day → out
+                L.append(f"  · {r.pair} {r.o:%m-%d %H:%M} → NOT_EVALUABLE (no complete price path) — out of the read")
+                continue
+            L.append(f"  · {r.pair} {r.o:%m-%d %H:%M} booked {r.pct:+.2f} → pending / unpriced — holds the read")
             D.append(np.nan); W.append(int(r.te) // H4); O.append(r.o)
             continue
-        gave += int(w5 == "TP" and w6 == "STOP")
-        par.append(abs(v5 - float(r.pct)))
+        v5, v6, k5, k6 = float(w5["NTP_net"]), float(w6["NTP_net"]), w5["NTP_why"], w6["NTP_why"]
+        d = v6 - v5
+        gave += int(k5 == "TP" and k6 == "STOP")
+        if net_floor_ms is not None and int(r.te) >= int(net_floor_ms):   # only a fill that RAN the net TP can check the model
+            par.append(abs(v5 - float(r.pct)))
         D.append(d); W.append(int(r.te) // H4); O.append(r.o)
-        L.append(f"  · {r.pair} {r.o:%m-%d %H:%M} booked {r.pct:+.2f} · −5 {w5} {v5:+.2f} · −6 {w6} {v6:+.2f} · Δ {d:+.2f}")
+        L.append(f"  · {r.pair} {r.o:%m-%d %H:%M} booked {r.pct:+.2f} · +5 {k5} {v5:+.2f} · +6 {k6} {v6:+.2f} · Δ {d:+.2f}")
     done_d, done_w, done_o = [], [], []
     for d, w, o in zip(D, W, O):                # in fill order; the read waits at the first unpriced fill
         if d != d:
@@ -753,7 +770,7 @@ def tp6_lines(c, now_ms, st=None, state_path=None, since_ms=None, bars_fn=None, 
     state, detail = tp6_verdict(done_d, done_w)
     hold = []                                   # (604 review) never freeze on an incomplete cohort
     if stopped:
-        hold.append("a kline fetch stopped this run")
+        hold.append("a kline / funding fetch stopped this run")
     kk = tp6_prefix_k(done_w)                    # (605 review) only fills up to the read's prefix can change it
     if kk and (newest is None or newest < max(done_o[:kk]) + pd.Timedelta(minutes=WAIT_MIN)):
         hold.append(f"newest export < the last priced fill + {WAIT_MIN} min (an earlier-opened fill could still be open)")
@@ -764,19 +781,20 @@ def tp6_lines(c, now_ms, st=None, state_path=None, since_ms=None, bars_fn=None, 
     if not len(keep):
         L.append("  no new fills yet.")
     L.append(f"  cohort: CLOSED fills opened ≥ {pd.Timestamp(int(since_ms), unit='ms'):%Y-%m-%d %H:%M} UTC · {_GK.operator_closed_line(ox)} · priced {len(done_d)} · "
-             f"Σ Δ {sum(done_d):+.2f} pts · 'hit −5, then stopped at −6' {gave}" + (f" · parity −5 walk vs booked: median |diff| {np.median(par):.2f}" if par else ""))
+             f"Σ Δ {sum(done_d):+.2f} pts · 'hit +5 net, then stopped at +6' {gave}"
+             + (f" · parity +5 walk vs booked (fills that ran the net TP, N {len(par)}): median |diff| {np.median(par):.2f}" if par else ""))
     L.append(f"**Frozen read ({rec['run_at']}): {rec['state']}** — {rec['detail']}" if rec else f"Now: ⏳ {state} — {detail}")
     if hold and not rec and state != "COLLECTING":
         L.append("  ⏸ freezing deferred: " + " · ".join(hold) + " — re-checked next run.")
-    L.append("  🔒 if −6 is ever shipped: revert to −5 when ≥ 3 of the first 20 fills under −6 'hit −5, then stopped', or Σ Δ vs the −5 shadow < −10 pts "
+    L.append("  🔒 if +6 is ever shipped: revert to +5 when ≥ 3 of the first 20 fills under +6 'hit +5, then stopped', or Σ Δ vs the +5 shadow < −10 pts "
              "(reports/TP_GRID_2026-11-20_FB.md §9).")
     return L + [""]
 
 
-def nb_lines(now_ms, dec_paths=None, bars_fn=None):
+def nb_lines(now_ms, dec_paths=None, walk_fn=None):
     """📏 (577) every FLATBASE_NEAR_BASE refusal priced as if shorted at the confirm close (next 5m open, today's exit) + the frozen revert gate."""
     L = ["### 📏 FLATBASE_NEAR_BASE (DECISION_LOG 577) — the skipped near-base confirms priced as if traded (positive = the skip cost money; "
-         "5m walk, no entry slippage / funding → tilt toward REVERT)", ""]
+         f"{NET_TXT}; no entry slippage → tilt toward REVERT)", ""]
     try:
         import scout_flatbase_short as FS
         led = FS.load_ledger(FS.read_decisions(dec_paths))
@@ -785,12 +803,11 @@ def nb_lines(now_ms, dec_paths=None, bars_fn=None):
         return L + [f"  unreadable ({str(e)[:80]})", ""]
     if not len(sk):
         L.append("  none yet.")
-    bud, vals = LS.Budget(), []
+    vals = []
     for r in sk.itertuples():
         te = int(r.s4_ms) + M5                                            # the confirm bar's close = the entry the filter refused
-        bars = bars_fn(r.pair, te, now_ms) if bars_fn else fetch_bars(r.pair, te, now_ms, bud)
-        v = walk_from(bars, te) if bars else np.nan
-        if v != v and now_ms > te + (MAX_H + 24) * HOUR:
+        v, vs = net_open(r.pair, te, now_ms, walk_fn)                     # 🔁 (656) today's exit, real funding
+        if vs == "NO_DATA" and now_ms > te + (MAX_H + 24) * HOUR:
             L.append(f"  · {r.pair} confirm {pd.Timestamp(int(r.s4_ms), unit='ms'):%m-%d %H:%M} → NOT_EVALUABLE (no price path) — out of the gate")
             continue
         vals.append(v)
@@ -805,9 +822,9 @@ def nb_lines(now_ms, dec_paths=None, bars_fn=None):
     return L + [""]
 
 
-def skipped_lines(ship, now_ms, dec_paths=None, bars_fn=None):
+def skipped_lines(ship, now_ms, dec_paths=None, walk_fn=None):
     """side line, no verdict: SKIPPED episodes (no 4-h close below the S4 close in the wait) priced as if entered at the S4 bar."""
-    L = ["### FB_CONFIRM — what the skips gave up (no verdict): SKIPPED episodes priced as if shorted at the S4 bar (next 5m open, +5 / −10, 72 h)", ""]
+    L = [f"### FB_CONFIRM — what the skips gave up (no verdict): SKIPPED episodes priced as if shorted at the S4 bar (next 5m open; {NET_TXT})", ""]
     try:
         import scout_flatbase_short as FS
         led = FS.load_ledger(FS.read_decisions(dec_paths))
@@ -819,11 +836,10 @@ def skipped_lines(ship, now_ms, dec_paths=None, bars_fn=None):
         return L + [f"  unreadable ({str(e)[:80]})", ""]
     if not len(sk):
         return L + ["  none yet.", ""]
-    bud, got = LS.Budget(), []
+    got = []
     for r in sk.itertuples():
         te = int(r.s4_ms) + M5                                            # the S4 bar's close = the old entry time
-        bars = bars_fn(r.pair, te, now_ms) if bars_fn else fetch_bars(r.pair, te, now_ms, bud)
-        v = walk_from(bars, te) if bars else np.nan   # 🔺 (540 review) one walker for both side lines
+        v, _ = net_open(r.pair, te, now_ms, walk_fn)                      # 🔁 (656) one walker for every side line
         got.append(v)
         L.append(f"  · {r.pair} S4 {pd.Timestamp(int(r.s4_ms), unit='ms'):%m-%d %H:%M} at {r.px} → " + (f"{v:+.2f} %" if v == v else "pending / unpriced"))
     x = pd.Series(got).dropna()
@@ -866,17 +882,24 @@ def fs_verdict(deltas, cuts):
     return "KEEP", f"KEEP: first {FS_N} Σ Δ {tot:+.2f} pts ≥ 0 · no cut"
 
 
-def fs_lines(c, now_ms, st=None, state_path=None, since_ms=None, bars_fn=None, newest=None):
+def fs_lines(c, now_ms, st=None, state_path=None, since_ms=None, bars_fn=None, newest=None, walk_fn=None, net_floor_ms="auto"):
     """💸 (607) FB_FUNDING_STOP revert gate: every CLOSED FLATBASE fill since the DL 607 deploy that the funding-inclusive stop closed, re-walked
     under the price-only stop (+10 % / TP −5 resting / 72 h, walk_tp's 1m model from the real fill price) → Δ = booked − price-only. The
     price-only side is charged only the funding the row paid up to its real exit (the settlements after it are not fetched) — that flatters
-    the price-only stop, i.e. errs toward REVERT. Frozen once at the first FS_N priced fired stops; the read waits at the first unpriced one."""
-    L = [f"### 💸 FB_FUNDING_STOP (DECISION_LOG {FS_DL}, ARMED · alert-only revert gate) — the +10 % stop counts the funding paid; each "
-         f"funding-fired stop vs the price-only stop on the same fill", ""]
+    the price-only stop, i.e. errs toward REVERT. Frozen once at the first FS_N priced fired stops; the read waits at the first unpriced one.
+    🔁 (DECISION_LOG 656, per-era) a fired stop opened ≥ the DL 653 deploy ran the NET take profit → its price-only side is the net TP with a
+    price-only stop on the same path (walk_fill NTP_PSL: real funding to that side's own exit, 5m); earlier fills keep the price-TP walk above.
+    Each fill is judged under the take profit it actually ran — the count runs on across the two eras."""
+    L = [f"### 💸 FB_FUNDING_STOP (DECISION_LOG {FS_DL}, ARMED · alert-only revert gate; re-based DL {REBASE_DL}) — the +10 % stop counts the "
+         f"funding paid; each funding-fired stop vs the price-only stop on the same fill, under the take profit that fill ran (price TP before "
+         f"the DL {NET_DL} deploy · net TP from it, real funding)", ""]
     if since_ms is None:
         since_ms = _GK.dl_deploy_ms(FS_DL, lag_min=10, label="FB_FUNDING_STOP")
     if since_ms is None:
         return L + [f"⚠ NOT EVALUABLE — the DECISION_LOG {FS_DL} commit is not in git yet; nothing is counted.", ""]
+    if net_floor_ms == "auto":
+        net_floor_ms = _GK.dl_deploy_ms(NET_DL, lag_min=10, label="FLATBASE net TP")
+    nfn = walk_fn or _ntp().walk_fill
     cc = c[c.o >= pd.Timestamp(int(since_ms), unit="ms")] if len(c) else c
     keep, ox = _GK.split_operator_closed(cc) if len(cc) else (cc, cc)
     rec = (st or {}).get(FS_KEY)
@@ -884,7 +907,7 @@ def fs_lines(c, now_ms, st=None, state_path=None, since_ms=None, bars_fn=None, n
         return L + [f"⚠ frozen {FS_KEY} record damaged — operator restore needed; not re-decided.", ""]
     n_stop = int((keep.close_reason.astype(str) == "STOP_LOSS").sum()) if len(keep) else 0
     fired = [r for r in keep.itertuples() if fs_fired(r)]
-    bud, D, C, O, stopped = LS.Budget(), [], [], [], False
+    bud, D, C, O, stopped, n_net = LS.Budget(), [], [], [], False, 0
     for r in fired:
         bars = bars_fn(r.pair, int(r.te), now_ms) if bars_fn else fetch_bars_1m(r.pair, int(r.te), now_ms, bud)
         stopped |= bars is None
@@ -898,6 +921,24 @@ def fs_lines(c, now_ms, st=None, state_path=None, since_ms=None, bars_fn=None, n
             if any(int(b[0]) <= ce and float(b[2]) >= lvl for b in bars if int(b[0]) >= int(r.te) // MIN1 * MIN1 + MIN1):
                 L.append(f"  · {r.pair} {r.o:%m-%d %H:%M} booked {r.pct:+.2f} → the +10 % level traded before / at the exit — a price-level stop, not counted")
                 continue
+        if bars and net_floor_ms is not None and int(r.te) >= int(net_floor_ms):   # 🔁 (656) this fill ran the NET take profit
+            try:
+                w = nfn(str(r.pair), int(r.te), float(r.E), TP_GROSS, STOP_GROSS, now_ms, "fill")
+            except Exception:
+                w, stopped = None, True
+            if isinstance(w, dict):
+                a, why = float(w["NTP_PSL_net"]), f"net TP · {w['NTP_PSL_why']}"   # funding to its own exit already inside
+                d, cut = float(r.pct) - a, a > 0
+                D.append(d); C.append(cut); O.append(r.o); n_net += 1
+                L.append(f"  · {r.pair} {r.o:%m-%d %H:%M} booked {r.pct:+.2f} · price-only stop ({why}) {a:+.2f} · Δ {d:+.2f}"
+                         + f" · model today {w['NTP_why']} {float(w['NTP_net']):+.2f}" + (" · CUT" if cut else ""))
+                continue
+            if w == "NO_DATA" and now_ms > int(r.te) + (MAX_H + 24) * HOUR:
+                L.append(f"  · {r.pair} {r.o:%m-%d %H:%M} → NOT_EVALUABLE (no complete price path) — out of the read")
+                continue
+            L.append(f"  · {r.pair} {r.o:%m-%d %H:%M} booked {r.pct:+.2f} → net-TP path pending / unpriced — holds the read")
+            D.append(np.nan); C.append(False); O.append(r.o)
+            continue
         if bars is not None and paid != paid and now_ms > int(r.te) + (MAX_H + 24) * HOUR:
             L.append(f"  · {r.pair} {r.o:%m-%d %H:%M} → NOT_EVALUABLE (no quantity on the row) — out of the read")
             continue
@@ -928,7 +969,7 @@ def fs_lines(c, now_ms, st=None, state_path=None, since_ms=None, bars_fn=None, n
         st[FS_KEY] = rec
         NF.du_save_state(st, state_path)
     L.append(f"  cohort: CLOSED fills opened ≥ {pd.Timestamp(int(since_ms), unit='ms'):%Y-%m-%d %H:%M} UTC · {_GK.operator_closed_line(ox)} · "
-             f"stops {n_stop} · funding-fired {len(fired)} · priced {len(dd)}")
+             f"stops {n_stop} · funding-fired {len(fired)} · priced {len(dd)}" + (f" ({n_net} under the net TP)" if n_net else ""))
     L.append(f"**Frozen read ({rec['run_at']}): {rec['state']}** — {rec['detail']}" if rec else f"Now: ⏳ {state} — {detail}")
     if hold and not rec and state != "COLLECTING":
         L.append("  ⏸ freezing deferred: " + " · ".join(hold) + " — re-checked next run.")

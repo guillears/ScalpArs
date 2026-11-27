@@ -60,22 +60,104 @@ def gate(rows):
     return "KEEP", f"🟢 {info} → keep the net take profit", GATE_N
 
 
-def price_fill(pair, te, E):
-    """→ (base_net, ntp_net, base_why, ntp_why) for one closed fill, or None (data not ready / unreadable)."""
+_STOP = {"why": None}   # (656 review) set on a 418 / 429 / 403 — every later walk_fill of the run raises without fetching
+_PATHS = {}   # (pair, first bar ms) → (t, o, h, l, c, funding times, funding rates) — one fetch per path per run, shared by every caller
+FUND_CACHE = os.path.join(_R, "reports", "backtest_cache", "fb_net_walk")   # closed windows' funding (gitignored cache dir)
+
+
+def _funding(RR, pair, a, b):
+    """the funding settlements in [a, b] — from the disk cache when this closed window was read before, else fetched and cached (a 72 h
+    window that has ended never changes). A fetch error raises (never cached)."""
+    import numpy as np
+    p = os.path.join(FUND_CACHE, f"{pair}_{int(a)}_{int(b)}.json")
+    try:
+        with open(p) as f:
+            d = json.load(f)
+        return np.array(d["t"], dtype="int64"), np.array(d["r"], dtype=float)
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    ft, fr = RR.fetch_funding(pair, int(a), int(b))
+    try:
+        os.makedirs(FUND_CACHE, exist_ok=True)
+        tmp = f"{p}.{os.getpid()}.tmp"
+        with open(tmp, "w") as f:
+            json.dump(dict(t=[int(x) for x in ft], r=[float(x) for x in fr]), f)
+        os.replace(tmp, p)
+    except OSError:
+        pass
+    return ft, fr
+
+
+def walk_arrays(t, o, h, l, c, i0, E, t_fill, fs_t, fs_r, tp, sl, end_t):
+    """🔁 (DECISION_LOG 656) the ONE pricer of today's FLATBASE exit for every Flatbase observe line: a short at E from bar i0 on 5m arrays,
+    with the REAL Binance funding settlements after t_fill, walked by the DL 616 walker (FUNDING_STUDY_ALL_2026-11-21_bt.walk_all,
+    paid_stop True): stop first on a bar touching both, a resting TP needs a 0.05 % trade-through, 0.10 % slip on taker exits, entry 0.05,
+    taker 0.05, maker 0.02, 72 h. → the walk dict or None (no bars from i0). Keys: NTP_* = TODAY (net TP 653 + funding stop 607) ·
+    NTP_PSL_* = net TP + price-only stop · base_* = price TP + funding stop · PSL_* = price TP + price-only stop (net, why, hold). PURE."""
     import numpy as np
     BT = _imp("fsb", "FUNDING_STUDY_ALL_2026-11-21_bt.py")
-    RR = _imp("fbfr", "FLATBASE_FUNDING_RERUN_2026-11-27.py")
-    now = int(time.time() * 1000) // BAR * BAR - BAR
-    if now < te + 72 * HR + BAR:
-        return None                                   # (review) both walks need the full 72 h path — a younger fill waits
-    t, o, h, l, c, _ = RR.ET.real_arrays(pair, te - 2 * HR, te + 73 * HR)
-    if not len(t):
+    if not len(t) or i0 >= len(t) or not (E and E > 0):
         return None
-    i0 = int(np.searchsorted(t, te // BAR * BAR + BAR))   # (review) from the bar AFTER the fill bar (its pre-fill high / low never fire)
-    fs_t, fs_r = RR.fetch_funding(pair, te - 3 * 86_400_000, te + 73 * HR)
-    F = BT.C.settle_on_bars(t, o, E, te + 10_000, fs_t, fs_r, 5, markscale=True)
-    w = BT.walk_all(t, o, h, l, c, i0, E, 5.0, 10.0, min(te + 72 * HR, int(t[-1]) + BAR), F, 0.10, 0.05, 0.05, 0.02, True, time_cells=False)
-    if w is None:
+    F = BT.C.settle_on_bars(t, o, E, t_fill, fs_t, fs_r, 5, markscale=True)
+    return BT.walk_all(t, o, h, l, c, i0, E, float(tp), float(sl), min(int(end_t), int(t[-1]) + BAR), F, 0.10, 0.05, 0.05, 0.02, True, time_cells=False)
+
+
+def walk_fill(pair, te, E=None, tp=5.0, sl=10.0, now_ms=None, entry="fill"):
+    """🔁 (656) one Flatbase short priced under today's exit machinery from public Binance 5m klines + funding (fetched once per path).
+    entry="fill": a REAL fill at te (ms) and price E — the path starts at the bar AFTER te's bar (its pre-fill high / low never fire).
+    entry="open": a shadow short at the 5m open at te (on the grid; a refused setup) — E = that open, the path starts AT that bar.
+    → walk dict (walk_arrays) · None (the 72 h path is not published yet) · "NO_DATA" (no bars). A fetch error RAISES (RuntimeError —
+    the caller holds the read: transient, never dropped)."""
+    import numpy as np
+    now = (int(time.time() * 1000) if now_ms is None else int(now_ms)) // BAR * BAR - BAR
+    te = int(te)
+    b0 = te // BAR * BAR if entry == "open" else te // BAR * BAR + BAR
+    if now < b0 + 72 * HR:
+        return None                                   # both walks need the full 72 h path — a younger fill waits
+    key = (str(pair), b0)
+    need_end = (te if entry == "fill" else b0) + 72 * HR          # the walk's last bar must exist (a truncated path is never priced)
+    if key not in _PATHS:
+        if _STOP["why"]:                                          # (656 review) after a 418 / 429 nothing more is fetched this run
+            raise RuntimeError(f"Binance fetch stopped earlier this run ({_STOP['why']})")
+        RR = _imp("fbfr", "FLATBASE_FUNDING_RERUN_2026-11-27.py")
+        try:
+            try:
+                t, o, h, l, c, _ = RR.ET.real_arrays(str(pair), te - 2 * HR, b0 + 73 * HR)
+            except (IndexError, KeyError, ValueError):            # (656 review) no rows at all (delisted / invalid symbol): arrays_from on
+                t = np.array([], "int64"); o = h = l = c = np.array([])   # an empty frame raises → NO_DATA, never a permanent hold
+            if len(t) and int(t[-1]) < need_end - BAR:            # (656 review) the study cache skips a refetch at ≥ 98 % coverage → the tail
+                ex = RR.ET.fetch(str(pair), int(t[-1]) + BAR, b0 + 73 * HR)   # may be missing: fetch it, never price a cut path as TIME
+                if len(ex):
+                    import pandas as pd
+                    base = pd.DataFrame(dict(open_time=t, o=o, h=h, l=l, c=c, vol=np.zeros(len(t))))
+                    t, o, h, l, c, _ = RR.ET.arrays_from(pd.concat([base, ex[["open_time", "o", "h", "l", "c", "vol"]]]))
+            fs_t, fs_r = _funding(RR, str(pair), te - 3 * 86_400_000, b0 + 73 * HR) if len(t) else (np.array([], "int64"), np.array([]))
+        except SystemExit as e:                       # the study fetcher stops on 418 / 429 with SystemExit — never kill the scout
+            _STOP["why"] = str(e)[:80]
+            raise RuntimeError(f"Binance fetch stopped ({e})")
+        except Exception as e:
+            code = getattr(e, "code", None)
+            if code in (418, 429, 403):               # (656 review) fundingRate's urllib HTTPError: stop every fetch for the rest of the run
+                _STOP["why"] = f"HTTP {code} on fundingRate"
+            raise RuntimeError(f"fetch failed ({type(e).__name__}: {str(e)[:60]})")
+        _PATHS[key] = (np.asarray(t, "int64"), o, h, l, c, fs_t, fs_r)
+    t, o, h, l, c, fs_t, fs_r = _PATHS[key]
+    i0 = int(np.searchsorted(t, b0))
+    if not len(t) or i0 >= len(t) or (entry == "open" and int(t[i0]) != b0):   # a shadow needs its entry bar's open; a fill only a path
+        return "NO_DATA"
+    E = float(o[i0]) if entry == "open" else float(E)
+    if int(t[-1]) < need_end - BAR:
+        if now < need_end + 24 * HR:
+            return None                               # the tail is not published / fetched yet — wait (a later run re-reads it)
+        return "NO_DATA"                              # a day later and still cut short → the data does not exist (out, never TIME)
+    w = walk_arrays(t, o, h, l, c, i0, E, te + 10_000, fs_t, fs_r, tp, sl, end_t=need_end)
+    return "NO_DATA" if w is None else w
+
+
+def price_fill(pair, te, E):
+    """→ (base_net, ntp_net, base_why, ntp_why) for one closed fill, or None (data not ready / unreadable)."""
+    w = walk_fill(pair, te, E)
+    if not isinstance(w, dict):
         return None
     return w["base_net"], w["NTP_net"], w["base_why"], w["NTP_why"]
 

@@ -115,6 +115,7 @@ def _bars(t0, closes, step=300_000):
 
 def test_m1_shadow_skip_and_enter():
     import scout_flatbase_confirm_watch as W
+    import pandas as pd
     H4, M5 = W.H4, W.M5
     s4_close_ms = 10 * H4
     t0 = s4_close_ms - 48 * M5                       # bars from 4 h before the S4 close
@@ -126,8 +127,7 @@ def test_m1_shadow_skip_and_enter():
     px[conf_i] = 99.5
     te = s4_close_ms + H4                            # the fill = the confirm close
     # never ≥ 1 % below inside 24 h → SKIP
-    why, pct = W.price_m1(_bars(t0, px), 100.0, te, 10**15)
-    assert (why, pct) == ("SKIP", 0.0)
+    assert W.m1_entry(_bars(t0, px), 100.0, te) == ("SKIP", None)
     # a 4-h close 1.5 % below 8 h after S4 → enters at the next open, then a 6 % drop → TP
     px2 = list(px)
     k = s4_i + 96
@@ -136,9 +136,16 @@ def test_m1_shadow_skip_and_enter():
         px2[j] = 98.5
     for j in range(k + 30, k + 60):
         px2[j] = 92.0
-    why2, pct2 = W.price_m1(_bars(t0, px2), 100.0, te, 10**15)
-    assert why2 == "TP" and pct2 == W.TP_NET
-    assert W.price_m1(_bars(t0, px), 120.0, te, 10**15)[0] == "UNPRICED"   # no S4 bar matches the stamp → never guessed
+    why2, t_in = W.m1_entry(_bars(t0, px2), 100.0, te)
+    assert why2 == "ENTER" and t_in == t0 + (k + 1) * M5                  # the next 5m open after that 4-h close; the exit = today's (656)
+    assert W.m1_entry(_bars(t0, px), 120.0, te)[0] == "UNPRICED"           # no S4 bar matches the stamp → never guessed
+    assert W.m1_entry(_bars(t0, px[:s4_i + 60]), 100.0, te) == ("PENDING", None)   # the 24 h wait is not over
+    # m1_lines: the M1 entry is priced under TODAY's exit from its own entry bar (net TP + funding stop, walk_fill "open")
+    seen = []
+    wf = lambda pair, te_, E_, tp, sl, now_, entry: seen.append((te_, entry)) or dict(NTP_net=4.9)
+    sh = pd.DataFrame([dict(pair="AUSDT", te=te, o=pd.Timestamp(te, unit="ms"), pct=-10.09, entry_frenzy_vwap=100.0, entry_frenzy_vs_vwap_pct=0.0)])
+    out = "\n".join(W.m1_lines(sh, 10**15, bars_fn=lambda *a: _bars(t0, px2), walk_fn=wf))
+    assert seen == [(t_in, "open")] and "M1 PRICED +4.90 %" in out and "Δ +14.99 pts" in out
 
 
 def test_topup_only_across_an_hour_boundary():
@@ -184,7 +191,7 @@ def test_m1_never_takes_the_confirm_bar_as_s4():
     px[47 + 48] = 99.97                              # confirm only 0.03 % below S4 — within the 0.05 % match band
     te = s4_close_ms + H4
     # the S4 bar is still found (the confirm bar is excluded) → the 24 h window runs from S4, no ≥ 1 % close → SKIP
-    assert W.price_m1(_bars(t0, px), 100.0, te, 10**15) == ("SKIP", 0.0)
+    assert W.m1_entry(_bars(t0, px), 100.0, te) == ("SKIP", None)
 
 
 def test_stop_reads_line_and_closed_funding_column():

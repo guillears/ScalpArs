@@ -1246,18 +1246,36 @@ def tp_shadow_lines(real, bud, now_ms, fetch=True, klines=None, slip=SLIP_DEF, s
 
 # ═══════════════════════════ 🩳🔒 OBS-FB2 — LOW-TURNOVER SWITCH (DECISION_LOG 407, operator 2026-10-28, frozen, observe-only) ═══════════════════════════
 # "yes register it" · "+5 −10 is interesting too, mainly due to the Avg Hold time" · "register it in the same line". The setups the sleeve
-# REFUSES today (turnover ≤ 1 → ledger SHADOW, no order) priced under two exits — LOW×TODAY (+8 / −15) and LOW×TP5_SL10 (+5 / −10) —
+# REFUSES today (turnover ≤ 1 → ledger SHADOW, no order) priced under two exits — LOW×TODAY (+8 / −15) and LOW×NET5_SL10 (today's exit, 🔁 DL 656) —
 # each with funding, against the real traded cohort (turnover > 1) at today's exit over the same period. The joint read that motivated it
 # (B25, in-sample — registration only, never counted): 7 shadows · today +4.83 (86 %, hold 50:48) · +5/−10 +4.02 (86 %, hold 19:32) vs
 # the 13 traded fills −2.71 % · the small exits (+2/−5, +1/−4) helped the traded fills but destroyed the low-turnover edge.
 OBS_FB2_DL = 407
-OBS_FB2_CELLS = {"LOW×TODAY": None, "LOW×TP5_SL10": (5.0, 10.0)}   # None = the live exit (_frozen_th)
+OBS_FB2_CELLS = {"LOW×TODAY": None, "LOW×NET5_SL10": "NET"}   # None = the DL 348 rule (_frozen_th) · "NET" = TODAY's exit (🔁 DL 656)
+NET_DL, REBASE_DL = 653, 656       # 🔁 (656) the +5 / −10 cell was the PRICE TP (LOW×TP5_SL10, never frozen) → re-based on the net TP + funding stop
+NET_EXIT = (5.0, 10.0)
 OBS_FB2_N, OBS_FB2_DAYS, OBS_FB2_P, OBS_FB2_MARGIN = 30, 10, 0.95, 1.0
 OBS_FB2_STATE = os.path.join(_R, "reports", ".flatbase_obs_fb2_gate.json")
 
 
-def price_shadow_cell(row, cell, bud, now_ms, fetch=True, klines=None, slip_pct=SLIP_DEF, funding=None):
-    """one shadow setup under an OBS-FB2 cell → (net % incl. funding, hold minutes, funding known) or None (window open / no data)."""
+def _ntp():
+    import scout_fb_net_tp_653 as NT   # 🔁 (656) the ONE Flatbase net-exit pricer
+    return NT
+
+
+def price_shadow_cell(row, cell, bud, now_ms, fetch=True, klines=None, slip_pct=SLIP_DEF, funding=None, walk_fn=None):
+    """one shadow setup under an OBS-FB2 cell → (net % incl. funding, hold minutes, funding known) or None (window open / no data).
+    The "NET" cell (🔁 DL 656) = TODAY's exit: shorted at the 5m open after the S4 bar, TP +5 net of the funding paid / stop +10 counting
+    it / 72 h, real funding — scout_fb_net_tp_653.walk_fill (no entry slippage; a fetch error → None, retried next run)."""
+    if OBS_FB2_CELLS[cell] == "NET":
+        if not fetch and walk_fn is None:
+            return None
+        try:
+            w = (walk_fn or _ntp().walk_fill)(str(row.pair), int(pd.Timestamp(row.t).value // 1_000_000) + BAR_MS, None,
+                                               NET_EXIT[0], NET_EXIT[1], now_ms, "open")
+        except Exception:
+            return None
+        return (float(w["NTP_net"]), float(w["NTP_hold"]) * 60.0, True) if isinstance(w, dict) else None
     th = _frozen_th() if OBS_FB2_CELLS[cell] is None else _th_tp(*OBS_FB2_CELLS[cell])
     hb = int(round(flatbase_params(_frozen_th())['max_hold_h'] * 12))
     start = int(pd.Timestamp(row.t).value // 1_000_000) + BAR_MS
@@ -1322,11 +1340,41 @@ def obs_fb2_verdict(cell_rows, real_same, unpriced=0, unpriced_days=()):
     return "KEEP_OBSERVING", txt + " → bar not met (frozen; never re-fit)"
 
 
+def net_real_fn(real, now_ms, walk_fn=None, net_floor_ms="auto", fetch=True):
+    """🔁 (656) → ([(opened_at, net %)], n_missing): every traded fill under TODAY's exit — booked when it RAN it (opened ≥ the DL 653
+    deploy + 10 min), else re-walked on its own path under it (walk_fill NTP, real funding). n_missing = no walk yet (path / fetch / data)."""
+    if net_floor_ms == "auto":
+        net_floor_ms = _GK.dl_deploy_ms(NET_DL, lag_min=10, label="FLATBASE net TP")
+    fn = walk_fn or _ntp().walk_fill
+    out, miss = [], 0
+    for r in (real.sort_values("o").itertuples() if len(real) else []):
+        te = int(pd.Timestamp(r.o).value // 1_000_000)
+        if net_floor_ms is not None and te >= int(net_floor_ms):
+            x = _fnum(r.net)
+            if x is None:
+                miss += 1
+            else:
+                out.append((r.o, x))
+            continue
+        w = None
+        if fetch or walk_fn is not None:
+            try:
+                w = fn(str(r.pair), te, float(r.entry_price), NET_EXIT[0], NET_EXIT[1], now_ms, "fill")
+            except Exception:
+                w = None
+        if isinstance(w, dict):
+            out.append((r.o, float(w["NTP_net"])))
+        else:
+            miss += 1
+    return out, miss
+
+
 def obs_fb2_lines(real, bud, now_ms, fetch=True, klines=None, slip=SLIP_DEF, funding=None, state_path=OBS_FB2_STATE, shadows=None,
-                  real_by_exit=None):
+                  real_by_exit=None, walk_fn=None):
     import json as _j
     L = [f"🩳🔒 OBS-FB2 LOW-TURNOVER SWITCH (DECISION_LOG {OBS_FB2_DL}, frozen, observe-only): the REFUSED turnover ≤ 1 setups under "
-         "LOW×TODAY (+8 / −15, the DL 348 rule — the key keeps its name) and LOW×TP5_SL10 (+5 / −10, live since DL 408), funding incl., vs the traded (turnover > 1) fills under the same exit. Bar per cell "
+         "LOW×TODAY (+8 / −15, the DL 348 rule — the key keeps its name) and LOW×NET5_SL10 (TODAY's exit: TP +5 net of the funding paid / stop "
+         f"+10 counting it, real funding — re-based DL {REBASE_DL}; it was the +5 / −10 PRICE TP, never frozen), funding incl., vs the traded (turnover > 1) fills under the same exit. Bar per cell "
          f"(fresh setups only, decided once at ≥ {OBS_FB2_N} on ≥ {OBS_FB2_DAYS} UTC days): CANDIDATE iff avg > 0 ∧ day-block P(mean > 0) ≥ "
          f"{OBS_FB2_P} ∧ avg − traded same-period avg ≥ +{OBS_FB2_MARGIN:g} pt ∧ no day / pair ≥ 50 % of the gain · RETIRE iff avg ≤ traded · "
          "else KEEP OBSERVING. Hold time + return per hour held shown (a shorter hold frees the slot and the coin)."]
@@ -1344,12 +1392,20 @@ def obs_fb2_lines(real, bud, now_ms, fetch=True, klines=None, slip=SLIP_DEF, fun
                     state = _j.load(fh) or {}
         except Exception:
             state = {}
-        cmp_txt = {}
+        cmp_txt, _net_real = {}, None
+
+        def _by_exit(ex):                       # 🔁 (656) the NET cell's comparator = the traded fills under TODAY's exit
+            nonlocal _net_real
+            if ex == "NET":
+                if _net_real is None:
+                    _net_real = net_real_fn(real, now_ms, walk_fn, fetch=fetch)
+                return _net_real
+            return real_by_exit(ex or _tp_live())
         for cell in OBS_FB2_CELLS:
             rows, f_unk, fresh_all = [], 0, []
             for r in sh.sort_values("t").itertuples() if len(sh) else []:
                 is_fresh = reg_ms is not None and int(pd.Timestamp(r.t).value // 1_000_000) >= reg_ms
-                p_ = price_shadow_cell(r, cell, bud, now_ms, fetch=fetch, klines=klines, slip_pct=slip, funding=funding)
+                p_ = price_shadow_cell(r, cell, bud, now_ms, fetch=fetch, klines=klines, slip_pct=slip, funding=funding, walk_fn=walk_fn)
                 if is_fresh:
                     fresh_all.append((r.t, str(r.pair), None if p_ is None else p_[0], None if p_ is None else p_[1]))
                 if p_ is not None:
@@ -1375,7 +1431,7 @@ def obs_fb2_lines(real, bud, now_ms, fetch=True, klines=None, slip=SLIP_DEF, fun
             if fresh:
                 t0, t1 = min(x[0] for x in fresh), max(x[0] for x in fresh)
                 if real_by_exit is not None:   # 🔁 (408) the traded fills under the cell's OWN exit (booked when they ran it, else re-walked)
-                    _rb, _rm = real_by_exit(OBS_FB2_CELLS[cell] or _tp_live())
+                    _rb, _rm = _by_exit(OBS_FB2_CELLS[cell])
                     real_same = [float(x) for o, x in _rb if t0 <= o <= t1]
                     cmp_txt[cell] = f"comparator N {len(real_same)}" + (f" ({_rm} closed fill(s) without a re-walk yet, left out)" if _rm else "")
                 else:
@@ -1401,7 +1457,7 @@ def obs_fb2_lines(real, bud, now_ms, fetch=True, klines=None, slip=SLIP_DEF, fun
             L.append("  ⚠ the DECISION_LOG 407 commit is not in git yet — every setup is registration, nothing counted")
         if real_by_exit is not None:
             for cell, ex in OBS_FB2_CELLS.items():
-                _rb, _rm = real_by_exit(ex or _tp_live())
+                _rb, _rm = _by_exit(ex)
                 L.append(f"  traded under {cell}'s exit: N {len(_rb)} · avg {(sum(x for _, x in _rb) / len(_rb)) if _rb else float('nan'):+.3f} %"
                          + (f" · {_rm} without a re-walk yet" if _rm else ""))
         if len(real):
@@ -1436,6 +1492,10 @@ FBX_END_MS = None                                             # 🔒 set to the 
 # operator decides) · else KEEP +5 / −10. Decided once (FBX_STATE key "risk531"); an unpriced / open fill in the sample holds it.
 FBXR_DL, FBXR_N, FBXR_DAYS = 527, 15, 8
 FBXR_SCALE = 10.0 / 15.0
+# 🔁 (DECISION_LOG 656, 2026-11-27) FBX_RISK re-based before it froze: both sides are walked under TODAY's mechanics (TP net of the funding
+# paid, stop counting it, real Binance funding — scout_fb_net_tp_653.walk_fill, 5m): +8 / −15 (× 0.67) vs +5 / −10. The same frozen bar and
+# sample (fills ≥ the DL 527 commit + 10 min); a fresh state key (FBXR_KEY) — the price-TP read (key risk531) never froze.
+FBXR_KEY = "risk656"
 
 
 def fbx_ran(r, switch_ms, end_ms=None):
@@ -1514,7 +1574,8 @@ def fbx_risk_verdict(rows):
     return (("SWITCH CANDIDATE", txt + " → +8 / −15 at Flatbase size × 0.67 (operator decides)") if o > n else ("KEEP", txt + " → KEEP +5 / −10"))
 
 
-def fbx_lines(real, walks, switch_ms, state_path=FBX_STATE, finals=(), open_rows=None, risk_since_ms="auto"):
+def fbx_lines(real, walks, switch_ms, state_path=FBX_STATE, finals=(), open_rows=None, risk_since_ms="auto", now_ms=None, walk_fn=None,
+              fetch=True):
     """🔁🔒 (DL 408) the switch-back gate → printed lines. walks = {(opened_at, pair): walk} (tp_shadow_lines' PRICED walks); finals = the
     UNPRICEABLE_FINAL keys (out, counted — like DL 367); open_rows = the still-OPEN FLATBASE rows (an open fill opened before the sample's
     last entry holds the read: the sample is the first N by ENTRY time). An EARLY REVERT freezes FINAL as SUPERSEDED. Never raises."""
@@ -1584,14 +1645,45 @@ def fbx_lines(real, walks, switch_ms, state_path=FBX_STATE, finals=(), open_rows
             L.append(f"  🔒 FBX_RISK (DL 531): ⚠ NOT EVALUABLE — the DL {FBXR_DL} commit is not in git")
         else:
             rfl = pd.Timestamp(int(rs_ms), unit="ms")
-            rrows = [x for x in rows if pd.Timestamp(x[0]) >= rfl]
+            now_ms = int(time.time() * 1000) if now_ms is None else int(now_ms)
+            fn = walk_fn or _ntp().walk_fill
+            rrows, r_out = [], 0                               # 🔁 (656) both exits under today's mechanics, real funding
+            for r in (rs.itertuples() if len(rs) and FBXR_KEY not in st else []):   # (656 review) frozen → no more fetching
+                if pd.Timestamp(r.o) < rfl:
+                    continue
+                te = int(pd.Timestamp(r.o).value // 1_000_000)
+                notional = (_fnum(r.entry_price) or 0.0) * (_fnum(r.quantity) or 0.0)
+                w5 = w8 = None
+                if not (_fnum(r.entry_price) or 0) > 0:             # (656 review) an unreadable fill price is out (counted), never a hold
+                    r_out += 1
+                    continue
+                if fetch or walk_fn is not None:
+                    try:
+                        w5 = fn(str(r.pair), te, float(r.entry_price), FBX_EXIT[0], FBX_EXIT[1], now_ms, "fill")
+                        w8 = fn(str(r.pair), te, float(r.entry_price), 8.0, 15.0, now_ms, "fill") if isinstance(w5, dict) else w5
+                    except Exception:
+                        w5 = w8 = None
+                if isinstance(w5, dict) and isinstance(w8, dict):
+                    rrows.append((r.o, str(r.pair), float(w8["NTP_net"]), float(w5["NTP_net"]), notional))
+                elif w5 == "NO_DATA" and now_ms > te + 96 * 3_600_000:
+                    r_out += 1                                 # never priceable after the hold + 1 day → out, counted
+                else:
+                    rrows.append((r.o, str(r.pair), None, None, notional))
+            if open_rows is not None and len(open_rows):
+                rrows += [(pd.Timestamp(o), str(pr), None, None, 0.0) for o, pr in zip(open_rows.o, open_rows.pair)
+                          if not pd.isna(o) and pd.Timestamp(o) >= rfl]
+            rrows.sort(key=lambda x: pd.Timestamp(x[0]))
             if "risk531" in st:
-                L.append(f"  🔒 FBX_RISK (DL 531): {st['risk531']['verdict']} — {st['risk531']['text']} (frozen {st['risk531']['at']})")
+                L.append(f"  ⛔ FBX_RISK price-TP read (DL 531, key risk531): {st['risk531']['verdict']} — {st['risk531']['text']} "
+                         f"(frozen {st['risk531']['at']}; superseded by the DL {REBASE_DL} re-base, history only)")
+            if FBXR_KEY in st:
+                L.append(f"  🔒 FBX_RISK (DL 531, re-based DL {REBASE_DL}): {st[FBXR_KEY]['verdict']} — {st[FBXR_KEY]['text']} (frozen {st[FBXR_KEY]['at']})")
             else:
                 v, txt = fbx_risk_verdict(rrows)
-                L.append(f"  🔒 FBX_RISK (DL 531, fills ≥ {rfl:%Y-%m-%d %H:%M} UTC; +8 / −15 at × {FBXR_SCALE:.2f}): {v} — {txt}")
+                L.append(f"  🔒 FBX_RISK (DL 531, re-based DL {REBASE_DL}: both exits net of the funding paid, stop counting it, real funding; fills ≥ "
+                         f"{rfl:%Y-%m-%d %H:%M} UTC; +8 / −15 at × {FBXR_SCALE:.2f}): {v} — {txt}" + (f" · {r_out} never priceable (out)" if r_out else ""))
                 if v in ("SWITCH CANDIDATE", "KEEP") and state_path and st_ok:
-                    st["risk531"] = dict(verdict=v, text=txt, at=pd.Timestamp.now("UTC").isoformat()[:16])
+                    st[FBXR_KEY] = dict(verdict=v, text=txt, at=pd.Timestamp.now("UTC").isoformat()[:16])
                     try:
                         tmp = f"{state_path}.{os.getpid()}.tmp"
                         with open(tmp, "w", encoding="utf-8") as fh:
@@ -1636,7 +1728,7 @@ def real_by_exit_fn(real, walks, switch_ms):
 
 def run(now_ms=None, paths=None, dec_paths=None, since_ms=None, fetch=True, klines=None, funding=None, klines1m=None, th_long=None,
         tp_state_path=TP_SH_STATE, tp_klines=None, tp_final_path=TP_SH_FINAL, obs_fb2_state_path=OBS_FB2_STATE, fbx_state_path=FBX_STATE,
-        fbx_switch_ms="git"):
+        fbx_switch_ms="git", ntp_walk_fn=None):
     L = [f"## 🩳 FLATBASE_SHORT — flat-base FRENZY short (DECISION_LOG {DL}, discipline override, ALERT-only gates)", ""]
     now_ms = int(time.time() * 1000) if now_ms is None else int(now_ms)
     if since_ms is None:
@@ -1695,9 +1787,10 @@ def run(now_ms=None, paths=None, dec_paths=None, since_ms=None, fetch=True, klin
              f"DL {FBX_DL} switch · {len(real_rule)} of {len(real)} closed{f' · {rule_miss} without a re-walk yet' if rule_miss else ''})")
     L += tp_L + [""]
     _open = a[(a.status.astype(str) == "OPEN") & (a.es == FLATBASE_SHORT)] if len(a) else None   # still open in the newest export
-    L += fbx_lines(real, walks, sw_ms, state_path=fbx_state_path, finals=finals, open_rows=_open) + [""]   # 🔁🔒 DL 408
+    L += fbx_lines(real, walks, sw_ms, state_path=fbx_state_path, finals=finals, open_rows=_open, now_ms=now_ms, walk_fn=ntp_walk_fn,
+                   fetch=fetch) + [""]   # 🔁🔒 DL 408 (FBX_RISK re-based DL 656)
     L += obs_fb2_lines(real, bud, now_ms, fetch=fetch, klines=klines, slip=slip, funding=funding, shadows=sh,
-                       state_path=obs_fb2_state_path, real_by_exit=rbe) + [""]   # 🩳🔒 DL 407 (run()'s own shadow cohort)
+                       state_path=obs_fb2_state_path, real_by_exit=rbe, walk_fn=ntp_walk_fn) + [""]   # 🩳🔒 DL 407 (run()'s own shadow cohort)
     L += peak_age_lines(real, bud, now_ms, fetch=fetch, klines=(tp_klines or klines))
     # ── DL 348 addendum: the three observe lines (each its own section, crash-isolated; the same Budget) ──
     try:

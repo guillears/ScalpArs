@@ -88,3 +88,141 @@ def test_scout_gate_and_hooks():
     assert "scout_fb_net_tp_653" in open(os.path.join(ROOT, "scripts", "opportunity_scout.py")).read()
     assert "scout_fb_net_tp_653.py" in open(os.path.join(ROOT, "scripts", "observe_registry.py")).read()
     assert "reports/SCOUT_FB_NET_TP_653.json" in open(os.path.join(ROOT, ".gitignore")).read()
+
+
+def _arrays(n, closes):
+    BAR = 300_000
+    t = (np.arange(n, dtype="int64") * BAR) + 1_800_000_000_000 // BAR * BAR
+    c = np.asarray(closes, float)
+    return t, c.copy(), c.copy(), c.copy(), c.copy()
+
+
+def test_walk_arrays_net_tp_moves_out_by_paid_funding_656():
+    """🔁 (DECISION_LOG 656) the ONE Flatbase net-exit pricer: real funding paid moves the TP out (NTP) — the price TP (base) does not."""
+    import scout_fb_net_tp_653 as S
+    n = 900
+    closes = np.r_[np.full(10, 100.0), np.full(n - 10, 94.0)]       # −6 % after bar 10, then flat
+    t, o, h, l, c = _arrays(n, closes)
+    fs_t, fs_r = np.array([int(t[5]) + 1]), np.array([-0.02])          # shorts PAY 2 % once (a negative rate)
+    w = S.walk_arrays(t, o, h, l, c, 1, 100.0, int(t[0]), fs_t, fs_r, 5.0, 10.0, int(t[1]) + 72 * 3_600_000)
+    assert w["base_why"] == "TP" and w["NTP_why"] != "TP"             # the net TP needs −7 %: today's exit never fills at −6
+    w0 = S.walk_arrays(t, o, h, l, c, 1, 100.0, int(t[0]), np.array([], "int64"), np.array([]), 5.0, 10.0, int(t[1]) + 72 * 3_600_000)
+    assert w0["NTP_why"] == "TP" and abs(w0["NTP_net"] - w0["base_net"]) < 1e-9   # no funding → the two TPs coincide
+    w6 = S.walk_arrays(t, o, h, l, c, 1, 100.0, int(t[0]), np.array([], "int64"), np.array([]), 6.0, 10.0, int(t[1]) + 72 * 3_600_000)
+    assert w6["NTP_why"] == "TIME"                                      # TP +6 needs −6.05 % through: never fills, held to 72 h
+    assert S.walk_arrays(t[:0], o[:0], h[:0], l[:0], c[:0], 0, 100.0, 0, None, None, 5.0, 10.0, 0) is None
+
+
+def test_walk_fill_readiness_entry_modes_and_fetch_stop_656(monkeypatch, tmp_path):
+    import scout_fb_net_tp_653 as S
+    monkeypatch.setattr(S, "FUND_CACHE", str(tmp_path / "fund"))
+    monkeypatch.setattr(S, "_STOP", {"why": None})
+    n = 900
+    t, o, h, l, c = _arrays(n, np.r_[np.full(30, 100.0), np.full(n - 30, 94.0)])
+    calls = []
+
+    class ET:
+        @staticmethod
+        def real_arrays(pair, a, b):
+            calls.append(pair)
+            if pair == "BADUSDT":
+                raise SystemExit("Binance 429 — stopped")
+            if pair == "NONEUSDT":
+                raise IndexError("arrays_from on an empty frame")   # the real study helper on a delisted / invalid symbol
+            return t, o, h, l, c, c
+
+    fake = type("RR", (), {"ET": ET, "fetch_funding": staticmethod(lambda p, a, b: (np.array([], "int64"), np.array([])))})
+    monkeypatch.setitem(S._MODS, "fbfr", fake)
+    monkeypatch.setattr(S, "_PATHS", {})
+    te = int(t[2]) + 12_000                                            # a real fill 12 s into bar 2
+    late = int(t[-1])
+    assert S.walk_fill("AUSDT", te, 100.0, now_ms=te + 3_600_000) is None and calls == []   # the 72 h path is not out yet → no fetch
+    w = S.walk_fill("AUSDT", te, 100.0, now_ms=late)
+    assert isinstance(w, dict) and w["NTP_why"] == "TP"
+    w6 = S.walk_fill("AUSDT", te, 100.0, 6.0, now_ms=late)            # tp 6 re-uses the cached path
+    assert calls == ["AUSDT"] and w6["NTP_why"] == "TIME"
+    s = S.walk_fill("AUSDT", int(t[29]), None, now_ms=late, entry="open")   # a shadow at bar 29's open: E = 100
+    assert s["NTP_why"] == "TP"
+    off = S.walk_fill("AUSDT", int(t[29]) + 1, None, now_ms=late, entry="open")   # off the 5m grid → the bar at its floor
+    assert off["NTP_why"] == "TP"
+    assert S.walk_fill("NONEUSDT", te, 100.0, now_ms=late) == "NO_DATA"
+    with pytest.raises(RuntimeError):
+        S.walk_fill("BADUSDT", te, 100.0, now_ms=late)                 # a 429 never kills the scout — the caller holds the read
+    monkeypatch.setattr(S, "_STOP", {"why": None})                     # (a new run)
+    assert S.price_fill("NONEUSDT", te, 100.0) is None
+    # closed windows' funding is cached on disk: a new run (empty memory) reads it back without a fetch
+    n_f = []
+    fake2 = type("RR", (), {"ET": ET, "fetch_funding": staticmethod(lambda p, a, b: n_f.append(p) or (np.array([1], "int64"), np.array([0.001])))})
+    monkeypatch.setitem(S._MODS, "fbfr", fake2)
+    monkeypatch.setattr(S, "_PATHS", {})
+    S.walk_fill("CUSDT", te, 100.0, now_ms=late)
+    monkeypatch.setattr(S, "_PATHS", {})
+    S.walk_fill("CUSDT", te, 100.0, now_ms=late)
+    assert n_f == ["CUSDT"] and sum(f.startswith("CUSDT_") for f in os.listdir(tmp_path / "fund")) == 1
+
+
+def test_walk_fill_stops_after_429_and_fills_a_cut_tail_656(monkeypatch, tmp_path):
+    """(656 review) a 418 / 429 stops every later fetch of the run · a cached path missing its tail is completed, never priced as TIME."""
+    import pandas as pd
+    import scout_fb_net_tp_653 as S
+    monkeypatch.setattr(S, "FUND_CACHE", str(tmp_path / "fund"))
+    monkeypatch.setattr(S, "_STOP", {"why": None})
+    monkeypatch.setattr(S, "_PATHS", {})
+    n = 900
+    t, o, h, l, c = _arrays(n, np.r_[np.full(30, 100.0), np.full(n - 30, 94.0)])
+    calls, tails = [], []
+
+    class ET:
+        @staticmethod
+        def real_arrays(pair, a, b):
+            calls.append(pair)
+            if pair == "RLUSDT":
+                raise SystemExit("Binance 429 — stopped")
+            k = 840 if pair == "CUTUSDT" else n                          # CUT: the cached file ends ≈ 2 h before the walk ends
+            return t[:k], o[:k], h[:k], l[:k], c[:k], c[:k]
+
+        @staticmethod
+        def fetch(pair, a, b):
+            tails.append(pair)
+            m = (t >= a) & (t < b)
+            return pd.DataFrame(dict(open_time=t[m], o=o[m], h=h[m], l=l[m], c=c[m], vol=np.zeros(m.sum())))
+
+        arrays_from = staticmethod(lambda d: _arrays_from(d))
+    fake = type("RR", (), {"ET": ET, "fetch_funding": staticmethod(lambda p, a, b: (np.array([], "int64"), np.array([])))})
+    monkeypatch.setitem(S._MODS, "fbfr", fake)
+    te, late = int(t[2]) + 12_000, int(t[-1]) + 30 * 3_600_000
+    w = S.walk_fill("CUTUSDT", te, 100.0, now_ms=late)
+    assert tails == ["CUTUSDT"] and isinstance(w, dict) and w["NTP_why"] == "TP"
+    with pytest.raises(RuntimeError):
+        S.walk_fill("RLUSDT", te, 100.0, now_ms=late)
+    with pytest.raises(RuntimeError, match="earlier this run"):
+        S.walk_fill("OKUSDT", te, 100.0, now_ms=late)                  # nothing more is fetched after a 429
+    assert calls == ["CUTUSDT", "RLUSDT"]
+    assert isinstance(S.walk_fill("CUTUSDT", te, 100.0, 6.0, now_ms=late), dict)   # a cached path still prices
+
+
+def _arrays_from(d):
+    d = d.drop_duplicates("open_time", keep="last").sort_values("open_time")
+    return (d.open_time.values.astype("int64"), d.o.values.astype(float), d.h.values.astype(float), d.l.values.astype(float),
+            d.c.values.astype(float), d.vol.values.astype(float))
+
+
+def test_walk_fill_cut_path_waits_then_goes_no_data_656(monkeypatch, tmp_path):
+    """(656 review) a path whose tail cannot be fetched waits a day, then is NO_DATA (out) — never priced as an early TIME exit."""
+    import pandas as pd
+    import scout_fb_net_tp_653 as S
+    monkeypatch.setattr(S, "FUND_CACHE", str(tmp_path / "fund"))
+    monkeypatch.setattr(S, "_STOP", {"why": None})
+    n = 900
+    t, o, h, l, c = _arrays(n, np.full(n, 100.0))
+
+    class ET:
+        real_arrays = staticmethod(lambda pair, a, b: (t[:840], o[:840], h[:840], l[:840], c[:840], c[:840]))
+        fetch = staticmethod(lambda pair, a, b: pd.DataFrame(columns=["open_time", "o", "h", "l", "c", "vol"]))
+        arrays_from = staticmethod(lambda d: _arrays_from(d))
+    monkeypatch.setitem(S._MODS, "fbfr", type("RR", (), {"ET": ET, "fetch_funding": staticmethod(lambda p, a, b: (np.array([], "int64"), np.array([])))}))
+    te = int(t[2]) + 12_000
+    monkeypatch.setattr(S, "_PATHS", {})
+    assert S.walk_fill("XUSDT", te, 100.0, now_ms=te + 74 * 3_600_000) is None          # not a day past the walk's end → wait
+    monkeypatch.setattr(S, "_PATHS", {})
+    assert S.walk_fill("XUSDT", te, 100.0, now_ms=te + 100 * 3_600_000) == "NO_DATA"    # a day later, still cut → out

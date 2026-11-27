@@ -246,9 +246,10 @@ def test_skipped_side_line_prices_the_s4_entry(tmp_path):
                              fb_entry_bar_at=pd.Timestamp(s4, unit="ms").strftime("%Y-%m-%dT%H:%M:%S"))])
     dp = tmp_path / "scalpars_decisions_paper_2027-01-01_00-00-00.csv"
     dec.to_csv(dp, index=False)
-    fn = lambda pair, te, now: [[te + i * W.M5, E, E + 0.5, (90.0 if i == 3 else E - 0.5), E] for i in range(10)]
+    seen = []
+    fn = lambda pair, te, E_, tp, sl, now, entry: seen.append((pair, te, tp, sl, entry)) or dict(NTP_net=4.9)   # 🔁 (656) today's exit
     out = "\n".join(W.skipped_lines(pd.Timestamp(SHIP, unit="ms"), NOW, [str(dp)], fn))
-    assert "SKUSDT" in out and f"{W.TP_NET:+.2f} %" in out and "priced 1 · WR 100%" in out
+    assert "SKUSDT" in out and "+4.90 %" in out and "priced 1 · WR 100%" in out and seen == [("SKUSDT", s4 + W.M5, 5.0, 10.0, "open")]
 
 
 def test_registry_pins_the_confirm_hours():

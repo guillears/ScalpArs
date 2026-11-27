@@ -25,8 +25,10 @@ _FZ_STOP3 = {"frenzy_long_stop_pct": 3.0}                         # FRENZY_LONG 
 _NO_LITE_C = {"frenzy_lite_c_enabled": False}                     # LITE walked at +3 for every fill (live LITE C +2 out of zone, DL 301)
 
 EXIT = {
-    "scout_flatbase_confirm_watch.py": dict(dl="417 · 428 · 604 · 607", sleeves="FLATBASE_SHORT", walks={"flatbase_tp_pct": 5.0, "flatbase_stop_pct": 10.0, "flatbase_max_hold_hours": 72.0,
-                                                                                         "flatbase_tp_counts_funding": False,   # 💸 (653) its TP6 / FS arms walk the PRICE TP → ⚠ STALE under the net TP
+    # 🔁 (656) re-based 2026-11-27 on the net TP: every walk of today's exit (TP6 · FS per era · HH / NB / FA gates · skipped · M1) prices
+    # TP +5 net of the funding paid / stop +10 counting it (scout_fb_net_tp_653.walk_fill, real funding) → pinned to both funding switches
+    "scout_flatbase_confirm_watch.py": dict(dl="417 · 428 · 604 · 607 · 656", sleeves="FLATBASE_SHORT", walks={"flatbase_tp_pct": 5.0, "flatbase_stop_pct": 10.0, "flatbase_max_hold_hours": 72.0,
+                                                                                         "flatbase_tp_counts_funding": True, "flatbase_stop_counts_funding": True,
                                                                                          "flatbase_confirm_hours": 24.0}),   # ✅ (428) the revert gate reads confirmed fills
     # ⛔ (609) the DL 579 EXHAUSTION exit-override gate (TP 10 vs the study's TP 5) RETIRED 2026-11-21 — the sleeve runs TP 7 now; the module
     # stays as the shared pricing library (scout_exh_ssc_oivol / scout_distribution_586 / scout_exh_tp7_609 import it) → listed in NONE
@@ -67,9 +69,11 @@ EXIT = {
     # 🔁 (408) re-based the day the exit changed: the shadows stay priced at the frozen DL 348 rule (+8 / −15) and every comparison against
     # traded fills reads them under the SAME exit (real_by_exit_fn); the FBX switch-back gate walks both. The exit-shadow reads (DL 367 / 370
     # / 390) and OBS-FB1 stay FROZEN to the +8 / −15 rule by design (labelled in their lines; parity is era-aware) — not stale, not the live exit.
-    "scout_flatbase_short.py": dict(dl="348 · 367 · 370 · 390 · 407 · 408", sleeves="FLATBASE_SHORT (+ blocked WILLY leg)",
+    # 🔁 (656) re-based 2026-11-27: the two OPEN reads on today's exit (FBX_RISK · OBS-FB2's +5 / −10 cell → LOW×NET5_SL10) price the net TP +
+    # funding stop with real funding; the frozen TP-shadow / FBX EARLY-FINAL / +8 / −15 reads stay history by design
+    "scout_flatbase_short.py": dict(dl="348 · 367 · 370 · 390 · 407 · 408 · 656", sleeves="FLATBASE_SHORT (+ blocked WILLY leg)",
                                     walks={"flatbase_tp_pct": 5.0, "flatbase_stop_pct": 10.0, "flatbase_max_hold_hours": 72.0,
-                                           "flatbase_tp_counts_funding": False, **_OLD_WILLY}),   # 💸 (653) its shadows walk the PRICE TP
+                                           "flatbase_tp_counts_funding": True, "flatbase_stop_counts_funding": True, **_OLD_WILLY}),
     # 🚪 (411) exit shadows on FLIPS only (fades / momentum answered by history, operator 10-29) — the walks use each fill's LIVE stop
     # (−0.7 widened to 1.5 × entry ATR, capped −1.2) and Δ reads the BOOKED flip exit (FAN flips' short runner trail, flip_fan_runner_strpk):
     # a change to any of these keys makes the line STALE (the −0.7 base is a confidence-tier stop_loss outside `thresholds` — not pinned)

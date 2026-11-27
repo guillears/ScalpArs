@@ -42,9 +42,28 @@ BTC bouncing, negative funding, crowded shorts, a squeezed coin) is neutral or i
 itself would have taken and lost these trades. What is left is an extreme bad stretch (or a regime the 2-year sample never contained).
 
 ## Verdict
-- **No filter, no exit change** — anything fitted to these 5–8 trades would be built against the 2-year evidence.
+- **No filter, no exit change** — anything fitted to the batch losers (5 of the 7 real losers on 34 merged fills, one crash window) would be built against the 2-year evidence.
 - **Not go-live ready:** real fills 34 · 79 % with a one-sided 95 % win-rate floor ≈ 66 % < breakeven 67.9 % → Kelly at the floor ≤ 0. It stays
   in paper until the real floor clears breakeven (size-by-edge rule).
 - **Watch (no new line needed — existing gates cover it):** the FB live-vs-rebuild parity per batch (does the rebuild keep losing the same
   setups?) and the three open shorts on their own exits (the hold study says closing early loses on average).
 - Re-open trigger: the next 10 kept fills below 60 % WR, or the rebuild diverging from live (live loses what the rebuild wins).
+
+---
+
+## Follow-up (same day) — master + batch merged, FB_CRASH, crash 2D
+- **Correction:** the real-fill read uses 34 fills (master 28 on today's stack + batch 6 as traded), not "5–8 trades"; on one basis (batch on today's stack, PHAROS out) 33 · 27 W / 6 L → win-rate floor 68.5 % vs breakeven 67.9 % (≈ at breakeven; 63.8 % if the open MOVE / LAYER shorts stop).
+- **Real 34:** BTC % below its 30 d high splits them (all 5 batch losers at −25.7 … −27.0 %), but that is ONE crash episode; the backtest's 11
+  crash episodes are 9 positive (zone 46 · 85 % · +2.23).
+- **FB_CRASH block (rejected by the operator — filters too many winners):** master DCR +2.49 → +2.26 %/day · batch −2.34 → 0 (all 5 fills) ·
+  backtest DCR 0.38 → 0.31 %/day, max DD −41.3 → −47.8 %.
+- **Crash × every pre-entry feature (40 features, 80 cells — slip_e excluded as outcome, scripts/FLATBASE_CRASH_2D_2026-11-27.py):** 1 negative cell (taker L/S > median,
+  19 · 68 % · −0.09), family-wise p 0.43 → no 2D filter either. Verdict unchanged: no filter, no exit change, PAPER.
+
+## Follow-up 2 — review corrections + funding re-run (DECISION_LOG 652)
+- **Today's-filter basis:** master 17 (KEPT_LIST, all TP) + batch kept 5 = 22 · 18 W / 4 L → win-rate floor **65.1 % < breakeven 67.9 %**
+  (the "34" / "33" pools used the master stack_keep 28 without DL 601). Verdict unchanged: PAPER.
+- **Parity:** 4 / 4 shared kept setups match; first miss PHAROS (rebuild TP, live STOP; now dropped by DL 601).
+- **Backtest crash zone extended through 11-27:** ≈ 52 · 79 % · +1.38 vs rest +1.03; ≈ 6 of 8 zone runs positive — no FB_CRASH filter.
+- **Funding re-run (scripts/FLATBASE_FUNDING_RERUN_2026-11-27.py):** real budgets / the new hourly rule gain only on this batch (KERNEL,
+  BIGTIME, MOVE) and cut the master's POWR winner; backtest: every cell loses (budgets −0.004 … −0.18, hourly −0.06 / −0.08). No funding rule.

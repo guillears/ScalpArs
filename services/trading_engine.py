@@ -1405,7 +1405,7 @@ EXH_SPOT_WEIGHT_STOP = 3000     # 🪫 (578) … spot API used weight (its own 6
 EXH_SPOT_INFO_TTL_S = 6 * 3600  # 🪫 (578) the spot-market list (exchangeInfo, weight 20) is re-read at most this often
 DIST_FAST_CONC = 8              # ⚡ (DECISION_LOG 599) DIST fast path: concurrent 15m kline reads at the start of a 15m-close pass
 DIST_FAST_READ_S = 6.0          # ⚡ (599) per-read timeout — an unread coin falls back to the in-pass pre-screen (today's path)
-DIST_READ_RESERVE_S = 20        # 📉 (586 I4) seconds of the 300 s entry budget the reads + the order need — less left → DIST_LATE before any read
+DIST_READ_RESERVE_S = 28        # 📉 (586 I4) seconds of the 300 s entry budget the reads + the order need — less left → DIST_LATE before any read (651 review: 20 → 28, the BTC 1d read adds ≤ 4 s)
 EXH_WIDE_READS_MAX = 30         # 🌐 (585) WIDE-shortlist coins read per 15m close beyond the FRENZY read (biggest move first; the rest → EXH_WIDE_READ_CAP)
 
 
@@ -11894,6 +11894,20 @@ class TradingEngine:
             _fr = await asyncio.wait_for(binance_service.fetch_funding_rate(_sym, max_age_s=300), 4.0)
         except Exception:
             _fr = None
+        # 📉🌡 (DECISION_LOG 651) DIST_CRASH_FUNDING — after every rule gate incl. the RSI1h filter: BTC ≤ −20 % below its 30-day high (last
+        # closed day, one read per UTC day) AND funding ≥ +0.005 % → BLOCKED (journaled with the funding + exit levels the revert scout
+        # prices with). Unreadable drawdown / funding → FAIL-OPEN, counted DIST_CRASH_FUNDING_UNREAD.
+        if _dist_rules.crash_funding_enabled(th):
+            _cdd = await self._dist_btc_dd30()
+            _cb, _cu, _cw = _dist_rules.crash_funding_block(_cdd, _fr, th)
+            if _cu:
+                self._dist_count(_dist_rules.B_CRASH_FUND_UNREAD, pair)
+                logger.warning(f"[DISTRIBUTION_SHORT] {pair}: {_cw}")
+            if _cb:
+                self._dist_count(_dist_rules.B_CRASH_FUND, pair)
+                await self._dist_journal(pair, T, _dist_rules.ST_BLOCKED, _dist_rules.B_CRASH_FUND, _cw, sp, f=f, chg=chg, ratio=ratio,
+                                         lags=(_plag, _pspan), tp=tp, sl=sl, funding=_fr)
+                return
         try:
             if not closed:   # ⚡ (599 review M1) the fast path runs before this bar's FRENZY read: a FRESH closed 5m window (one weight-2 read,
                 # only for a signal that passed every rule) — the FRENZY cache ends on a still-forming bar and would shrink the stamp's ATR
@@ -11928,6 +11942,27 @@ class TradingEngine:
         await self._dist_journal(pair, T, _dist_rules.ST_REFUSED, (None if _ref else _dist_rules.B_OPEN_REFUSED),
                                  (_ref or "refused by the open path (balance / cooldown / bracket / liquidity)"), sp, f=f, chg=chg, ratio=ratio, lags=(_plag, _pspan),
                                  tp=tp, sl=sl, funding=_fr, cap=self._depth_cap_for(pair))
+
+    async def _dist_btc_dd30(self) -> Optional[float]:
+        """📉🌡 (DECISION_LOG 651) BTC % below its 30-day high from the last CLOSED daily candle — read once per UTC day (cached; a failed read
+        is retried on the next signal, ≤ 4 s). None = unreadable (the caller fails OPEN). Never raises."""
+        try:
+            now_ms = int(_leash_time.time() * 1000)
+            day = now_ms // 86_400_000
+            hit = getattr(self, '_dist_dd30_cache', None)
+            if hit and hit[0] == day and hit[1] is not None:
+                return hit[1]
+            prev = hit[1] if (hit and hit[0] == day - 1) else None   # (651 review L1) yesterday's value: ≤ 1 day stale, better than fail-open
+            if _bs_ban_active():
+                return prev
+            rows = await asyncio.wait_for(binance_service.get_ohlcv('BTC/USDT:USDT', '1d', 40), 4.0)
+            v = _dist_rules.btc_dd30(rows, now_ms)
+            if v is not None:
+                self._dist_dd30_cache = (day, v)
+                return v
+            return prev
+        except Exception:
+            return None
 
     async def _frenzy_persist_flags(self) -> None:
         """🔥 Rewrite the restart seed (table frenzy_flags) with the pairs flagged now — own short session, never raises."""

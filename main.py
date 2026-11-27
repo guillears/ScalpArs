@@ -5237,6 +5237,7 @@ def _frenzy_monitor_payload():
                 "exhaustion_wide_enabled": getattr(_th, 'exhaustion_wide_enabled', False) is True,   # 🌐 (585)
                 # 📉 (586) DISTRIBUTION_SHORT: switch + the values the engine USES (it reads EXHAUSTION's tracked FRENZY episodes)
                 "distribution_enabled": getattr(_th, 'distribution_short_enabled', False) is True,
+                "distribution_crash_funding_enabled": getattr(_th, 'distribution_crash_funding_block_enabled', False) is True,   # 📉🌡 (651)
                 "distribution": __import__('services.distribution', fromlist=['distribution_params']).distribution_params(_th),
                 "exhaustion_tracking": [dict(pair=k[0], spike_ms=k[1], first_seen_ms=v.get('first_seen_ms'), universe=v.get('universe') or 'FRENZY')
                                         for k, v in sorted((getattr(trading_engine, '_exh_eps', None) or {}).items()) if v.get('status') == 'TRACKING'],

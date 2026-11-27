@@ -29,6 +29,7 @@ def _th(**kw):
              distribution_max_hours_after_spike=72.0, distribution_tp_atr_mult=20.0, distribution_tp_cap_pct=10.0, distribution_sl_atr_mult=1.5,
              distribution_sl_cap_pct=6.0, distribution_max_hold_hours=24.0, distribution_invest_mult=0.5, distribution_lev_mult=0.25,
              distribution_rsi1h_min=0.0,   # 🔒 the RSI1h filter is off here: the test_rsi1h_* tests below arm it
+             distribution_crash_funding_block_enabled=False,   # 📉🌡 (651) off here: tests/test_dist_crash_funding_651.py drives it
              resting_tp_distribution_enabled=True, broker_backstop_pct=2.5,
              exhaustion_short_enabled=False, exhaustion_wide_enabled=False, exhaustion_max_hours_after_spike=72.0)
     d.update(kw)

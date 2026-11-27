@@ -37,6 +37,10 @@ EXIT = {
     "scout_exh_ssc_oivol.py": dict(dl="582 · 609", sleeves="EXHAUSTION_SHORT (blocked EXH_SSC_OIVOL signals)", walks={"exhaustion_tp_atr_mult": 20.0,
                                    "exhaustion_tp_cap_pct": 7.0, "exhaustion_sl_atr_mult": 1.5, "exhaustion_sl_cap_pct": 6.0,
                                    "exhaustion_max_hold_hours": 24.0}),
+    # 📉🌡 (651) DIST_CRASH_FUNDING revert gate prices blocked DIST signals with Exit B → STALE on a DIST exit change
+    "scout_dist_crash_funding_651.py": dict(dl="651", sleeves="DISTRIBUTION_SHORT (blocked DIST_CRASH_FUNDING signals)", walks={"distribution_tp_atr_mult": 20.0,
+                                            "distribution_tp_cap_pct": 10.0, "distribution_sl_atr_mult": 1.5, "distribution_sl_cap_pct": 6.0,
+                                            "distribution_max_hold_hours": 24.0}),
     # 🌡⏱ (650) EXH_BEAR80 + EXH_EARLY_SPIKE shadow revert gates price every blocked signal with the live EXHAUSTION exit → STALE on a change
     "scout_exh_regime_650.py": dict(dl="650", sleeves="EXHAUSTION_SHORT (blocked EXH_BEAR80 / EXH_EARLY_SPIKE signals)", walks={"exhaustion_tp_atr_mult": 20.0,
                                     "exhaustion_tp_cap_pct": 7.0, "exhaustion_sl_atr_mult": 1.5, "exhaustion_sl_cap_pct": 6.0,

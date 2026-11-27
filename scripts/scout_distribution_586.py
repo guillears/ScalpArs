@@ -121,8 +121,8 @@ def load_journal(paths=None):
     return pd.concat(fr, ignore_index=True).drop_duplicates(["pair", "dist_signal_at"], keep="last")
 
 
-def price_blocked(journal, floor_ms, slip_notional=None, now_ms=None, pricer=None, cache_path=CACHE_BLOCKED):
-    """→ (rows [(day, net)], lines, halted) for the DIST_RSI1H-blocked journal rows ≥ floor_ms, priced with Exit B (pricer = the injectable
+def price_blocked(journal, floor_ms, slip_notional=None, now_ms=None, pricer=None, cache_path=CACHE_BLOCKED, block="DIST_RSI1H"):
+    """→ (rows [(day, net)], lines, halted) for the journal rows blocked with `block` (default DIST_RSI1H) ≥ floor_ms, priced with Exit B (pricer = the injectable
     scout_exh_ssc_oivol.price_signal). Stops at the first unpriceable-yet signal (the counted rows stay a prefix)."""
     import scout_exh_ssc_oivol as SO
     import scout_exh_exit_override as XO
@@ -132,7 +132,7 @@ def price_blocked(journal, floor_ms, slip_notional=None, now_ms=None, pricer=Non
     out, lines, halted = [], [], None
     if journal is None or not len(journal):
         return out, lines, halted
-    j = journal[journal.dist_block.astype(str) == "DIST_RSI1H"].copy()
+    j = journal[journal.dist_block.astype(str) == block].copy()   # (651) the block code is a parameter — DIST_CRASH_FUNDING reuses this pricer
     j["t_"] = pd.to_datetime(j.dist_signal_at.astype(str).str[:19], errors="coerce")
     j = j[j.t_.notna()]
     j = j[j.t_ >= pd.Timestamp(int(floor_ms), unit="ms")].sort_values(["t_", "pair"])
@@ -158,7 +158,7 @@ def price_blocked(journal, floor_ms, slip_notional=None, now_ms=None, pricer=Non
             lines.append(f"    {r.pair} {str(r.dist_signal_at)[:16]}: NO_DATA")
             continue
         out.append((r.t_.strftime("%Y-%m-%d"), float(p[0])))
-        lines.append(f"    {r.pair} {str(r.dist_signal_at)[:16]} RSI1h {r.dist_rsi1h} · TP {tp:.2f} / SL {sl:.2f} → {p[0]:+.2f} % ({p[1]})")
+        lines.append(f"    {r.pair} {str(r.dist_signal_at)[:16]} RSI1h {getattr(r, 'dist_rsi1h', None)} · TP {tp:.2f} / SL {sl:.2f} → {p[0]:+.2f} % ({p[1]})")
     if cache_path:
         SO._save(cache, cache_path)
     return out, lines, halted

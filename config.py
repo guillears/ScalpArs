@@ -1825,6 +1825,17 @@ class SignalThresholds(BaseModel):
     # only, scripts/scout_distribution_586.py, frozen once): ≥ 60 kept fills over ≥ 10 days mean net ≤ +0.30 → flag disarm / review · ≥ 30
     # blocked signals over ≥ 10 days priced with Exit B: one-sided 80 % lower bound > +0.30 → flag "blocks winners". Code + JSON 74.07 (review I1: a missing / invalid value keeps the cut); OFF only by an explicit 0.
     distribution_rsi1h_min: float = 74.07
+    # 📉🌡 2026-11-27 DIST_CRASH_FUNDING (DECISION_LOG 651 — operator "yes build it"; passes the locked Pattern-C bar): BLOCK a DIST signal
+    # (after the RSI1h filter) when BTC's last closed daily close is ≤ distribution_crash_btc_dd_pct (−20 %) below the max daily high of the
+    # 30 closed days ending with it AND the coin's funding at the decision ≥ distribution_crash_funding_min (+0.005 %: longs still pay). Evidence
+    # reports/DIST_DEEP_DIVE_2026-11-27.md: backtest blocked 43 · 23 % (BE 35.6 %) · −2.01 %/fill, DESIGN −2.30 / HOLDOUT −2.00, 8 / 9 crash
+    # episodes negative, family-wise luck p 0.026, sleeve DCR 0.56 → 0.61 %/day, max DD −61.9 → −56.9 %; live batch 11-19 → 11-27 (out of
+    # sample): 4 blocked, all losers (−5.65 avg), kept 6 · +2.08 %/fill. Unreadable inputs → trade (DIST_CRASH_FUNDING_UNREAD). 🔒 REVERT
+    # (scripts/scout_dist_crash_funding_651.py, alert only, frozen once): the first 15 priced blocked signals on ≥ 3 UTC days, Exit B →
+    # blocked mean ≥ 0 → flag REVERT. Code default OFF; trading_config.json ON.
+    distribution_crash_funding_block_enabled: bool = False
+    distribution_crash_btc_dd_pct: float = -20.0       # BTC % below its 30-day high at or under which the crash state holds
+    distribution_crash_funding_min: float = 0.00005    # block when the coin's funding (fraction per settlement) is AT or ABOVE this
     # 🎯 2026-10-15 RESTING TAKE-PROFIT (DECISION_LOG 296, operator-armed DECLARED EXCEPTION — below the usual evidence bar): a reduce-only,
     # post-only (GTX) LIMIT rests on Binance at the price that books the SAME net TP with the MAKER exit fee (services/resting_tp.py +
     # exec_shadow.resting_tp_price). Evidence: live TP give-back 4/4 (WILLY ZK +1.12 / BLUR +1.09 / RLC +1.08 vs +1.25, LITE DEEP +2.80 vs

@@ -47,11 +47,13 @@ PRESCREEN_FRAC = 0.6                     # the engine reads the exchange klines 
 ENTRY_MAX_LATE_S = 300
 
 DEFAULTS = dict(pos_chg_max=-0.01097, vsw_mult=5.0, min_vol=20e6, max_h=72.0, tp_atr=20.0, tp_cap=10.0, sl_atr=1.5, sl_cap=6.0,
-                max_hold_h=24.0, invest=0.5, lev=0.25, rsi1h_min=74.07)   # 🔒 (586 review I1) a missing / bad value → the armed cut, never off
+                max_hold_h=24.0, invest=0.5, lev=0.25, rsi1h_min=74.07,
+                crash_dd=-20.0, crash_fund_min=0.00005)   # 📉🌡 (DECISION_LOG 651) DIST_CRASH_FUNDING cuts   # 🔒 (586 review I1) a missing / bad value → the armed cut, never off
 FIELDS = dict(pos_chg_max='distribution_pos_chg_4h_max', vsw_mult='distribution_vsw_vol_mult', min_vol='distribution_min_vol_usd',
               max_h='distribution_max_hours_after_spike', tp_atr='distribution_tp_atr_mult', tp_cap='distribution_tp_cap_pct',
               sl_atr='distribution_sl_atr_mult', sl_cap='distribution_sl_cap_pct', max_hold_h='distribution_max_hold_hours',
-              invest='distribution_invest_mult', lev='distribution_lev_mult', rsi1h_min='distribution_rsi1h_min')
+              invest='distribution_invest_mult', lev='distribution_lev_mult', rsi1h_min='distribution_rsi1h_min',
+              crash_dd='distribution_crash_btc_dd_pct', crash_fund_min='distribution_crash_funding_min')
 _RANGES = dict(pos_chg_max=("a number ≥ −1 and < 0 (a fall of the top-trader position ratio)", lambda x: -1.0 <= x < 0),
                vsw_mult=("a number ≥ 1 and ≤ 50 (× the 20-candle mean)", lambda x: 1.0 <= x <= 50.0),
                min_vol=("a number ≥ 0 (USD)", lambda x: x >= 0),
@@ -60,12 +62,15 @@ _RANGES = dict(pos_chg_max=("a number ≥ −1 and < 0 (a fall of the top-trader
                sl_atr=("a number > 0 and ≤ 20", lambda x: 0 < x <= 20), sl_cap=("a number > 0 and < 50 (price %)", lambda x: 0 < x < 50),
                max_hold_h=("a number > 0 and ≤ 240 (hours)", lambda x: 0 < x <= 240),
                invest=("a number > 0 and ≤ 1", lambda x: 0 < x <= 1.0), lev=("a number > 0 and ≤ 1", lambda x: 0 < x <= 1.0),
-               rsi1h_min=("a number ≥ 0 and < 100 (0 = off)", lambda x: 0 <= x < 100))
+               rsi1h_min=("a number ≥ 0 and < 100 (0 = off)", lambda x: 0 <= x < 100),
+               crash_dd=("a number ≥ −90 and ≤ −1 (BTC % below its 30-day high)", lambda x: -90.0 <= x <= -1.0),
+               crash_fund_min=("a number ≥ −0.01 and ≤ 0.01 (funding rate per settlement, a fraction: 0.00005 = 0.005 %)", lambda x: -0.01 <= x <= 0.01))
 
 ST_OPENED, ST_BLOCKED, ST_REFUSED = "OPENED", "BLOCKED", "REFUSED"
 B_NO_DATA, B_NOT_VSW, B_VOL24, B_POS_CHG, B_POS_UNREAD = "DIST_NO_DATA", "DIST_NOT_VSW", "DIST_VOL24_LOW", "DIST_POS_CHG", "DIST_POS_UNREAD"
 B_PAIR_HELD, B_OPEN_REFUSED, B_FAILED, B_LATE, B_BOOK_FULL = "DIST_PAIR_HELD", "DIST_OPEN_REFUSED", "DIST_FAILED", "DIST_LATE", "DIST_BOOK_FULL"
 B_RSI1H, B_RSI1H_UNREAD = "DIST_RSI1H", "DIST_RSI1H_UNREAD"   # 🔒 (DECISION_LOG 586, declared override) the RSI1h ≥ 74.07 keep filter · its FAIL-CLOSED counter
+B_CRASH_FUND, B_CRASH_FUND_UNREAD = "DIST_CRASH_FUNDING", "DIST_CRASH_FUNDING_UNREAD"   # 📉🌡 (DECISION_LOG 651) the block · its fail-OPEN counter
 TP_REASON = "FRENZY_TP"
 
 
@@ -94,7 +99,7 @@ def distribution_config_errors(th, base_leverage=20.0) -> list:
     """📉 PUT /api/config refusals for the DISTRIBUTION_SHORT fields (DECISION_LOG 586) — the stop cap's backstop at the sleeve's leverage
     must sit ≥ MANUAL_BACKSTOP_MIN_GAP_PCT beyond the widest stop."""
     errs = []
-    for k in ('distribution_short_enabled', 'resting_tp_distribution_enabled'):
+    for k in ('distribution_short_enabled', 'resting_tp_distribution_enabled', 'distribution_crash_funding_block_enabled'):
         if not isinstance(getattr(th, k, True), bool):
             errs.append(f"{k} must be true or false")
     vals = {}
@@ -354,6 +359,60 @@ def rsi1h_block(rsi1h, th) -> Tuple[bool, Optional[str], str]:
     if r < m:
         return True, B_RSI1H, f"1h RSI {r:.2f} < {m:g} — the coin is no longer strong at the red candle (DL 586 RSI1h filter)"
     return False, None, f"1h RSI {r:.2f} ≥ {m:g}"
+
+
+# ── 📉🌡 DIST_CRASH_FUNDING (DECISION_LOG 651) ──────────────────────────────────────────────────────────────────────────────────────
+# Judged AFTER the RSI1h filter, on a signal every rule passed: BLOCK when BTC is in a crash — its last CLOSED daily close is ≤ crash_dd
+# (−20 %) below the highest daily high of the 30 closed days ending with it (one read per UTC day; = reports/DIST_DEEP_DIVE_2026-11-27's
+# "prior-day close vs the 30-day high", known at the start of the day) — AND the coin's funding at the decision (premiumIndex, the same read
+# stamped entry_funding_rate) is ≥ crash_fund_min (+0.005 % = the 4 h-coin base; 8 h coins at the 0.01 % base are ≥ it too: longs still pay). Evidence: reports/DIST_DEEP_DIVE_2026-11-27.md
+# (backtest 43 · 23 % · −2.01 %/fill, both blocks, 8 / 9 episodes negative, family-wise p 0.026; live batch 4 / 4 blocked were losers).
+# Either input unreadable → FAIL-OPEN (trade, counted DIST_CRASH_FUNDING_UNREAD): the filter removes a loser cohort, it does not define DIST.
+
+def crash_funding_enabled(th) -> bool:
+    """the DIST_CRASH_FUNDING switch (distribution_crash_funding_block_enabled); anything but True = off."""
+    return getattr(th, 'distribution_crash_funding_block_enabled', False) is True
+
+
+def btc_dd30(daily_rows, now_ms) -> Optional[float]:
+    """BTC % below its 30-day high from 1d klines [[open_ms, o, h, l, c, …], …]: the last CLOSED day's close ÷ the max high of the 30 closed
+    days ending with it − 1, in %. None when < 30 closed days or unreadable. Pure."""
+    try:
+        day = 86_400_000
+        rows = sorted({int(r[0]): r for r in daily_rows or [] if int(r[0]) + day <= int(now_ms)}.values(), key=lambda r: int(r[0]))
+        if len(rows) < 30:
+            return None
+        last = rows[-30:]
+        if int(last[-1][0]) - int(last[0][0]) != 29 * day:   # (651 review) 30 CONTIGUOUS days, never a gapped window
+            return None
+        hi = max(float(r[2]) for r in last)
+        c = float(last[-1][4])
+        if not (hi > 0 and c > 0):
+            return None
+        return (c / hi - 1.0) * 100.0
+    except (TypeError, ValueError, IndexError):
+        return None
+
+
+def crash_funding_block(dd_pct, funding, th) -> Tuple[bool, bool, str]:
+    """(blocked, unread, reason). The switch is checked here (off → never blocks, never unread). Never raises."""
+    try:
+        if not crash_funding_enabled(th):
+            return False, False, ""
+        p = distribution_params(th)
+        d, fr = _fin(dd_pct), _fin(funding)
+        if d is None:
+            return False, True, "BTC 30-day drawdown unreadable — DIST_CRASH_FUNDING skipped (fail-open)"
+        if d > p['crash_dd']:
+            return False, False, ""
+        if fr is None:
+            return False, True, f"BTC {d:.1f} % below its 30 d high but funding unreadable — DIST_CRASH_FUNDING skipped (fail-open)"
+        if fr >= p['crash_fund_min'] - 1e-12:
+            return True, False, (f"BTC {d:.1f} % below its 30 d high (≤ {p['crash_dd']:g} %) and funding {fr * 100:+.4f} % ≥ "
+                                 f"{p['crash_fund_min'] * 100:+.4f} % (longs still pay) — DL 651 crash-funding filter")
+        return False, False, f"crash market but funding {fr * 100:+.4f} % < {p['crash_fund_min'] * 100:+.4f} % (a squeeze — kept)"
+    except Exception:   # (651 review) an internal error trades but is COUNTED (unread), never invisible
+        return False, True, "crash-funding judge error (fail-open)"
 
 
 def _r(v, d=1) -> str:

@@ -36,7 +36,8 @@ EXH_REASON = {"EXH_NO_SPOT": "no spot", "EXH_SSC_OIVOL": "OI filter", "EXH_SSC_O
               "EXH_BEAR80": "market too bearish", "EXH_BEAR80_UNREAD": "breadth unread", "EXH_EARLY_SPIKE": "too soon after spike"}   # 🔤 (589 re-review 5) · 🌡⏱ (650)
 DIST_REASON = {"DIST_POS_CHG": "top traders not cutting", "DIST_POS_UNREAD": "positions unread", "DIST_NOT_VSW": "volume < 5×",
                "DIST_VOL24_LOW": "24 h volume", "DIST_PAIR_HELD": "pair held", "DIST_NO_DATA": "no data", "DIST_LATE": "late",
-               "DIST_BOOK_FULL": "book full", "DIST_RSI1H_UNREAD": "RSI1h unread", "DIST_FAILED": "error", "DIST_OPEN_REFUSED": "open refused"}
+               "DIST_BOOK_FULL": "book full", "DIST_RSI1H_UNREAD": "RSI1h unread", "DIST_FAILED": "error", "DIST_OPEN_REFUSED": "open refused",
+               "DIST_CRASH_FUNDING": "crash market, longs paying", "DIST_CRASH_FUNDING_UNREAD": "crash read unread"}   # 📉🌡 (651)
 
 
 def _f(v) -> Optional[float]:

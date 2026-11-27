@@ -1653,6 +1653,14 @@ def run():
     except Exception as _ds586_e:
         log(f"DL 586 DISTRIBUTION gate failed: {_ds586_e}")
         _rg_sec += ["## 📉 DL 586 DISTRIBUTION_SHORT", "", f"Unavailable this run ({str(_ds586_e)[:120]}).", ""]
+    try:                                               # 📉🌡 Nov-27 DIST_CRASH_FUNDING revert gate (DECISION_LOG 651; blocked signals priced, Exit B)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_dist_crash_funding_651 as _dcf
+        _rg_sec += [_dcf.report(now_ms=now_ms), ""]
+    except Exception as _dcf_e:
+        log(f"DL 651 DIST_CRASH_FUNDING gate failed: {_dcf_e}")
+        _rg_sec += ["## 📉🌡 DIST_CRASH_FUNDING (DL 651)", "", f"Unavailable this run ({str(_dcf_e)[:120]}).", ""]
     try:   # 🎯👁 (DECISION_LOG 605) DIST TP 5 / 8 vs today's TP on real fills — observe only
         _sd = os.path.dirname(os.path.abspath(__file__))
         _sd in sys.path or sys.path.insert(0, _sd)

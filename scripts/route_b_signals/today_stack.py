@@ -40,6 +40,8 @@ with the old setting are re-judged, or the reason none is needed is stated) befo
 Not re-checked (DL 650, 2026-11-27): EXH_BEAR80 / EXH_EARLY_SPIKE — the Route B signal rows carry neither the market breadth nor the
 spike hours, so EXHAUSTION rows TAKEN before the DL 650 deploy in those zones stay counted as taken (the batch had 7 such fills of 210 EXH
 signals); their own priced revert gate is scripts/scout_exh_regime_650.py. Re-check them here if the journal ever stamps both inputs.
+Not re-checked (DL 651, 2026-11-27): DIST_CRASH_FUNDING — the rows carry the journal funding but not BTC's 30-day drawdown; DIST rows TAKEN
+before the DL 651 deploy in the crash ∧ funding ≥ +0.005 % zone stay counted as taken; their own gate is scripts/scout_dist_crash_funding_651.py.
 Not re-checked, by design: DL 629 (commit 2026-11-23 01:39 UTC, WILLY turnover-unreadable TIMING bug fix — a routing delay, not a filter; refused
 setups were re-judged on a later red bar and journaled as such). Pure except `fetch_bars_1m` (Binance, through the shared limiter).
 """
@@ -78,6 +80,9 @@ RECHECKS = (
 GUARD_PREFIXES = ('flatbase_', 'exhaustion_', 'distribution_', 'frenzy_willy_', 'watch_block_willy', 'funding_guard_')
 GUARD_EXCLUDE = r"(invest_mult|lev_mult|max_hold|_sl_|_tp_|tp_pct|stop_pct|stop_counts_funding|runner|late_tp|high_target|high_k_pct|high_tp_max|max_slots|max_open|size_frac|shares_bot_slots|global_hold)|^(distribution_short_enabled|exhaustion_short_enabled|flatbase_short_enabled|frenzy_willy_enabled|frenzy_willy_ht_enabled)$"
 ENTRY_SNAPSHOT = {
+    'distribution_crash_btc_dd_pct': -20.0,
+    'distribution_crash_funding_block_enabled': True,
+    'distribution_crash_funding_min': 5e-05,
     'distribution_max_hours_after_spike': 72.0,
     'distribution_min_vol_usd': 20000000.0,
     'distribution_pos_chg_4h_max': -0.01097,

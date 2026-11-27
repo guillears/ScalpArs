@@ -78,8 +78,12 @@ def main():
     rows.append(dict(sleeve="EXH", step="+ DL 650 BEAR80 + EARLY_SPIKE", **stats(Kk.net[~z], ct[~z])))
     # DIST
     di = o[o.entry_strategy == "DISTRIBUTION_SHORT"]
-    for st in ("as traded", "today's stack (= as traded)"):
+    for st in ("as traded", "today's stack before DL 651 (= as traded)"):
         rows.append(dict(sleeve="DIST", step=st, **stats(di.pnl_percentage, di.closed_at)))
+    # 📉🌡 (DL 651) DIST_CRASH_FUNDING: every batch day had BTC 23–30 % below its 30-day high → the funding cut decides
+    dkeep = ~(pd.to_numeric(di.entry_funding_rate, errors="coerce") >= 0.00005 - 1e-12)
+    rows.append(dict(sleeve="DIST", step=f"+ DL 651 crash-funding (drops {', '.join(di.pair[~dkeep].str.replace('USDT', ''))})",
+                     **stats(di.pnl_percentage[dkeep], di.closed_at[dkeep])))
     # FB
     fb = o[o.entry_strategy == "FLATBASE_SHORT"]
     rows.append(dict(sleeve="FB", step="as traded", **stats(fb.pnl_percentage, fb.closed_at)))
@@ -104,6 +108,22 @@ def main():
     T = pd.DataFrame(rows)
     T.to_csv(os.path.join(R, "reports", "BATCH28_REVIEW_2026-11-27_data", "today_stack_batch.csv"), index=False)
     print(T.to_string(index=False))
+    # whole book: as traded · today's stack (before DL 650 / 651) · + DL 650 + DL 651
+    days = pd.date_range(D0, D1)
+    def ser(net, c):
+        return (pd.Series(np.asarray(net, float)) * X / 100).groupby(pd.to_datetime(pd.Series(c).values).normalize()).sum().reindex(days).fillna(0)
+    def m(r):
+        eq = (1 + r).cumprod()
+        return dict(DCR=round((eq.iloc[-1] ** (1 / len(r)) - 1) * 100, 2), maxDD=round((eq / eq.cummax().clip(lower=1) - 1).min() * 100, 1),
+                    worst=round(r.min() * 100, 1), sum=round(r.sum() * 100, 1))
+    fbk = fb[keep]
+    common = ser(wl.pnl_percentage, wl.closed_at) + ser(fbk.pnl_percentage, fbk.closed_at) + ser(ht.n6, ht.x6)
+    before = ser(o.pnl_percentage, o.closed_at)
+    stack = common + ser(Kk.net, ct) + ser(di.pnl_percentage, di.closed_at)
+    new = common + ser(Kk.net[~z], ct[~z]) + ser(di.pnl_percentage[dkeep], di.closed_at[dkeep])
+    print("\nWHOLE BOOK (one size 0.61, % of equity):")
+    for lab, r in (("as traded", before), ("today's stack before DL 650 / 651", stack), ("+ DL 650 EXH + DL 651 DIST filters", new)):
+        print(f"  {lab}: {m(r)}")
 
 
 if __name__ == "__main__":

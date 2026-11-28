@@ -8307,7 +8307,7 @@ class TradingEngine:
         _mid = (float(ob['best_bid']) + float(ob['best_ask'])) / 2.0
         if bullrun_disloc_exceeded(max_disloc_pct, _mid, limit_price):
             logger.warning(f"[MAKER_ENTRY] {pair}: DISLOC_SKIP placement — limit {limit_price} is {abs(limit_price-_mid)/_mid*100:.2f}% from mid {_mid} (max {max_disloc_pct}%)")
-            return {'entry_order_type': 'DISLOC_SKIP', 'skipped': True, 'price': _mid, 'entry_fee': 0.0,
+            return {'entry_order_type': 'DISLOC_SKIP', 'skipped': True, 'price': _mid, 'entry_fee': 0.0, 'leg': 'placement',
                     'reason': f'placement dislocation {abs(limit_price-_mid)/_mid*100:.2f}% > {max_disloc_pct}%', 'wait_seconds': 0.0}
 
         logger.info(f"[MAKER_ENTRY] {pair}: Placing limit {side} @ {limit_price} "
@@ -8428,10 +8428,10 @@ class TradingEngine:
             try:
                 _ob2 = await binance_service.fetch_orderbook(symbol)
                 _px2 = float(_ob2['best_ask'] if direction == 'LONG' else _ob2['best_bid']) if _ob2 else None
-                if _px2 and bullrun_disloc_exceeded(max_disloc_pct, _mid, _px2):
-                    logger.warning(f"[MAKER_ENTRY] {pair}: DISLOC_SKIP fallback — market {_px2} is {abs(_px2-_mid)/_mid*100:.2f}% from entry-time mid {_mid} (max {max_disloc_pct}%)")
-                    return {'entry_order_type': 'DISLOC_SKIP', 'skipped': True, 'price': _mid, 'entry_fee': 0.0,
-                            'reason': f'fallback dislocation {abs(_px2-_mid)/_mid*100:.2f}% > {max_disloc_pct}%', 'wait_seconds': wait_seconds_elapsed}
+                if _px2 and entry_moved_against(max_disloc_pct, _mid, _px2, direction):   # 🚦 (DL 661) one-sided: only a price that ran AGAINST us refuses
+                    logger.warning(f"[MAKER_ENTRY] {pair}: DISLOC_SKIP fallback — market {_px2} is {(_px2 - _mid) / _mid * 100:+.2f}% vs entry-time mid {_mid}, against the trade (max {max_disloc_pct}%)")
+                    return {'entry_order_type': 'DISLOC_SKIP', 'skipped': True, 'price': _mid, 'entry_fee': 0.0, 'live_px': _px2, 'leg': 'fallback',
+                            'reason': f'fallback: price ran {(_px2 - _mid) / _mid * 100:+.2f}% against the trade (max {max_disloc_pct}%)', 'wait_seconds': wait_seconds_elapsed}
             except Exception:
                 pass                                   # fail-open: guard never blocks on missing data
         result = await binance_service.create_market_order(symbol, side, amount, leverage)
@@ -8476,7 +8476,7 @@ class TradingEngine:
         # reference price = gapped book / coarse pricing — never rest an order there.
         if bullrun_disloc_exceeded(max_disloc_pct, current_price, limit_price):
             logger.warning(f"[MAKER_PAPER] {pair}: DISLOC_SKIP placement — limit {limit_price} is {abs(limit_price-current_price)/current_price*100:.2f}% from current {current_price} (max {max_disloc_pct}%)")
-            return {'entry_order_type': 'DISLOC_SKIP', 'skipped': True, 'price': current_price, 'entry_fee': 0.0,
+            return {'entry_order_type': 'DISLOC_SKIP', 'skipped': True, 'price': current_price, 'entry_fee': 0.0, 'leg': 'placement',
                     'reason': f'placement dislocation {abs(limit_price-current_price)/current_price*100:.2f}% > {max_disloc_pct}%', 'wait_seconds': 0.0}
 
         logger.info(f"[MAKER_PAPER] {pair}: Simulating limit {direction} @ {limit_price} "
@@ -8533,10 +8533,10 @@ class TradingEngine:
         fallback_price = tracker.last_price if tracker and tracker.last_price else current_price
         # 🛡 57f fallback leg: price ran away from the signal during the maker wait → don't chase
         # (master pool: |slip|≥0.3 sleeve cohort 6·0W·−$876 — the ONG/ENA class).
-        if bullrun_disloc_exceeded(max_disloc_pct, current_price, fallback_price):
-            logger.warning(f"[MAKER_PAPER] {pair}: DISLOC_SKIP fallback — price {fallback_price} is {abs(fallback_price-current_price)/current_price*100:.2f}% from signal {current_price} (max {max_disloc_pct}%)")
-            return {'entry_order_type': 'DISLOC_SKIP', 'skipped': True, 'price': current_price, 'entry_fee': 0.0,
-                    'reason': f'fallback dislocation {abs(fallback_price-current_price)/current_price*100:.2f}% > {max_disloc_pct}%', 'wait_seconds': float(timeout)}
+        if entry_moved_against(max_disloc_pct, current_price, fallback_price, direction):   # 🚦 (DL 661) one-sided: only a price that ran AGAINST us refuses
+            logger.warning(f"[MAKER_PAPER] {pair}: DISLOC_SKIP fallback — price {fallback_price} is {(float(fallback_price) - current_price) / current_price * 100:+.2f}% vs signal {current_price}, against the trade (max {max_disloc_pct}%)")
+            return {'entry_order_type': 'DISLOC_SKIP', 'skipped': True, 'price': current_price, 'entry_fee': 0.0, 'live_px': fallback_price, 'leg': 'fallback',
+                    'reason': f'fallback: price ran {(float(fallback_price) - current_price) / current_price * 100:+.2f}% against the trade (max {max_disloc_pct}%)', 'wait_seconds': float(timeout)}
         logger.info(f"[MAKER_PAPER] {pair}: No fill after {timeout}s, signal re-validated, taker fallback @ {fallback_price}")
         return {
             'price': fallback_price,
@@ -16981,12 +16981,13 @@ class TradingEngine:
                 self._exec_refusal(_wh_es, direction, pair, "LATE", current_price, stage="order", late_s=_fb_late, max_v=FLATBASE_ENTRY_MAX_LATE_S,
                                    fields={k: v for k, v in locals().items() if k.startswith('entry_') and not callable(v)}, bar_ms=int(flatbase_bar_close_ms))   # 🚦 (660) counted (the pricer has no FLATBASE exit)
                 return None
-        # 💸 (DECISION_LOG 566) FUNDING GUARD — every bot entry: the next funding payment is AGAINST the trade (a short pays when the rate is
+        # 💸 (DECISION_LOG 566) FUNDING GUARD — every bot entry: the next funding payment is AGAINST the trade (a short pays when the rate is   [🔓 DL 662: FRENZY longs exempt when funding_guard_exempt_frenzy_long]
         # negative, a long when it is positive), |rate| ≥ funding_guard_rate_min_pct and it settles within funding_guard_minutes → skip
         # (FUNDING_GUARD). Live INIT 11-16 13:58: a FAN flip opened 96 s before an HOURLY −0.183 % payment ($33.46). Unreadable rate / time → no
         # block (fail-open). Runs BEFORE the FRENZY / SURGE / FLATBASE book read (565 review: no extra lag between that book and the order). services/funding_guard.py · Binance premiumIndex (lastFundingRate + nextFundingTime), cached ≤ 60 s per pair.
         _fg_th = config.trading_config.thresholds
-        if bool(getattr(_fg_th, 'funding_guard_enabled', False)):
+        _fg_exempt = bool(_frenzy and direction == "LONG" and getattr(_fg_th, 'funding_guard_exempt_frenzy_long', False) is True)   # 🔓 (662) FRENZY longs: cost-only guard, a +2 % trade is never skipped for a ≈ 0.1 % payment
+        if bool(getattr(_fg_th, 'funding_guard_enabled', False)) and not _fg_exempt:
             _fg_rate = _fg_next = None
             try:
                 _fg = await asyncio.wait_for(binance_service.fetch_funding_next(pair.replace('USDT', '/USDT:USDT')), 1.5)   # (565 review) bounded: the open lane is held
@@ -17319,6 +17320,9 @@ class TradingEngine:
                     # 🛡 57f: entry refused on dislocation — count + journal, dip stays alive, NO order row.
                     self._record_filter_block("BULLRUN_DISLOC", direction)   # journals its own BLOCK line (deep review: an explicit second note double-counted the gate)
                     logger.warning(f"[BULLRUN_DISLOC] {pair}: entry aborted — {result.get('reason')}")
+                    self._exec_refusal(_wh_es, direction, pair, "DISLOC", (result.get('price') or current_price), live_px=result.get('live_px'), stage="order",
+                                       max_v=_br_disloc_max, fields=dict({k: v for k, v in locals().items() if k.startswith('entry_') and not callable(v)},
+                                                                         exec_leg=result.get('leg')))   # (661 review) the guard's own reference (live: the book mid · paper: the signal) + which leg   # 🚦 (661) counted (no Bull-run exit in the pricer)
                     return None
                 if result and result.get('skipped'):
                     # Amendment #7: signal expired during maker wait → record + abort entry.
@@ -17459,6 +17463,9 @@ class TradingEngine:
                     # 🛡 57f: entry refused on dislocation — count + journal, dip stays alive, NO order row.
                     self._record_filter_block("BULLRUN_DISLOC", direction)   # journals its own BLOCK line (deep review: an explicit second note double-counted the gate)
                     logger.warning(f"[BULLRUN_DISLOC] {pair}: entry aborted — {result.get('reason')}")
+                    self._exec_refusal(_wh_es, direction, pair, "DISLOC", (result.get('price') or current_price), live_px=result.get('live_px'), stage="order",
+                                       max_v=_br_disloc_max, fields=dict({k: v for k, v in locals().items() if k.startswith('entry_') and not callable(v)},
+                                                                         exec_leg=result.get('leg')))   # (661 review) the guard's own reference (live: the book mid · paper: the signal) + which leg   # 🚦 (661) counted (no Bull-run exit in the pricer)
                     return None
                 if result.get('skipped'):
                     # Amendment #7: signal expired during maker wait → record + abort entry.

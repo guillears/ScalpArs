@@ -788,6 +788,7 @@
     "funding_guard_enabled": true,
     "funding_guard_rate_min_pct": 0.05,
     "funding_guard_minutes": 15.0,
+    "funding_guard_exempt_frenzy_long": true,
     "frenzy_trail_arm_pct": 5.0,
     "frenzy_trail_giveback_pct": 1.5,
     "frenzy_tp_pct": 1.5,

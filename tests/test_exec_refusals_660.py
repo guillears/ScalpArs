@@ -170,3 +170,16 @@ def test_one_sided_revert_read(monkeypatch):
     assert "COLLECTING (3/10" in " ".join(S.exec_admitted_lines(K2, SINCE, max_pct=1.0))
     assert "0 kept fills yet" in " ".join(S.exec_admitted_lines(None, SINCE, max_pct=1.0))
     assert "guard off" in " ".join(S.exec_admitted_lines(K2, SINCE, max_pct=0))
+
+
+def test_bullrun_fallback_leg_one_sided_placement_unchanged():
+    src = _src("services/trading_engine.py")
+    # 🚦 (DL 661) both fallback legs (live maker wait + paper sim) refuse only a price that ran AGAINST the trade
+    assert src.count("entry_moved_against(max_disloc_pct, _mid, _px2, direction)") == 1
+    assert src.count("entry_moved_against(max_disloc_pct, current_price, fallback_price, direction)") == 1
+    # the PLACEMENT legs (a resting limit > max % from the mid = a gapped book) stay two-sided on purpose
+    assert src.count("bullrun_disloc_exceeded(max_disloc_pct, _mid, limit_price)") == 1
+    assert src.count("bullrun_disloc_exceeded(max_disloc_pct, current_price, limit_price)") == 1
+    # both BULLRUN_DISLOC refusals now write an EXEC_ row
+    assert src.count('self._exec_refusal(_wh_es, direction, pair, "DISLOC", (result.get(\'price\') or current_price), live_px=result.get(\'live_px\')') == 2
+    assert src.count("'leg': 'placement'") == 2 and src.count("'leg': 'fallback'") == 2

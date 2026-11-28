@@ -38,6 +38,10 @@ def test_clean_row_admitted_and_each_gate_in_engine_order():
     for over, why in cases:
         assert B.bullrun_stack_block({**BASE, **over}) == why, (over, why)
     assert B.bullrun_stack_block({**BASE, "entry_slippage_pct": 0.3}) == ""        # engine: strict > (bullrun_disloc_exceeded)
+    # 🚦 (DL 661) a CHEAPER taker-fallback fill is admitted; a cheaper resting limit (gapped book) and a DEARER fill are still refused
+    assert B.bullrun_stack_block({**BASE, "entry_slippage_pct": -0.8, "entry_order_type": "TAKER_FALLBACK"}) == ""
+    assert B.bullrun_stack_block({**BASE, "entry_slippage_pct": -0.8, "entry_order_type": "MAKER"}) == "BULLRUN_DISLOC"
+    assert B.bullrun_stack_block({**BASE, "entry_slippage_pct": 0.31, "entry_order_type": "TAKER_FALLBACK"}) == "BULLRUN_DISLOC"
     # first gate wins (engine order): a door miss AND a breadth miss → the door
     assert B.bullrun_stack_block({**BASE, "entry_br_r72": 9.0, "entry_bull_pct": 10.0}) == "BULLRUN_DOOR_GREEN"
 

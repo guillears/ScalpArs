@@ -724,3 +724,8 @@ stack keeps) and the event-study chart of any PASSED Q1–Q3 line. The H4 frozen
 blocks; `scripts/route_b_signals/signals.py` skips them, so the signal set this pre-registration reads is exactly the one it was written on.
 Separately, the FRENZY / SURGE price-moved check became one-sided on the same day (a better price no longer refuses): a few WILLY / HT
 entries that used to be refused now open. That is a bot change, not a scan change — those fills enter Route B as OPENED like any other.
+
+### Addendum 12 — 2026-11-28 (DECISION_LOG 662, written before any DESIGN read; nothing above is changed)
+**FRENZY longs exempt from the funding guard** (`funding_guard_exempt_frenzy_long`). Like the one-sided price check (Addendum 11) this is
+a bot RELAXATION, not a scan change: WILLY_HT setups the funding guard used to refuse now open and enter as OPENED. Rows refused by it
+before the deploy stay as recorded (today_stack.py states it; one such HT row, IDOL 11-21). No test, cut or gate of this file moves.

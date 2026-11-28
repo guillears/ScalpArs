@@ -723,7 +723,11 @@ def bullrun_stack_block(r, th=None, episodes=BULLRUN_REARM_EPISODES_LOG, green_e
     if th.bullrun_pvr_max > 0 and pvr is not None and pvr > th.bullrun_pvr_max:
         return "BULLRUN_PVR_MAX"
     slip = f("entry_slippage_pct")   # proxy for the open-path dislocation guard (fill vs the signal price; measured after the fill, so it can over-block)
-    if th.bullrun_max_entry_dislocation_pct > 0 and slip is not None and abs(slip) > th.bullrun_max_entry_dislocation_pct:   # engine bullrun_disloc_exceeded: strict >
+    # 🚦 (DL 661) slip + = cost to us. DEARER beyond max → refused (the fallback leg: never chase). CHEAPER beyond max → refused only when the
+    # fill was NOT the taker fallback: a resting limit that far below = a gapped book (the PLACEMENT leg, unchanged); a fallback that met a
+    # better price is admitted since DL 661 (the fallback leg is one-sided).
+    _mx = th.bullrun_max_entry_dislocation_pct
+    if _mx > 0 and slip is not None and (slip > _mx or (slip < -_mx and str(r.get("entry_order_type") or "").upper() != "TAKER_FALLBACK")):   # strict >
         return "BULLRUN_DISLOC"
     return ""
 

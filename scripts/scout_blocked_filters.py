@@ -949,7 +949,7 @@ def exec_section(dec_paths, K, now_ms, fetch=True, store_path=STORE, since_ms=No
     """🚦 (DECISION_LOG 660) OBSERVE only, no gate: every execution refusal (EXEC_DISLOC · EXEC_LATE · EXEC_CATCHUP_MOVED) priced as if
     it had opened — same pricer, same ruler (row price = the price the order would have met, + 8 s, 0.10 % slip, taker) — per sleeve ×
     line × side of the move, beside the sleeve's kept fills. Its own shadow episodes (never shadows a filter refusal). Sleeves the pricer has
-    no exit for (EXH / DIST / FLATBASE / SURGE) are counted, not priced."""
+    no exit for (EXH / DIST / FLATBASE / SURGE / BULLRUN_LONG) are counted, not priced."""
     L = ["", f"### 🚦 Execution refusals — price moved / too late / catch-up moved, priced on today's exit (DECISION_LOG {EXEC_DL}, observe only, no gate)", ""]
     if since_ms is None:
         since_ms = _GK.dl_deploy_ms(EXEC_DL, lag_min=10, label="execution refusals (blocked-trade pricer)")

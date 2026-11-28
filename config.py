@@ -1129,6 +1129,8 @@ class SignalThresholds(BaseModel):
     # cut anywhere. Momentum unaffected by evidence (5·3W·−$86) → scope stays bullrun. N=6 sleeve =
     # declared execution-mechanism override (precedent: spike direct-taker, stretch guard).
     # 🔒 revert: blocked-dislocation cohort re-simmed (1m klines, BR exit stack) net-positive at N≥8 → loosen to 0.5 or off.
+    # 🚦 (DL 661, operator) the FALLBACK leg is one-sided (services.frenzy.entry_moved_against): only a price that ran AGAINST the trade
+    # during the maker wait refuses; the PLACEMENT leg (a resting limit > X % from the mid = a gapped book) stays two-sided.
     bullrun_max_entry_dislocation_pct: float = 0.3
     # Aug-23 (20): RE-ARM DOOR — second trigger while the 72h composite is OFF (it detects continuation late and
     # cannot re-arm after a pullback: eff needs +3.9% straight-line). ON = BTC ADX ≥ adx_min AND rising vs 30 min ago
@@ -2012,6 +2014,12 @@ class SignalThresholds(BaseModel):
     funding_guard_enabled: bool = False
     funding_guard_rate_min_pct: float = 0.05
     funding_guard_minutes: float = 15.0
+    # 🔓 (DECISION_LOG 662, operator "yes do it" after the theory audit reports/HT_FILTER_THEORY_AUDIT_2026-11-28.md): FRENZY LONG sleeves
+    # (FRENZY_LONG / WIDE / LITE / RETRY / WILLY / WILLY_HT) are EXEMPT from the funding guard. The guard's only theory is cost: one payment
+    # ≈ 0.05–0.11 % vs a skipped trade worth ≈ +2 % on real HT fills (+6 at TP); high positive funding (crowded longs) carried no warning —
+    # those HT setups won (backtest 83 · 51 % · +1.00 %). The trade still PAYS the funding when it is charged. Shorts / flips keep the guard
+    # (built for the INIT hourly-funding FAN flip). False = the old behaviour (every sleeve guarded).
+    funding_guard_exempt_frenzy_long: bool = False
     # ⏪ Oct-6 FRENZY CATCH-UP (operator-approved build): FRENZY_LONG / FRENZY_WIDE get ONE chance per setup — the 5m bar it turns ON. When that
     # bar closed while no pass judged (bot paused, restarting after a deploy, an outage) the pair showed "ON (entry bar passed)" forever. Live case:
     # NMRUSDT 2026-10-06, fresh bar closed 13:40 UTC (streak 25, 2.0 h, vol 343×, ATR 2.1 %) while the bot was paused 13:25→13:53. NOTE (deep

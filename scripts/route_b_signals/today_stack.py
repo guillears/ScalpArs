@@ -42,6 +42,10 @@ spike hours, so EXHAUSTION rows TAKEN before the DL 650 deploy in those zones st
 signals); their own priced revert gate is scripts/scout_exh_regime_650.py. Re-check them here if the journal ever stamps both inputs.
 Not re-checked (DL 651, 2026-11-27): DIST_CRASH_FUNDING — the rows carry the journal funding but not BTC's 30-day drawdown; DIST rows TAKEN
 before the DL 651 deploy in the crash ∧ funding ≥ +0.005 % zone stay counted as taken; their own gate is scripts/scout_dist_crash_funding_651.py.
+Not re-checked (DL 660 / 662, 2026-11-28, RELAXATIONS — they admit more, never refuse more): the FRENZY price-moved check made
+one-sided (frenzy_max_entry_dislocation_pct, outside the guard prefixes) and `funding_guard_exempt_frenzy_long` (FRENZY / WILLY / HT longs
+skip the funding guard). WILLY / HT rows refused before the deploy by either (DISLOC on a cheaper book · FUNDING_GUARD — IDOL 11-21) stay
+counted as refused although today's stack would take them: a small under-count of taken rows, not a wrong taken row.
 Not re-checked, by design: DL 629 (commit 2026-11-23 01:39 UTC, WILLY turnover-unreadable TIMING bug fix — a routing delay, not a filter; refused
 setups were re-judged on a later red bar and journaled as such). Pure except `fetch_bars_1m` (Binance, through the shared limiter).
 """
@@ -124,6 +128,7 @@ ENTRY_SNAPSHOT = {
     'frenzy_willy_plain_entries_enabled': True,
     'frenzy_willy_red_max_wait_minutes': 60,
     'funding_guard_enabled': True,
+    'funding_guard_exempt_frenzy_long': True,
     'funding_guard_minutes': 15.0,
     'funding_guard_rate_min_pct': 0.05,
     'watch_block_willy_failed_spike': True,

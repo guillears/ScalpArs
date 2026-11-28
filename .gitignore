@@ -189,3 +189,6 @@ reports/NEWSLEEVE_2026-11-21_data/*.log
 # 💸 (DL 616) funding-rate / kline cache of the funding study
 reports/.funding_cache/
 reports/SCOUT_FB_QUIET_BASE_654.json
+
+# Route B report working data (hundreds of MB, local only)
+reports/ROUTE_B_REPORT_*_data/

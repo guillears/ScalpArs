@@ -715,7 +715,7 @@ def test_deploy_lifecycle_and_off_switch():
         s = f.read()
     assert '"ID":"raw-data-to-deep-archive-30d"' in s and '"StorageClass":"DEEP_ARCHIVE"' in s and '"Days":30' in s
     assert "STANDARD_IA" not in s and "abort-mpu-7d" in s
-    assert "POS_OFF=${POS_OFF:-0}" in s and "Environment=POS_OFF=$POS_OFF" in s and "FULL_MAX=${FULL_MAX:-30}" in s
+    assert "POS_OFF=${POS_OFF:-0}" in s and "Environment=POS_OFF=$POS_OFF" in s and "FULL_MAX=${FULL_MAX:-40}" in s
     assert "rm -rf /var/lib/scalpars-recorder/{fbook,fsnap,oi,ratio}" in s
 
 

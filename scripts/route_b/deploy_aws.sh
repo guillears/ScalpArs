@@ -31,7 +31,7 @@ BOT_ROLE=aws-elasticbeanstalk-ec2-role
 WEBSOCKETS=13.1
 BOTO3=1.35.36          # the recorder reads the bot list in-process (no aws-CLI spawn per minute); missing → CLI every 5 min
 MAX_HOT=120
-FULL_MAX=${FULL_MAX:-30}   # full order book for at most 30 of the bot's coins (fullbook.py; 0 = off)
+FULL_MAX=${FULL_MAX:-40}   # full order book for at most 40 of the bot's coins (fullbook.py; 0 = off) — 30 → 40 on 2026-11-28 (DL 658: the bot wanted 33–35)
 POS_OFF=${POS_OFF:-0}      # 1 = no open interest / positioning reads (positioning.py)
 HERE="$(cd "$(dirname "$0")" && pwd)"
 AWS="aws --region $REGION"

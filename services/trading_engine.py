@@ -35,7 +35,7 @@ from services.entry_depth import impact_fillable_detail, impact_limit_price, imp
 from services.ml_risk_cap import worst_stop_pct as _mlrc_worst_stop, open_trade_risk_pct as _mlrc_trade_risk, open_risk_pct_of_account as _mlrc_open_pct, fit_notional as _mlrc_fit
 from services.surge import surge_trigger, surge_entry_open, surge_pair_pick, surge_tripwire, surge_live_readings, wilder_atr_pct, surge_gvol_gate, surge_long_ema_gap_block, SURGE_LONG_EMA_GAP, SURGE_LONG_EMA_GAP_FAILOPEN
 from services.orderbook_stats import orderbook_metrics, OB_FIELDS
-from services.frenzy import frenzy_catchup_check, frenzy_catchup_moved, frenzy_vol24_at, FRENZY_CATCHUP_STALE, frenzy_tp_for
+from services.frenzy import frenzy_catchup_check, frenzy_catchup_moved, entry_moved_against, frenzy_vol24_at, FRENZY_CATCHUP_STALE, frenzy_tp_for
 from services.frenzy import frenzy_lite_c_tp, frenzy_lite_c_enabled, frenzy_lite_tp_override   # 🎯 (DECISION_LOG 301) LITE C
 from services.frenzy import frenzy_stop_for   # 🛑 (DECISION_LOG 317) FRENZY_LONG's own stop
 from services.paper_costs import paper_exit_book_price, exit_slip_pct, accrue_funding, fold_funding, funding_topup_needed, live_income_foreign   # 💸 (DECISION_LOG 539) paper = live costs
@@ -13008,6 +13008,45 @@ class TradingEngine:
             logger.warning(f"[BLOCKED_SIGNAL] {pair} {sleeve}: not queued ({str(e)[:100]})")
             return False
 
+    EXEC_LINE_PREFIX = "EXEC_"   # 🚦 (DECISION_LOG 660) execution refusals in blocked_signals — kept apart from the armed filters' rows
+
+    def _exec_refusal(self, sleeve, direction, pair, line, decision_px, live_px=None, stage="scan", late_s=None, max_v=None,
+                      fields=None, bar_ms=None) -> bool:
+        """🚦 (DECISION_LOG 660) an EXECUTION refusal — the price moved past the dislocation limit (DISLOC), the entry was judged / reached
+        the order too late (LATE), a catch-up's price left the ON bar's close (CATCHUP_MOVED) — queues ONE blocked_signals row, line
+        EXEC_<line>, so the blocked-trade pricer prices it like a filter refusal (its own table; every filter reader skips EXEC_ rows). Was a
+        counter only: the 11-27 HT audit (DL 655) never saw the two HT setups the price check aborted on a CHEAPER price (AIOT 11-24, ACE
+        11-27, both would have hit TP). Row price = the price the order would have met (live when read, else the decision price); the
+        snapshot carries exec_stage (scan / order) · exec_decision_px · exec_live_px · exec_move_pct (live vs decision, signed) ·
+        exec_late_s · exec_max. Record only — never changes the decision. Never raises."""
+        try:
+            def _px(v):
+                try:
+                    f = float(v)
+                    return f if (math.isfinite(f) and f > 0) else None
+                except (TypeError, ValueError):
+                    return None
+            dp, lp = _px(decision_px), _px(live_px)
+            if not (lp or dp):   # no readable price → nothing the pricer could use (the counter still counts it)
+                return False
+            ef = dict(fields or {})
+            ef.update(exec_stage=str(stage), exec_decision_px=dp, exec_live_px=lp,
+                      exec_move_pct=(round((lp / dp - 1) * 100, 4) if (dp and lp) else None),
+                      exec_late_s=(round(float(late_s), 1) if late_s is not None else None), exec_max=max_v)
+            return self._blocked_record(sleeve, direction, pair, lp or dp, [f"{self.EXEC_LINE_PREFIX}{line}"], ef, bar_ms=bar_ms)
+        except Exception as e:
+            logger.warning(f"[BLOCKED_SIGNAL] {pair} {sleeve}: execution refusal {line} not queued ({str(e)[:100]})")
+            return False
+
+    @staticmethod
+    def _fz_exec_fields(flag) -> dict:
+        """🚦 (660) the FRENZY-family stamps the blocked-trade pricer reads for an execution refusal judged in _frenzy_open (WILLY's V2b
+        target needs the spike time; the spike high is HT's / WILLY's anchor)."""
+        f = flag or {}
+        return dict(entry_frenzy_spike_at=f.get('spike_ts'), entry_frenzy_willy_spike_high=f.get('peak'),
+                    entry_frenzy_vs_vwap_pct=f.get('vs_vwap_pct'), entry_frenzy_vol_mult=f.get('vol_mult'), entry_frenzy_hours=f.get('hours'),
+                    entry_pair_volume_24h_usd=f.get('volume_24h'))
+
     async def _blocked_insert(self, row, key=None) -> bool:
         """🧱 own short session; a row a previous process already wrote for the same (pair, sleeve, bar) is left as it is. A failed insert
         drops its dedupe key so the next refusal of that pair / sleeve in the same bar retries. Never raises."""
@@ -13960,6 +13999,8 @@ class TradingEngine:
                 self._record_filter_block(f"{_bk}_LATE", "LONG")
                 flag[_lfk] = f"{_bar_dt:%m-%d %H:%M} {_tg}refused: found {_late_s:.0f}s after the bar closed (max {FRENZY_ENTRY_MAX_LATE_S}s)"
                 logger.warning(f"[{_es}] {pair}: {_sig} but judged {_late_s:.0f}s after the bar closed — skipped (max {FRENZY_ENTRY_MAX_LATE_S}s)")
+                self._exec_refusal(_es, "LONG", pair, "LATE", price, stage="scan", late_s=_late_s, max_v=FRENZY_ENTRY_MAX_LATE_S,
+                                   fields=self._fz_exec_fields(flag), bar_ms=int(bar_open))   # 🚦 (660) priced like a filter refusal, own table
                 return
             _dmax = float(getattr(th, 'frenzy_max_entry_dislocation_pct', 0) or 0)
             _close = float(flag.get('price') or 0)
@@ -13969,15 +14010,19 @@ class TradingEngine:
                 flag[_lfk] = (f"{_bar_dt:%m-%d %H:%M} {_tg}refused: price moved {_mv} from the ON bar's close "
                                      f"(max {_dmax:g}%{'' if _dmax > 0 else ' — guard off, catch-up needs it'})")
                 logger.info(f"[{_es}] {pair}: catch-up refused — price moved {_mv} from the ON bar's close (max {_dmax:g}%)")
+                self._exec_refusal(_es, "LONG", pair, "CATCHUP_MOVED", _close, live_px=price, stage="scan", max_v=_dmax,
+                                   fields=self._fz_exec_fields(flag), bar_ms=int(catchup_now))   # 🚦 (660)
                 return
             # ⏪ (235) the catch-up's own stamps: bars from the ON bar's close to this decision · live vs that close (signed %)
             _cu_bars_n = int((int(catchup_now) - int(bar_open)) // 300_000) if _cu else None
             _cu_move = round((price / _close - 1) * 100, 4) if (_cu and _close > 0) else None
             if _cu:
                 flag['catchup_bars'], flag['catchup_move_pct'] = _cu_bars_n, _cu_move
-            if not _cu and _dmax > 0 and _close > 0 and abs(price / _close - 1) * 100 > _dmax:   # ⏪ a catch-up already passed the stricter check above (same reference, fail-closed)
+            if not _cu and _dmax > 0 and _close > 0 and entry_moved_against(_dmax, _close, price, "LONG"):   # 🚦 (660) one-sided: only a WORSE price refuses   # ⏪ a catch-up already passed the stricter check above (same reference, fail-closed)
                 self._record_filter_block(f"{_bk}_DISLOC", "LONG")
                 flag[_lfk] = f"{_bar_dt:%m-%d %H:%M} {_tg}refused: price moved {(price / _close - 1) * 100:+.2f}% from the signal close (max {_dmax:g}%)"
+                self._exec_refusal(_es, "LONG", pair, "DISLOC", _close, live_px=price, stage="scan", max_v=_dmax,
+                                   fields=self._fz_exec_fields(flag), bar_ms=int(bar_open))   # 🚦 (660)
                 return
             _ef = {}
             if indicators:
@@ -16901,6 +16946,13 @@ class TradingEngine:
                                              else f"reached the order {_fz_late2:.0f}s after the bar closed (max {FRENZY_ENTRY_MAX_LATE_S}s)")   # read by _frenzy_open
                 logger.warning(f"[{_fz_es}] {pair}: reached the order {_fz_late2:.0f}s after the bar closed (waited for another bot open) — "
                                f"skipped (max {FRENZY_ENTRY_MAX_LATE_S}s)")
+                try:   # 🚦 (660 review) the decision price is ≥ 120 s old here — the live tick when a tracker has one (else the scout leaves the row unpriced)
+                    _lt_tr = websocket_tracker.get_tracker(pair)
+                    _lt_px = float(_lt_tr.last_price) if (_lt_tr and _lt_tr.last_price) else None
+                except Exception:
+                    _lt_px = None
+                self._exec_refusal(_wh_es, direction, pair, "LATE", current_price, live_px=_lt_px, stage="order", late_s=_fz_late2, max_v=FRENZY_ENTRY_MAX_LATE_S,
+                                   fields={k: v for k, v in locals().items() if k.startswith('entry_') and not callable(v)}, bar_ms=int(frenzy_bar_open_ms))   # 🚦 (660)
                 return None
         if _exh and exhaustion_bar_close_ms is not None:   # 🪫 (578) the study filled at the next 5m open: the order must start inside that 5m bar
             _ex_late = (_leash_time.time() * 1000 - int(exhaustion_bar_close_ms)) / 1000.0
@@ -16908,6 +16960,8 @@ class TradingEngine:
                 self._record_filter_block("EXH_LATE", direction)
                 self._frenzy_open_refusal = f"reached the order {_ex_late:.0f}s after the 15m signal bar closed (max {EXH_ENTRY_MAX_LATE_S}s)"
                 logger.warning(f"[EXHAUSTION_SHORT] {pair}: {self._frenzy_open_refusal} — skipped")
+                self._exec_refusal(_wh_es, direction, pair, "LATE", current_price, stage="order", late_s=_ex_late, max_v=EXH_ENTRY_MAX_LATE_S,
+                                   fields={k: v for k, v in locals().items() if k.startswith('entry_') and not callable(v)}, bar_ms=int(exhaustion_bar_close_ms))   # 🚦 (660) counted (the pricer has no EXH exit)
                 return None
         if _dsh and distribution_bar_close_ms is not None:   # 📉 (586) the study filled at the next 5m open: the order must start inside that 5m bar
             _ds_late = (_leash_time.time() * 1000 - int(distribution_bar_close_ms)) / 1000.0
@@ -16915,6 +16969,8 @@ class TradingEngine:
                 self._record_filter_block("DIST_LATE", direction)
                 self._frenzy_open_refusal = f"reached the order {_ds_late:.0f}s after the 15m signal candle closed (max {DIST_ENTRY_MAX_LATE_S}s)"
                 logger.warning(f"[DISTRIBUTION_SHORT] {pair}: {self._frenzy_open_refusal} — skipped")
+                self._exec_refusal(_wh_es, direction, pair, "LATE", current_price, stage="order", late_s=_ds_late, max_v=DIST_ENTRY_MAX_LATE_S,
+                                   fields={k: v for k, v in locals().items() if k.startswith('entry_') and not callable(v)}, bar_ms=int(distribution_bar_close_ms))   # 🚦 (660) counted (the pricer has no DIST exit)
                 return None
         if _fbs and flatbase_bar_close_ms is not None:   # 🩳 (348) a missed S4 boundary is never caught up: the order must start inside the same 5m bar
             _fb_late = (_leash_time.time() * 1000 - int(flatbase_bar_close_ms)) / 1000.0
@@ -16922,6 +16978,8 @@ class TradingEngine:
                 self._record_filter_block("FLATBASE_LATE", direction)
                 self._frenzy_open_refusal = f"reached the order {_fb_late:.0f}s after the 4-h bar closed (max {FLATBASE_ENTRY_MAX_LATE_S}s — same 5m bar)"
                 logger.warning(f"[FLATBASE_SHORT] {pair}: {self._frenzy_open_refusal} — skipped")
+                self._exec_refusal(_wh_es, direction, pair, "LATE", current_price, stage="order", late_s=_fb_late, max_v=FLATBASE_ENTRY_MAX_LATE_S,
+                                   fields={k: v for k, v in locals().items() if k.startswith('entry_') and not callable(v)}, bar_ms=int(flatbase_bar_close_ms))   # 🚦 (660) counted (the pricer has no FLATBASE exit)
                 return None
         # 💸 (DECISION_LOG 566) FUNDING GUARD — every bot entry: the next funding payment is AGAINST the trade (a short pays when the rate is
         # negative, a long when it is positive), |rate| ≥ funding_guard_rate_min_pct and it settles within funding_guard_minutes → skip
@@ -16995,20 +17053,25 @@ class TradingEngine:
                 except Exception:
                     _sg_live_px = None
             _sg_max = None if (_fbs or _exh or _dsh) else (float(getattr(config.trading_config.thresholds, 'frenzy_max_entry_dislocation_pct' if _frenzy else 'surge_max_entry_dislocation_pct', 0) or 0) or None)   # 🩳 (348) no guard: the study entered at the bar close
-            if _sg_live_px and bullrun_disloc_exceeded(_sg_max, current_price, _sg_live_px):
+            if _sg_live_px and entry_moved_against(_sg_max, current_price, _sg_live_px, direction):   # 🚦 (660) one-sided: only a WORSE price refuses
                 self._record_filter_block(f"{_fz_bk}_DISLOC" if _frenzy else "SURGE_DISLOC", direction)
                 if _frenzy:
-                    self._frenzy_open_refusal = f"price moved {abs(_sg_live_px - current_price) / current_price * 100:.2f}% before the order (max {_sg_max}%)"
+                    self._frenzy_open_refusal = f"price moved {(_sg_live_px / current_price - 1) * 100:+.2f}% against the trade before the order (max {_sg_max}%)"
                 logger.warning(f"[{_fz_bk if _frenzy else 'SURGE'}_DISLOC] {pair} {direction}: entry aborted — live {_sg_live_px} is "
-                               f"{abs(_sg_live_px - current_price) / current_price * 100:.2f}% from decision {current_price} (max {_sg_max}%)")
+                               f"{(_sg_live_px / current_price - 1) * 100:+.2f}% vs decision {current_price}, against the trade (max {_sg_max}%)")
+                self._exec_refusal(_wh_es, direction, pair, "DISLOC", current_price, live_px=_sg_live_px, stage="order", max_v=_sg_max,
+                                   fields={k: v for k, v in locals().items() if k.startswith('entry_') and not callable(v)}, bar_ms=(int(frenzy_bar_open_ms) if (_frenzy and frenzy_bar_open_ms is not None) else None))   # 🚦 (660)
                 return None
             # ⏪ Oct-6 catch-up: the book price must ALSO sit within the dislocation of the ON bar's close (else ticker-vs-ON ≤ 1 % plus
             # book-vs-ticker ≤ 1 % could stack to ~2 %). Book unreadable → the decision price (already checked against the ON close).
-            if _frenzy and frenzy_catchup and frenzy_catchup_ref_price and frenzy_catchup_moved(frenzy_catchup_ref_price, _sg_live_px or current_price, _sg_max or 0):
+            if _frenzy and frenzy_catchup and frenzy_catchup_ref_price and frenzy_catchup_moved(frenzy_catchup_ref_price, _sg_live_px or current_price, _sg_max or 0, direction):
                 self._record_filter_block(f"{_fz_bk}_CATCHUP_MOVED", direction)
                 _cu_px = _sg_live_px or current_price
                 self._frenzy_open_refusal = f"catch-up: book {(_cu_px / frenzy_catchup_ref_price - 1) * 100:+.2f}% from the ON bar's close at the order (max {_sg_max or 0}%)"
                 logger.warning(f"[{_fz_bk}_CATCHUP_MOVED] {pair}: entry aborted at the order — {self._frenzy_open_refusal}")
+                self._exec_refusal(_wh_es, direction, pair, "CATCHUP_MOVED", frenzy_catchup_ref_price, live_px=_cu_px, stage="order", max_v=_sg_max,
+                                   fields={k: v for k, v in locals().items() if k.startswith('entry_') and not callable(v)},
+                                   bar_ms=((int(frenzy_bar_open_ms) // 300_000) * 300_000 if frenzy_bar_open_ms is not None else None))   # 🚦 (660) the 5m bucket (a catch-up's clock is raw)
                 return None
             if _cap_on and _sg_ob:   # 📖🧢 (553) the order price = the guard's ceiling (same book, same max push)
                 try:

@@ -251,6 +251,8 @@ def test_journal_mapping():
         {**base, "t": "2026-11-21T10:00:00", "e": "BLOCK", "pair": "RUSDT", "dir": "LONG", "gate": "FRENZY_WILLY_PAIR_HELD"},
         {**base, "t": "2026-11-21T10:30:09", "e": "BLOCKED", "pair": "AUSDT", "dir": "LONG", "strategy": "FRENZY_WILLY_HT", "price": 0.01,
          "bl_sleeve": "FRENZY_WILLY_HT", "bl_lines": "WILLY_FAILED_SPIKE"},
+        {**base, "t": "2026-11-21T10:45:09", "e": "BLOCKED", "pair": "ZUSDT", "dir": "LONG", "strategy": "FRENZY_WILLY_HT", "price": 0.02,
+         "bl_sleeve": "FRENZY_WILLY_HT", "bl_lines": "EXEC_DISLOC"},                                   # 🚦 (DL 660) an execution refusal, not a filter
         {**base, "t": "2026-11-21T11:00:00", "e": "BLOCK", "pair": "AUSDT", "dir": "LONG", "gate": "FRENZY_WIDE_OFF"},
         {**base, "t": "2026-11-21T11:05:00", "e": "BLOCK", "pair": "AUSDT", "dir": "SHORT", "gate": "EXH_WIDE_READ_CAP"},
     ])
@@ -265,6 +267,7 @@ def test_journal_mapping():
     assert fb.loc["QUSDT", "status"] == "REFUSED:SKIPPED_FUNDING_ABOVE_BASE"
     assert st[("FRENZY_WILLY_HT", "RUSDT")].status == "BLOCKED:PAIR_HELD"                            # R 2.5 > cap 1 → HT
     assert st[("FRENZY_WILLY_HT", "AUSDT")].status == "BLOCKED:WILLY_FAILED_SPIKE"
+    assert not (S.pair == "ZUSDT").any()                                                            # 🚦 (660) EXEC_ rows never enter Route B
     assert st[("FRENZY_WIDE", "AUSDT")].status == "REFUSED:SLEEVE_OFF" and not st[("FRENZY_WIDE", "AUSDT")].priceable
     assert not ((S.pair == "AUSDT") & (S.direction == "SHORT")).any()                              # the read-cap counter is no signal
 

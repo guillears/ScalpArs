@@ -103,7 +103,8 @@ def test_simulated_pause_recovers_exactly_the_missed_fresh_bar():
 
 def test_dislocation_guard_and_24h_volume_on_the_bar():
     assert frenzy_catchup_moved(1.0, 1.009, 1.0) is False and frenzy_catchup_moved(1.0, 0.991, 1.0) is False
-    assert frenzy_catchup_moved(1.0, 1.011, 1.0) is True and frenzy_catchup_moved(1.0, 0.98, 1.0) is True
+    assert frenzy_catchup_moved(1.0, 1.011, 1.0) is True and frenzy_catchup_moved(1.0, 0.98, 1.0) is False   # 🚦 (660) cheaper never refuses
+    assert frenzy_catchup_moved(1.0, 0.98, 1.0, 'SHORT') is True and frenzy_catchup_moved(1.0, 1.02, 1.0, 'SHORT') is False
     assert frenzy_catchup_moved(1.0, 1.0, 0) is True                                     # guard off → refuse (fail-closed)
     assert frenzy_catchup_moved(0, 1.0, 1.0) is True and frenzy_catchup_moved(1.0, None, 1.0) is True
     rows = [[i * BAR_MS, 1, 2.0, 1.0, 3.0, 10.0] for i in range(300)]                    # typical price 2 × 10 = 20 per bar
@@ -432,14 +433,14 @@ def test_order_book_rechecked_against_the_on_close_and_other_review_fixes():
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
     i = eng.index("async def open_position("); op = eng[i:eng.index("binance_order_id = None", i)]
     # fix 2: the book price at the order vs the ON close (no 1 % + 1 % stacking) — fail-closed predicate, its own counter
-    assert "if _frenzy and frenzy_catchup and frenzy_catchup_ref_price and frenzy_catchup_moved(frenzy_catchup_ref_price, _sg_live_px or current_price, _sg_max or 0):" in op
+    assert "if _frenzy and frenzy_catchup and frenzy_catchup_ref_price and frenzy_catchup_moved(frenzy_catchup_ref_price, _sg_live_px or current_price, _sg_max or 0, direction):" in op
     assert op.index("frenzy_catchup_moved(frenzy_catchup_ref_price") > op.index("_sg_live_px = float(_sg_ob['best_ask']")
     assert "frenzy_catchup_ref_price=(_close if _cu else None)," in eng
     # fix 4: its own lane-wait wording
     assert 'f"catch-up order reached {_fz_late2:.0f}s after the decision (max {FRENZY_ENTRY_MAX_LATE_S}s)" if frenzy_catchup' in op
     j = eng.index("async def _frenzy_open("); fo = eng[j:eng.index("async def _maybe_open_surge(", j)]
     # fix 3: the old _DISLOC check skipped for catch-ups · fix 5: the already-taken return says so
-    assert "if not _cu and _dmax > 0 and _close > 0 and abs(price / _close - 1) * 100 > _dmax:" in fo
+    assert 'if not _cu and _dmax > 0 and _close > 0 and entry_moved_against(_dmax, _close, price, "LONG"):' in fo   # 🚦 (660) one-sided
     assert "already entered — a {_es} on this pair opened at / after this bar" in fo
     # fix 10: FRENZY fully off counts as judged (and clears the per-pair map)
     main_src = open(os.path.join(ROOT, "main.py"), encoding="utf-8").read()

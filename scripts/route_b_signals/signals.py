@@ -168,7 +168,9 @@ def build_signals(J, turnover_cap=1.0):
     for r in J[(J.e == "OPEN") & J.strategy.isin(WILLY_OPEN)].itertuples():
         add(sleeve=r.strategy, pair=r.pair, direction=str(r.dir), signal_time=_ts(r.t), status="OPENED", decision_price=_f(r.price),
             journal_t=str(r.t), detail="", source="journal")
-    for r in J[(J.e == "BLOCKED") & J.bl_sleeve.astype(str).str.startswith("FRENZY_WILLY")].itertuples():
+    _jb = J[(J.e == "BLOCKED") & J.bl_sleeve.astype(str).str.startswith("FRENZY_WILLY")]
+    _jb = _jb[~_jb.bl_lines.astype(str).str.split("+").map(lambda ls: any(x.startswith("EXEC_") for x in ls))]   # 🚦 (DL 660) execution refusals are not filter blocks
+    for r in _jb.itertuples():
         add(sleeve=str(r.bl_sleeve), pair=r.pair, direction=_s(r.dir, default="LONG"), signal_time=_ts(r.t), status=f"BLOCKED:{r.bl_lines}",
             decision_price=_f(r.price), journal_t=str(r.t), detail=f"sole={r.bl_sole}", source="journal", j_bl_sole=_b(r.bl_sole))
     for r in B[B.gate == "FRENZY_WILLY_PAIR_HELD"].itertuples():

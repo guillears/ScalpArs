@@ -717,3 +717,10 @@ not read by the runner — see the daily health report); one status table with c
 per sleeve; HOLDOUT-only lines shown as ⚪ COLLECTING with a note); sections EXH · DIST · FLATBASE · WILLY_HT · no-spot · triggers
 (Addendum 4 order, with windows) · market. HOLDOUT phase only: the BTC daily-trend split, path decomposition, Q5 capacity (rows today's
 stack keeps) and the event-study chart of any PASSED Q1–Q3 line. The H4 frozen lines (Addendum 9) run from the same runner.
+
+### Addendum 11 — 2026-11-28 (DECISION_LOG 660, written before any DESIGN read; nothing above is changed)
+**Execution refusals stay out of the input.** From DL 660 the engine also writes a blocked-signal row (line `EXEC_DISLOC` / `EXEC_LATE` /
+`EXEC_CATCHUP_MOVED`) for a refusal by the price-moved / lateness / catch-up checks, which were counters only before. These are not filter
+blocks; `scripts/route_b_signals/signals.py` skips them, so the signal set this pre-registration reads is exactly the one it was written on.
+Separately, the FRENZY / SURGE price-moved check became one-sided on the same day (a better price no longer refuses): a few WILLY / HT
+entries that used to be refused now open. That is a bot change, not a scan change — those fills enter Route B as OPENED like any other.

@@ -170,8 +170,17 @@ def ht_exit(t, x):
 
 
 # ─────────────────────────── load ───────────────────────────
-def load_blocked(paths=None, since_ms=None):
-    """→ one row per (pair, sleeve, bar): te (refusal + 8 s), E (price 0.10 % against the trade), lines, sole, snapshot dict."""
+EXEC_PREFIX = "EXEC_"   # 🚦 (DECISION_LOG 660) execution refusals (EXEC_DISLOC / EXEC_LATE / EXEC_CATCHUP_MOVED) — never a filter's cohort
+
+
+def is_exec_lines(lines) -> bool:
+    """🚦 (660) True when a BLOCKED row's lines are an execution refusal (engine TradingEngine._exec_refusal)."""
+    return any(str(x).startswith(EXEC_PREFIX) for x in str(lines or "").split("+"))
+
+
+def load_blocked(paths=None, since_ms=None, exec_rows=False):
+    """→ one row per (pair, sleeve, bar): te (refusal + 8 s), E (price 0.10 % against the trade), lines, sole, snapshot dict.
+    🚦 (660) exec_rows False (default — every filter reader, gate and study) drops the EXEC_ rows; True keeps ONLY them (key prefix "X|")."""
     fr = []
     for p in (_EG.glob_exports(DEC_GLOB) if paths is None else paths):
         try:
@@ -189,6 +198,9 @@ def load_blocked(paths=None, since_ms=None):
     d = pd.concat(fr, ignore_index=True)
     d["t_ms"] = [_ms(x) for x in d.t]
     d["bar"] = d.bl_bar_at.astype(str).str[:19]
+    _lx = d.bl_lines.where(d.bl_lines.notna(), d.gate if "gate" in d else "").astype(str)
+    _isx = _lx.map(is_exec_lines)
+    d = d[_isx] if exec_rows else d[~_isx]                       # 🚦 (660) split BEFORE the dedup: an EXEC row never drops a filter row
     d = d[d.t_ms.notna()].sort_values("t_ms").drop_duplicates(["pair", "bl_sleeve", "bar"], keep="first")
     if since_ms is not None:
         d = d[d.t_ms >= since_ms]
@@ -208,7 +220,7 @@ def load_blocked(paths=None, since_ms=None):
         out.append(dict(pair=str(r.pair), sleeve=_sl, direction="SHORT" if short else "LONG", t_ms=int(r.t_ms), te=te, price=px,
                         E=px * (1 - SLIP / 100 if short else 1 + SLIP / 100), lines=str(r.bl_lines if pd.notna(r.bl_lines) and str(r.bl_lines) else (r.gate if pd.notna(r.gate) else "")),
                         sole=str(r.bl_sole).lower() in ("true", "1", "1.0"), snap=snap, bar=r.bar,
-                        day=pd.Timestamp(te, unit="ms").strftime("%Y-%m-%d"), key=f"{r.pair}|{_sl}|{r.bar}"))
+                        day=pd.Timestamp(te, unit="ms").strftime("%Y-%m-%d"), key=("X|" if exec_rows else "") + f"{r.pair}|{_sl}|{r.bar}"))
     return pd.DataFrame(out, columns=cols)
 
 
@@ -795,7 +807,8 @@ def _load_state(path):
         return {}, None, "⚠ gate state unreadable — nothing frozen this run (operator restore needed)."
 
 
-def run(now_ms=None, dec_paths=None, ord_paths=None, state_path=STATE, store_path=STORE, since_ms=None, fetch=True, line_floors=None):
+def run(now_ms=None, dec_paths=None, ord_paths=None, state_path=STATE, store_path=STORE, since_ms=None, fetch=True, line_floors=None,
+        exec_since_ms=None):
     now_ms = int(time.time() * 1000) if now_ms is None else int(now_ms)
     L = [f"## 🧱💲 BLOCKED TRADES — the armed filters' refusals priced on today's exit + per-line revert gates (DECISION_LOG {DL}; filters DL {FLOOR_DL})", ""]
     if since_ms is None:
@@ -880,6 +893,102 @@ def run(now_ms=None, dec_paths=None, ord_paths=None, state_path=STATE, store_pat
           "FRENZY_WILLY_HT · WILLY_HT_BURST_REJECTION (declared override, fails the locked bar) runs a TIGHTER absolute gate: first 10 priced "
           "blocked HT trades on ≥ 5 UTC days (refused ≥ the DL 619 commit + 10 min), average ≥ 0 → REVERT CANDIDATE (set "
           "frenzy_willy_ht_burst_rejection_enabled false); else KEEP — frozen once, and once more on its sole refusals.", ""]
+    try:
+        L += exec_section(dec_paths, K, now_ms, fetch=fetch, store_path=store_path, since_ms=exec_since_ms)
+    except Exception as e:   # the filter gates above never depend on this section
+        L += ["", f"⚠ execution-refusals section failed this run ({type(e).__name__}: {str(e)[:100]})", ""]
+    return L
+
+
+# ─────────────────────────── 🚦 execution refusals (DECISION_LOG 660) ───────────────────────────
+EXEC_DL = 660
+
+
+def exec_move_side(direction, move_pct):
+    """🚦 (660) the live price vs the decision price, read from the trade's side: CHEAPER (a long met a lower price / a short a higher one —
+    the move went the trade's way before the order) · DEARER (against it) · "–" (no move read: LATE rows, unreadable)."""
+    m = _f(move_pct)
+    if m is None or m == 0:
+        return "–"
+    return "CHEAPER" if ((m < 0) if str(direction).upper() != "SHORT" else (m > 0)) else "DEARER"
+
+
+ADMIT_MIN_N, ADMIT_MIN_DAYS = 10, 5
+
+
+def exec_admitted_lines(K, since_ms, max_pct=None):
+    """🚦🔒 (DECISION_LOG 660) the one-sided guard's REVERT read (alert only): the FRENZY-family fills it now lets through — kept fills opened
+    ≥ the DL 660 commit whose book at the order sat > max % BETTER than the decision (entry_book_drift_pct < −max; + = cost to us) — vs the
+    same sleeves' other kept fills in the window, same pricer. First 10 on ≥ 5 days: avg < 0 AND below the others → REVERT alert (back to
+    two-sided). Blind spot: a scan-stage admit (live vs the signal close in _frenzy_open) carries no stamp — not counted here."""
+    if max_pct is None:
+        max_pct = float(th().get("frenzy_max_entry_dislocation_pct", 1.0) or 0)
+    L = ["", f"**🔒 One-sided guard revert read (DL {EXEC_DL}):** "]
+    if K is None or not len(K) or max_pct <= 0:
+        return [L[0], L[1] + ("guard off — nothing to read." if max_pct <= 0 else "0 kept fills yet.")]
+    k = K[(K.status == "PRICED") & K.sleeve.isin(FRENZY) & (K.t_ms >= since_ms)].copy()
+    k["drift"] = [_f((sn or {}).get("entry_book_drift_pct")) for sn in k.snap]
+    adm = k[k.drift.notna() & (k.drift < -max_pct)].sort_values("te")
+    rest = k[~k.index.isin(adm.index)]
+    ra = f"{rest.pct.mean():+.3f}" if len(rest) else "–"
+    if not len(adm):
+        return [L[0], L[1] + f"0 cheaper-admitted fills yet (other FRENZY kept fills {len(rest)} · avg {ra} %). Gate: first {ADMIT_MIN_N} on ≥ "
+                f"{ADMIT_MIN_DAYS} days, avg < 0 AND below the others → REVERT alert (never automatic)."]
+    a10 = adm.head(ADMIT_MIN_N)
+    txt = (f"{len(adm)} cheaper-admitted fills on {adm.day.nunique()} days · WR {(adm.pct > 0).mean():.0%} · avg {adm.pct.mean():+.3f} % "
+           f"(booked {pd.to_numeric(adm.booked, errors='coerce').mean():+.3f}) vs other FRENZY kept fills {len(rest)} · avg {ra} %. ")
+    if len(a10) >= ADMIT_MIN_N and a10.day.nunique() >= ADMIT_MIN_DAYS:
+        bad = a10.pct.mean() < 0 and (not len(rest) or a10.pct.mean() < rest.pct.mean())
+        txt += ("🔴 **REVERT alert** — first 10 avg < 0 and below the others (operator decides)." if bad else "🟢 KEEP — first 10 read.")
+    else:
+        txt += f"⚪ COLLECTING ({len(a10)}/{ADMIT_MIN_N} on {a10.day.nunique()}/{ADMIT_MIN_DAYS} days)."
+    return [L[0], L[1] + txt]
+
+
+def exec_section(dec_paths, K, now_ms, fetch=True, store_path=STORE, since_ms=None):
+    """🚦 (DECISION_LOG 660) OBSERVE only, no gate: every execution refusal (EXEC_DISLOC · EXEC_LATE · EXEC_CATCHUP_MOVED) priced as if
+    it had opened — same pricer, same ruler (row price = the price the order would have met, + 8 s, 0.10 % slip, taker) — per sleeve ×
+    line × side of the move, beside the sleeve's kept fills. Its own shadow episodes (never shadows a filter refusal). Sleeves the pricer has
+    no exit for (EXH / DIST / FLATBASE / SURGE) are counted, not priced."""
+    L = ["", f"### 🚦 Execution refusals — price moved / too late / catch-up moved, priced on today's exit (DECISION_LOG {EXEC_DL}, observe only, no gate)", ""]
+    if since_ms is None:
+        since_ms = _GK.dl_deploy_ms(EXEC_DL, lag_min=10, label="execution refusals (blocked-trade pricer)")
+    if since_ms is None:
+        return L + [f"Not evaluable yet — the DECISION_LOG {EXEC_DL} commit is not in git (rows count from its commit + 10 min). Before it the "
+                    "engine only counted these refusals (counter names *_DISLOC / *_LATE / *_CATCHUP_MOVED, no price).", ""]
+    X = load_blocked(dec_paths, since_ms, exec_rows=True)
+    if not len(X):
+        return L + [f"0 execution refusals since {pd.Timestamp(since_ms, unit='ms'):%Y-%m-%d %H:%M} UTC.", ""]
+    # an order-stage LATE with no live price would walk from a ≥ 120 s old decision price → counted, never priced (review 660)
+    _stale = [(sn or {}).get("exec_stage") == "order" and _f((sn or {}).get("exec_live_px")) is None and "EXEC_LATE" in str(ln)
+              for sn, ln in zip(X.snap, X.lines)]
+    Xs, X = X[_stale], X[[not v for v in _stale]]
+    X = price_all(X.assign(booked=np.nan), now_ms, fetch=fetch, store_path=store_path) if len(X) else X.assign(booked=[], pct=[], why=[], status=[], exit_ms=[])
+    if len(Xs):
+        X = pd.concat([X, Xs.assign(booked=np.nan, pct=np.nan, why="NO_LIVE_PX", status="NOT_EVALUABLE", exit_ms=None)], ignore_index=True)
+    X = shadow_episodes(X.reset_index(drop=True))
+    X["side"] = [exec_move_side(dr, (sn or {}).get("exec_move_pct")) for dr, sn in zip(X.direction, X.snap)]
+    L += [f"Since {pd.Timestamp(since_ms, unit='ms'):%Y-%m-%d %H:%M} UTC: {len(X)} refusals · priced {int((X.status == 'PRICED').sum())} · pending "
+          f"{int((X.status == 'PENDING').sum())} · not evaluable {int((X.status == 'NOT_EVALUABLE').sum())} (no exit in the pricer, or no path) · "
+          f"shadowed {int((X.status == 'SHADOWED').sum())}. CHEAPER = the price moved the trade's way before the order (a long met a lower "
+          "price); DEARER = against it.", "",
+          "| Sleeve · refusal · side | N | priced | days | WR | avg % | Σ % | TP / STOP / other | kept (same pricer): N · avg |", "|---|---|---|---|---|---|---|---|---|"]
+    for (sl, ln, sd), g in X.groupby(["sleeve", "lines", "side"], sort=True):
+        P = g[g.status == "PRICED"]
+        Ks = K[(K.sleeve == KEPT_AS.get(sl, sl)) & (K.status == "PRICED")] if (K is not None and len(K)) else pd.DataFrame()
+        kept = f"{len(Ks)} · {Ks.pct.mean():+.3f}" if len(Ks) else "0"
+        if len(P):
+            w = P.why.astype(str)
+            tp, stp = int(w.str.contains("TP").sum()), int(w.str.contains("STOP").sum())
+            mark = "🟢" if P.pct.mean() > 0 else "🔴"
+            L.append(f"| {sl} · {ln.replace(EXEC_PREFIX, '')} · {sd} | {len(g)} | {len(P)} | {P.day.nunique()} | {(P.pct > 0).mean():.0%} | "
+                     f"{mark} {P.pct.mean():+.3f} | {P.pct.sum():+.2f} | {tp} / {stp} / {len(P) - tp - stp} | {kept} |")
+        else:
+            L.append(f"| {sl} · {ln.replace(EXEC_PREFIX, '')} · {sd} | {len(g)} | 0 | – | – | ⚪ – | – | – | {kept} |")
+    L += exec_admitted_lines(K, since_ms)
+    L += ["", "Read: since DL 660 the price guard is ONE-SIDED — a CHEAPER price no longer refuses, so a CHEAPER row here means the guard "
+          "misfired (check the engine); the cheaper entries it now lets through are REAL fills, read in the revert line above. DEARER and LATE are the guard doing its job if they lose. A LATE row is priced from the decision "
+          "price (the market at the refusal may already sit elsewhere). Counted per (pair, sleeve, 5m bar) — the first refusal of the bar.", ""]
     return L
 
 

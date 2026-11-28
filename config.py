@@ -1295,7 +1295,7 @@ class SignalThresholds(BaseModel):
     # grid (1-s ticks, scripts/surge_bearrun_review.py BR_NO_BE_LOCK): option B +0.008 → +0.395 %/trigger (CI −0.06…+0.99, H1 +0.34 /
     # H2 +0.43), 0.5 % rule +0.11 → +0.69, old 1 % rule −0.03 → +0.29 — fill WR ~48 % → ~34 % (fewer, bigger winners). False = the lock.
     surge_long_exit_no_lock: bool = True
-    surge_max_entry_dislocation_pct: float = 0.3  # skip the fill when price moved > this % from the decision (bull-run 57f guard)
+    surge_max_entry_dislocation_pct: float = 0.3  # skip the fill when price moved > this % AGAINST the trade from the decision (one-sided since DL 660; was the bull-run 57f two-sided guard)
     surge_max_hold_minutes: int = 240             # close after this many minutes (the study's 4 h walk; 0 = the global max hold)
     # ENGINE-WRITTEN (never sent by the UI save): the kill bar's one-time verdict per side ("PASS …" / "KILLED …"). Non-empty = judged;
     # an operator re-enable after a kill stays. Clear it by hand only to re-run the bar on a new cohort.
@@ -1436,7 +1436,7 @@ class SignalThresholds(BaseModel):
     #   multiplies the $ of LONG / WIDE's negative year edge (−0.130 / −0.149 %/fill at +1.5/−3) by 5× / 10× vs 2× / 1×. LONG / WIDE stay ON
     #   (an open LONG still blocks bad LITE entries on the same coin). 🔒 REVERT (per sleeve) LONG / WIDE → 0.1 / 0.05 (2× / 1×), LITE → 0.4
     #   (8×): the first 20 fills of that sleeve at 10× average < 0, OR any UTC day whose FRENZY (LONG + WIDE + LITE) fills lose > 25 % of the book.
-    frenzy_max_entry_dislocation_pct: float = 1.0  # skip the fill when the live price is > this % from the decision price
+    frenzy_max_entry_dislocation_pct: float = 1.0  # skip the fill when the live price is > this % WORSE than the decision price (LONG above / SHORT below; a better price never refuses — DL 660)
     frenzy_pair_blacklist: str = "BTCUSDT,ETHUSDT"
     # 🔥🌐 Oct-3 FRENZY-WIDE (operator; DECISION_LOG 193): the FRENZY first candle FRENZY itself refuses ONLY for its ATR cap or a green
     # signal candle (everything else identical: flag, hour above the average, volume ≥ frenzy_state_vol_mult, ≥ min hours, 24 h volume,
@@ -2017,8 +2017,8 @@ class SignalThresholds(BaseModel):
     # NMRUSDT 2026-10-06, fresh bar closed 13:40 UTC (streak 25, 2.0 h, vol 343×, ATR 2.1 %) while the bot was paused 13:25→13:53. NOTE (deep
     # review): its market volume on that bar was 1.93× → frenzy_gvol_max 1.0 refuses it on BOTH paths (FRENZY_GVOL_HIGH) — the catch-up
     # recovers the unjudged bar with the SAME decision (no gain is claimed for NMR). When > 0, the first pass after such a gap judges that ON bar as if fresh (ATR, candle, 24 h volume,
-    # market volume all read ON THAT BAR) if it is ≤ this many 5m bars old, and opens only if the live price is still within
-    # frenzy_max_entry_dislocation_pct of the ON bar's close (FRENZY_CATCHUP_MOVED otherwise; FRENZY_CATCHUP_STALE when older). Never on a
+    # market volume all read ON THAT BAR) if it is ≤ this many 5m bars old, and opens only if the live price is not more than
+    # frenzy_max_entry_dislocation_pct above the ON bar's close (one-sided since DL 660) (FRENZY_CATCHUP_MOVED otherwise; FRENZY_CATCHUP_STALE when older). Never on a
     # bar a completed pass judged, never on the first pass after a cold start (no stored bar), once per ON bar. Entering on ANY later ON bar is
     # refuted (−0.49 %/trade, reports/FRENZY_STAIRCASE_STUDY_2026-10-06.md) — this recovers only the unjudged fresh bar. Fills stamped
     # entry_frenzy_catchup (+ _bars, _move_pct). Evidence (reports/FRENZY_REENTRY_NEW_ANGLES_2026-10-06.md, angle E): late vs skip at ≤ 1 %

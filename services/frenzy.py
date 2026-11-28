@@ -767,12 +767,33 @@ def frenzy_catchup_check(ep, prev_judged_ms, max_bars) -> Tuple[Optional[str], O
         return None, None
 
 
-def frenzy_catchup_moved(on_close, live_price, max_pct) -> bool:
-    """⏪ True = REFUSE the catch-up: the live price is more than max_pct % from the ON bar's close (not the same trade any more). Fail-closed:
-    a guard switched off (≤ 0) or an unreadable price refuses — a catch-up without the economics check is never taken."""
+def entry_moved_against(max_pct, ref_price, px, direction="LONG") -> bool:
+    """🚦 (DECISION_LOG 660, operator: "if the price moves in our favour … we do not have to drop the trade — that protection is for when the
+    price gets much worse, not better") the FRENZY / SURGE entry dislocation guard, ONE-SIDED: True = REFUSE — px is more than max_pct %
+    WORSE than ref_price for the trade (a LONG: above it · a SHORT: below it). A better price never refuses (was |move| > max both ways: HT
+    AIOT 11-24 −3.1 % and ACE 11-27 −2.4 % were aborted on a cheaper book, both would have hit TP). 0 / None / blank max = off. Fail-open
+    on any bad input — a guard never blocks on garbage (as bullrun_disloc_exceeded)."""
+    try:
+        m = float(max_pct or 0)
+        r, x = float(ref_price), float(px)
+        if not (m > 0 and r > 0 and x > 0):
+            return False
+        mv = (x - r) / r * 100.0   # (x − r) / r: the old guard's arithmetic (exactly max % = allowed)
+        return (-mv if str(direction).upper() == "SHORT" else mv) > m
+    except Exception:   # fail-open, whatever the input
+        return False
+
+
+def frenzy_catchup_moved(on_close, live_price, max_pct, direction="LONG") -> bool:
+    """⏪ True = REFUSE the catch-up: the live price is more than max_pct % WORSE than the ON bar's close for the trade (a LONG: above it —
+    🚦 DL 660: a cheaper price no longer refuses). Fail-closed: a guard switched off (≤ 0) or an unreadable price refuses — a catch-up without
+    the economics check is never taken."""
     try:
         mx, c, p = float(max_pct or 0), float(on_close or 0), float(live_price or 0)
-        return not (mx > 0 and c > 0 and p > 0 and abs(p / c - 1) * 100 <= mx)
+        if not (mx > 0 and c > 0 and p > 0):
+            return True
+        mv = (p - c) / c * 100
+        return (-mv if str(direction).upper() == "SHORT" else mv) > mx
     except (TypeError, ValueError):
         return True
 

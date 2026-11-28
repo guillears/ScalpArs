@@ -133,3 +133,11 @@ def test_wilson_and_kelly():
     assert I.kelly_floor([1, 1, 1, -1]) < 0.75
     assert np.isnan(I.kelly_floor([1, 2, 3]))
     assert I.HOLDOUT_ONLY == ("H3", "H5")
+
+
+def test_interim_never_reads_holdout():
+    t = pd.DataFrame({"trigger_id": ["a", "b"], "signal_time": [pd.Timestamp("2026-12-06 23:59", tz="UTC"),
+                                                                 pd.Timestamp("2026-12-07 00:00", tz="UTC")]})
+    c = pd.DataFrame({"trigger_id": ["a", "b", "b"]})
+    tt, cc = I.design_only(t, c)
+    assert list(tt.trigger_id) == ["a"] and list(cc.trigger_id) == ["a"]

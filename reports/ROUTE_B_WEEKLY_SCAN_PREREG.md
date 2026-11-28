@@ -605,3 +605,115 @@ Neither line changes H4's pre-registered 16-cell DESIGN read at 12-10. No thresh
 are wrong — all three texts were written before commit 3096e39a (2026-11-24 21:26:18 UTC), which is their freeze proof. The ORDER claims
 hold: Addendum 8 was appended in the same shell command that then ran the H4 study for the first time; Addendum 7's revision came after the
 interim look and before that commit. Nothing else in them changes.
+
+### Addendum 10 — the weekly scan runner: implementation pins (written 2026-11-28, before any DESIGN outcome was read)
+
+**Operator (2026-11-28):** "go ahead, build the scan runner". Code: `scripts/route_b_signals/weekly_scan.py`, tests in
+`tests/test_route_b_weekly_scan.py` (synthetic data only). **What was read while writing it:** counts only (`--dry-run`: cohort sizes,
+labelled counts, variable and test counts, floor membership; reviewers: column names, dtypes, status / class counts) on the 11-24
+datasets. No outcome column was printed or summarised. **Freeze proof:** the git commit that adds this addendum and the runner.
+No question, label or threshold above changes. Items marked **[DEVIATION]** depart from the letter of §2–§7 or earlier addenda; each
+is stated here, with its reason, before any DESIGN outcome is read.
+
+**Phases and guards**
+- Before 2026-12-10 00:00 UTC the runner reads nothing (`--dry-run` prints counts only).
+- Every run refuses (exit 2, nothing read) when the loader datasets are stale: `meta.run_utc` more than 24 h before the run, data
+  ending < 72 h after 12-07 00:00 (the FLATBASE guard could not close DESIGN), or rows priced under exits other than today's
+  `trading_config.json` (re-run build.py).
+- The DESIGN screen runs **once**, on 12-10 (UTC). A later first run needs the operator's OK (`--late-design`), and its report says
+  LATE: §2's "visible at the 12-10 run" would otherwise silently take in late rows.
+- DESIGN never runs twice: refused when SURVIVORS.json is in git history or a DESIGN report exists, but the file is missing.
+- HOLDOUT is read only when SURVIVORS.json is in HEAD, unmodified, and identical to the version first committed (A3). The
+  scheduled task never commits, so **the operator commits it after the 12-10 run**; the next weekly run reads HOLDOUT.
+- Read once: frozen verdicts live in `reports/ROUTE_B_WEEKLY_SCAN_state.json`, **committed by the operator after each run**. A run is
+  refused when a verdict in the committed state file is missing or changed on disk.
+- The DESIGN-phase report (`ROUTE_B_WEEKLY_SCAN_<date>_DESIGN.md`) shows no HOLDOUT outcome (descriptives included), HOLDOUT counts only.
+- `interim_q3.py` (Addendum 6's interim look) is capped at signal < 12-07 00:00, so a re-run never reads a HOLDOUT outcome.
+
+**Cohort (§2)**
+- Q1 / Q2: `poss_dup` False ∧ `core_rule_met` True ∧ `block_class` ∈ {taken, filter, capacity} ∧ the gate is not one §2 names as
+  core rule: EXH_NO_SPOT, EXH_VOL24_LOW, EXH_VOL_DECAY, DIST_NOT_VSW, DIST_VOL24_LOW, NOT_FLAT, and SKIPPED_CONFIRM. The loader files
+  EXH_NO_SPOT / VOL24 / VOL_DECAY and DIST_VOL24_LOW as `filter`; §2's list governs. §2's "FLATBASE … SKIPPED" is read as the core
+  confirm skip only: SKIPPED_HIGHER_HIGH and SKIPPED_NEAR_BASE are the ARMED filters FLATBASE_HIGHER_HIGH (DL 540) and
+  FLATBASE_NEAR_BASE (DL 577), so they stay in, as §2's "blocked by an armed filter line" says.
+- y = `out_lbl_worked` (rows with NaN — PENDING / NO_DATA — are counted, never scored); NET = `out_net_pct`.
+- S5: EXH rows with status BLOCKED:EXH_NO_SPOT, `poss_dup` False, signal ≥ the DL 630 commit; y = `s5_lbl_worked`; NET = `out_net_pct`.
+- The guard uses the fixed §2 holds (EXH / DIST / HT 24 h, FB 72 h, triggers 4 h) against the loader's `data_end`.
+
+**Q1 screen**
+- Variables: every numeric column starting `rb_`, `fb_`, `oi_`, `top_ls_`, `global_ls_`, `taker_bs_`, `j_` or `journal_` (the entry
+  stamps the signal row carries), minus price levels and data-quality stamps by pattern (`rb_mid`, `rb_mark`, `journal_t`, `*_has_*`,
+  `has_*`, `*_age_min`, `rb_tape_minutes_*`, `*_lb`) and the gate-composition flags `j_bl_sole`, `j_exh_universe`. A variable never
+  scored or constant on the sleeve's DESIGN cohort is listed as not testable.
+- **Pre-seen gate inputs are HOLDOUT-only**, like §0's imbalance families: `j_exh_vol24_usd`, `j_exh_has_spot`, `j_exh_vol_decay`,
+  `j_exh_ssc`, `j_exh_oi_vol`, `j_dist_vsw_mult`, `j_dist_bar_ret_pct`, `j_dist_vol24_usd`, `j_dist_pos_chg_4h`, `j_dist_rsi1h`. They feed
+  gates whose taken-vs-blocked outcomes §0 rows 4–5 disclose as printed.
+- Cuts come from the **labelled** DESIGN rows. Sign: x > 0 vs x ≤ 0. Tercile / quintile: x ≥ the upper cut vs x ≤ the lower cut
+  (pandas linear), skipped when the two cuts are equal. 2D: each variable's own DESIGN median, "high" = x > median; a quadrant vs the
+  other three, among rows scored on both.
+- Effect = WORKED rate (A) − WORKED rate (B), A = positive / top / the named quadrant.
+- t: window-clustered (window15) influence-function SE of the difference, with a G/(G−1) factor. SE 0 (both sides constant) → no t,
+  so the test cannot survive (stated: stricter in that unlikely case).
+- **[DEVIATION] Family = the tests that meet A1's count floor** (≥ 10 a side, ≥ 5 days a side), counted before any outcome. §6 says
+  each rotation re-runs every test. Tests below the floor can never survive, and their tiny sides make large chance |t| that would set
+  a bar no real test could clear (Addendum 7's reasoning). The bar is therefore lower than §6's letter would give.
+- Rotation: rows in time order; offset uniform in [d, n − d], d = the most rows any one UTC day holds; outcome (y) rotated, variables
+  and clusters fixed; 1,000 rotations; a fresh generator seeded 20261210 per sleeve; bar = the 95th percentile of the family-max |t|.
+  A cohort shorter than 2d + 1 cannot rotate and has no survivors.
+- **[DEVIATION] HOLDOUT-only Q1 variables** (Addendum 1 item 1, the pre-seen gate inputs above, and every 2D pair holding one) stay in
+  the family and **may be nominated by the DESIGN screen**; they are flagged, their DESIGN effect never counts as evidence, and on
+  HOLDOUT they need only the DESIGN sign (no ≥ 50 % test). §6 A3's "automatically" applies to lines with a frozen definition (Q2
+  S1-b / S1-c / S2-a / S4-b, Q3 H3 / H5); a Q1 variable has no frozen cut or side until a screen picks one.
+- Halves: H-a / H-b as §2; a test holding a DL 611 variable uses the 11-29 11:00 split. Each half needs the same sign as the whole.
+- NET agreement: the NET difference has the same sign as the WORKED effect. A test that beats the bar but fails is reported (§6 D):
+  halves disagree → FAILED; NET the other way → CONTRADICTED; NET unpriced on a side → UNTESTABLE (a data gap, never a contradiction).
+
+**Q2 (A2)**
+- A = line = 1, B = line = 0 (NaN = unscored, in neither). Bootstrap: 2,000 resamples of window15 clusters with a per-line seed
+  (20261210 + crc32 of the line id, the same in DESIGN, the exit re-check and HOLDOUT); p = the share of draws not in the predicted
+  direction. Floor as A1.
+- Below the floor at DESIGN → **UNTESTABLE** (never read on HOLDOUT). Effect against the predicted direction, or NET the other way →
+  CONTRADICTED; no effect (0) → FAILED; NET unpriced on a side → UNTESTABLE; p ≥ 0.10 → FAILED.
+- S2-c's cuts: `q2.s2c_cuts` on the DIST DESIGN cohort, guard applied (labelled or not), frozen in SURVIVORS.json.
+- **Power, stated:** at the 11-24 counts (FLATBASE 2, WILLY_HT 23 DESIGN rows), the ≥ 10 / ≥ 5-day floor is unlikely to be met by
+  12-07 for FLATBASE and WILLY_HT. Their Q1 lines and S3-a / S3-b / S4-a would then be **UNTESTABLE for good** under this scan;
+  the same holds for most Q3 keys and "|c" variants. §2 / §8 expected COLLECTING; this is the concrete consequence.
+
+**Q3 (A1-Q3)**
+- `interim_q3.cohort` / `floor_keys` / `family_null` on the DESIGN rows (signal < 12-07), a fresh generator seeded 20261210.
+- **[DEVIATION] A key below the floor at the DESIGN run is UNTESTABLE for good.** Addendum 7 says it "joins at the first run where it
+  reaches it", but §7 runs DESIGN once, so there is no later DESIGN run to join.
+- The best cell is frozen. Halves: Δ in the frozen cell, split at 11-28 12:00 (H7 and "|c": 11-29 11:00); both halves must be > 0.
+- Addendum 4's order: eligible base openers per family (H7a / b / c under H7) ÷ the DESIGN span (H7: from 11-21 22:02), frozen in
+  SURVIVORS.json.
+
+**HOLDOUT (B)**
+- Every gate draws from its own per-line generator (above), so a frozen verdict reproduces on its own.
+- Q1 / Q2: B1 floors as §6. The effect must have the required sign and (except HOLDOUT-only lines) ≥ 50 % of DESIGN; a missing DESIGN
+  effect fails that item. The window-bootstrap 95 % CI must lie wholly on that side of 0.
+- **[DEVIATION] Concentration is read as leave-one-out.** For pair and for UTC day, every ratio effect(without g) ÷ effect must be > 0.5
+  (no group carries ≥ 50 %) and ≥ 0.5 (LOO keeps ≥ 50 %); in effect one check. A group whose removal empties a side counts as ratio 0.
+  NET must agree.
+- Wrong sign or NET the other way → CONTRADICTED; other failures → FAILED; NET unpriced on a side → UNTESTABLE (not frozen, re-read).
+- Q3: B1 = ≥ 30 eligible openers (≥ 1 final control) on ≥ 10 days. B3 uses window15 as the window unit for the mean and Δ CIs
+  (`interim_q3.hour_boot` run on window15). Kelly at the Wilson floor; with no loser it is the Wilson floor itself (as Addendum 9's
+  code). Concentration via the signed-share rule (< 50 %); LOO keeps ≥ 50 % of the mean. Addendum 1's robustness item re-runs the
+  WHOLE B3 gate (all items except the B1 floor) without `book_unwalkable` rows, and it must pass too. B3b: variant − parent (the
+  parent's ELIGIBLE openers with `cond_depth_scored`), window-resampled CI > 0.
+- Q4: cuts frozen at the DESIGN run from the DESIGN **complete** days' market row (market data only, no outcome). "Sign" = the raw
+  sign for funding and premium (natural zero), else above vs at-or-below the DESIGN median; tercile = the DESIGN days' 1/3 and 2/3
+  cuts; a variable with no complete DESIGN day has no cut (UNTESTABLE). Daily WORKED rate / mean NET per sleeve over HOLDOUT
+  complete days with ≥ 1 labelled row and ending before the guard (no partial day). Two-sided: the day-bootstrap CI excludes 0,
+  leave-one-day > 0.5, NET agrees (else CONTRADICTED). 64 lines, no correction across them (as frozen); a pass is only ever an OBSERVE
+  line. No path chart (day units).
+- B4: fewer than two non-zero BTC daily-trend signs among the line's HOLDOUT rows → "one regime" (Q1–Q4).
+- Exit re-check (§2): the exit hash is the loader's priced spec (`meta.json` exits). When it changes for a not-yet-judged Q1 / Q2
+  survivor, that line is re-checked once per change on its frozen DESIGN rows, with the frozen cut, bar, floor and seed (A1 / A2
+  items). Fail → frozen FAILED. If the DESIGN rows are not visible that run → STALE (waits, nothing recorded). Q3's grid does not
+  depend on the exits, so it is never STALE.
+
+**Report:** §0 with the interim-look list; coverage and blind spots (book-at-entry mark per sleeve; recorder degraded / down days are
+not read by the runner — see the daily health report); one status table with colours (lines still collecting on Q4 folded into one row
+per sleeve; HOLDOUT-only lines shown as ⚪ COLLECTING with a note); sections EXH · DIST · FLATBASE · WILLY_HT · no-spot · triggers
+(Addendum 4 order, with windows) · market. HOLDOUT phase only: the BTC daily-trend split, path decomposition, Q5 capacity (rows today's
+stack keeps) and the event-study chart of any PASSED Q1–Q3 line. The H4 frozen lines (Addendum 9) run from the same runner.

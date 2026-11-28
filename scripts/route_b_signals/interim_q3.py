@@ -89,6 +89,15 @@ def cohort(T, C, data_end, drop_unwalkable=False):
     return t, c
 
 
+HOLDOUT_START = pd.Timestamp("2026-12-07 00:00", tz="UTC")
+
+
+def design_only(t, c):
+    """the interim cohort capped at the HOLDOUT start (signal < 2026-12-07 00:00 UTC; controls follow their trigger). Pure."""
+    t = t[t.signal_time < HOLDOUT_START]
+    return t, c[c.trigger_id.isin(set(t.trigger_id))]
+
+
 def matched(tk, ck):
     """rows of the coin-days holding both a trigger and a control (the Δ sample)."""
     both = set(tk.cd) & set(ck.cd)
@@ -214,8 +223,8 @@ def family_null(t, c, fam_keys, rng, n=N_PERM):
 def run():
     T, C, meta = load()
     data_end = pd.Timestamp(meta["data_end"])
-    t, c = cohort(T, C, data_end)
-    tu, cu = cohort(T, C, data_end, drop_unwalkable=True)
+    t, c = design_only(*cohort(T, C, data_end))                  # Addendum 6: an interim look never reads a HOLDOUT outcome
+    tu, cu = design_only(*cohort(T, C, data_end, drop_unwalkable=True))
     rng = np.random.default_rng(SEED)
     days_total = max(1e-9, (data_end - pd.Timedelta(hours=GUARD_H) - pd.Timestamp("2026-11-19 23:23", tz="UTC")).total_seconds() / 86400)
     days_total_h7 = max(1e-9, (data_end - pd.Timedelta(hours=GUARD_H) - pd.Timestamp(H7_START, tz="UTC")).total_seconds() / 86400)

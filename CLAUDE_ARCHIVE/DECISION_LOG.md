@@ -12181,3 +12181,34 @@ DCR +0.356 → +0.399 %/day. Blocked per half-year (N · WR · avg): 2023-H2 50 
 - **Reviews (caveman + deep):** deep review fixed 4 wrong claims (FB pre-recording fill 17 % not 75 % recorded; FB best move median +2.7 / max +4.9, holds 5–18 h not ~3 h, OI mixed; the after-peak taker counts — a TP exit ends at the peak, so winners rarely have a window: now "x of n measurable"), "never worked" restated as medians with ranges, a look-ahead inside the entry minute (funding / 15-min move / chart depth baseline now strictly before the fill's minute), the chart's tape panels now stop at each exit, stale cap wording, report data dirs added to .gitignore (reports/ROUTE_B_REPORT_*_data/), nits (WILLY move, 3–12 %, $17–47k, last bot list time, EVAA is HT not a short). Caveman: cached file handle closed. Stale "≤ 30" comments in recorder code left as is (the module default stays 30; the env sets 40; S3 code unchanged).
 - **Files:** scripts/route_b/deploy_aws.sh · tests/test_route_b_fullbook.py (the pinned default) · the report + its two scripts · .gitignore · CLAUDE_CURRENT_STATE.md (Route B line).
 
+
+## 659 · 2026-11-28 · 📡 Route B weekly scan RUNNER built + PREREG Addendum 10 (operator: "go ahead, build the scan runner"; research only, no bot change)
+- **What:** `scripts/route_b_signals/weekly_scan.py` implements PREREG §6–§7 + Addenda 1–10. Phases:
+  - before 12-10 it reads nothing;
+  - on 12-10 it runs the DESIGN screen once:
+    - Q1: the exhaustive 1D (sign / tercile / quintile) + 2D quadrant screen, window-clustered t and a rotation null of the family-max |t|;
+    - Q2: the A2 one-sided window bootstrap;
+    - Q3: `interim_q3`'s family null on the floor keys;
+    - Q4: cuts frozen on the DESIGN market days.
+  - It then writes `reports/ROUTE_B_WEEKLY_SCAN_SURVIVORS.json` and stops.
+  - HOLDOUT is read only once SURVIVORS.json is committed, unmodified, and equal to its first commit. Each line's first verdict is frozen in `reports/ROUTE_B_WEEKLY_SCAN_state.json` (committed by the operator; a lost or changed state refuses the run).
+  - The H4 frozen lines run from the same runner.
+  - Tests: `tests/test_route_b_weekly_scan.py`, 49 (synthetic only, including an end-to-end DESIGN → refuse → HOLDOUT → read-once → exit re-check run).
+- **Addendum 10** (written before any DESIGN outcome was read; only counts were seen) pins every reading the code makes. Four **[DEVIATIONS]** are stated:
+  - the Q1 family = tests at A1's count floor;
+  - HOLDOUT-only Q1 variables may be nominated by the screen (sign-only on HOLDOUT);
+  - Q3 keys below the floor at DESIGN are UNTESTABLE for good;
+  - concentration is read as leave-one-out.
+- **Also pinned:**
+  - the pre-seen gate inputs (`j_exh_*` / `j_dist_*` stamps) are HOLDOUT-only;
+  - the FLATBASE armed filter skips (HIGHER_HIGH, NEAR_BASE) stay in the cohort; only SKIPPED_CONFIRM is core;
+  - per-line seeds;
+  - stale-data and late-DESIGN refusals.
+  - `interim_q3.py` is now capped at signal < 12-07 (an interim re-run never reads HOLDOUT).
+- **Power, stated:** at the 11-24 counts no Q1 test and no Q3 key reaches the DESIGN floor (EXH 20 · DIST 33 · FLATBASE 2 · WILLY_HT 23 labelled DESIGN rows). FLATBASE / WILLY_HT lines are likely UNTESTABLE for good.
+- **Reviews:**
+  - caveman: 9 risks / 7 nits;
+  - deep: 1 critical / 10 important / 9 minor;
+  - all applied before commit (stale-data refusal, state-file guard, DESIGN-twice guard incl. git history, exit hash from the priced spec, per-line RNG, exclusion patterns, NA-safe booleans, Q4 B4 label, B3b eligible parent, full B3 robustness re-run, NET-unpriced ≠ contradicted, CONTRADICTED on HOLDOUT, markdown pipe escaping, separate _DESIGN report name, interim HOLDOUT cap).
+- The scheduled task `route-b-weekly-scan` prompt is updated to call the runner exactly, never pass `--late-design`, and ask the operator to commit SURVIVORS.json / the state file.
+- Suite 4,243 green.

@@ -2,6 +2,11 @@
 
 Run all of this when the operator sends the next batch export (`scalpars_orders_paper_*.csv` + decisions).
 
+## 🎯 NEXT-REVIEW FOCUS (operator 2026-11-27 — read FIRST, in this order)
+1. **FLATBASE_SHORT — still unsolved, highly negative.** Lead the review with it: path decomposition (entry never worked vs exit gave back vs size vs funding vs slippage), every Flatbase watch line on the net-TP era (DL 656), the FBX_RISK / OBS-FB2 / FS / TP6 / HH / NB / FA reads, and the size question (item 3). Prior-study check first (DL 652 / 653 / 654 found no filter / exit fix) — only genuinely new angles.
+2. **New-exit watch lines (shadows) — EXH and HT first:** every exit-shadow line for EXHAUSTION_SHORT (EXH_TP7 DL 609 · EXH_BEAR80 / EARLY_SPIKE DL 650 · TP runner DL 636) and FRENZY_WILLY_HT (HT_TP6 DL 608 · HT runner DL 636 · HT lines DL 580 / 596), each read on its own exit era (no ⚠ STALE verdict read), with a keep / switch / retire call.
+3. **Sizing per sleeve (size by edge, DL 547):** Kelly at the one-sided 95 % Wilson WR floor per sleeve + clustering + capacity — operator's prior: HT probably HIGHER, Flatbase LOWER. Show today's size vs the Kelly-floor size for every sleeve before any change.
+
 ## 🧭 Method (binding, operator 2026-10-26)
 **🧭 BATCH REVIEW METHOD (operator 2026-10-26, binding for every batch review): ONE SLEEVE AT A TIME — ① master batch trades: before → after per batch for each watchlist item / candidate · ② current batch: before → after · ③ backtest: before → after · ④ the quant recommendation for that sleeve (a clear call per watchlist item) · ⑤ STOP for the operator's OK, then the next sleeve. New strategies: winners vs losers FIRST, then exits; momentum longs: W/L on the full master. Starts with the regenerated checklist (scripts/batch_review_checklist.py).**
 **🧭 ENTRY × EXIT — EVERY sleeve (operator 2026-10-28, DECISION_LOG 406: "exits cannot be looked at independently of entries … optimize

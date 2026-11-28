@@ -1,5 +1,5 @@
 """🎲² DECISION_LOG 356 (WILLY exit V2) — group 2 scouts: scout_frenzy_exits (tracker 15 FRENZY_WILLY + WILLY_TURNOVER_BLOCKED),
-scout_stop_slip (the WILLY stop line), scout_flatbase_short (③ blocked WILLY longs). Proves: the exit-era line prints, a V2 RUNNER fill
+scout_stop_slip (the WILLY stop line), scout_flatbase_short (③ blocked WILLY leg retired, DL 657). Proves: the exit-era line prints, a V2 RUNNER fill
 (frenzy_willy_tp_target_pct 3.5, closed FRENZY_TP +3.5 or WILLY_FLOOR) is kept OUT of every old-exit comparison, a V2 fill with target
 +1.25 stays IN, and the frozen v2 gate's walker stays PINNED to its registered exit. Synthetic, hermetic, no network."""
 import os
@@ -122,8 +122,8 @@ def test_stop_slip_willy_and_ht_stop_line_and_floor_not_a_stop():
     assert SS.classify("WILLY_FLOOR") is None                       # the V2 profit floor is never priced as a stop
 
 
-# ─────────────── scout_flatbase_short ③: blocked WILLY priced under the fixed exit — said so ───────────────
-def test_flatbase_blocked_willy_line_carries_the_v2_note(monkeypatch, tmp_path):
+# ─────────────── scout_flatbase_short ③: blocked WILLY RETIRED (DL 657) — counted, never priced ───────────────
+def test_flatbase_blocked_willy_leg_retired(monkeypatch, tmp_path):
     import scout_flatbase_short as SC
     monkeypatch.setattr(SC, "CACHE", str(tmp_path / "cache"))
     b = pd.DataFrame(dict(t_ms=[1_790_000_000_000, 1_790_000_000_000], pair=["AUSDT", "BUSDT"],
@@ -131,10 +131,29 @@ def test_flatbase_blocked_willy_line_carries_the_v2_note(monkeypatch, tmp_path):
     monkeypatch.setattr(SC, "load_blocks", lambda frame, since: b)
     monkeypatch.setattr(SC, "holder_of", lambda o, pair, t: NS(opened_at="2026-10-23T00:00:00", pair=pair, status="OPEN", net=None, usd=None,
                                                                    funding_fee_usd=None))
-    monkeypatch.setattr(SC, "price_long", lambda *a, **k: dict(state="PRICED", pct=1.15, exit_ms=1_790_000_600_000))
+    seen = []
+    monkeypatch.setattr(SC, "price_long", lambda s, *a, **k: seen.append(s) or dict(state="PRICED", pct=1.15, exit_ms=1_790_000_600_000))
     ctx = dict(frame=pd.DataFrame(), since_ms=0, orders=None, bud=NS(stop=False, why=""), now_ms=1_800_000_000_000, fetch=False,
                th_long=NS())
     L = SC.blocked_lines(ctx)
     wl = [x for x in L if x.startswith("- FRENZY_WILLY:")]
     ll = [x for x in L if x.startswith("- FRENZY_LITE:")]
-    assert wl and "DL 356 V2 runner target" in wl[0] and ll and "DL 356" not in ll[0]
+    assert wl and "⛔ not priced — RETIRED 657" in wl[0] and ll and "RETIRED" not in ll[0]
+    assert seen == ["FRENZY_LITE"]                                  # the WILLY block is never handed to the pricer
+
+
+def test_flatbase_retired_only_hold_leaves_the_net(monkeypatch, tmp_path):
+    """⛔ (657) a CLOSED hold whose only blocks are retired WILLY / HT is out of the $ net (its P&L would count with nothing against it)."""
+    import scout_flatbase_short as SC
+    monkeypatch.setattr(SC, "CACHE", str(tmp_path / "cache"))
+    b = pd.DataFrame(dict(t_ms=[1_790_000_000_000, 1_790_000_000_000], pair=["AUSDT", "BUSDT"],
+                          gate=["FRENZY_WILLY_PAIR_HELD", "FRENZY_LITE_PAIR_HELD"], sleeve=["FRENZY_WILLY", "FRENZY_LITE"]))
+    monkeypatch.setattr(SC, "load_blocks", lambda frame, since: b)
+    monkeypatch.setattr(SC, "holder_of", lambda o, pair, t: NS(opened_at="2026-10-23T00:00:00", pair=pair, status="CLOSED", net=1.0,
+                                                                   usd=10.0 if pair == "AUSDT" else 4.0, funding_fee_usd=0.0))
+    monkeypatch.setattr(SC, "price_long", lambda *a, **k: dict(state="UNPRICED", how="x"))
+    ctx = dict(frame=pd.DataFrame(), since_ms=0, orders=None, bud=NS(stop=False, why=""), now_ms=1_800_000_000_000, fetch=False,
+               th_long=NS())
+    t = "\n".join(SC.blocked_lines(ctx))
+    assert "$+14.00 (pnl + funding)" in t                           # the holds line still shows every hold
+    assert "FLATBASE $+4.00 − blocked longs ≈ $+0.00 (0 positions) = $+4.00" in t and "1 closed holds with only retired blocks excluded" in t

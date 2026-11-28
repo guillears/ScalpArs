@@ -1077,7 +1077,8 @@ def test_fbx_lines_counts_fresh_and_shows_straddlers(tmp_path):
 def test_registry_flatbase_line_matches_the_live_exit():
     import observe_registry as OR
     d = OR.diffs(OR.EXIT["scout_flatbase_short.py"]["walks"], OR.thresholds())
-    assert not [k for k, _, _ in d if k.startswith("flatbase_")]   # 🔁 re-based on the net TP (DL 656); the WILLY leg's own era is separate
+    assert not d                                                     # 🔁 (656) net TP · ⛔ (657) the blocked-WILLY leg retired → no WILLY pin
+    assert "frenzy_willy_high_target_enabled" not in OR.EXIT["scout_flatbase_short.py"]["walks"]
     d2 = OR.diffs(OR.EXIT["scout_flatbase_confirm_watch.py"]["walks"], OR.thresholds())
     assert not d2                                                    # 🔁 (656) every confirm-watch walk prices today's exit
 

@@ -71,9 +71,10 @@ EXIT = {
     # / 390) and OBS-FB1 stay FROZEN to the +8 / −15 rule by design (labelled in their lines; parity is era-aware) — not stale, not the live exit.
     # 🔁 (656) re-based 2026-11-27: the two OPEN reads on today's exit (FBX_RISK · OBS-FB2's +5 / −10 cell → LOW×NET5_SL10) price the net TP +
     # funding stop with real funding; the frozen TP-shadow / FBX EARLY-FINAL / +8 / −15 reads stay history by design
-    "scout_flatbase_short.py": dict(dl="348 · 367 · 370 · 390 · 407 · 408 · 656", sleeves="FLATBASE_SHORT (+ blocked WILLY leg)",
+    # ⛔ (657) the ③ blocked-WILLY / WILLY_HT leg RETIRED 2026-11-27 (counted, never priced) → no WILLY pin; the other ③ legs read the live exit
+    "scout_flatbase_short.py": dict(dl="348 · 367 · 370 · 390 · 407 · 408 · 656 · 657", sleeves="FLATBASE_SHORT (+ blocked FRENZY LONG / WIDE / LITE leg)",
                                     walks={"flatbase_tp_pct": 5.0, "flatbase_stop_pct": 10.0, "flatbase_max_hold_hours": 72.0,
-                                           "flatbase_tp_counts_funding": True, "flatbase_stop_counts_funding": True, **_OLD_WILLY}),
+                                           "flatbase_tp_counts_funding": True, "flatbase_stop_counts_funding": True}),
     # 🚪 (411) exit shadows on FLIPS only (fades / momentum answered by history, operator 10-29) — the walks use each fill's LIVE stop
     # (−0.7 widened to 1.5 × entry ATR, capped −1.2) and Δ reads the BOOKED flip exit (FAN flips' short runner trail, flip_fan_runner_strpk):
     # a change to any of these keys makes the line STALE (the −0.7 base is a confidence-tier stop_loss outside `thresholds` — not pinned)

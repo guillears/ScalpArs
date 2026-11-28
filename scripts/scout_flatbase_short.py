@@ -39,12 +39,14 @@ its own section, each crash-isolated; one shared Budget for the whole run; final
               FRENZY_PAIR_HELD / FRENZY_WIDE_PAIR_HELD should the engine ever name them); the holder is INFERRED from the orders exports (a
               FLATBASE_SHORT on that pair open over the 5-min bucket). Priced from the first 1m open AFTER the bucket floor (bucket + 1 min — no
               look-ahead inside the bucket) with the sleeve's CURRENT exit:
-              WILLY / WILLY_HT → scout_frenzy_exits' DL 336 walker (tb_walker_rule / tb_walker_eval: +1.25 / −4 / 90 min, late TP, resting
-              TP); FRENZY_LONG / WIDE → scout_frenzy_exits.walk_live with the engine's per-sleeve stop (services.frenzy.frenzy_stop_for);
+              ⛔ WILLY / WILLY_HT RETIRED 2026-11-27 (DECISION_LOG 657) — counted, NEVER priced: the old pricer walked the flat +1.25 / −4 /
+              90 WILLY exit, which no WILLY sleeve runs any more (plain WILLY: V2b runner target, needs the episode spike high — not on a
+              BLOCK row; WILLY_HT: +6 / −4 / 24 h); one count per (pair, sleeve, holder); out of the $ net.
+              FRENZY_LONG / WIDE → scout_frenzy_exits.walk_live with the engine's per-sleeve stop (services.frenzy.frenzy_stop_for);
               LITE / LITE_RETRY → faithful only with LITE C off (its TP needs the unstamped entry vol-mult / BTC 1h slope) — else UNPRICED,
               shown with the [+C TP, +LITE TP] bracket. −0.10 % slippage on every long (the FRENZY scouts' live ruler). One position per
               (pair, sleeve, holder): a later block inside a counted trade's life (its cap when unpriced) is not a second trade; the $ net
-              counts ONE blocked position per (pair, holder) — precedence WILLY > WILLY_HT > LITE_RETRY > LITE > LONG > WIDE — on CLOSED holders. The generic PAIR_HELD counter (FRENZY_LONG /
+              counts ONE blocked position per (pair, holder) — precedence LITE_RETRY > LITE > LONG > WIDE — on CLOSED holders. The generic PAIR_HELD counter (FRENZY_LONG /
               WIDE and momentum share it, no sleeve) is listed as UNATTRIBUTED, never priced. Compared with the holding short's own result.
 Usage           venv/bin/python scripts/scout_flatbase_short.py [--no-fetch]
 """
@@ -92,8 +94,11 @@ HELD_GATES = {"FRENZY_PAIR_HELD": "FRENZY_LONG", "FRENZY_WIDE_PAIR_HELD": "FRENZ
               "FRENZY_WILLY_HT_PAIR_HELD": "FRENZY_WILLY_HT"}
 GENERIC_HELD = "PAIR_HELD"                                   # open_position's counter: FRENZY_LONG / WIDE / momentum — no sleeve on it
 MIN_MS = 60_000
-LONG_PRECEDENCE = ("FRENZY_WILLY", "FRENZY_WILLY_HT", "FRENZY_LITE_RETRY", "FRENZY_LITE", "FRENZY_LONG", "FRENZY_WIDE")   # ③ $ net: one
-#   blocked position per (pair, holder) — the engine opens one position per pair, and on a FRENZY episode WILLY A arms first (the flag bar)
+LONG_PRECEDENCE = ("FRENZY_LITE_RETRY", "FRENZY_LITE", "FRENZY_LONG", "FRENZY_WIDE")   # ③ $ net: one blocked position per (pair, holder)
+#   — the engine opens one position per pair (WILLY / WILLY_HT left the $ net with their pricing, DL 657)
+# ⛔ (DECISION_LOG 657, operator 2026-11-27 "retire the blocked-WILLY leg") — counted only: their live exits cannot be rebuilt from a BLOCK row
+RETIRED_SLEEVES = ("FRENZY_WILLY", "FRENZY_WILLY_HT")
+RETIRED_DL = 657
 FINAL_AFTER_MS = 86_400_000                                  # "no klines" on a window closed ≥ 1 day ago = final (delisted / invalid symbol)
 
 
@@ -586,9 +591,12 @@ def _live_th():
 
 def price_long(sleeve, pair, t_ms, bud, now_ms, fetch=True, m1=None, th=None):
     """③ one blocked FRENZY long priced from the first 1m open AFTER the 5-min bucket floor with the sleeve's CURRENT exit (see the module docstring). m1 = an
-    injectable (sym, start, limit) → 1m rows (tests). → dict(state PRICED / BRACKET / WAIT / UNPRICED, pct, lo, hi, exit_ms, how)."""
+    injectable (sym, start, limit) → 1m rows (tests). → dict(state PRICED / BRACKET / WAIT / UNPRICED / RETIRED (WILLY · WILLY_HT, DL 657),
+    pct, lo, hi, exit_ms, how)."""
+    if sleeve in RETIRED_SLEEVES:                               # ⛔ (657) never priced — their live exit is not on a BLOCK row
+        return dict(state="RETIRED", how=f"retired (DECISION_LOG {RETIRED_DL})")
     import scout_frenzy_exits as FX
-    from services.frenzy import frenzy_stop_for, frenzy_lite_c_enabled, frenzy_lite_c_tp, FRENZY_LITE_FAMILY, WILLY_EXIT_CLASS
+    from services.frenzy import frenzy_stop_for
     th = _live_th() if th is None else th
     # entry = the first 1m open AFTER the 5-min bucket floor (bucket + 1 min): the refusal lies somewhere inside the bucket, so its first
     # minute would be an up-to-4-min optimistic look-ahead; the FRENZY refusals fall seconds after the 5m close → ≤ 1 min late, conservative
@@ -598,17 +606,12 @@ def price_long(sleeve, pair, t_ms, bud, now_ms, fetch=True, m1=None, th=None):
         c = _cache_get(ckey)
         if c is not None:
             return c
-    willy = sleeve in WILLY_EXIT_CLASS
-    if willy:
-        wr = FX.tb_walker_rule(th)
-        cap = int(wr["cap"])
-    else:
-        ex = dict(FX.live_exit(th, sleeve))
-        ex["sl"] = float(frenzy_stop_for(th, sleeve))          # the engine's per-sleeve stop (FRENZY_LONG: frenzy_long_stop_pct, DL 317)
-        cap = int(ex["cap"])
+    ex = dict(FX.live_exit(th, sleeve))
+    ex["sl"] = float(frenzy_stop_for(th, sleeve))              # the engine's per-sleeve stop (FRENZY_LONG: frenzy_long_stop_pct, DL 317)
+    cap = int(ex["cap"])
     if now_ms < start + (cap + 1) * MIN_MS:
         return dict(state="WAIT", how="exit window unfinished", cap_ms=cap * MIN_MS)
-    res = _price_long_path(sleeve, pair, start, cap, bud, now_ms, fetch, m1, th, willy, (wr if willy else ex), FX)
+    res = _price_long_path(sleeve, pair, start, cap, bud, now_ms, fetch, m1, th, ex, FX)
     res["cap_ms"] = cap * MIN_MS
     final = res["state"] in ("PRICED", "BRACKET") or (res.get("how") == "no 1m klines at the refusal"
                                                        and now_ms >= start + (cap + 1) * MIN_MS + FINAL_AFTER_MS)
@@ -617,9 +620,8 @@ def price_long(sleeve, pair, t_ms, bud, now_ms, fetch=True, m1=None, th=None):
     return res
 
 
-def _price_long_path(sleeve, pair, start, cap, bud, now_ms, fetch, m1, th, willy, rule, FX):
+def _price_long_path(sleeve, pair, start, cap, bud, now_ms, fetch, m1, th, ex, FX):
     from services.frenzy import frenzy_lite_c_enabled, frenzy_lite_c_tp, FRENZY_LITE_FAMILY
-    wr = ex = rule
     if m1 is not None:
         rows = m1(str(pair), start, cap + 1)
     else:
@@ -631,15 +633,6 @@ def _price_long_path(sleeve, pair, start, cap, bud, now_ms, fetch, m1, th, willy
         return dict(state="UNPRICED", how="no 1m klines at the refusal")
     k = [list(r[:5]) for r in rows]
     E = float(k[0][1])
-    if willy:
-        import scout_frenzy_willy_exit as FWX
-        P = FWX.load_path(str(pair), start, E, cap, {}, k1m=FX._tb_k1m(k))
-        ev = FX.tb_walker_eval(P, wr)
-        if ev["why"] == "UNRES":
-            return dict(state="UNPRICED", how="walker undecided")
-        xm = _fnum(ev.get("xmin"))
-        return dict(state="PRICED", pct=float(ev["pct"]) - LONG_SLIP, exit_ms=start + int((xm if xm is not None else cap) * MIN_MS),
-                    how=FX.TB_WHOW.get(ev["why"], ev["why"]))
 
     def _w(e_):
         p_, xt, how = FX.walk_live(k, E, e_)
@@ -661,7 +654,8 @@ SLEEVE_ORDER = ("FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE", "FRENZY_LITE_RETRY"
 
 
 def blocked_lines(ctx):
-    """③ FRENZY longs refused PAIR_HELD while a FLATBASE_SHORT held the pair, priced with each sleeve's current exit, vs the short."""
+    """③ FRENZY longs refused PAIR_HELD while a FLATBASE_SHORT held the pair, priced with each sleeve's current exit (WILLY / WILLY_HT
+    counted only, DL 657), vs the short."""
     L = [f"## 🩳③ FLATBASE observe — FRENZY longs blocked by an open FLATBASE short (DECISION_LOG {DL} addendum, observe-only, no gate)", ""]
     b = load_blocks(ctx["frame"], ctx["since_ms"])
     o = ctx["orders"]
@@ -676,14 +670,20 @@ def blocked_lines(ctx):
             gen += 1
             continue
         rows.append((r, h))
-    th = (ctx.get("th_long") or _live_th()) if rows else None      # no block → no config read
-    last_exit, by, fold, holders, per_hold = {}, {}, 0, {}, {}
+    th = (ctx.get("th_long") or _live_th()) if any(r.sleeve not in RETIRED_SLEEVES for r, _ in rows) else None   # no priced block → no config read
+    last_exit, by, fold, holders, per_hold, live_hk = {}, {}, 0, {}, {}, set()   # live_hk: holds with ≥ 1 non-retired block
     for r, h in rows:
         hk = (str(h.opened_at), str(h.pair))
         k = (str(r.pair), r.sleeve, hk)                               # one position per (pair, sleeve, holder episode)
         if k in last_exit and int(r.t_ms) < last_exit[k]:
             fold += 1                                             # inside the life (or the cap, when unpriced) of a trade already counted
             continue
+        if r.sleeve in RETIRED_SLEEVES:                           # ⛔ (657) counted once per (pair, sleeve, holder) — never priced, no fetch
+            last_exit[k] = 1 << 62
+            by.setdefault(r.sleeve, []).append(dict(state="RETIRED"))
+            holders[hk] = h
+            continue
+        live_hk.add(hk)
         x = price_long(r.sleeve, r.pair, int(r.t_ms), ctx["bud"], ctx["now_ms"], fetch=ctx["fetch"], m1=ctx.get("klines1m"), th=th)
         if x.get("exit_ms") is not None:
             last_exit[k] = int(x["exit_ms"])
@@ -694,7 +694,7 @@ def blocked_lines(ctx):
         if x.get("state") == "PRICED":
             per_hold.setdefault(hk, []).append((r.sleeve, x["pct"]))
     L.append(f"Cohort: {len(b)} PAIR_HELD LONG blocks ≥ deploy (any holder) · held by a FLATBASE_SHORT (inferred from the orders exports): "
-             f"{len(rows)} sleeve-named · other / unknown holder: {other} · repeats inside a priced trade folded: {fold} · generic PAIR_HELD on a "
+             f"{len(rows)} sleeve-named · other / unknown holder: {other} · repeats inside a counted trade folded: {fold} · generic PAIR_HELD on a "
              f"FLATBASE-held pair: {gen} UNATTRIBUTED (FRENZY_LONG / WIDE / momentum share that counter — not priced)")
     med = {}
     if o is not None and len(o):
@@ -707,6 +707,10 @@ def blocked_lines(ctx):
         if s not in by:
             continue
         xs = by[s]
+        if s in RETIRED_SLEEVES:
+            L.append(f"- {s}: {len(xs)} blocked (one per pair × hold) · ⛔ not priced — RETIRED {RETIRED_DL} (the old pricer walked the flat "
+                     f"+1.25 / −4 / 90 WILLY exit no WILLY sleeve runs today; out of the $ net)")
+            continue
         p = [x["pct"] for x in xs if x.get("state") == "PRICED"]
         br = [x for x in xs if x.get("state") == "BRACKET"]
         usd = (sum(p) / 100.0 * med[s]) if (p and med.get(s)) else None
@@ -716,9 +720,6 @@ def blocked_lines(ctx):
             line += (f" · unpriced {len(br)} (LITE C: TP depends on the unstamped entry vol-mult / BTC 1h slope) — bracket avg "
                      f"[{sum(x['lo'] for x in br) / len(br):+.3f}, {sum(x['hi'] for x in br) / len(br):+.3f}] %")
         line += f" · waiting {k_('WAIT')} · unpriced (no data / fetch) {k_('UNPRICED')}"
-        if s in ("FRENZY_WILLY", "FRENZY_WILLY_HT"):   # 🎲² (DECISION_LOG 356) the V2 per-order runner target is not reconstructible here
-            line += (" · 🎲² priced under the fixed WILLY exit (+1.25 / −4 / 90, late TP, resting TP) — the DL 356 V2 runner target / "
-                     "profit floor needs the episode spike high, not on a BLOCK row (a runner could book above or below this)")
         L.append(line)
     if holders:
         hs = list(holders.values())
@@ -728,8 +729,13 @@ def blocked_lines(ctx):
                                              else (_fnum(h.funding_fee_usd) or 0.0)) for h in cl)   # 💸 (539) never added twice
         L.append(f"- the holding shorts: {len(hs)} FLATBASE_SHORT holds · closed {len(cl)} {_st(nets)} · ${usd_f:+.2f} (pnl + funding) · "
                  f"open {len(hs) - len(cl)}")
+        # ⛔ (657) a closed hold whose ONLY blocks were retired WILLY / WILLY_HT leaves the net too (else its P&L counts with nothing against it)
+        cl_n = [h for hk_, h in holders.items() if str(h.status) == "CLOSED" and hk_ in live_hk]
+        ret_only = len(cl) - len(cl_n)
+        usd_n = sum((_fnum(h.usd) or 0.0) + (0.0 if str(getattr(h, "funding_in_pnl", "")).lower() in ("true", "1", "1.0")
+                                             else (_fnum(h.funding_fee_usd) or 0.0)) for h in cl_n)   # 💸 (539) never added twice
         blk_usd, n_pos = 0.0, 0
-        for hk, lst in per_hold.items():                          # CLOSED holders only (the same set as usd_f); ONE blocked position each
+        for hk, lst in per_hold.items():                          # CLOSED holders only (the same set as usd_n); ONE blocked position each
             if str(holders[hk].status) != "CLOSED":
                 continue
             lst = sorted(lst, key=lambda z: LONG_PRECEDENCE.index(z[0]) if z[0] in LONG_PRECEDENCE else 99)
@@ -737,8 +743,9 @@ def blocked_lines(ctx):
             if med.get(s_):
                 blk_usd += p_ / 100.0 * med[s_]; n_pos += 1
         L.append(f"- net of the 72 h hold (closed holds; one blocked position per hold, precedence {' > '.join(x.replace('FRENZY_', '') for x in LONG_PRECEDENCE)}): "
-                 f"FLATBASE ${usd_f:+.2f} − blocked longs ≈ ${blk_usd:+.2f} ({n_pos} positions) = ${usd_f - blk_usd:+.2f} "
-                 f"(positive = the hold paid for what it blocked; bracketed / unpriced blocks not in it)")
+                 f"FLATBASE ${usd_n:+.2f} − blocked longs ≈ ${blk_usd:+.2f} ({n_pos} positions) = ${usd_n - blk_usd:+.2f} "
+                 f"(positive = the hold paid for what it blocked; bracketed / unpriced / retired WILLY · WILLY_HT blocks not in it; "
+                 f"{ret_only} closed holds with only retired blocks excluded)")
     elif not len(b):
         L.append("- no PAIR_HELD LONG block yet")
     if ctx["bud"].stop:

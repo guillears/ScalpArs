@@ -217,20 +217,22 @@ def test_blocked_line_sleeves_holder_fold_and_net(SC, tmp_path):
     txt = "\n".join(L)
     sec = txt[txt.index("## 🩳③"):]
     assert ("Cohort: 9 PAIR_HELD LONG blocks ≥ deploy (any holder) · held by a FLATBASE_SHORT (inferred from the orders exports): 7 sleeve-named · "
-            "other / unknown holder: 1 · repeats inside a priced trade folded: 2 · generic PAIR_HELD on a FLATBASE-held pair: 1 UNATTRIBUTED") in sec
-    assert "- FRENZY_WILLY: 2 · N 2 · WR 100% · avg +1.150 % · Σ +2.30 pts · ≈ $+2.30 (× median FRENZY_WILLY notional $100)" in sec
+            "other / unknown holder: 1 · repeats inside a counted trade folded: 2 · generic PAIR_HELD on a FLATBASE-held pair: 1 UNATTRIBUTED") in sec
+    assert "- FRENZY_WILLY: 2 blocked (one per pair × hold) · ⛔ not priced — RETIRED 657" in sec         # ⛔ (657) counted, never priced
     assert "- FRENZY_LONG: 1 · N 1 · WR 100% · avg +1.400 % · Σ +1.40 pts · ≈ $+2.80" in sec          # −4 (DL 317), not the shared −3
     assert "- FRENZY_LITE_RETRY: 1 · N 0" in sec and "unpriced (no data / fetch) 1" in sec              # its repeat folded on the cap
     assert "- FRENZY_LITE: 1 · N 0 · unpriced 1 (LITE C" in sec and "bracket avg [+1.900, +2.900] %" in sec
     assert "2 FLATBASE_SHORT holds · closed 1 N 1 · WR 100% · avg +4.167 %" in sec and "$+2.50 (pnl + funding) · open 1" in sec
-    # ONE blocked position per CLOSED hold (WILLY beats FRENZY_LONG; the open B4 hold's WILLY is out of the $ net)
-    assert "FLATBASE $+2.50 − blocked longs ≈ $+1.15 (1 positions) = $+1.35" in sec
+    # ONE blocked position per CLOSED hold (WILLY retired → FRENZY_LONG is the B1 hold's priced block; LITE's bracket stays out)
+    assert "FLATBASE $+2.50 − blocked longs ≈ $+2.80 (1 positions) = $-0.30" in sec and "0 closed holds with only retired blocks excluded" in sec
     # LITE C off → LITE is faithful and priced at its own TP
     off = SC.price_long("FRENZY_LITE", "B1USDT", t_lite, None, now, m1=m1, th=NS(**dict(vars(_th_long()), frenzy_lite_c_enabled=False)))
     assert off["state"] == "PRICED" and off["pct"] == pytest.approx(2.9)
     # an unfinished exit window waits; a missing 1m path is unpriced (never guessed)
-    assert SC.price_long("FRENZY_WILLY", "B1USDT", now - 10 * MIN, None, now, m1=m1, th=_th_long())["state"] == "WAIT"
-    assert SC.price_long("FRENZY_WILLY", "B9USDT", t_w, None, now, m1=m1, th=_th_long())["state"] == "UNPRICED"
+    assert SC.price_long("FRENZY_LONG", "B1USDT", now - 10 * MIN, None, now, m1=m1, th=_th_long())["state"] == "WAIT"
+    assert SC.price_long("FRENZY_LONG", "B9USDT", t_long, None, now, m1=m1, th=_th_long())["state"] == "UNPRICED"
+    for s_ in ("FRENZY_WILLY", "FRENZY_WILLY_HT"):                     # ⛔ (657) never walked, never fetched
+        assert SC.price_long(s_, "B1USDT", t_w, None, now, m1=lambda *a: 1 / 0, th=None)["state"] == "RETIRED"
 
 
 def test_sections_crash_isolated(SC, tmp_path, monkeypatch):
